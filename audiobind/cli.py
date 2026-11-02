@@ -129,9 +129,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     setup_logging(args.verbose)
-    try:
-        CONFIG.preflight()
-    except RuntimeError as exc:
-        print(f"audiobind: {exc}", file=sys.stderr)
-        return 2
+    # version/health must work even with no volumes mounted (healthchecks, `docker run ... version`)
+    if args.command not in ("version", "health"):
+        try:
+            CONFIG.preflight()
+        except RuntimeError as exc:
+            print(f"audiobind: {exc}", file=sys.stderr)
+            return 2
     return args.func(args)

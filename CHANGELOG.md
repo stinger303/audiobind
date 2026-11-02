@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-11-01
+
+### Fixed
+- `audiobind version` and `audiobind health` no longer fail when no volumes are mounted. The
+  output-path write check now runs only for the commands that actually write (`audit`, `scan`,
+  `convert`, `daemon`), which is what a container healthcheck needs.
+
 ## [0.1.0] - 2026-11-01
 
 First public release.

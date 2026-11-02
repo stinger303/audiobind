@@ -26,6 +26,9 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.1.1
+* `version` and `health` work with no volumes mounted (healthcheck fix)
+
 ### 0.1.0
 * First public release
 * Merge multi-part rips into a single m4b (AAC, chapters, cover, tags)
