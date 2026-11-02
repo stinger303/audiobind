@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import catalog, encode, library, matching
 from .config import CONFIG
+from .control import CONTROL
 from .probe import probe
 from .state import State, UnitState
 from .units import BookUnit, looks_like_collection
@@ -99,7 +100,7 @@ def convert_unit(audit: Audit, log=print) -> Path:
     if out_path.exists():
         log(f"  already published: {out_path}")
         return out_path
-    if CONFIG.dry_run:
+    if CONTROL.dry_run:
         log(f"  [dry-run] would write {out_path}")
         return None                     # nothing was written, so it is not "converted"
 

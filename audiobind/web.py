@@ -28,6 +28,8 @@ PAGE = """<!doctype html>
  button.primary {{ background:#1e4fa0; border-color:#2b5ea8; }}
  button.primary:hover {{ background:#2b5ea8; }}
  button.warn {{ background:#5a4210; border-color:#7a5a16; }}
+ button.armed {{ background:#5c1f22; border-color:#7d2a2e; }}
+ button.armed:hover {{ background:#7d2a2e; }}
  button:disabled {{ opacity:.45; cursor:default; }}
  .pill {{ font-size:12px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
           padding:6px 12px; border-radius:999px; }}
@@ -50,6 +52,7 @@ PAGE = """<!doctype html>
   <span class="pill {state_class}">{state_text}</span>
   <button class="primary" onclick="act('scan')" {scan_disabled}>Scan now</button>
   {pause_button}
+  {dry_button}
 </div>
 
 <div class="grid">
@@ -68,6 +71,13 @@ PAGE = """<!doctype html>
 function act(action) {{
   fetch('/api/control', {{method:'POST', headers:{{'Content-Type':'application/json'}},
                         body: JSON.stringify({{action: action}})}})
+    .then(r => r.json())
+    .then(() => setTimeout(() => location.reload(), 250))
+    .catch(() => location.reload());
+}}
+function dry(on) {{
+  fetch('/api/control', {{method:'POST', headers:{{'Content-Type':'application/json'}},
+                        body: JSON.stringify({{action:'dry_run', value: on}})}})
     .then(r => r.json())
     .then(() => setTimeout(() => location.reload(), 250))
     .catch(() => location.reload());
@@ -118,17 +128,23 @@ def render(state: State) -> str:
         '<button onclick="act(\'resume\')">Resume</button>' if paused
         else '<button class="warn" onclick="act(\'pause\')">Pause after this book</button>'
     )
+    dry_button = (
+        '<button class="warn" onclick="dry(false)">Dry run: ON &middot; turn off</button>'
+        if CONTROL.dry_run
+        else '<button class="armed" onclick="dry(true)">Dry run: OFF &middot; turn on</button>'
+    )
     return PAGE.format(
         version=__version__,
         library=CONFIG.library_root,
         output=CONFIG.output_root,
         auto=CONFIG.auto_convert,
-        dry=" · dry run" if CONFIG.dry_run else "",
-        dry_tag=" (dry run)" if CONFIG.dry_run else "",
+        dry=" · dry run" if CONTROL.dry_run else "",
+        dry_tag=" (dry run)" if CONTROL.dry_run else "",
         state_class="paused" if paused else "run",
         state_text="paused" if paused else "running",
         scan_disabled="" if not paused else "disabled",
         pause_button=pause_button,
+        dry_button=dry_button,
         converted=counts.get("converted", 0),
         ready=counts.get("ready", 0),
         review=counts.get("review", 0),
@@ -148,7 +164,7 @@ def snapshot(state: State) -> dict:
         "library_root": str(CONFIG.library_root),
         "output_root": str(CONFIG.output_root),
         "auto_convert": CONFIG.auto_convert,
-        "dry_run": CONFIG.dry_run,
+        "dry_run": CONTROL.dry_run,
         **CONTROL.describe(),
     }
 
@@ -194,6 +210,10 @@ class Handler(BaseHTTPRequestHandler):
             self.state.set_meta("paused", False)
         elif action == "scan":
             CONTROL.request_scan()
+        elif action == "dry_run":
+            desired = bool(payload.get("value", not CONTROL.dry_run))
+            CONTROL.set_dry_run(desired)
+            self.state.set_meta("dry_run", desired)
         else:
             self._send(400, b'{"error":"unknown action"}', "application/json")
             return

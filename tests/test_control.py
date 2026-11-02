@@ -35,6 +35,22 @@ class TestControl(unittest.TestCase):
     def test_wait_times_out_quietly(self):
         self.assertFalse(self.c.wait(0.01))
 
+    def test_dry_run_follows_the_env_by_default(self):
+        from audiobind.config import CONFIG
+        fresh = Control()
+        self.assertEqual(fresh.dry_run, CONFIG.dry_run)
+        self.assertEqual(fresh.dry_run_source, "default")
+
+    def test_dry_run_can_be_overridden_at_runtime(self):
+        from audiobind.config import CONFIG
+        self.c.set_dry_run(not CONFIG.dry_run)
+        self.assertNotEqual(self.c.dry_run, CONFIG.dry_run)
+        self.assertEqual(self.c.dry_run_source, "set in UI")
+
+    def test_describe_reports_dry_run(self):
+        self.c.set_dry_run(True)
+        self.assertTrue(self.c.describe()["dry_run"])
+
 
 if __name__ == "__main__":
     unittest.main()

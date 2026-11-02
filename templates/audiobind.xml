@@ -26,6 +26,9 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.3.0
+* Dry-run toggle on the status page (persisted, no container edit needed)
+
 ### 0.2.0
 * Status page controls: Scan now, Pause, Resume
 * Paused state survives container restarts

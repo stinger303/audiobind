@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-01
+
+### Added
+- **Dry-run toggle on the status page.** `DRY_RUN` no longer requires editing the container; the
+  button switches between deciding-only and writing, and the choice survives a restart. The
+  environment variable remains the default for a fresh install.
+- The button turns amber when dry run is on (clicking it arms real writes) and red when writing.
+
+### Changed
+- `pipeline` reads the effective dry-run state from the run controls rather than the environment.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added

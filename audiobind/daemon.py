@@ -53,6 +53,8 @@ def run() -> None:
     CONFIG.ensure_dirs()
     if state.get_meta("paused", False):
         CONTROL.pause()                     # a paused container stays paused across restarts
+    if state.get_meta("dry_run") is not None:
+        CONTROL.set_dry_run(bool(state.get_meta("dry_run")))
     log.info("audiobind daemon: %s -> %s every %d min",
              CONFIG.library_root, CONFIG.output_root, CONFIG.scan_interval_min)
     if CONFIG.web_enabled:
