@@ -4,11 +4,11 @@ set -e
 APP=/mnt/user/appdata/audiobind
 OUT=/mnt/user/data/media/audiobooks-fixed
 LIB=/mnt/user/data/media/audiobooks
-IMAGE=ghcr.io/stinger303/audiobind:0.5.0
+IMAGE=ghcr.io/stinger303/audiobind:0.5.1
 TPL=/boot/config/plugins/dockerMan/templates-user/my-Audiobind.xml
 
 docker rm -f Audiobind >/dev/null 2>&1 || true
-sed -i 's|audiobind:0\.[0-9.]*|audiobind:0.5.0|' "$TPL"
+sed -i 's|audiobind:0\.[0-9.]*|audiobind:0.5.1|' "$TPL"
 
 docker run -d --name Audiobind --net bridge -p 8686:8080 \
   -e PUID=99 -e PGID=100 -e TZ=America/Denver \

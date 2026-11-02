@@ -26,6 +26,9 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.5.2
+* "last scan" is fresh from the start of a pass
+
 ### 0.5.1
 * Fix: control buttons were clipped by a CSS class collision
 * "last scan" updates per book

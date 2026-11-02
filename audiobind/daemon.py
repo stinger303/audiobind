@@ -17,6 +17,7 @@ log = logging.getLogger("audiobind")
 def scan_once(state: State, force: bool = False) -> dict:
     """One pass over the library. Already-decided units are skipped unless forced."""
     run_id = state.start_run()
+    state.heartbeat()          # "last scan" should read fresh the moment a pass begins
     units = discover_units(CONFIG.library_root, CONFIG.ignore_globs)
     log.info("scan: %d unit(s) on disk", len(units))
 

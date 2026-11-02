@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-11-01
+
+### Fixed
+- `last scan` now updates at the start of a pass as well as after each book, so it reads fresh
+  while a long scan is still running instead of showing the previous run's age.
+
 ## [0.5.1] - 2026-11-01
 
 ### Fixed
