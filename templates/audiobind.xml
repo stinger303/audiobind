@@ -26,6 +26,16 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.1.4
+* Every release now publishes a GitHub Release with its changelog
+* New icon
+
+### 0.1.3
+* Dry runs report `ready` instead of claiming books were converted
+
+### 0.1.2
+* `health` no longer prints "infs" before the first scan
+
 ### 0.1.1
 * `version` and `health` work with no volumes mounted (healthcheck fix)
 

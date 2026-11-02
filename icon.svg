@@ -1,33 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t d">
   <title id="t">Audiobind</title>
-  <desc id="d">A bound book with an audio waveform on its spine.</desc>
+  <desc id="d">A bound audiobook with an audio waveform across the cover.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#1b2a4a"/>
-      <stop offset="55%" stop-color="#2b5ea8"/>
-      <stop offset="100%" stop-color="#1fa8a0"/>
+      <stop offset="0%" stop-color="#0b1730"/>
+      <stop offset="58%" stop-color="#1e4fa0"/>
+      <stop offset="100%" stop-color="#12a89b"/>
     </linearGradient>
-    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#dce7f7"/>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#12a89b"/>
+      <stop offset="100%" stop-color="#0e8f85"/>
     </linearGradient>
   </defs>
-  <rect width="256" height="256" rx="54" fill="url(#bg)"/>
-  <!-- book cover -->
-  <path d="M74 56h92a14 14 0 0 1 14 14v116a14 14 0 0 1-14 14H74z" fill="url(#page)" opacity="0.97"/>
-  <!-- spine -->
-  <path d="M74 56h26v144H74a14 14 0 0 1-14-14V70a14 14 0 0 1 14-14z" fill="#12325c"/>
-  <!-- binding bands -->
-  <g fill="#0d2547" opacity="0.55">
-    <rect x="60" y="96" width="40" height="8" rx="4"/>
-    <rect x="60" y="156" width="40" height="8" rx="4"/>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <g transform="rotate(-7 128 128)">
+    <rect x="64" y="42" width="136" height="172" rx="14" fill="#0a1326" opacity=".5" transform="translate(4 6)"/>
+    <rect x="60" y="40" width="136" height="176" rx="14" fill="#f5f9ff"/>
+    <rect x="60" y="40" width="26" height="176" rx="13" fill="url(#edge)"/>
+    <rect x="60" y="40" width="13" height="176" fill="url(#edge)"/>
+    <g fill="#1e4fa0">
+      <rect x="100" y="104" width="17" height="52" rx="8.5"/>
+      <rect x="125" y="80" width="17" height="100" rx="8.5"/>
+      <rect x="150" y="94" width="17" height="72" rx="8.5"/>
+      <rect x="175" y="114" width="17" height="32" rx="8.5"/>
+    </g>
   </g>
-  <!-- waveform on the cover -->
-  <g stroke="#2b5ea8" stroke-width="8" stroke-linecap="round">
-    <path d="M120 168V112"/>
-    <path d="M140 152V128"/>
-    <path d="M160 176V104"/>
-    <path d="M100 158V122"/>
-  </g>
-  <path d="M140 186h22" stroke="#1fa8a0" stroke-width="8" stroke-linecap="round"/>
 </svg>
