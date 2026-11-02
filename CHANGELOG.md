@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-11-01
+
+### Fixed
+- A book with unreadable source files is now held for review **before** encoding, instead of
+  spending minutes producing a short file that then fails verification (`1984` hit this: 168 files,
+  one unreadable, output came out at 5.2 h against 9.7 h of sources).
+- When the merged output is shorter than its sources, the error now says so in hours and quotes
+  the first ffmpeg complaint, instead of a bare pair of second counts.
+
 ## [0.5.2] - 2026-11-01
 
 ### Fixed

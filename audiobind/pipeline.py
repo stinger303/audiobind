@@ -144,7 +144,11 @@ def process_unit(state: State, unit: BookUnit, log=print) -> Audit:
     log(f"  {audit.confidence:6} {audit.hours:>6.2f}h {unit.n_files:>3}f  "
         f"{audit.match.product.title if audit.match.product else '-'}")
 
-    if audit.action in ("merge+convert", "convert") and audit.confidence in CONFIG.auto_tiers:
+    if audit.unreadable and audit.action in ("merge+convert", "convert"):
+        log(f"  skipping: {audit.unreadable} unreadable source file(s) - fix the source first")
+        record(state, audit, "review",
+               note=f"{audit.unreadable} unreadable source file(s); not converted")
+    elif audit.action in ("merge+convert", "convert") and audit.confidence in CONFIG.auto_tiers:
         try:
             output = convert_unit(audit, log=log)
             if output is None:                       # dry run

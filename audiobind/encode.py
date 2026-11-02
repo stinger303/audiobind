@@ -214,7 +214,15 @@ def encode(unit: BookUnit, match, book: dict, work_dir: Path, out_path: Path,
     if not audio_ok:
         raise RuntimeError("output has no AAC audio stream")
     if abs(duration - total_duration) > max(120, total_duration * 0.02):
-        raise RuntimeError(f"duration {duration:.0f}s does not match source {total_duration:.0f}s")
+        hint = ""
+        for line in (errors[0] if errors else "").splitlines():
+            low = line.lower()
+            if any(word in low for word in ("invalid", "error", "could not", "failed")):
+                hint = " | ffmpeg: " + line.strip()[:160]
+                break
+        raise RuntimeError(
+            f"output is {duration / 3600:.2f}h but the sources are {total_duration / 3600:.2f}h - "
+            f"files were dropped during the merge{hint}")
     if chapter_count != len(chapters):
         raise RuntimeError(f"expected {len(chapters)} chapters, found {chapter_count}")
     if has_cover and not has_embedded_cover(temp_out):

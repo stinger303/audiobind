@@ -26,6 +26,10 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.5.3
+* Damaged sources are held before encoding, not after
+* Clearer "output shorter than sources" error
+
 ### 0.5.2
 * "last scan" is fresh from the start of a pass
 
