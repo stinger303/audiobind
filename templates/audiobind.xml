@@ -26,6 +26,10 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.2.0
+* Status page controls: Scan now, Pause, Resume
+* Paused state survives container restarts
+
 ### 0.1.4
 * Every release now publishes a GitHub Release with its changelog
 * New icon

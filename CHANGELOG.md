@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-01
+
+### Added
+- **Controls on the status page**: `Scan now`, `Pause after this book` and `Resume`. Pausing stops
+  the daemon before it starts another book (the one in flight finishes), and the paused state is
+  remembered across container restarts.
+- `POST /api/control` with `{"action": "scan" | "pause" | "resume"}` for scripting.
+- The page shows a running/paused pill and refreshes itself every 10 seconds.
+
 ## [0.1.4] - 2026-11-01
 
 ### Added

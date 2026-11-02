@@ -6,6 +6,7 @@ import time
 
 from . import web
 from .config import CONFIG
+from .control import CONTROL
 from .pipeline import process_unit
 from .state import State
 from .units import discover_units
@@ -21,6 +22,9 @@ def scan_once(state: State, force: bool = False) -> dict:
 
     seen = converted = held = failed = 0
     for unit in units:
+        if CONTROL.paused:
+            log.info("paused - stopping before the next book")
+            break
         previous = state.get(unit.rel_path)
         if previous and previous.status in ("converted", "held", "failed", "review") and not force:
             continue
@@ -47,15 +51,26 @@ def run() -> None:
     """Loop forever, honouring SCAN_INTERVAL_MIN."""
     state = State(CONFIG.state_dir)
     CONFIG.ensure_dirs()
+    if state.get_meta("paused", False):
+        CONTROL.pause()                     # a paused container stays paused across restarts
     log.info("audiobind daemon: %s -> %s every %d min",
              CONFIG.library_root, CONFIG.output_root, CONFIG.scan_interval_min)
     if CONFIG.web_enabled:
         web.serve(state)
         log.info("status page on http://0.0.0.0:%d", CONFIG.web_port)
 
+    interval = max(60, CONFIG.scan_interval_min * 60)
     while True:
+        if CONTROL.paused:
+            CONTROL.clear_scan()            # a click while paused must not busy-loop
+            CONTROL.wait(interval)
+            continue
+
+        CONTROL.clear_scan()                # anything clicked during a scan triggers another
         try:
             scan_once(state)
         except Exception:                   # noqa: BLE001 - never let the loop die
             log.exception("scan failed")
-        time.sleep(max(60, CONFIG.scan_interval_min * 60))
+
+        if CONTROL.wait(interval):
+            log.info("scan requested from the status page")
