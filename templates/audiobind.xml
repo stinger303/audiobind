@@ -26,6 +26,10 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.5.1
+* Fix: control buttons were clipped by a CSS class collision
+* "last scan" updates per book
+
 ### 0.5.0
 * Progress bar with percentage, speed and ETA for the current book
 

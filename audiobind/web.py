@@ -21,7 +21,7 @@ PAGE = """<!doctype html>
         font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }}
  h1 {{ font-size:20px; margin:0 0 4px; letter-spacing:-.2px; }}
  .sub {{ color:#8b93a7; font-size:13px; margin-bottom:22px; }}
- .bar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:26px; }}
+ .toolbar {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:26px; }}
  button {{ font:inherit; font-size:14px; font-weight:500; padding:9px 16px; border-radius:9px;
            border:1px solid #2b3240; background:#1b2029; color:#e6e9ef; cursor:pointer; }}
  button:hover {{ background:#232a35; border-color:#3a4353; }}
@@ -36,9 +36,9 @@ PAGE = """<!doctype html>
  .working b {{ color:#e6e9ef; font-weight:600; }}
  .wline {{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:7px; }}
  .pct {{ font-variant-numeric:tabular-nums; font-weight:600; color:#e6e9ef; font-size:13px; }}
- .bar {{ height:8px; border-radius:99px; background:#1c2230; overflow:hidden; }}
- .bar i {{ display:block; height:100%; border-radius:99px;
-           background:linear-gradient(90deg,#2b5ea8,#12a89b); transition:width .6s ease; }}
+ .ptrack {{ height:8px; border-radius:99px; background:#1c2230; overflow:hidden; }}
+ .ptrack i {{ display:block; height:100%; border-radius:99px;
+              background:linear-gradient(90deg,#2b5ea8,#12a89b); transition:width .6s ease; }}
  .wmeta {{ margin-top:7px; font-size:12px; }}
  button:disabled {{ opacity:.45; cursor:default; }}
  .pill {{ font-size:12px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
@@ -58,7 +58,7 @@ PAGE = """<!doctype html>
 <div class="sub">v{version} &middot; library <code>{library}</code> &rarr; <code>{output}</code>
  &middot; auto: {auto}{dry}</div>
 
-<div class="bar">
+<div class="toolbar">
   <span class="pill {state_class}">{state_text}</span>
   <button class="primary" onclick="act('scan')" {scan_disabled}>Scan now</button>
   {pause_button}
@@ -198,7 +198,7 @@ def render(state: State) -> str:
             f'<div class="working">'
             f'<div class="wline"><span>converting <b>{_html(CONTROL.current_unit)}</b></span>'
             f'<span class="pct" id="pct">{percent:.1f}%</span></div>'
-            f'<div class="bar"><i id="prog" style="width:{percent:.1f}%"></i></div>'
+            f'<div class="ptrack"><i id="prog" style="width:{percent:.1f}%"></i></div>'
             f'<div class="wmeta">{" &middot; ".join(meta)}</div></div>'
         )
     return PAGE.format(

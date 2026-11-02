@@ -164,4 +164,5 @@ def process_unit(state: State, unit: BookUnit, log=print) -> Audit:
     else:
         record(state, audit, "review")
     log(f"  done in {time.time() - started:.0f}s")
+    state.heartbeat()          # keep "last scan" honest while a long pass is still running
     return audit

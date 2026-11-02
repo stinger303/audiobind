@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-11-01
+
+### Fixed
+- The control bar collapsed into colored slivers: the new progress track used the class `bar`,
+  which is already the class of the toolbar container, so `height:8px; overflow:hidden` clipped
+  every button. The track is now `.ptrack` and the toolbar is `.toolbar`.
+- `last scan` no longer shows a stale time during a long pass - the heartbeat is updated after
+  every book, not only when the whole scan ends.
+
 ## [0.5.0] - 2026-11-01
 
 ### Added
