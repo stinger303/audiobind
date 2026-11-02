@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS units (
     src_mb      REAL DEFAULT 0,
     out_mb      REAL DEFAULT 0,
     chapters    INTEGER DEFAULT 0,
-    detail      TEXT DEFAULT ''
+    detail      TEXT DEFAULT '',
+    asin_override TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,7 +72,8 @@ class State:
         """Add columns introduced after a database already exists."""
         existing = {row[1] for row in self.connection.execute("PRAGMA table_info(units)")}
         for name, ddl in (("src_mb", "REAL DEFAULT 0"), ("out_mb", "REAL DEFAULT 0"),
-                          ("chapters", "INTEGER DEFAULT 0"), ("detail", "TEXT DEFAULT ''")):
+                          ("chapters", "INTEGER DEFAULT 0"), ("detail", "TEXT DEFAULT ''"),
+                          ("asin_override", "TEXT DEFAULT ''")):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE units ADD COLUMN {name} {ddl}")
 
@@ -132,6 +134,18 @@ class State:
     def get_meta(self, key: str, default=None):
         row = self.connection.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         return json.loads(row["value"]) if row else default
+
+    def set_asin_override(self, path: str, asin: str) -> None:
+        self.connection.execute("UPDATE units SET asin_override = ? WHERE path = ?", (asin, path))
+        if not self.connection.total_changes:
+            self.connection.execute(
+                "INSERT INTO units (path, status, asin_override, updated_at) VALUES (?,?,?,?)",
+                (path, "review", asin, time.time()))
+        self.connection.commit()
+
+    def get_asin_override(self, path: str) -> str:
+        row = self.connection.execute("SELECT asin_override FROM units WHERE path = ?", (path,)).fetchone()
+        return (row["asin_override"] if row and row["asin_override"] else "")
 
     def heartbeat(self) -> None:
         self.set_meta("heartbeat", time.time())

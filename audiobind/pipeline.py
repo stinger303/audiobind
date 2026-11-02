@@ -37,7 +37,7 @@ class Audit:
         return matching.runtime_ok(self.hours, self.match.product.hours, CONFIG.max_runtime_delta)
 
 
-def audit_unit(unit: BookUnit) -> Audit:
+def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
     """Read-only assessment: durations, codecs, catalog match, what we would do."""
     audit = Audit(unit=unit)
     total = 0.0
@@ -53,7 +53,7 @@ def audit_unit(unit: BookUnit) -> Audit:
     audit.hours = round(total / 3600, 2)
     audit.src_mb = round(sum(os.path.getsize(f) for f in unit.files if os.path.exists(f)) / 1e6, 1)
 
-    audit.match = matching.match_unit(unit)
+    audit.match = matching.match_unit(unit, asin_override)
     audit.confidence = audit.match.confidence
 
     avg_hours = audit.hours / len(unit.files) if unit.files else 0
@@ -179,17 +179,37 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
     ))
 
 
-def process_unit(state: State, unit: BookUnit, log=print) -> Audit:
-    """Audit, then convert when the confidence tier and runtime check allow it."""
+def process_unit(state: State, unit: BookUnit, log=print, force: bool = False) -> Audit:
+    """Audit, then convert when the confidence tier and runtime check allow it.
+
+    ``force`` is the operator saying "I looked at this, convert it anyway": the tier, the runtime
+    hold and the damaged-source hold are bypassed, but the output is still verified before it is
+    published.
+    """
     started = time.time()
-    audit = audit_unit(unit)
+    audit = audit_unit(unit, state.get_asin_override(unit.rel_path))
     log(f"  {audit.confidence:6} {audit.hours:>6.2f}h {unit.n_files:>3}f  "
         f"{audit.match.product.title if audit.match.product else '-'}")
 
-    if audit.unreadable and audit.action in ("merge+convert", "convert"):
+    if not force and audit.unreadable and audit.action in ("merge+convert", "convert", "remux"):
         log(f"  skipping: {audit.unreadable} unreadable source file(s) - fix the source first")
         record(state, audit, "review",
                note=f"{audit.unreadable} unreadable source file(s); not converted")
+    elif force and audit.match.product:
+        log("  forced by operator - converting regardless of tier/hold")
+        try:
+            result = convert_unit(audit, log=log)
+            if result is None:
+                record(state, audit, "ready", note="already published")
+            else:
+                record(state, audit, "converted", str(result.path), result=result)
+        except Stopped:
+            log("  stopped by operator - partial file discarded, book will be retried")
+            record(state, audit, "interrupted", note="stopped by operator - retried next scan")
+            CONTROL.pause()
+        except Exception as exc:                        # noqa: BLE001
+            log(f"  FAILED: {exc}")
+            record(state, audit, "failed", note=str(exc)[:300])
     elif (audit.action in ("merge+convert", "convert", "remux")
           and audit.confidence in CONFIG.auto_tiers):
         try:

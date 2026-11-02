@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-01
+
+### Added
+- **Per-book actions**, so `review` is no longer a dead end. Expand a row and you get:
+  - **Retry now** - re-audit and convert under the normal rules (useful after you fix a source file
+    or change `AUTO_CONVERT`).
+  - **Convert anyway** - the operator override: ignore the confidence tier, the runtime hold and
+    the damaged-source hold. The output is still verified before it is published.
+  - **Use this ASIN** - pin the book to a specific Audible entry when the automatic match picked
+    the wrong edition; the override is stored and used on every later scan.
+- `POST /api/unit {"path": ..., "action": "retry" | "force" | "set_asin", "asin": ...}`.
+
+### Fixed
+- Rows recorded before 0.7.0 showed no size in the detail panel even though the columns held it.
+
 ## [0.7.0] - 2026-11-01
 
 ### Added

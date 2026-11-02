@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from pathlib import Path
@@ -10,7 +11,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import __version__
 from .config import CONFIG
 from .control import CONTROL
+from .pipeline import process_unit
 from .state import State
+from .units import discover_units
+
+_log = logging.getLogger("audiobind").info
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -61,6 +66,11 @@ PAGE = """<!doctype html>
  tr.urow.open td:first-child::before {{ content:"-"; color:#12a89b; }}
  tr.drow td {{ background:#11151d; padding:0; border-bottom:1px solid #232833; }}
  .dd {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:22px; padding:16px 22px 18px; }}
+ .acts {{ grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+          border-top:1px solid #1c2230; padding-top:14px; }}
+ .acts button {{ font-size:12.5px; padding:6px 12px; }}
+ .acts input {{ font:inherit; font-size:12.5px; padding:6px 10px; border-radius:8px;
+                border:1px solid #2b3240; background:#0d1118; color:#e6e9ef; }}
  .dd h4 {{ margin:0 0 8px; font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:#8b93a7; font-weight:600; }}
  .dd ul {{ margin:0; padding-left:16px; }}
  .dd li {{ margin:3px 0; color:#c7cddb; }}
@@ -121,6 +131,22 @@ function dry(on) {{
     .then(r => r.json())
     .then(() => setTimeout(() => location.reload(), 250))
     .catch(() => location.reload());
+}}
+function unitAction(btn, action) {{
+  const panel = btn.closest('.dd');
+  const path = panel.dataset.path;
+  const body = {{action: action, path: path}};
+  if (action === 'set_asin') {{
+    const input = panel.querySelector('input[data-asin]');
+    body.asin = (input && input.value || '').trim();
+    if (!body.asin) {{ input.focus(); return; }}
+  }}
+  btn.disabled = true;
+  fetch('/api/unit', {{method:'POST', headers:{{'Content-Type':'application/json'}},
+                     body: JSON.stringify(body)}})
+    .then(r => r.json())
+    .then(() => setTimeout(() => location.reload(), 400))
+    .catch(() => {{ btn.disabled = false; }});
 }}
 function toggleRow(row) {{
   const panel = row.nextElementSibling;
@@ -247,10 +273,20 @@ def render(state: State, status: str = "") -> str:
             return (f"<div><h4>{title}</h4><ul>"
                     + "".join(f"<li>{i}</li>" for i in items) + "</ul></div>")
 
-        return (f'<tr class="drow" hidden><td colspan="5"><div class="dd">'
+        actions = (
+            '<div class="acts">'
+            f'<button onclick="unitAction(this,\'retry\')">Retry now</button>'
+            f'<button class="warn" onclick="unitAction(this,\'force\')">Convert anyway</button>'
+            '<input data-asin placeholder="ASIN, e.g. B005EHN61O" style="width:190px">'
+            f'<button onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
+            "</div>"
+        )
+        return (f'<tr class="drow" hidden><td colspan="5">'
+                f'<div class="dd" data-path="{_html(unit.path)}">'
                 + block("Before", before)
                 + block("After", after)
                 + block("Decision", decision)
+                + actions
                 + "</div></td></tr>")
 
     rows = "".join(
@@ -373,7 +409,45 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send(200, render(self.state, status).encode(), "text/html; charset=utf-8")
 
+    def _handle_unit(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, TypeError):
+            self._send(400, b'{"error":"bad request"}', "application/json")
+            return
+
+        rel = str(payload.get("path", ""))
+        action = str(payload.get("action", "")).lower()
+        unit = next((u for u in discover_units(CONFIG.library_root, CONFIG.ignore_globs)
+                     if u.rel_path == rel), None)
+        if unit is None:
+            self._send(404, b'{"error":"no such unit"}', "application/json")
+            return
+
+        if action == "set_asin":
+            asin = str(payload.get("asin", "")).strip().upper()
+            if len(asin) < 8:
+                self._send(400, b'{"error":"that is not an ASIN"}', "application/json")
+                return
+            self.state.set_asin_override(rel, asin)
+            action = "retry"
+        if action not in ("retry", "force"):
+            self._send(400, b'{"error":"unknown action"}', "application/json")
+            return
+
+        logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
+        threading.Thread(target=process_unit,
+                         kwargs={"state": self.state, "unit": unit, "log": _log,
+                                 "force": action == "force"},
+                         daemon=True).start()
+        self._send(200, json.dumps({"ok": True, "action": action, "unit": rel}).encode(),
+                   "application/json")
+
     def do_POST(self):                      # noqa: N802
+        if self.path.startswith("/api/unit"):
+            self._handle_unit()
+            return
         if not self.path.startswith("/api/control"):
             self._send(404, b'{"error":"not found"}', "application/json")
             return

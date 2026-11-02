@@ -26,6 +26,9 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.8.0
+* Per-book actions: Retry, Convert anyway, Use this ASIN
+
 ### 0.7.0
 * Filter by status with counts (ready / review / held ...)
 * Every book is listed, not just the newest 40

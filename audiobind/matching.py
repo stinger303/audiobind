@@ -18,6 +18,7 @@ class Match:
     author_sim: float = 0.0
     author_known: bool = False
     author_from_series: bool = False
+    asin_override: bool = False
     confidence: str = "NONE"
 
     @property
@@ -44,7 +45,36 @@ def _same_work(a: Product, b: Product) -> bool:
     return norm(a.title) == norm(b.title) and norm((a.authors or [""])[0]) == norm((b.authors or [""])[0])
 
 
-def match_unit(unit: BookUnit) -> Match:
+def match_from_asin(asin: str) -> Match:
+    """Build a confident match from an ASIN the user supplied."""
+    book = catalog.book(asin)
+    if not book.get("asin"):
+        return Match()
+    series = book.get("seriesPrimary") or {}
+    product = catalog.Product(
+        asin=book["asin"],
+        title=book.get("title", ""),
+        subtitle=book.get("subtitle") or "",
+        authors=[a.get("name", "") for a in (book.get("authors") or []) if a.get("name")],
+        narrators=[n.get("name", "") for n in (book.get("narrators") or []) if n.get("name")],
+        series=series.get("name", "") or "",
+        sequence=str(series.get("position", "") or ""),
+        hours=round(float(book.get("runtimeLengthMin") or 0) / 60, 2),
+        language=book.get("language") or "english",
+        year=(book.get("releaseDate") or "")[:4],
+        publisher=book.get("publisherName") or "",
+    )
+    match = Match(product=product, score=1.0, margin=1.0, title_sim=1.0, author_sim=1.0,
+                  author_known=True, asin_override=True)
+    match.confidence = "HIGH"
+    return match
+
+
+def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
+    if asin_override:
+        forced = match_from_asin(asin_override)
+        if forced.product:
+            return forced
     author, title = unit.author_guess, unit.title_guess
     author_from_series = False
     if not author and unit.series_guess:
