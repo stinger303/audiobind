@@ -1,0 +1,18 @@
+<CommunityApplications>
+  <Profile>
+    **Audiobind** - fix an audiobook library instead of curating it by hand.
+
+    Audiobind merges multi-part rips into a single m4b, verifies every book against the Audible
+    catalog (title, author, narrator, series), proves completeness by comparing runtime with the
+    catalog, then embeds real chapter marks, cover art and tags before filing the result as
+    `Author/Title/Title.m4b`.
+
+    It is deliberately conservative: anything it is not confident about is marked for review
+    rather than converted, and the source library is mounted read-only.
+
+    Support and bug reports: please use the support thread linked above.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/audiobind/main/icon.svg</Icon>
+  <WebPage>https://github.com/YOUR_GITHUB_USERNAME/audiobind</WebPage>
+  <Forum>https://forums.unraid.net/topic/YOUR_SUPPORT_TOPIC</Forum>
+</CommunityApplications>

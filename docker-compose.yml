@@ -1,0 +1,29 @@
+services:
+  audiobind:
+    image: ghcr.io/YOUR_GITHUB_USERNAME/audiobind:latest
+    container_name: audiobind
+    restart: unless-stopped
+    environment:
+      - PUID=99
+      - PGID=100
+      - TZ=America/Denver
+      - LIBRARY_ROOT=/library
+      - OUTPUT_ROOT=/output
+      - AUTO_CONVERT=high          # high | medium | off
+      - SCAN_INTERVAL_MIN=30
+      - AUDIO_BITRATE=64k
+      - AUDIO_CHANNELS=1
+      - JOBS=1
+      - NICE=10
+      - DRY_RUN=false
+    volumes:
+      - /mnt/user/data/media/audiobooks:/library:ro
+      - /mnt/user/data/media/audiobooks-fixed:/output
+      - /mnt/user/appdata/audiobind:/config
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "audiobind", "health"]
+      interval: 60s
+      timeout: 5s
+      start_period: 180s

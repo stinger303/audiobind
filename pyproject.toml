@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audiobind"
+version = "0.1.0"
+description = "Merge, convert and correctly tag audiobook libraries"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "The Audiobind authors" }]
+keywords = ["audiobooks", "m4b", "ffmpeg", "audiobookshelf", "unraid"]
+classifiers = [
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Conversion",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/audiobind/audiobind"
+Issues = "https://github.com/audiobind/audiobind/issues"
+
+[project.scripts]
+audiobind = "audiobind.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["audiobind*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]

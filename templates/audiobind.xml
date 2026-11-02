@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Audiobind</Name>
+  <Repository>ghcr.io/YOUR_GITHUB_USERNAME/audiobind:latest</Repository>
+  <Registry>https://github.com/YOUR_GITHUB_USERNAME/audiobind/pkgs/container/audiobind</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://forums.unraid.net/topic/YOUR_SUPPORT_TOPIC</Support>
+  <Project>https://github.com/YOUR_GITHUB_USERNAME/audiobind</Project>
+  <Overview>Finds audiobooks that are split into many files, checks each one against the Audible catalog, merges the parts into a single tagged m4b with real chapter marks and cover art, and files it into a clean Author/Title library. Runs on a timer and only converts books it is confident about.</Overview>
+  <Category>MediaApp:Other Tools:Utilities</Category>
+  <Icon>https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/audiobind/main/icon.svg</Icon>
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/audiobind/main/templates/audiobind.xml</TemplateURL>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Internet access (Audible / Audnex metadata lookups)</Requires>
+  <Screenshot>https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/audiobind/main/docs/screenshot.png</Screenshot>
+  <ExtraSearchTerms>audiobook m4b merge convert chapters metadata audible audnex audiobookshelf</ExtraSearchTerms>
+  <MinVer>6.12</MinVer>
+  <License>MIT</License>
+  <Changes>
+### 0.1.0
+* First public release
+* Merge multi-part rips into a single m4b (AAC, chapters, cover, tags)
+* Catalog verification via Audible search + Audnex chapters
+* Runtime cross-check holds suspicious matches instead of mislabelling them
+* Status page and JSON API on port 8080
+  </Changes>
+  <Description>
+### What it does
+
+Point Audiobind at a folder of audiobooks and a folder to write to. On a timer it:
+
+1. **Groups parts into books** - `Book/Disc 1`, `Book/Part 2` and `Book/Part 10` become one book, not three.
+2. **Verifies the book** against the Audible catalog: title, author, narrator, series, ASIN.
+3. **Proves completeness** by comparing total runtime with the catalog runtime. A set that is an hour short is reported, not merged.
+4. **Merges and converts**: one `.m4b`, AAC 64 kbps mono, real chapter marks from Audnex, cover art and full tags embedded.
+5. **Files it** as `Author/Title/Title.m4b` (or `Author/Series/03 - Title/`), with an Audiobookshelf-compatible `metadata.json`.
+
+### What it will not do
+
+* It never deletes, moves or rewrites your source files. Input is mounted read-only.
+* It does not convert anything it is unsure about. Matches that are only partial, or whose runtime disagrees with the catalog by more than 25%, are marked **review**/**held** on the status page for you to look at.
+
+Suitable for Audiobookshelf, Plex, Emby, Jellyfin, Apple Books and anything else that reads standard m4b chapters and tags.
+  </Description>
+
+  <Config Name="Library path" Target="/library" Default="/mnt/user/data/media/audiobooks" Mode="ro" Description="Folder holding the audiobooks to fix. Read-only." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media/audiobooks</Config>
+  <Config Name="Output path" Target="/output" Default="/mnt/user/data/media/audiobooks-fixed" Mode="rw" Description="Where finished m4b files are written. Never the same as the library path." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media/audiobooks-fixed</Config>
+  <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/audiobind" Mode="rw" Description="Database, audit report and work files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/audiobind</Config>
+  <Config Name="WebUI port" Target="8080" Default="8080" Mode="tcp" Description="Status page and JSON API." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Auto convert" Target="AUTO_CONVERT" Default="high" Description="Which confidence tiers convert without asking: high, medium or off." Type="Variable" Display="always" Required="false" Mask="false">high</Config>
+  <Config Name="Scan interval (minutes)" Target="SCAN_INTERVAL_MIN" Default="30" Description="How often to look for new books." Type="Variable" Display="always" Required="false" Mask="false">30</Config>
+  <Config Name="Audio bitrate" Target="AUDIO_BITRATE" Default="64k" Description="AAC bitrate for the output m4b (64k mono is the audiobook sweet spot)." Type="Variable" Display="advanced" Required="false" Mask="false">64k</Config>
+  <Config Name="Channels" Target="AUDIO_CHANNELS" Default="1" Description="1 = mono, 2 = stereo. Mono halves the file size." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Parallel jobs" Target="JOBS" Default="1" Description="Books converted at once. Raise if your CPU is idle." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Nice level" Target="NICE" Default="10" Description="CPU priority for ffmpeg. Higher = yields to everything else." Type="Variable" Display="advanced" Required="false" Mask="false">10</Config>
+  <Config Name="Max runtime delta" Target="MAX_RUNTIME_DELTA" Default="0.25" Description="Hold a book when its runtime differs from the catalog by more than this fraction (0.25 = 25%)." Type="Variable" Display="advanced" Required="false" Mask="false">0.25</Config>
+  <Config Name="Region" Target="REGION" Default="us" Description="Audible region for metadata: us, ca, uk, au, fr, de, it, es, jp, in." Type="Variable" Display="advanced" Required="false" Mask="false">us</Config>
+  <Config Name="Dry run" Target="DRY_RUN" Default="false" Description="true = log every decision but write nothing." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Notify URL" Target="NOTIFY_URL" Default="" Description="Optional webhook (Discord/Slack/ntfy) posted a summary after each scan." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="PUID" Target="PUID" Default="99" Description="User ID for written files." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Description="Group ID for written files." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="TZ" Target="TZ" Default="America/Denver" Description="Timezone for log timestamps." Type="Variable" Display="advanced" Required="false" Mask="false">America/Denver</Config>
+</Container>

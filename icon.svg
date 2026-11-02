@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t d">
+  <title id="t">Audiobind</title>
+  <desc id="d">A bound book with an audio waveform on its spine.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1b2a4a"/>
+      <stop offset="55%" stop-color="#2b5ea8"/>
+      <stop offset="100%" stop-color="#1fa8a0"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#dce7f7"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="54" fill="url(#bg)"/>
+  <!-- book cover -->
+  <path d="M74 56h92a14 14 0 0 1 14 14v116a14 14 0 0 1-14 14H74z" fill="url(#page)" opacity="0.97"/>
+  <!-- spine -->
+  <path d="M74 56h26v144H74a14 14 0 0 1-14-14V70a14 14 0 0 1 14-14z" fill="#12325c"/>
+  <!-- binding bands -->
+  <g fill="#0d2547" opacity="0.55">
+    <rect x="60" y="96" width="40" height="8" rx="4"/>
+    <rect x="60" y="156" width="40" height="8" rx="4"/>
+  </g>
+  <!-- waveform on the cover -->
+  <g stroke="#2b5ea8" stroke-width="8" stroke-linecap="round">
+    <path d="M120 168V112"/>
+    <path d="M140 152V128"/>
+    <path d="M160 176V104"/>
+    <path d="M100 158V122"/>
+  </g>
+  <path d="M140 186h22" stroke="#1fa8a0" stroke-width="8" stroke-linecap="round"/>
+</svg>
