@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-01
+
+### Added
+- **Stop now** button. Unlike pause (finish this book, start nothing new), stop aborts the running
+  ffmpeg immediately. Stopping is safe by construction: the encode writes into the work directory
+  and only moves into the library after verification, so an aborted conversion leaves the partial
+  file in the work directory, which is deleted. The book is marked `interrupted` and retried on the
+  next scan from scratch (nothing is resumed, so a half-written file can never be published).
+- The page names the book currently converting, so pause-vs-stop is an informed choice.
+
+### Changed
+- The activity table's `hours` column is now `runtime` - it is the on-disk running time of the
+  source files, used to prove a multi-part set is complete.
+
 ## [0.3.0] - 2026-11-01
 
 ### Added

@@ -30,6 +30,10 @@ PAGE = """<!doctype html>
  button.warn {{ background:#5a4210; border-color:#7a5a16; }}
  button.armed {{ background:#5c1f22; border-color:#7d2a2e; }}
  button.armed:hover {{ background:#7d2a2e; }}
+ button.danger {{ background:#3a1416; border-color:#6b2226; color:#ffb4b4; }}
+ button.danger:hover {{ background:#6b2226; color:#fff; }}
+ .working {{ margin:-14px 0 24px; font-size:13px; color:#8b93a7; }}
+ .working b {{ color:#e6e9ef; font-weight:600; }}
  button:disabled {{ opacity:.45; cursor:default; }}
  .pill {{ font-size:12px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
           padding:6px 12px; border-radius:999px; }}
@@ -52,8 +56,10 @@ PAGE = """<!doctype html>
   <span class="pill {state_class}">{state_text}</span>
   <button class="primary" onclick="act('scan')" {scan_disabled}>Scan now</button>
   {pause_button}
+  {stop_button}
   {dry_button}
 </div>
+{working}
 
 <div class="grid">
  <div class="card"><span>converted</span><b class="ok">{converted}</b></div>
@@ -65,7 +71,7 @@ PAGE = """<!doctype html>
 </div>
 
 <h2 style="font-size:14px;color:#8b93a7;font-weight:500;text-transform:uppercase;letter-spacing:.6px">Recent activity</h2>
-<table><thead><tr><th>book</th><th>status</th><th>conf</th><th>hours</th><th>updated</th></tr></thead><tbody>{rows}</tbody></table>
+<table><thead><tr><th>book</th><th>status</th><th>conf</th><th>runtime</th><th>updated</th></tr></thead><tbody>{rows}</tbody></table>
 
 <script>
 function act(action) {{
@@ -73,6 +79,14 @@ function act(action) {{
                         body: JSON.stringify({{action: action}})}})
     .then(r => r.json())
     .then(() => setTimeout(() => location.reload(), 250))
+    .catch(() => location.reload());
+}}
+function stop_now() {{
+  if (!confirm('Stop the current conversion? The partial file is discarded and the book is retried later.')) return;
+  fetch('/api/control', {{method:'POST', headers:{{'Content-Type':'application/json'}},
+                        body: JSON.stringify({{action:'stop'}})}})
+    .then(r => r.json())
+    .then(() => setTimeout(() => location.reload(), 500))
     .catch(() => location.reload());
 }}
 function dry(on) {{
@@ -108,7 +122,7 @@ def render(state: State) -> str:
     def css(status: str) -> str:
         if status == "converted":
             return "ok"
-        if status in ("ready", "review", "held"):
+        if status in ("ready", "review", "held", "interrupted"):
             return "warn"
         if status == "failed":
             return "err"
@@ -133,6 +147,17 @@ def render(state: State) -> str:
         if CONTROL.dry_run
         else '<button class="armed" onclick="dry(true)">Dry run: OFF &middot; turn on</button>'
     )
+    # Stop only makes sense while something is actually encoding; pause is for between books
+    stop_button = (
+        '<button class="danger" onclick="stop_now()">Stop now</button>'
+        if CONTROL.running
+        else '<button class="danger" disabled>Stop now</button>'
+    )
+    working = (
+        f'<div class="working">converting <b>{_html(CONTROL.current_unit)}</b>'
+        f' &middot; stopping discards the partial file and retries it next scan</div>'
+        if CONTROL.running else ""
+    )
     return PAGE.format(
         version=__version__,
         library=CONFIG.library_root,
@@ -144,7 +169,9 @@ def render(state: State) -> str:
         state_text="paused" if paused else "running",
         scan_disabled="" if not paused else "disabled",
         pause_button=pause_button,
+        stop_button=stop_button,
         dry_button=dry_button,
+        working=working,
         converted=counts.get("converted", 0),
         ready=counts.get("ready", 0),
         review=counts.get("review", 0),
@@ -210,6 +237,9 @@ class Handler(BaseHTTPRequestHandler):
             self.state.set_meta("paused", False)
         elif action == "scan":
             CONTROL.request_scan()
+        elif action == "stop":
+            CONTROL.stop()
+            self.state.set_meta("paused", True)
         elif action == "dry_run":
             desired = bool(payload.get("value", not CONTROL.dry_run))
             CONTROL.set_dry_run(desired)

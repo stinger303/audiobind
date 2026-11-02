@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import catalog
 from .config import CONFIG
+from .control import CONTROL, Stopped
 from .probe import has_embedded_cover, probe, probe_chapters, probe_streams
 from .units import BookUnit
 
@@ -156,9 +157,18 @@ def encode(unit: BookUnit, match, book: dict, work_dir: Path, out_path: Path,
                 # use_metadata_tags makes the mp4 muxer drop the cover: never add it
                 "-movflags", "+faststart", "-f", "mp4", str(temp_out)]
 
-    result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed: {result.stderr[-800:]}")
+    # Popen (not run) so the status page can abort the encode mid-book
+    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    CONTROL.attach_process(proc)
+    try:
+        _out, err = proc.communicate()
+    finally:
+        CONTROL.detach_process()
+
+    if CONTROL.stop_requested:
+        raise Stopped("stopped by operator")
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {(err or '')[-800:]}")
 
     duration = float(probe(temp_out).duration)
     chapter_count = len(probe_chapters(temp_out))

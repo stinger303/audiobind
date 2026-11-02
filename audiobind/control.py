@@ -3,20 +3,36 @@
 The daemon asks this object whether it may start another book, whether writes are allowed, and
 the web handlers flip those switches at runtime. Nothing here touches the filesystem -
 persistence lives in State.set_meta() ("paused", "dry_run"), so a restart keeps your choices.
+
+Three ways to intervene, and they are not the same thing:
+
+* **pause**   - finish the book being converted, then start nothing new.
+* **stop**    - abort the current ffmpeg now. The partial file never leaves the work directory,
+                so nothing corrupt reaches the library, and the book is retried on the next scan.
+* **dry run** - decide everything, write nothing.
 """
 from __future__ import annotations
 
+import subprocess
 import threading
 
 from .config import CONFIG
+
+
+class Stopped(Exception):
+    """Raised when the operator aborts the conversion that is currently running."""
 
 
 class Control:
     def __init__(self) -> None:
         self._scan = threading.Event()
         self._paused = threading.Event()
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._proc: subprocess.Popen | None = None
         #: None = use the DRY_RUN env default; True/False = the user chose in the web UI
         self._dry_run: bool | None = None
+        self.current_unit: str = ""
 
     # ---------------------------------------------------------------- pause
     @property
@@ -28,7 +44,51 @@ class Control:
 
     def resume(self) -> None:
         self._paused.clear()
+        self._stop.clear()
         self.request_scan()          # resuming should not wait for the next interval
+
+    # ---------------------------------------------------------------- stop
+    def stop(self) -> None:
+        """Abort the running conversion immediately, then hold."""
+        self._stop.set()
+        with self._lock:
+            proc = self._proc
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        self.pause()
+
+    @property
+    def stop_requested(self) -> bool:
+        return self._stop.is_set()
+
+    def clear_stop(self) -> None:
+        self._stop.clear()
+
+    # ---------------------------------------------------------------- current book
+    @property
+    def running(self) -> bool:
+        return bool(self.current_unit)
+
+    def begin_unit(self, name: str) -> None:
+        self.current_unit = name
+        self._stop.clear()
+
+    def end_unit(self) -> None:
+        self.current_unit = ""
+
+    def attach_process(self, proc: subprocess.Popen) -> None:
+        with self._lock:
+            self._proc = proc
+        if self._stop.is_set():            # stop arrived between the check and the spawn
+            proc.terminate()
+
+    def detach_process(self) -> None:
+        with self._lock:
+            self._proc = None
 
     # ---------------------------------------------------------------- dry run
     @property
@@ -64,6 +124,8 @@ class Control:
             "scan_pending": self.scan_requested(),
             "dry_run": self.dry_run,
             "dry_run_source": self.dry_run_source,
+            "running": self.running,
+            "current_unit": self.current_unit,
         }
 
 

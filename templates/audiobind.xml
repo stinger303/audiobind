@@ -26,6 +26,10 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.4.0
+* Stop now button (aborts the running encode; partial file discarded, book retried)
+* `runtime` column naming
+
 ### 0.3.0
 * Dry-run toggle on the status page (persisted, no container edit needed)
 

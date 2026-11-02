@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import catalog, encode, library, matching
 from .config import CONFIG
-from .control import CONTROL
+from .control import CONTROL, Stopped
 from .probe import probe
 from .state import State, UnitState
 from .units import BookUnit, looks_like_collection
@@ -105,6 +105,7 @@ def convert_unit(audit: Audit, log=print) -> Path:
         return None                     # nothing was written, so it is not "converted"
 
     work_dir = CONFIG.work_dir / f"{abs(hash(unit.rel_path)) % 10**8:08x}"
+    CONTROL.begin_unit(unit.rel_path)
     try:
         duration = sum(probe(f).duration for f in unit.files)
         chapters, _source = encode.build_chapters(catalog.chapters(match.asin), duration, unit)
@@ -114,7 +115,10 @@ def convert_unit(audit: Audit, log=print) -> Path:
         log(f"  published {out_path} ({result.size / 1e6:.0f} MB, {result.chapters} chapters)")
         return out_path
     finally:
+        # a stopped encode leaves only the work directory, which is deleted here, so the
+        # library never sees a partial file and the book is simply retried next scan
         shutil.rmtree(work_dir, ignore_errors=True)
+        CONTROL.end_unit()
 
 
 def record(state: State, audit: Audit, status: str, output: str = "", note: str = "") -> None:
@@ -147,6 +151,10 @@ def process_unit(state: State, unit: BookUnit, log=print) -> Audit:
                 record(state, audit, "ready", note="dry run - nothing written")
             else:
                 record(state, audit, "converted", str(output))
+        except Stopped:
+            log("  stopped by operator - partial file discarded, book will be retried")
+            record(state, audit, "interrupted", note="stopped by operator - retried next scan")
+            CONTROL.pause()
         except Exception as exc:                        # noqa: BLE001 - one book must not stop a scan
             log(f"  FAILED: {exc}")
             record(state, audit, "failed", note=str(exc)[:300])
