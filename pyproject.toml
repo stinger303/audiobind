@@ -21,8 +21,8 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/audiobind/audiobind"
-Issues = "https://github.com/audiobind/audiobind/issues"
+Homepage = "https://github.com/stinger303/audiobind"
+Issues = "https://github.com/stinger303/audiobind/issues"
 
 [project.scripts]
 audiobind = "audiobind.cli:main"

@@ -50,7 +50,7 @@ Your source library is mounted **read-only** and is never modified. Nothing is d
 ```yaml
 services:
   audiobind:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/audiobind:latest
+    image: ghcr.io/stinger303/audiobind:latest
     restart: unless-stopped
     environment:
       - PUID=99

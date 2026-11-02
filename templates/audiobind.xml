@@ -1,19 +1,19 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Audiobind</Name>
-  <Repository>ghcr.io/YOUR_GITHUB_USERNAME/audiobind:latest</Repository>
-  <Registry>https://github.com/YOUR_GITHUB_USERNAME/audiobind/pkgs/container/audiobind</Registry>
+  <Repository>ghcr.io/stinger303/audiobind:latest</Repository>
+  <Registry>https://github.com/stinger303/audiobind/pkgs/container/audiobind</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support>https://forums.unraid.net/topic/YOUR_SUPPORT_TOPIC</Support>
-  <Project>https://github.com/YOUR_GITHUB_USERNAME/audiobind</Project>
+  <Project>https://github.com/stinger303/audiobind</Project>
   <Overview>Finds audiobooks that are split into many files, checks each one against the Audible catalog, merges the parts into a single tagged m4b with real chapter marks and cover art, and files it into a clean Author/Title library. Runs on a timer and only converts books it is confident about.</Overview>
   <Category>MediaApp:Other Tools:Utilities</Category>
-  <Icon>https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/audiobind/main/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/stinger303/audiobind/main/icon.svg</Icon>
   <WebUI>http://[IP]:[PORT:8080]</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/audiobind/main/templates/audiobind.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/stinger303/audiobind/main/templates/audiobind.xml</TemplateURL>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
@@ -21,7 +21,7 @@
   <DonateText/>
   <DonateLink/>
   <Requires>Internet access (Audible / Audnex metadata lookups)</Requires>
-  <Screenshot>https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/audiobind/main/docs/screenshot.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/stinger303/audiobind/main/docs/screenshot.png</Screenshot>
   <ExtraSearchTerms>audiobook m4b merge convert chapters metadata audible audnex audiobookshelf</ExtraSearchTerms>
   <MinVer>6.12</MinVer>
   <License>MIT</License>

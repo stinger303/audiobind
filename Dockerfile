@@ -3,8 +3,8 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="Audiobind" \
       org.opencontainers.image.description="Merge, convert and correctly tag audiobook libraries" \
-      org.opencontainers.image.url="https://github.com/audiobind/audiobind" \
-      org.opencontainers.image.source="https://github.com/audiobind/audiobind" \
+      org.opencontainers.image.url="https://github.com/stinger303/audiobind" \
+      org.opencontainers.image.source="https://github.com/stinger303/audiobind" \
       org.opencontainers.image.licenses="MIT"
 
 ENV PYTHONUNBUFFERED=1 \

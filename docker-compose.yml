@@ -1,6 +1,6 @@
 services:
   audiobind:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/audiobind:latest
+    image: ghcr.io/stinger303/audiobind:latest
     container_name: audiobind
     restart: unless-stopped
     environment:

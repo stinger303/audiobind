@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 from .config import CONFIG
 
-USER_AGENT = "audiobind/0.1 (+https://github.com/audiobind/audiobind)"
+USER_AGENT = "audiobind/0.1 (+https://github.com/stinger303/audiobind)"
 AUDIBLE = "https://api.audible.com/1.0/catalog/products"
 AUDNEX = "https://api.audnex.us"
 
