@@ -56,9 +56,9 @@ PAGE = """<!doctype html>
  .ok {{ color:#5fd38d; }} .warn {{ color:#e6b450; }} .err {{ color:#f2686b; }} .dim {{ color:#8b93a7; }}
  tr.urow {{ cursor:pointer; }}
  tr.urow:hover td {{ background:#141821; }}
- tr.urow td:first-child::before {{ content:"\25B8"; display:inline-block; width:14px; color:#5b6478;
-                                   transition:transform .15s ease; }}
- tr.urow.open td:first-child::before {{ transform:rotate(90deg); }}
+ tr.urow td:first-child::before {{ content:"+"; display:inline-block; width:13px; margin-right:6px;
+                                   color:#7c86a0; font-weight:700; }}
+ tr.urow.open td:first-child::before {{ content:"-"; color:#12a89b; }}
  tr.drow td {{ background:#11151d; padding:0; border-bottom:1px solid #232833; }}
  .dd {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:22px; padding:16px 22px 18px; }}
  .dd h4 {{ margin:0 0 8px; font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:#8b93a7; font-weight:600; }}
@@ -182,10 +182,12 @@ def render(state: State) -> str:
         src = data.get("source") or {}
         out = data.get("output") or {}
 
+        size = f"{src['mb']:.0f} MB &middot; " if src.get("mb") else ""
+        codecs = " + ".join(src.get("codecs") or [])
         before = [
             f"{src.get('parts', 1)} part(s) &middot; {src.get('files', unit.files)} file(s)",
-            f"{(src.get('mb') or 0):.0f} MB &middot; {(src.get('hours') or unit.hours):.2f} h",
-            (" + ".join(src.get("codecs") or []) or "unknown codec")
+            f"{size}{(src.get('hours') or unit.hours):.2f} h",
+            (codecs or "codec not recorded")
             + (f" &middot; {', '.join(src.get('channels') or [])} ch" if src.get("channels") else ""),
         ]
         if out:

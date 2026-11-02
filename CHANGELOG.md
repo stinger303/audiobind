@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-11-01
+
+### Fixed
+- The row expander used a Unicode triangle that renders as a tofu box in the default UI font;
+  it is now a plain `+` / `-`.
+- Rows recorded before 0.6.0 say "codec not recorded" instead of inventing `0 MB / unknown codec`.
+
 ## [0.6.0] - 2026-11-01
 
 ### Added
