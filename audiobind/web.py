@@ -32,8 +32,14 @@ PAGE = """<!doctype html>
  button.armed:hover {{ background:#7d2a2e; }}
  button.danger {{ background:#3a1416; border-color:#6b2226; color:#ffb4b4; }}
  button.danger:hover {{ background:#6b2226; color:#fff; }}
- .working {{ margin:-14px 0 24px; font-size:13px; color:#8b93a7; }}
+ .working {{ margin:-14px 0 26px; font-size:13px; color:#8b93a7; }}
  .working b {{ color:#e6e9ef; font-weight:600; }}
+ .wline {{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:7px; }}
+ .pct {{ font-variant-numeric:tabular-nums; font-weight:600; color:#e6e9ef; font-size:13px; }}
+ .bar {{ height:8px; border-radius:99px; background:#1c2230; overflow:hidden; }}
+ .bar i {{ display:block; height:100%; border-radius:99px;
+           background:linear-gradient(90deg,#2b5ea8,#12a89b); transition:width .6s ease; }}
+ .wmeta {{ margin-top:7px; font-size:12px; }}
  button:disabled {{ opacity:.45; cursor:default; }}
  .pill {{ font-size:12px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
           padding:6px 12px; border-radius:999px; }}
@@ -96,6 +102,19 @@ function dry(on) {{
     .then(() => setTimeout(() => location.reload(), 250))
     .catch(() => location.reload());
 }}
+// poll the encode position so the bar moves smoothly, then reload when the book finishes
+function tick() {{
+  fetch('/api/state').then(r => r.json()).then(d => {{
+    const bar = document.getElementById('prog');
+    if (!bar) return;                       // nothing converting here
+    if (!d.running) {{ location.reload(); return; }}
+    const p = (d.progress && d.progress.percent) || 0;
+    bar.style.width = p.toFixed(1) + '%';
+    const label = document.getElementById('pct');
+    if (label) label.textContent = p.toFixed(1) + '%';
+  }}).catch(() => {{}});
+}}
+setInterval(tick, 2000);
 setTimeout(() => location.reload(), 10000);
 </script>
 </body></html>"""
@@ -103,6 +122,15 @@ setTimeout(() => location.reload(), 10000);
 
 def _html(text: str) -> str:
     return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _fmt_duration(seconds: float) -> str:
+    seconds = int(max(0, seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    return f"{seconds // 3600}h {(seconds % 3600) // 60:02d}m"
 
 
 def _fmt_age(seconds: float) -> str:
@@ -153,11 +181,26 @@ def render(state: State) -> str:
         if CONTROL.running
         else '<button class="danger" disabled>Stop now</button>'
     )
-    working = (
-        f'<div class="working">converting <b>{_html(CONTROL.current_unit)}</b>'
-        f' &middot; stopping discards the partial file and retries it next scan</div>'
-        if CONTROL.running else ""
-    )
+    working = ""
+    if CONTROL.running:
+        prog = CONTROL.progress or {}
+        percent = float(prog.get("percent") or 0)
+        meta = []
+        if prog.get("speed"):
+            meta.append(f"{prog['speed']}x realtime")
+        if prog.get("eta"):
+            meta.append(f"~{_fmt_duration(prog['eta'])} left")
+        if prog.get("elapsed"):
+            meta.append(f"{_fmt_duration(prog['elapsed'])} elapsed")
+        if not prog:
+            meta.append("analysing - the bar appears once encoding starts")
+        working = (
+            f'<div class="working">'
+            f'<div class="wline"><span>converting <b>{_html(CONTROL.current_unit)}</b></span>'
+            f'<span class="pct" id="pct">{percent:.1f}%</span></div>'
+            f'<div class="bar"><i id="prog" style="width:{percent:.1f}%"></i></div>'
+            f'<div class="wmeta">{" &middot; ".join(meta)}</div></div>'
+        )
     return PAGE.format(
         version=__version__,
         library=CONFIG.library_root,

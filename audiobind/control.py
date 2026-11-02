@@ -33,6 +33,8 @@ class Control:
         #: None = use the DRY_RUN env default; True/False = the user chose in the web UI
         self._dry_run: bool | None = None
         self.current_unit: str = ""
+        #: live encode progress: {"percent", "elapsed", "eta", "speed"}
+        self.progress: dict = {}
 
     # ---------------------------------------------------------------- pause
     @property
@@ -75,10 +77,18 @@ class Control:
 
     def begin_unit(self, name: str) -> None:
         self.current_unit = name
+        self.progress = {}
         self._stop.clear()
 
     def end_unit(self) -> None:
         self.current_unit = ""
+        self.progress = {}
+
+    def set_progress(self, **values) -> None:
+        self.progress = values
+
+    def clear_progress(self) -> None:
+        self.progress = {}
 
     def attach_process(self, proc: subprocess.Popen) -> None:
         with self._lock:
@@ -126,6 +136,7 @@ class Control:
             "dry_run_source": self.dry_run_source,
             "running": self.running,
             "current_unit": self.current_unit,
+            "progress": self.progress,
         }
 
 

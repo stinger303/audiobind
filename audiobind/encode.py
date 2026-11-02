@@ -5,6 +5,8 @@ import json
 import os
 import shutil
 import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -144,6 +146,7 @@ def encode(unit: BookUnit, match, book: dict, work_dir: Path, out_path: Path,
     temp_out = work_dir / "output.m4b"
     command = _nice_prefix() + [
         FFMPEG, "-y", "-hide_banner", "-loglevel", "warning",
+        "-progress", "pipe:1", "-nostats",
         "-f", "concat", "-safe", "0", "-i", str(concat_file),
     ]
     if has_cover:
@@ -157,18 +160,51 @@ def encode(unit: BookUnit, match, book: dict, work_dir: Path, out_path: Path,
                 # use_metadata_tags makes the mp4 muxer drop the cover: never add it
                 "-movflags", "+faststart", "-f", "mp4", str(temp_out)]
 
-    # Popen (not run) so the status page can abort the encode mid-book
+    # Popen (not run) so the status page can abort mid-book and show a progress bar
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     CONTROL.attach_process(proc)
+
+    errors: list[str] = []
+
+    def drain_stderr() -> None:
+        if proc.stderr is not None:
+            errors.append(proc.stderr.read() or "")
+
+    threading.Thread(target=drain_stderr, daemon=True, name="ffmpeg-stderr").start()
+
+    started = time.time()
+    speed = 0.0
     try:
-        _out, err = proc.communicate()
+        for line in proc.stdout or []:
+            key, _, value = line.strip().partition("=")
+            if key == "speed":
+                try:
+                    speed = float(value.rstrip("x"))
+                except ValueError:
+                    speed = 0.0
+            elif key == "out_time" and ":" in value:
+                # out_time is HH:MM:SS.ffffff. Do NOT use out_time_ms: despite the name ffmpeg
+                # emits it in microseconds, so dividing by 1000 pins the bar at 100%.
+                parts = value.split(":")
+                done = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+                if total_duration > 0:
+                    percent = min(99.9, done / total_duration * 100)
+                    remaining = max(0.0, total_duration - done)
+                    CONTROL.set_progress(
+                        percent=round(percent, 1),
+                        elapsed=round(time.time() - started),
+                        eta=round(remaining / speed) if speed > 0.05 else None,
+                        speed=round(speed, 2),
+                    )
+        proc.wait()
     finally:
         CONTROL.detach_process()
+        CONTROL.clear_progress()
 
     if CONTROL.stop_requested:
         raise Stopped("stopped by operator")
     if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed: {(err or '')[-800:]}")
+        raise RuntimeError(f"ffmpeg failed: {(errors[0] if errors else '')[-800:]}")
 
     duration = float(probe(temp_out).duration)
     chapter_count = len(probe_chapters(temp_out))

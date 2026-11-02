@@ -26,6 +26,9 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.5.0
+* Progress bar with percentage, speed and ETA for the current book
+
 ### 0.4.0
 * Stop now button (aborts the running encode; partial file discarded, book retried)
 * `runtime` column naming

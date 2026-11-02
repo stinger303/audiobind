@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-01
+
+### Added
+- **Progress bar for the book being encoded.** ffmpeg runs with `-progress pipe:1` and the
+  percentage, realtime speed, elapsed time and ETA are published on the status page, refreshed
+  every 2 seconds without reloading the page. The same values are in `/api/state` under
+  `progress` for scripting.
+
+### Fixed
+- `render()` shadowed its `state` argument while building the progress text, which would have
+  broken the activity table.
+
 ## [0.4.0] - 2026-11-01
 
 ### Added

@@ -73,6 +73,26 @@ class TestControl(unittest.TestCase):
         self.assertTrue(described["running"])
         self.assertEqual(described["current_unit"], "A/B")
 
+    def test_progress_is_reported_and_cleared(self):
+        self.c.begin_unit("A/B")
+        self.c.set_progress(percent=42.5, eta=120, speed=4.1)
+        described = self.c.describe()
+        self.assertEqual(described["progress"]["percent"], 42.5)
+        self.c.clear_progress()
+        self.assertEqual(self.c.describe()["progress"], {})
+
+    def test_starting_a_book_resets_progress(self):
+        self.c.set_progress(percent=90)
+        self.c.begin_unit("C/D")
+        self.assertEqual(self.c.progress, {})
+
+    def test_finishing_a_book_clears_progress_and_unit(self):
+        self.c.begin_unit("E/F")
+        self.c.set_progress(percent=10)
+        self.c.end_unit()
+        self.assertEqual(self.c.progress, {})
+        self.assertEqual(self.c.current_unit, "")
+
     def test_describe_reports_dry_run(self):
         self.c.set_dry_run(True)
         self.assertTrue(self.c.describe()["dry_run"])
