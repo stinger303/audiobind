@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Audiobind</Name>
+  <Repository>ghcr.io/stinger303/audiobind:0.1.2</Repository>
+  <Registry>https://github.com/stinger303/audiobind/pkgs/container/audiobind</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/stinger303/audiobind/issues</Support>
+  <Project>https://github.com/stinger303/audiobind</Project>
+  <Overview>Merges multi-part audiobook rips into a single tagged m4b, verifies each book against the Audible catalog, embeds real chapters and cover art, and files the result as Author/Title. Converts only what it is confident about.</Overview>
+  <Category>MediaApp:Other Tools:Utilities</Category>
+  <Icon>https://raw.githubusercontent.com/stinger303/audiobind/main/icon.svg</Icon>
+  <WebUI>http://[IP]:[PORT:8686]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/stinger303/audiobind/main/templates/audiobind.xml</TemplateURL>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Internet access (Audible / Audnex metadata lookups)</Requires>
+  <ExtraSearchTerms>audiobook m4b merge convert chapters metadata audible audnex audiobookshelf</ExtraSearchTerms>
+  <MinVer>6.12</MinVer>
+  <License>MIT</License>
+  <Config Name="Library path" Target="/library" Default="/mnt/user/data/media/audiobooks" Mode="ro" Description="Folder holding the audiobooks to fix. Read-only." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media/audiobooks</Config>
+  <Config Name="Output path" Target="/output" Default="/mnt/user/data/media/audiobooks-fixed" Mode="rw" Description="Where finished m4b files are written." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media/audiobooks-fixed</Config>
+  <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/audiobind" Mode="rw" Description="Database, audit report and work files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/audiobind</Config>
+  <Config Name="WebUI port" Target="8080" Default="8686" Mode="tcp" Description="Status page and JSON API (container port is 8080)." Type="Port" Display="always" Required="true" Mask="false">8686</Config>
+  <Config Name="Auto convert" Target="AUTO_CONVERT" Default="high" Description="Which confidence tiers convert without asking: high, medium or off." Type="Variable" Display="always" Required="false" Mask="false">high</Config>
+  <Config Name="Dry run" Target="DRY_RUN" Default="true" Description="true = decide and log everything but write nothing. Set false to start converting." Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+  <Config Name="Scan interval (minutes)" Target="SCAN_INTERVAL_MIN" Default="30" Description="How often to look for new books." Type="Variable" Display="always" Required="false" Mask="false">30</Config>
+  <Config Name="Audio bitrate" Target="AUDIO_BITRATE" Default="64k" Description="AAC bitrate for the output m4b." Type="Variable" Display="advanced" Required="false" Mask="false">64k</Config>
+  <Config Name="Channels" Target="AUDIO_CHANNELS" Default="1" Description="1 = mono, 2 = stereo." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Parallel jobs" Target="JOBS" Default="1" Description="Books converted at once." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Nice level" Target="NICE" Default="10" Description="CPU priority for ffmpeg. Higher = yields to other work." Type="Variable" Display="advanced" Required="false" Mask="false">10</Config>
+  <Config Name="Max runtime delta" Target="MAX_RUNTIME_DELTA" Default="0.25" Description="Hold a book when its runtime differs from the catalog by more than this fraction." Type="Variable" Display="advanced" Required="false" Mask="false">0.25</Config>
+  <Config Name="Region" Target="REGION" Default="us" Description="Audible region: us, ca, uk, au, fr, de, it, es, jp, in." Type="Variable" Display="advanced" Required="false" Mask="false">us</Config>
+  <Config Name="Notify URL" Target="NOTIFY_URL" Default="" Description="Optional webhook (Discord/Slack/ntfy) for a per-scan summary." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="PUID" Target="PUID" Default="99" Description="User ID for written files." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Description="Group ID for written files." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="TZ" Target="TZ" Default="America/Denver" Description="Timezone for log timestamps." Type="Variable" Display="advanced" Required="false" Mask="false">America/Denver</Config>
+</Container>

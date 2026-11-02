@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-11-01
+
+### Fixed
+- Dry runs no longer record books as `converted`. They get their own `ready` status, shown as a
+  separate card on the status page, so a dry-run pass cannot be mistaken for real output.
+
 ## [0.1.2] - 2026-11-01
 
 ### Fixed

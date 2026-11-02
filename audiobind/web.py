@@ -33,6 +33,7 @@ PAGE = """<!doctype html>
 <div class="sub">v{version} &middot; library <code>{library}</code> &rarr; <code>{output}</code> &middot; auto: {auto}</div>
 <div class="grid">
  <div class="card"><span>converted</span><b class="ok">{converted}</b></div>
+ <div class="card"><span>ready{dry}</span><b class="warn">{ready}</b></div>
  <div class="card"><span>review</span><b class="warn">{review}</b></div>
  <div class="card"><span>held</span><b class="warn">{held}</b></div>
  <div class="card"><span>failed</span><b class="err">{failed}</b></div>
@@ -83,6 +84,8 @@ def render(state: State) -> str:
         output=CONFIG.output_root,
         auto=CONFIG.auto_convert,
         converted=counts.get("converted", 0),
+        ready=counts.get("ready", 0),
+        dry=" (dry run)" if CONFIG.dry_run else "",
         review=counts.get("review", 0),
         held=counts.get("held", 0),
         failed=counts.get("failed", 0),

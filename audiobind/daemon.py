@@ -30,7 +30,7 @@ def scan_once(state: State, force: bool = False) -> dict:
         process_unit(state, unit, log=log.info)
         current = state.get(unit.rel_path)
         status = current.status if current else ""
-        if status == "converted" and before != "converted":
+        if status in ("converted", "ready") and before != status:
             converted += 1
         elif status == "held":
             held += 1

@@ -101,7 +101,7 @@ def convert_unit(audit: Audit, log=print) -> Path:
         return out_path
     if CONFIG.dry_run:
         log(f"  [dry-run] would write {out_path}")
-        return out_path
+        return None                     # nothing was written, so it is not "converted"
 
     work_dir = CONFIG.work_dir / f"{abs(hash(unit.rel_path)) % 10**8:08x}"
     try:
@@ -142,7 +142,10 @@ def process_unit(state: State, unit: BookUnit, log=print) -> Audit:
     if audit.action in ("merge+convert", "convert") and audit.confidence in CONFIG.auto_tiers:
         try:
             output = convert_unit(audit, log=log)
-            record(state, audit, "converted", str(output))
+            if output is None:                       # dry run
+                record(state, audit, "ready", note="dry run - nothing written")
+            else:
+                record(state, audit, "converted", str(output))
         except Exception as exc:                        # noqa: BLE001 - one book must not stop a scan
             log(f"  FAILED: {exc}")
             record(state, audit, "failed", note=str(exc)[:300])
