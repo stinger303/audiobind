@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-11-01
+
+### Fixed
+- Books recorded before 0.9.0 keep their runtime comparison in the note rather than the detail
+  blob, so their "why it is held" explanation only showed half the story. Both numbers are now
+  recovered from the note.
+
 ## [0.9.0] - 2026-11-01
 
 ### Added

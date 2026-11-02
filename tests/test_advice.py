@@ -24,6 +24,11 @@ class TestExplain(unittest.TestCase):
         self.assertIn("3.45", why)
         self.assertIn("Convert anyway", todo)
 
+    def test_held_parses_runtimes_from_a_legacy_note(self):
+        why, _todo = explain("held", "HIGH", "runtime 12.95h vs catalog 7.65h", {})
+        self.assertIn("12.95", why)
+        self.assertIn("7.65", why)
+
     def test_interrupted_says_partial_file_discarded(self):
         why, todo = explain("interrupted", "HIGH", "", {})
         self.assertIn("discarded", why)

@@ -23,6 +23,14 @@ def explain(status: str, confidence: str, note: str = "", detail: dict | None = 
     catalog_hours = _n(match.get("hours"))
     note = (note or "").strip()
 
+    # rows recorded before the detail blob existed keep both numbers in the note
+    if not catalog_hours:
+        found = re.search(r"catalog\s+([\d.]+)\s*h", note, re.I)
+        catalog_hours = _n(found.group(1)) if found else 0.0
+    if not hours:
+        found = re.search(r"runtime\s+([\d.]+)\s*h", note, re.I)
+        hours = _n(found.group(1)) if found else 0.0
+
     if status == "converted":
         out = detail.get("output") or {}
         chapters = out.get("chapters")
