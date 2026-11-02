@@ -11,7 +11,7 @@ services:
       - OUTPUT_ROOT=/output
       - AUTO_CONVERT=high          # high | medium | off
       - SCAN_INTERVAL_MIN=30
-      - AUDIO_BITRATE=64k
+      - AUDIO_BITRATE=128k          # floor; richer sources keep their own bitrate
       - AUDIO_CHANNELS=1
       - JOBS=1
       - NICE=10

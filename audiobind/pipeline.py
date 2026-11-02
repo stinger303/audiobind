@@ -1,6 +1,8 @@
 """One unit in, one finished book out: audit and convert."""
 from __future__ import annotations
 
+import json
+import os
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -26,6 +28,7 @@ class Audit:
     action: str = "review"
     notes: list[str] = field(default_factory=list)
     chapters_available: int = 0
+    src_mb: float = 0.0
 
     @property
     def runtime_matches(self) -> bool:
@@ -48,6 +51,7 @@ def audit_unit(unit: BookUnit) -> Audit:
         if not info.ok:
             audit.unreadable += 1
     audit.hours = round(total / 3600, 2)
+    audit.src_mb = round(sum(os.path.getsize(f) for f in unit.files if os.path.exists(f)) / 1e6, 1)
 
     audit.match = matching.match_unit(unit)
     audit.confidence = audit.match.confidence
@@ -75,17 +79,31 @@ def audit_unit(unit: BookUnit) -> Audit:
     elif unit.multi_part and audit.match.product:
         audit.notes.append("parts verified complete")
 
-    if audit.confidence not in ("HIGH", "MEDIUM"):
-        audit.action = "review"
-    elif not audit.runtime_matches:
-        audit.action = "hold"
-    else:
-        audit.action = "merge+convert" if unit.multi_part else "convert"
+    audit.action = choose_action(unit, audit.confidence, audit.runtime_matches, audit.codecs)
     return audit
 
 
-def convert_unit(audit: Audit, log=print) -> Path:
-    """Encode, verify and file one book. Returns the published m4b path."""
+def choose_action(unit: BookUnit, confidence: str, runtime_matches: bool,
+                  codecs: set[str]) -> str:
+    """What to do with this unit. Pure function so the rules can be tested directly.
+
+    A single AAC file that is already an MP4 container is remuxed, not re-encoded: chapters, tags
+    and cover are rewritten while every audio sample is copied untouched.
+    """
+    already_mp4 = (len(unit.files) == 1
+                   and Path(unit.files[0]).suffix.lower() in (".m4b", ".m4a")
+                   and codecs == {"aac"})
+    if confidence not in ("HIGH", "MEDIUM"):
+        return "review"
+    if not runtime_matches:
+        return "hold"
+    if already_mp4:
+        return "remux"
+    return "merge+convert" if unit.multi_part else "convert"
+
+
+def convert_unit(audit: Audit, log=print):
+    """Encode, verify and file one book. Returns the EncodeResult (or None in a dry run)."""
     unit, match = audit.unit, audit.match
     if not match.product:
         raise ValueError("cannot convert without a catalog match")
@@ -99,7 +117,7 @@ def convert_unit(audit: Audit, log=print) -> Path:
     out_path = library.m4b_path(series, authors, title, sequence)
     if out_path.exists():
         log(f"  already published: {out_path}")
-        return out_path
+        return None
     if CONTROL.dry_run:
         log(f"  [dry-run] would write {out_path}")
         return None                     # nothing was written, so it is not "converted"
@@ -109,11 +127,12 @@ def convert_unit(audit: Audit, log=print) -> Path:
     try:
         duration = sum(probe(f).duration for f in unit.files)
         chapters, _source = encode.build_chapters(catalog.chapters(match.asin), duration, unit)
-        result = encode.encode(unit, match, book, work_dir, out_path, log=log)
+        result = encode.encode(unit, match, book, work_dir, out_path, log=log,
+                               copy_audio=(audit.action == "remux"))
         encode.write_abs_metadata(out_path.parent / "metadata.json", book, match, chapters,
                                   result.duration)
         log(f"  published {out_path} ({result.size / 1e6:.0f} MB, {result.chapters} chapters)")
-        return out_path
+        return result
     finally:
         # a stopped encode leaves only the work directory, which is deleted here, so the
         # library never sees a partial file and the book is simply retried next scan
@@ -121,7 +140,26 @@ def convert_unit(audit: Audit, log=print) -> Path:
         CONTROL.end_unit()
 
 
-def record(state: State, audit: Audit, status: str, output: str = "", note: str = "") -> None:
+def record(state: State, audit: Audit, status: str, output: str = "", note: str = "",
+           result=None) -> None:
+    detail = json.dumps({
+        "action": audit.action,
+        "source": {
+            "parts": len(audit.unit.parts),
+            "files": audit.unit.n_files,
+            "mb": audit.src_mb,
+            "hours": audit.hours,
+            "codecs": sorted(audit.codecs),
+            "channels": sorted(audit.channels),
+        },
+        "output": ({
+            "path": str(result.path),
+            "mb": round(result.size / 1e6, 1),
+            "hours": round(result.duration / 3600, 2),
+            "chapters": result.chapters,
+            "chapters_from": result.chapters_source,
+        } if result else None),
+    })
     state.save(UnitState(
         path=audit.unit.rel_path,
         status=status,
@@ -134,6 +172,10 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
         files=audit.unit.n_files,
         output=output,
         note=note or "; ".join(audit.notes),
+        src_mb=audit.src_mb,
+        out_mb=round(result.size / 1e6, 1) if result else 0.0,
+        chapters=result.chapters if result else 0,
+        detail=detail,
     ))
 
 
@@ -148,13 +190,14 @@ def process_unit(state: State, unit: BookUnit, log=print) -> Audit:
         log(f"  skipping: {audit.unreadable} unreadable source file(s) - fix the source first")
         record(state, audit, "review",
                note=f"{audit.unreadable} unreadable source file(s); not converted")
-    elif audit.action in ("merge+convert", "convert") and audit.confidence in CONFIG.auto_tiers:
+    elif (audit.action in ("merge+convert", "convert", "remux")
+          and audit.confidence in CONFIG.auto_tiers):
         try:
-            output = convert_unit(audit, log=log)
-            if output is None:                       # dry run
+            result = convert_unit(audit, log=log)
+            if result is None:                       # dry run, or already published
                 record(state, audit, "ready", note="dry run - nothing written")
             else:
-                record(state, audit, "converted", str(output))
+                record(state, audit, "converted", str(result.path), result=result)
         except Stopped:
             log("  stopped by operator - partial file discarded, book will be retried")
             record(state, audit, "interrupted", note="stopped by operator - retried next scan")

@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-01
+
+### Added
+- **Before/after detail on every row.** Click a book in the activity table to expand a panel
+  showing what it was (parts, files, size, runtime, codec/channels), what it became (file, size,
+  runtime, chapters and where they came from, full path) and the decision (match confidence, ASIN,
+  notes). Stored as JSON on the unit, so it survives restarts.
+
+### Fixed
+- **A book that is already an AAC `.m4b`/`.m4a` is no longer re-encoded.** It is remuxed
+  (`-c:a copy`), so chapters, tags and cover are rewritten while the audio samples are untouched.
+  Anything not AAC (e.g. ALAC, or mp3 that only pretends to be m4b) still converts normally.
+
+### Changed
+- **Default bitrate is now 128 kbps** (was 64), and it acts as a *floor*: a source richer than the
+  floor keeps its own bitrate (a 256 kbps mp3 stays 256 kbps), anything below is lifted to it, and
+  the result is capped at 320 kbps.
+
 ## [0.5.3] - 2026-11-01
 
 ### Fixed

@@ -29,6 +29,24 @@ class EncodeResult:
     chapters_source: str
 
 
+#: never encode below the configured floor, never chase a source above this ceiling
+BITRATE_CEILING = 320
+
+
+def choose_bitrate(source_kbps: float, configured: str) -> int:
+    """AAC bitrate in kbps: the configured floor, but keep a richer source as-is.
+
+    A 256 kbps mp3 stays 256 kbps; a 64 kbps mp3 is lifted to the floor (default 128).
+    """
+    try:
+        floor = int(str(configured).lower().rstrip("k"))
+    except ValueError:
+        floor = 128
+    if source_kbps <= 0:
+        return floor
+    return int(min(max(floor, round(source_kbps)), BITRATE_CEILING))
+
+
 def _nice_prefix() -> list[str]:
     return ["nice", "-n", str(CONFIG.nice)] if CONFIG.nice else []
 
@@ -123,7 +141,7 @@ def clean_description(html: str) -> str:
 
 
 def encode(unit: BookUnit, match, book: dict, work_dir: Path, out_path: Path,
-           log=print) -> EncodeResult:
+           log=print, copy_audio: bool = False) -> EncodeResult:
     """Run ffmpeg. Raises RuntimeError when the result fails verification."""
     work_dir.mkdir(parents=True, exist_ok=True)
     total_duration = sum(probe(f).duration for f in unit.files)
@@ -154,9 +172,19 @@ def encode(unit: BookUnit, match, book: dict, work_dir: Path, out_path: Path,
     command += ["-i", str(metadata_file), "-map", "0:a:0"]
     if has_cover:
         command += ["-map", "1:v:0", "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
-    command += ["-map_metadata", "2", "-map_chapters", "2",
-                "-c:a", "aac", "-b:a", CONFIG.audio_bitrate,
-                "-ac", str(CONFIG.audio_channels), "-ar", str(CONFIG.sample_rate),
+    command += ["-map_metadata", "2", "-map_chapters", "2"]
+    if copy_audio:
+        # already AAC in an MP4 container: keep the samples, only rewrite the wrapper
+        log("  audio: copied (source is already AAC) - no re-encode, no quality loss")
+        command += ["-c:a", "copy"]
+    else:
+        source_bytes = sum(os.path.getsize(f) for f in unit.files if os.path.exists(f))
+        source_kbps = (source_bytes * 8 / total_duration / 1000) if total_duration else 0
+        bitrate = choose_bitrate(source_kbps, CONFIG.audio_bitrate)
+        log(f"  audio: aac {bitrate}k (source {source_kbps:.0f}k, floor {CONFIG.audio_bitrate})")
+        command += ["-c:a", "aac", "-b:a", f"{bitrate}k",
+                    "-ac", str(CONFIG.audio_channels), "-ar", str(CONFIG.sample_rate)]
+    command += [
                 # use_metadata_tags makes the mp4 muxer drop the cover: never add it
                 "-movflags", "+faststart", "-f", "mp4", str(temp_out)]
 

@@ -57,6 +57,6 @@ first run so you can check the results before letting it run unattended.
 
 * Internet access is required for the catalog lookups (Audible search + Audnex, both free and
   keyless). No account or API key needed.
-* Mono 64 kbps is deliberate: roughly 3x smaller than the source with no perceptible difference
-  for spoken word.
+* Output is AAC with a 128 kbps floor: a source richer than that keeps its own bitrate rather than
+  being downsampled, and a file that is already AAC `.m4b` is remuxed untouched.
 * Bug reports and feature requests: please reply here, or open an issue on GitHub.

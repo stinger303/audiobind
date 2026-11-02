@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import __version__
@@ -53,6 +54,17 @@ PAGE = """<!doctype html>
  th,td {{ text-align:left; padding:8px 10px; border-bottom:1px solid #232833; }}
  th {{ color:#8b93a7; font-weight:500; text-transform:uppercase; font-size:11px; letter-spacing:.6px; }}
  .ok {{ color:#5fd38d; }} .warn {{ color:#e6b450; }} .err {{ color:#f2686b; }} .dim {{ color:#8b93a7; }}
+ tr.urow {{ cursor:pointer; }}
+ tr.urow:hover td {{ background:#141821; }}
+ tr.urow td:first-child::before {{ content:"\25B8"; display:inline-block; width:14px; color:#5b6478;
+                                   transition:transform .15s ease; }}
+ tr.urow.open td:first-child::before {{ transform:rotate(90deg); }}
+ tr.drow td {{ background:#11151d; padding:0; border-bottom:1px solid #232833; }}
+ .dd {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:22px; padding:16px 22px 18px; }}
+ .dd h4 {{ margin:0 0 8px; font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:#8b93a7; font-weight:600; }}
+ .dd ul {{ margin:0; padding-left:16px; }}
+ .dd li {{ margin:3px 0; color:#c7cddb; }}
+ .dd code {{ color:#9fd7c8; }}
 </style></head><body>
 <h1>Audiobind</h1>
 <div class="sub">v{version} &middot; library <code>{library}</code> &rarr; <code>{output}</code>
@@ -101,6 +113,12 @@ function dry(on) {{
     .then(r => r.json())
     .then(() => setTimeout(() => location.reload(), 250))
     .catch(() => location.reload());
+}}
+function toggleRow(row) {{
+  const panel = row.nextElementSibling;
+  if (!panel || !panel.classList.contains('drow')) return;
+  panel.hidden = !panel.hidden;
+  row.classList.toggle('open', !panel.hidden);
 }}
 // poll the encode position so the bar moves smoothly, then reload when the book finishes
 function tick() {{
@@ -156,12 +174,53 @@ def render(state: State) -> str:
             return "err"
         return "dim"
 
+    def detail_panel(unit) -> str:
+        try:
+            data = json.loads(unit.detail or "{}")
+        except ValueError:
+            data = {}
+        src = data.get("source") or {}
+        out = data.get("output") or {}
+
+        before = [
+            f"{src.get('parts', 1)} part(s) &middot; {src.get('files', unit.files)} file(s)",
+            f"{(src.get('mb') or 0):.0f} MB &middot; {(src.get('hours') or unit.hours):.2f} h",
+            (" + ".join(src.get("codecs") or []) or "unknown codec")
+            + (f" &middot; {', '.join(src.get('channels') or [])} ch" if src.get("channels") else ""),
+        ]
+        if out:
+            after = [
+                f"<code>{_html(Path(out.get('path', '')).name)}</code>",
+                f"{(out.get('mb') or 0):.0f} MB &middot; {(out.get('hours') or 0):.2f} h",
+                f"{out.get('chapters', 0)} chapters ({_html(str(out.get('chapters_from') or ''))})",
+                f"<span class=\"dim\">{_html(str(out.get('path') or ''))}</span>",
+            ]
+        else:
+            after = [f"not converted &mdash; status <b>{unit.status}</b>",
+                     f"planned action: {data.get('action') or 'n/a'}"]
+
+        decision = [f"match: <b>{unit.confidence or '-'}</b>",
+                    f"asin: {unit.asin or '-'}"]
+        if unit.note:
+            decision.append(_html(unit.note))
+
+        def block(title, items):
+            return (f"<div><h4>{title}</h4><ul>"
+                    + "".join(f"<li>{i}</li>" for i in items) + "</ul></div>")
+
+        return (f'<tr class="drow" hidden><td colspan="5"><div class="dd">'
+                + block("Before", before)
+                + block("After", after)
+                + block("Decision", decision)
+                + "</div></td></tr>")
+
     rows = "".join(
-        f"<tr><td>{_html(u.title or u.path)}</td>"
-        f"<td class=\"{css(u.status)}\">{u.status}</td>"
-        f"<td class=\"dim\">{u.confidence or '-'}</td>"
-        f"<td class=\"dim\">{(u.hours or 0):.1f}</td>"
-        f"<td class=\"dim\">{_fmt_age(time.time() - (u.updated_at or 0))}</td></tr>"
+        f'<tr class="urow" onclick="toggleRow(this)"><td>{_html(u.title or u.path)}</td>'
+        f'<td class="{css(u.status)}">{u.status}</td>'
+        f'<td class="dim">{u.confidence or "-"}</td>'
+        f'<td class="dim">{(u.hours or 0):.1f}</td>'
+        f'<td class="dim">{_fmt_age(time.time() - (u.updated_at or 0))}</td></tr>'
+        + detail_panel(u)
         for u in units
     )
 

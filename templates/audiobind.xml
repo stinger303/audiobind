@@ -26,6 +26,10 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.6.0
+* Expandable before/after detail per book
+* Already-AAC m4b files are remuxed instead of re-encoded
+
 ### 0.5.3
 * Damaged sources are held before encoding, not after
 * Clearer "output shorter than sources" error
@@ -96,7 +100,7 @@ Suitable for Audiobookshelf, Plex, Emby, Jellyfin, Apple Books and anything else
   <Config Name="WebUI port" Target="8080" Default="8080" Mode="tcp" Description="Status page and JSON API." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
   <Config Name="Auto convert" Target="AUTO_CONVERT" Default="high" Description="Which confidence tiers convert without asking: high, medium or off." Type="Variable" Display="always" Required="false" Mask="false">high</Config>
   <Config Name="Scan interval (minutes)" Target="SCAN_INTERVAL_MIN" Default="30" Description="How often to look for new books." Type="Variable" Display="always" Required="false" Mask="false">30</Config>
-  <Config Name="Audio bitrate" Target="AUDIO_BITRATE" Default="64k" Description="AAC bitrate for the output m4b (64k mono is the audiobook sweet spot)." Type="Variable" Display="advanced" Required="false" Mask="false">64k</Config>
+  <Config Name="Audio bitrate (floor)" Target="AUDIO_BITRATE" Default="128k" Description="Minimum AAC bitrate. A richer source keeps its own bitrate (a 256k mp3 stays 256k); anything below this is lifted to it. Capped at 320k." Type="Variable" Display="advanced" Required="false" Mask="false">128k</Config>
   <Config Name="Channels" Target="AUDIO_CHANNELS" Default="1" Description="1 = mono, 2 = stereo. Mono halves the file size." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
   <Config Name="Parallel jobs" Target="JOBS" Default="1" Description="Books converted at once. Raise if your CPU is idle." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
   <Config Name="Nice level" Target="NICE" Default="10" Description="CPU priority for ffmpeg. Higher = yields to everything else." Type="Variable" Display="advanced" Required="false" Mask="false">10</Config>

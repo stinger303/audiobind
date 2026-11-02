@@ -28,8 +28,10 @@ library-in/                         library-out/
    *different* work by a margin before it is trusted.
 3. **Prove completeness.** The summed runtime of the parts is compared with the catalog runtime.
    A set that is an hour short is reported, not merged.
-4. **Merge and convert.** One `ffmpeg` pass: concat demuxer, AAC (default 64 kbps mono), Audnex
-   chapter marks scaled onto the real timeline, embedded cover, full tag set.
+4. **Merge and convert.** One `ffmpeg` pass: concat demuxer, AAC, Audnex chapter marks scaled
+   onto the real timeline, embedded cover, full tag set. The bitrate never drops below the
+   configured floor (128 kbps by default) and a richer source keeps its own bitrate. A file that
+   is already AAC in an MP4 container is remuxed with `-c:a copy` - no re-encode at all.
 5. **File it.** `Author/Title/Title.m4b` or `Author/Series/03 - Title/Title.m4b`, plus a
    `cover.jpg` and an Audiobookshelf-compatible `metadata.json`.
 
@@ -106,7 +108,7 @@ docker exec audiobind audiobind health             # exit 0 while the daemon is 
 | `STATE_DIR` | `/config` | SQLite manifest + `audit.csv` |
 | `AUTO_CONVERT` | `high` | `high`, `medium` or `off` |
 | `SCAN_INTERVAL_MIN` | `30` | Poll interval |
-| `AUDIO_BITRATE` | `64k` | AAC bitrate |
+| `AUDIO_BITRATE` | `128k` | Minimum AAC bitrate. A source that is already richer keeps its own bitrate (256k mp3 stays 256k); everything is capped at 320k |
 | `AUDIO_CHANNELS` | `1` | 1 = mono |
 | `SAMPLE_RATE` | `44100` | Output sample rate |
 | `JOBS` | `1` | Books converted in parallel |

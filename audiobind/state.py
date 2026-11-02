@@ -19,7 +19,11 @@ CREATE TABLE IF NOT EXISTS units (
     files       INTEGER,
     output      TEXT,
     note        TEXT,
-    updated_at  REAL
+    updated_at  REAL,
+    src_mb      REAL DEFAULT 0,
+    out_mb      REAL DEFAULT 0,
+    chapters    INTEGER DEFAULT 0,
+    detail      TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,6 +51,10 @@ class UnitState:
     output: str = ""
     note: str = ""
     updated_at: float = 0.0
+    src_mb: float = 0.0
+    out_mb: float = 0.0
+    chapters: int = 0
+    detail: str = "" 
 
 
 class State:
@@ -56,7 +64,16 @@ class State:
         self.connection = sqlite3.connect(self.path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(SCHEMA)
+        self._migrate()
         self.connection.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a database already exists."""
+        existing = {row[1] for row in self.connection.execute("PRAGMA table_info(units)")}
+        for name, ddl in (("src_mb", "REAL DEFAULT 0"), ("out_mb", "REAL DEFAULT 0"),
+                          ("chapters", "INTEGER DEFAULT 0"), ("detail", "TEXT DEFAULT ''")):
+            if name not in existing:
+                self.connection.execute(f"ALTER TABLE units ADD COLUMN {name} {ddl}")
 
     # ---------------------------------------------------------------- units
     def get(self, path: str) -> UnitState | None:
@@ -66,15 +83,17 @@ class State:
     def save(self, state: UnitState) -> None:
         self.connection.execute(
             """INSERT INTO units (path, status, confidence, asin, title, author, hours, files,
-                                  output, note, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                                  output, note, updated_at, src_mb, out_mb, chapters, detail)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(path) DO UPDATE SET
                  status=excluded.status, confidence=excluded.confidence, asin=excluded.asin,
                  title=excluded.title, author=excluded.author, hours=excluded.hours,
                  files=excluded.files, output=excluded.output, note=excluded.note,
-                 updated_at=excluded.updated_at""",
+                 updated_at=excluded.updated_at, src_mb=excluded.src_mb, out_mb=excluded.out_mb,
+                 chapters=excluded.chapters, detail=excluded.detail""",
             (state.path, state.status, state.confidence, state.asin, state.title,
-             state.author, state.hours, state.files, state.output, state.note, time.time()),
+             state.author, state.hours, state.files, state.output, state.note, time.time(),
+             state.src_mb, state.out_mb, state.chapters, state.detail),
         )
         self.connection.commit()
 

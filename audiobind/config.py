@@ -31,7 +31,7 @@ class Config:
     state_dir: Path = Path("/config")
     work_dir: Path = Path("/work") if Path("/work").is_dir() else Path("/config/work")
 
-    audio_bitrate: str = "64k"
+    audio_bitrate: str = "128k"
     audio_channels: int = 1
     sample_rate: int = 44100
     jobs: int = 1
@@ -58,7 +58,7 @@ class Config:
             library_root=Path(_env("LIBRARY_ROOT", "/library")),
             output_root=Path(_env("OUTPUT_ROOT", "/output")),
             state_dir=Path(_env("STATE_DIR", "/config")),
-            audio_bitrate=_env("AUDIO_BITRATE", "64k"),
+            audio_bitrate=_env("AUDIO_BITRATE", "128k"),
             audio_channels=_env_int("AUDIO_CHANNELS", 1),
             sample_rate=_env_int("SAMPLE_RATE", 44100),
             jobs=max(1, _env_int("JOBS", 1)),
