@@ -17,11 +17,16 @@ from .state import State
 from .units import discover_units
 
 _log = logging.getLogger("audiobind").info
+#: /app/icon.svg in the image, ./icon.svg in a checkout
+ICON_PATH = Path(__file__).resolve().parent.parent / "icon.svg"
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Audiobind</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<meta name="theme-color" content="#1e4fa0">
 <style>
  :root {{ color-scheme: dark; }}
  body {{ margin:0; padding:32px; background:#0f1115; color:#e6e9ef;
@@ -438,6 +443,13 @@ class Handler(BaseHTTPRequestHandler):
         path, _, query = self.path.partition("?")
         params = dict(kv.split("=", 1) for kv in query.split("&") if "=" in kv)
         status = params.get("status", "")
+        if path in ("/favicon.svg", "/icon.svg"):
+            icon = ICON_PATH
+            if icon.exists():
+                self._send(200, icon.read_bytes(), "image/svg+xml")
+            else:
+                self._send(404, b"no icon", "text/plain")
+            return
         if path.startswith("/api/units"):
             units = self.state.all(status or None)
             payload = [{"path": u.path, "title": u.title, "author": u.author, "status": u.status,

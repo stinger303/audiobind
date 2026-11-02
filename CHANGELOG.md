@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-11-01
+
+### Added
+- The status page now declares a favicon and theme colour, so the browser tab shows the Audiobind
+  icon instead of a blank page glyph. The icon is served from the container at `/favicon.svg`, and
+  the image carries `icon.svg` so it works without internet access.
+
 ## [0.9.2] - 2026-11-01
 
 ### Fixed

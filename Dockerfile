@@ -23,6 +23,7 @@ RUN groupadd -g 99 audiobind && useradd -m -u 99 -g 99 -s /bin/bash audiobind
 
 WORKDIR /app
 COPY audiobind/ /app/audiobind/
+COPY icon.svg /app/icon.svg
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
  && printf '#!/bin/sh\nexec python3 -m audiobind "$@"\n' > /usr/local/bin/audiobind \
