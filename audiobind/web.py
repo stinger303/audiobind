@@ -212,11 +212,16 @@ def render(state: State, status: str = "") -> str:
             data = {}
         src = data.get("source") or {}
         out = data.get("output") or {}
+        # rows written before the detail blob existed still carry the flat columns
+        if not out and unit.output:
+            out = {"path": unit.output, "mb": unit.out_mb, "hours": unit.hours,
+                   "chapters": unit.chapters, "chapters_from": ""}
 
-        size = f"{src['mb']:.0f} MB &middot; " if src.get("mb") else ""
+        mb = src.get("mb") or unit.src_mb
+        size = f"{mb:.0f} MB &middot; " if mb else ""
         codecs = " + ".join(src.get("codecs") or [])
         before = [
-            f"{src.get('parts', 1)} part(s) &middot; {src.get('files', unit.files)} file(s)",
+            f"{src.get('parts', 1)} part(s) &middot; {src.get('files') or unit.files} file(s)",
             f"{size}{(src.get('hours') or unit.hours):.2f} h",
             (codecs or "codec not recorded")
             + (f" &middot; {', '.join(src.get('channels') or [])} ch" if src.get("channels") else ""),
