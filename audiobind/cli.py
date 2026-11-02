@@ -98,6 +98,9 @@ def cmd_health(args) -> int:
     state = State(CONFIG.state_dir)
     age = state.heartbeat_age()
     limit = CONFIG.scan_interval_min * 60 * 2.5 + 300
+    if age == float("inf"):
+        print(f"stale (no scan recorded yet, limit {limit:.0f}s)")
+        return 1
     if age <= limit:
         print(f"ok ({age:.0f}s since last scan)")
         return 0

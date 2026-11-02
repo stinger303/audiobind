@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-11-01
+
+### Fixed
+- `audiobind health` prints "no scan recorded yet" instead of the nonsensical "infs" before the
+  first scan completes.
+
 ## [0.1.1] - 2026-11-01
 
 ### Fixed
