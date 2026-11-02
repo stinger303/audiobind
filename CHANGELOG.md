@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-01
+
+### Added
+- **"Why it is held / in review" and "What to do"** at the top of every book panel, in plain
+  English. A held book now shows both runtimes and the percentage difference and explains that it
+  is usually a different edition or missing parts; a review book names the actual reason (no
+  catalog match, weak match, unreadable source files, looks like several books) and the specific
+  next step - Retry, paste an ASIN, Convert anyway, or split the folder.
+- The catalog comparison (matched title, ASIN, runtime) is stored with each book, so the
+  explanation survives restarts and does not depend on re-querying Audible.
+
 ## [0.8.1] - 2026-11-01
 
 ### Fixed

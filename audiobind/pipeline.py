@@ -144,6 +144,14 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
            result=None) -> None:
     detail = json.dumps({
         "action": audit.action,
+        "hours": audit.hours,
+        "match": {
+            "asin": audit.match.asin,
+            "title": audit.match.product.title if audit.match.product else "",
+            "authors": audit.match.product.authors if audit.match.product else [],
+            "hours": audit.match.product.hours if audit.match.product else 0,
+            "confidence": audit.confidence,
+        },
         "source": {
             "parts": len(audit.unit.parts),
             "files": audit.unit.n_files,

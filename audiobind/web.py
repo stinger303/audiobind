@@ -9,6 +9,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import __version__
+from .advice import explain
 from .config import CONFIG
 from .control import CONTROL
 from .pipeline import process_unit
@@ -66,6 +67,12 @@ PAGE = """<!doctype html>
  tr.urow.open td:first-child::before {{ content:"-"; color:#12a89b; }}
  tr.drow td {{ background:#11151d; padding:0; border-bottom:1px solid #232833; }}
  .dd {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:22px; padding:16px 22px 18px; }}
+ .explain {{ grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:22px;
+             background:#141a24; border:1px solid #232b38; border-radius:10px; padding:14px 16px; }}
+ .explain h4 {{ margin:0 0 6px; font-size:11px; letter-spacing:.6px; text-transform:uppercase;
+                color:#8b93a7; font-weight:600; }}
+ .explain p {{ margin:0; color:#d7dce7; }}
+ .explain .todo h4 {{ color:#e6b450; }}
  .acts {{ grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
           border-top:1px solid #1c2230; padding-top:14px; }}
  .acts button {{ font-size:12.5px; padding:6px 12px; }}
@@ -301,10 +308,18 @@ def render(state: State, status: str = "") -> str:
         if unit.note:
             decision.append(_html(unit.note))
 
+        why, todo = explain(unit.status, unit.confidence or "", unit.note, data)
+
         def block(title, items):
             return (f"<div><h4>{title}</h4><ul>"
                     + "".join(f"<li>{i}</li>" for i in items) + "</ul></div>")
 
+        explain_html = (
+            '<div class="explain">'
+            f'<div><h4>Why it is {unit.status}</h4><p>{_html(why)}</p></div>'
+            f'<div class="todo"><h4>What to do</h4><p>{_html(todo)}</p></div>'
+            "</div>"
+        )
         actions = (
             '<div class="acts">'
             f'<button onclick="unitAction(this,\'retry\')">Retry now</button>'
@@ -315,6 +330,7 @@ def render(state: State, status: str = "") -> str:
         )
         return (f'<tr class="drow" data-path="{_html(unit.path)}" hidden><td colspan="5">'
                 f'<div class="dd" data-path="{_html(unit.path)}">'
+                + explain_html
                 + block("Before", before)
                 + block("After", after)
                 + block("Decision", decision)

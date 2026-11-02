@@ -26,6 +26,9 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.9.0
+* "Why it is held / in review" plus "What to do" in every book panel
+
 ### 0.8.1
 * Expanded book panel no longer closes itself on the page refresh
 
