@@ -67,6 +67,26 @@ services:
 
 Then open `http://<host>:8080` for the status page.
 
+### Controls in the web UI
+
+The status page is also the control panel:
+
+| Button | What it does |
+|---|---|
+| **Scan now** | skips the interval and starts a pass immediately |
+| **Pause after this book** | finishes the book in flight, then stops before starting another |
+| **Resume** | continues, and scans immediately |
+| **Dry run: ON / OFF** | switches between deciding-only and writing. Persisted, so a restart keeps your choice; `DRY_RUN` is only the default for a fresh install |
+
+Both toggles survive container restarts. Scripted equivalent:
+
+```bash
+curl -X POST -H 'Content-Type: application/json' -d '{"action":"pause"}'    localhost:8080/api/control
+curl -X POST -H 'Content-Type: application/json' -d '{"action":"resume"}'   localhost:8080/api/control
+curl -X POST -H 'Content-Type: application/json' -d '{"action":"scan"}'     localhost:8080/api/control
+curl -X POST -H 'Content-Type: application/json' -d '{"action":"dry_run","value":false}' localhost:8080/api/control
+```
+
 ### CLI
 
 ```bash
