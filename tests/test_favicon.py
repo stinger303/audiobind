@@ -1,7 +1,9 @@
 import pathlib
+import tempfile
 import unittest
 
 from audiobind import web
+from audiobind.state import State
 
 
 class TestIcon(unittest.TestCase):
@@ -10,10 +12,12 @@ class TestIcon(unittest.TestCase):
         self.assertIn("<svg", web.ICON_PATH.read_text(encoding="utf-8"))
 
     def test_page_declares_the_favicon(self):
-        import tempfile
-        from audiobind.state import State
-        with tempfile.TemporaryDirectory() as tmp:
-            page = web.render(State(pathlib.Path(tmp)))
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            state = State(pathlib.Path(tmp))
+            try:
+                page = web.render(state)
+            finally:
+                state.close()
         self.assertIn('rel="icon"', page)
         self.assertIn("/favicon.svg", page)
 
