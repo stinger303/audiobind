@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-01
+
+### Added
+- **Filter chips by status** (`all`, `converted`, `ready`, `review`, `held`, `failed`,
+  `interrupted`) with live counts, so the books waiting for review are reachable instead of being
+  buried below the fold.
+- `/api/units?status=ready` returns the filtered list as JSON for scripting.
+- The detail panel now shows the full source path, not just its size and codec.
+
+### Fixed
+- The table silently showed only the newest 40 rows even when there were far more books. It now
+  lists every matching unit (capped at 400 with an explicit note), sorted by title when filtered.
+
 ## [0.6.1] - 2026-11-01
 
 ### Fixed

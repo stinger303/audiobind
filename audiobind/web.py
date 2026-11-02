@@ -65,6 +65,12 @@ PAGE = """<!doctype html>
  .dd ul {{ margin:0; padding-left:16px; }}
  .dd li {{ margin:3px 0; color:#c7cddb; }}
  .dd code {{ color:#9fd7c8; }}
+ .chips {{ display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px; }}
+ .chip {{ font-size:12.5px; padding:6px 12px; border-radius:999px; text-decoration:none;
+          background:#171a21; border:1px solid #232833; color:#c7cddb; }}
+ .chip:hover {{ border-color:#3a4353; }}
+ .chip.on {{ background:#1e4fa0; border-color:#2b5ea8; color:#fff; }}
+ .chip b {{ opacity:.65; font-weight:600; margin-left:5px; }}
 </style></head><body>
 <h1>Audiobind</h1>
 <div class="sub">v{version} &middot; library <code>{library}</code> &rarr; <code>{output}</code>
@@ -88,8 +94,10 @@ PAGE = """<!doctype html>
  <div class="card"><span>last scan</span><b>{last_scan}</b></div>
 </div>
 
-<h2 style="font-size:14px;color:#8b93a7;font-weight:500;text-transform:uppercase;letter-spacing:.6px">Recent activity</h2>
+<h2 style="font-size:14px;color:#8b93a7;font-weight:500;text-transform:uppercase;letter-spacing:.6px">Books</h2>
+<div class="chips">{chips}</div>
 <table><thead><tr><th>book</th><th>status</th><th>conf</th><th>runtime</th><th>updated</th></tr></thead><tbody>{rows}</tbody></table>
+{overflow}
 
 <script>
 function act(action) {{
@@ -161,9 +169,32 @@ def _fmt_age(seconds: float) -> str:
     return f"{seconds / 3600:.1f}h ago"
 
 
-def render(state: State) -> str:
+STATUS_ORDER = ("converted", "ready", "review", "held", "failed", "interrupted")
+MAX_ROWS = 400
+
+
+def render(state: State, status: str = "") -> str:
     counts = state.counts()
-    units = state.all()[:40]
+    wanted = status if status in counts else ""
+    units = state.all(wanted or None)
+    if wanted:
+        units.sort(key=lambda u: (u.title or u.path).lower())
+    total = sum(counts.values())
+
+    chips = [f'<a class="chip{" on" if not wanted else ""}" href="/">all <b>{total}</b></a>']
+    for name in STATUS_ORDER:
+        if not counts.get(name):
+            continue
+        chips.append(
+            f'<a class="chip{" on" if wanted == name else ""}" href="/?status={name}">'
+            f'{name} <b>{counts[name]}</b></a>'
+        )
+    chips_html = "".join(chips)
+    shown = len(units)
+    units = units[:MAX_ROWS]
+    overflow = (f'<div class="wmeta">showing the first {MAX_ROWS} of {shown} - '
+                f'filter by status or use <code>/api/units?status=</code></div>'
+                if shown > MAX_ROWS else "")
 
     def css(status: str) -> str:
         if status == "converted":
@@ -189,6 +220,7 @@ def render(state: State) -> str:
             f"{size}{(src.get('hours') or unit.hours):.2f} h",
             (codecs or "codec not recorded")
             + (f" &middot; {', '.join(src.get('channels') or [])} ch" if src.get("channels") else ""),
+            f"<span class=\"dim\"><code>{_html(unit.path)}</code></span>",
         ]
         if out:
             after = [
@@ -282,7 +314,9 @@ def render(state: State) -> str:
         held=counts.get("held", 0),
         failed=counts.get("failed", 0),
         last_scan=_fmt_age(state.heartbeat_age()),
-        rows=rows or "<tr><td colspan=5 class=dim>nothing yet</td></tr>",
+        chips=chips_html,
+        overflow=overflow,
+        rows=rows or '<tr><td colspan=5 class="dim">no books match this filter</td></tr>',
     )
 
 
@@ -312,14 +346,27 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):                       # noqa: N802 - http.server API
-        if self.path.startswith("/api/state"):
+        path, _, query = self.path.partition("?")
+        params = dict(kv.split("=", 1) for kv in query.split("&") if "=" in kv)
+        status = params.get("status", "")
+        if path.startswith("/api/units"):
+            units = self.state.all(status or None)
+            payload = [{"path": u.path, "title": u.title, "author": u.author, "status": u.status,
+                        "confidence": u.confidence, "asin": u.asin, "hours": u.hours,
+                        "files": u.files, "note": u.note, "output": u.output,
+                        "src_mb": u.src_mb, "out_mb": u.out_mb, "chapters": u.chapters}
+                       for u in units]
+            self._send(200, json.dumps({"count": len(payload), "units": payload}).encode(),
+                       "application/json")
+            return
+        if path.startswith("/api/state"):
             self._send(200, json.dumps(snapshot(self.state)).encode(), "application/json")
             return
         if self.path.startswith("/healthz"):
             healthy = self.state.heartbeat_age() < CONFIG.scan_interval_min * 60 * 2.5 + 300
             self._send(200 if healthy else 503, b"ok" if healthy else b"stale", "text/plain")
             return
-        self._send(200, render(self.state).encode(), "text/html; charset=utf-8")
+        self._send(200, render(self.state, status).encode(), "text/html; charset=utf-8")
 
     def do_POST(self):                      # noqa: N802
         if not self.path.startswith("/api/control"):

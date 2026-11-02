@@ -26,7 +26,11 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
-### 0.6.0
+### 0.7.0
+* Filter by status with counts (ready / review / held ...)
+* Every book is listed, not just the newest 40
+
+### 0.6.1
 * Expandable before/after detail per book
 * Already-AAC m4b files are remuxed instead of re-encoded
 
