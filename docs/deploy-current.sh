@@ -4,7 +4,7 @@ set -e
 APP=/mnt/user/appdata/audiobind
 OUT=/mnt/user/data/media/audiobooks-fixed
 LIB=/mnt/user/data/media/audiobooks
-IMAGE=ghcr.io/stinger303/audiobind:0.6.1
+IMAGE=ghcr.io/stinger303/audiobind:0.8.0
 TPL=/boot/config/plugins/dockerMan/templates-user/my-Audiobind.xml
 API=http://127.0.0.1:8686/api/control
 
@@ -20,7 +20,7 @@ done
 
 echo "3) swap to $IMAGE (bitrate floor is now 128k)"
 docker rm -f Audiobind >/dev/null 2>&1 || true
-sed -i 's|audiobind:0\.[0-9.]*|audiobind:0.6.1|' "$TPL"
+sed -i 's|audiobind:0\.[0-9.]*|audiobind:0.8.0|' "$TPL"
 sed -i 's|Default="64k"|Default="128k"|; s|>64k</Config>|>128k</Config>|' "$TPL"
 docker run -d --name Audiobind --net bridge -p 8686:8080 \
   -e PUID=99 -e PGID=100 -e TZ=America/Denver \

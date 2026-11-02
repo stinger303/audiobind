@@ -148,12 +148,34 @@ function unitAction(btn, action) {{
     .then(() => setTimeout(() => location.reload(), 400))
     .catch(() => {{ btn.disabled = false; }});
 }}
+const OPEN_KEY = 'audiobind_open';
+function openSet() {{
+  try {{ return new Set(JSON.parse(sessionStorage.getItem(OPEN_KEY) || '[]')); }}
+  catch (e) {{ return new Set(); }}
+}}
+function saveOpen(set) {{
+  try {{ sessionStorage.setItem(OPEN_KEY, JSON.stringify([...set])); }} catch (e) {{}}
+}}
 function toggleRow(row) {{
   const panel = row.nextElementSibling;
   if (!panel || !panel.classList.contains('drow')) return;
   panel.hidden = !panel.hidden;
   row.classList.toggle('open', !panel.hidden);
+  const set = openSet();
+  const key = panel.dataset.path || '';
+  if (panel.hidden) {{ set.delete(key); }} else {{ set.add(key); }}
+  saveOpen(set);
 }}
+// a refresh must not close what the operator opened
+document.addEventListener('DOMContentLoaded', () => {{
+  const set = openSet();
+  if (!set.size) return;
+  document.querySelectorAll('tr.drow').forEach(panel => {{
+    if (!set.has(panel.dataset.path)) return;
+    panel.hidden = false;
+    if (panel.previousElementSibling) panel.previousElementSibling.classList.add('open');
+  }});
+}});
 // poll the encode position so the bar moves smoothly, then reload when the book finishes
 function tick() {{
   fetch('/api/state').then(r => r.json()).then(d => {{
@@ -167,7 +189,17 @@ function tick() {{
   }}).catch(() => {{}});
 }}
 setInterval(tick, 2000);
-setTimeout(() => location.reload(), 10000);
+
+// refresh only when something actually changed, so an open panel is not disrupted
+let lastCounts = null;
+function watch() {{
+  fetch('/api/state').then(r => r.json()).then(d => {{
+    const sig = JSON.stringify(d.counts) + '|' + d.running;
+    if (lastCounts === null) {{ lastCounts = sig; return; }}
+    if (sig !== lastCounts) {{ location.reload(); }}
+  }}).catch(() => {{}});
+}}
+setInterval(watch, 5000);
 </script>
 </body></html>"""
 
@@ -281,7 +313,7 @@ def render(state: State, status: str = "") -> str:
             f'<button onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
             "</div>"
         )
-        return (f'<tr class="drow" hidden><td colspan="5">'
+        return (f'<tr class="drow" data-path="{_html(unit.path)}" hidden><td colspan="5">'
                 f'<div class="dd" data-path="{_html(unit.path)}">'
                 + block("Before", before)
                 + block("After", after)

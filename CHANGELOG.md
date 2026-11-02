@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-11-01
+
+### Fixed
+- An expanded book panel closed itself after a few seconds: the page refreshed on a fixed 10 second
+  timer. Open panels are now remembered in `sessionStorage` and restored after any refresh, and the
+  page only reloads when the status counts actually change.
+
 ## [0.8.0] - 2026-11-01
 
 ### Added

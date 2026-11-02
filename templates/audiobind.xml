@@ -26,6 +26,9 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.8.1
+* Expanded book panel no longer closes itself on the page refresh
+
 ### 0.8.0
 * Per-book actions: Retry, Convert anyway, Use this ASIN
 
