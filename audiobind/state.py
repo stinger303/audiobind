@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,7 +63,11 @@ class State:
     def __init__(self, directory: Path):
         directory.mkdir(parents=True, exist_ok=True)
         self.path = directory / "audiobind.db"
-        self.connection = sqlite3.connect(self.path, check_same_thread=False)
+        # autocommit + a lock: several threads share this connection, and SQLite cannot nest
+        # transactions on one of them ("cannot start a transaction within a transaction")
+        self._lock = threading.RLock()
+        self.connection = sqlite3.connect(self.path, check_same_thread=False, timeout=30,
+                                          isolation_level=None)
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(SCHEMA)
         self._migrate()
@@ -79,10 +84,15 @@ class State:
 
     # ---------------------------------------------------------------- units
     def get(self, path: str) -> UnitState | None:
-        row = self.connection.execute("SELECT * FROM units WHERE path = ?", (path,)).fetchone()
+        with self._lock:
+            row = self.connection.execute("SELECT * FROM units WHERE path = ?", (path,)).fetchone()
         return UnitState(**{k: row[k] for k in row.keys() if k in UnitState.__annotations__}) if row else None
 
     def save(self, state: UnitState) -> None:
+        with self._lock:
+            self._save_locked(state)
+
+    def _save_locked(self, state: UnitState) -> None:
         self.connection.execute(
             """INSERT INTO units (path, status, confidence, asin, title, author, hours, files,
                                   output, note, updated_at, src_mb, out_mb, chapters, detail)
@@ -101,24 +111,28 @@ class State:
 
     def all(self, status: str | None = None) -> list[UnitState]:
         query = "SELECT * FROM units" + (" WHERE status = ?" if status else "") + " ORDER BY updated_at DESC"
-        rows = self.connection.execute(query, (status,) if status else ()).fetchall()
+        with self._lock:
+            rows = self.connection.execute(query, (status,) if status else ()).fetchall()
         return [UnitState(**{k: r[k] for k in r.keys() if k in UnitState.__annotations__}) for r in rows]
 
     def counts(self) -> dict[str, int]:
-        rows = self.connection.execute("SELECT status, COUNT(*) n FROM units GROUP BY status").fetchall()
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT status, COUNT(*) n FROM units GROUP BY status").fetchall()
         return {r["status"]: r["n"] for r in rows}
 
     # ---------------------------------------------------------------- runs
     def start_run(self) -> int:
-        cursor = self.connection.execute("INSERT INTO runs (started_at) VALUES (?)", (time.time(),))
-        self.connection.commit()
-        return int(cursor.lastrowid)
+        with self._lock:
+            cursor = self.connection.execute("INSERT INTO runs (started_at) VALUES (?)",
+                                             (time.time(),))
+            return int(cursor.lastrowid)
 
     def finish_run(self, run_id: int, seen: int, converted: int, held: int, failed: int) -> None:
-        self.connection.execute(
-            "UPDATE runs SET finished_at=?, seen=?, converted=?, held=?, failed=? WHERE id=?",
-            (time.time(), seen, converted, held, failed, run_id))
-        self.connection.commit()
+        with self._lock:
+            self.connection.execute(
+                "UPDATE runs SET finished_at=?, seen=?, converted=?, held=?, failed=? WHERE id=?",
+                (time.time(), seen, converted, held, failed, run_id))
 
     def last_run(self) -> dict | None:
         row = self.connection.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
@@ -126,25 +140,28 @@ class State:
 
     # ---------------------------------------------------------------- meta
     def set_meta(self, key: str, value) -> None:
-        self.connection.execute(
-            "INSERT INTO meta (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (key, json.dumps(value)))
-        self.connection.commit()
+        with self._lock:
+            self.connection.execute(
+                "INSERT INTO meta (key, value) VALUES (?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, json.dumps(value)))
 
     def get_meta(self, key: str, default=None):
-        row = self.connection.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        with self._lock:
+            row = self.connection.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         return json.loads(row["value"]) if row else default
 
     def set_asin_override(self, path: str, asin: str) -> None:
-        self.connection.execute("UPDATE units SET asin_override = ? WHERE path = ?", (asin, path))
-        if not self.connection.total_changes:
+        with self._lock:
             self.connection.execute(
-                "INSERT INTO units (path, status, asin_override, updated_at) VALUES (?,?,?,?)",
+                "INSERT INTO units (path, status, asin_override, updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(path) DO UPDATE SET asin_override = excluded.asin_override",
                 (path, "review", asin, time.time()))
-        self.connection.commit()
 
     def get_asin_override(self, path: str) -> str:
-        row = self.connection.execute("SELECT asin_override FROM units WHERE path = ?", (path,)).fetchone()
+        with self._lock:
+            row = self.connection.execute("SELECT asin_override FROM units WHERE path = ?",
+                                          (path,)).fetchone()
         return (row["asin_override"] if row and row["asin_override"] else "")
 
     def heartbeat(self) -> None:

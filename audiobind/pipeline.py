@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,6 +15,9 @@ from .control import CONTROL, Stopped
 from .probe import probe
 from .state import State, UnitState
 from .units import BookUnit, looks_like_collection
+
+#: the daemon and the manual "Retry / Convert anyway" buttons must not encode two books at once
+CONVERT_LOCK = threading.Lock()
 
 
 @dataclass
@@ -123,6 +127,7 @@ def convert_unit(audit: Audit, log=print):
         return None                     # nothing was written, so it is not "converted"
 
     work_dir = CONFIG.work_dir / f"{abs(hash(unit.rel_path)) % 10**8:08x}"
+    CONVERT_LOCK.acquire()
     CONTROL.begin_unit(unit.rel_path)
     try:
         duration = sum(probe(f).duration for f in unit.files)
@@ -138,6 +143,7 @@ def convert_unit(audit: Audit, log=print):
         # library never sees a partial file and the book is simply retried next scan
         shutil.rmtree(work_dir, ignore_errors=True)
         CONTROL.end_unit()
+        CONVERT_LOCK.release()
 
 
 def record(state: State, audit: Audit, status: str, output: str = "", note: str = "",

@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-11-01
+
+### Fixed
+- **The daemon could wedge and stop converting anything.** The daemon thread, the web handlers and
+  the manual Retry/Convert actions all shared one SQLite connection with no lock and implicit
+  transactions, which surfaced as `sqlite3.OperationalError: cannot start a transaction within a
+  transaction` and left 21 books sitting in `ready` forever. Writes are now serialised behind an
+  `RLock`, the connection runs in autocommit with a 30 s busy timeout, and there is a test that
+  hammers it from four threads.
+- Only one book is encoded at a time: a manual action now waits for the daemon's current book
+  instead of running a second ffmpeg alongside it.
+
 ## [0.9.1] - 2026-11-01
 
 ### Fixed
