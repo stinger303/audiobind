@@ -8,6 +8,7 @@ from . import web
 from .config import CONFIG
 from .control import CONTROL
 from .pipeline import process_unit
+from .prefetch import PREFETCH, next_eligible
 from .state import State
 from .units import discover_units
 
@@ -22,7 +23,7 @@ def scan_once(state: State, force: bool = False) -> dict:
     log.info("scan: %d unit(s) on disk", len(units))
 
     seen = converted = held = failed = 0
-    for unit in units:
+    for index, unit in enumerate(units):
         if CONTROL.paused:
             log.info("paused - stopping before the next book")
             break
@@ -32,6 +33,8 @@ def scan_once(state: State, force: bool = False) -> dict:
         seen += 1
         log.info("[%s]", unit.rel_path)
         before = previous.status if previous else ""
+        # look the next book up while this one encodes; failure here changes nothing
+        PREFETCH.schedule(state, next_eligible(state, units, index, force))
         process_unit(state, unit, log=log.info)
         current = state.get(unit.rel_path)
         status = current.status if current else ""

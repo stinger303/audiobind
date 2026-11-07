@@ -18,6 +18,39 @@ AUDNEX = "https://api.audnex.us"
 _lock = threading.Lock()
 _last_call = 0.0
 
+#: Successful responses are memoised by URL so a prefetched lookup is free when the main loop
+#: asks for it a moment later. Failures are never cached - they must be retried.
+_cache: dict[str, tuple[float, dict]] = {}
+_cache_lock = threading.Lock()
+CACHE_TTL_SECONDS = 900
+CACHE_MAX_ENTRIES = 256
+
+
+def cache_clear() -> None:
+    with _cache_lock:
+        _cache.clear()
+
+
+def cache_get(url: str):
+    with _cache_lock:
+        entry = _cache.get(url)
+        if entry is None:
+            return None
+        stored_at, payload = entry
+        if time.time() - stored_at > CACHE_TTL_SECONDS:
+            _cache.pop(url, None)
+            return None
+        return payload
+
+
+def cache_put(url: str, payload: dict) -> None:
+    with _cache_lock:
+        if len(_cache) >= CACHE_MAX_ENTRIES:
+            oldest = sorted(_cache.items(), key=lambda item: item[1][0])[:len(_cache) // 4 or 1]
+            for key, _value in oldest:
+                _cache.pop(key, None)
+        _cache[url] = (time.time(), payload)
+
 
 @dataclass
 class Product:
@@ -76,8 +109,14 @@ def re_strip(html: str) -> str:
 
 
 def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
-    """GET with a global ~0.6 s politeness gap and exponential backoff."""
+    """GET with a global ~0.6 s politeness gap and exponential backoff.
+
+    A successful response is memoised, so a prefetched lookup costs the main loop nothing.
+    """
     global _last_call
+    cached = cache_get(url)
+    if cached is not None:
+        return cached
     for attempt in range(tries):
         with _lock:
             wait = 0.6 - (time.time() - _last_call)
@@ -88,7 +127,10 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
             request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT,
                                                            "Accept": "application/json"})
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                return json.loads(response.read().decode("utf-8", "replace"))
+                payload = json.loads(response.read().decode("utf-8", "replace"))
+            if isinstance(payload, dict):
+                cache_put(url, payload)
+            return payload
         except urllib.error.HTTPError as exc:
             if exc.code in (400, 404):
                 return None

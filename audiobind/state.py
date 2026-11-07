@@ -148,7 +148,9 @@ class State:
                 (time.time(), seen, converted, held, failed, run_id))
 
     def last_run(self) -> dict | None:
-        row = self.connection.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+        with self._lock:                 # a background prefetch may be reading at the same time
+            row = self.connection.execute(
+                "SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
         return dict(row) if row else None
 
     # ---------------------------------------------------------------- meta
