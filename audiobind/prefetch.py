@@ -49,6 +49,9 @@ class Prefetcher:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        #: set inside the lock *before* the thread starts; is_alive() is False until then,
+        #: which would otherwise let a second caller slip past and start a second lookahead
+        self._running = False
         self._current: str = ""
         #: counters, for the tests and for anyone reading the logs
         self.started = 0
@@ -59,7 +62,7 @@ class Prefetcher:
     @property
     def busy(self) -> bool:
         with self._lock:
-            return self._thread is not None and self._thread.is_alive()
+            return self._running
 
     @property
     def current(self) -> str:
@@ -71,15 +74,17 @@ class Prefetcher:
         if unit is None:
             return False
         with self._lock:
-            if self._thread is not None and self._thread.is_alive():
+            if self._running:
                 self.skipped += 1
                 return False
+            self._running = True
             self._current = unit.rel_path
             self.started += 1
             thread = threading.Thread(target=self._run, args=(state, unit),
                                       name="prefetch", daemon=True)
             self._thread = thread
-        thread.start()
+            # started while holding the lock: the flag and the thread must not disagree
+            thread.start()
         return True
 
     def join(self, timeout: float | None = None) -> None:
@@ -101,6 +106,7 @@ class Prefetcher:
         finally:
             with self._lock:
                 self._current = ""
+                self._running = False
 
     @staticmethod
     def _prefetch(state, unit: BookUnit) -> None:
