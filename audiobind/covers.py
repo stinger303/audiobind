@@ -63,13 +63,25 @@ def _record_miss(asin: str) -> None:
 
 
 def stored_image_url(state: State, asin: str) -> str:
-    """The catalog image URL persisted with the match, else the ASIN-derived fallback."""
+    """The best known image URL for an ASIN.
+
+    Order: the URL stored with the unit's match data, then the Audible catalog's
+    ``product_images`` for the ASIN (the ASIN-derived Amazon URL pattern only resolves
+    for some ASINs - the rest return a 43-byte tracking pixel that is not a cover).
+    """
+    asin = asin.strip().upper()
     try:
         data = json.loads(state.detail_for_asin(asin) or "{}")
         url = ((data.get("match") or {}).get("image") or "").strip()
     except (ValueError, AttributeError):
         url = ""
-    return url or catalog.cover_url({}, asin.strip().upper())
+    if url:
+        return url
+    images = catalog.product_images(asin)
+    for size in ("500", "1000"):
+        if images.get(size):
+            return images[size]
+    return catalog.cover_url({}, asin)
 
 
 def published_cover(state: State, rel_path: str) -> Path | None:

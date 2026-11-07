@@ -185,6 +185,19 @@ def download(url: str, destination: str) -> bool:
         return False
 
 
+def product_images(asin: str) -> dict:
+    """The Audible catalog's image URLs for one ASIN, memoised like every other lookup.
+
+    The ASIN-derived Amazon URL pattern only resolves for some ASINs - for the rest it
+    returns a 43-byte 1x1 tracking image with HTTP 200, which is not a cover. Asking the
+    catalog for ``product_images`` is the reliable source, and ``_get_json``'s memoisation
+    makes the repeat lookups free.
+    """
+    data = _get_json(f"{AUDIBLE}/{asin}?response_groups=media&image_sizes=500,1000") or {}
+    product = data.get("product") or {}
+    return product.get("product_images") or {}
+
+
 def cover_url(product: dict, asin: str) -> str:
     """Prefer the Audnex image, fall back to the Audible product image."""
     if product.get("image"):

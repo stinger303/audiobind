@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-11-07
+
+### Fixed
+- **Most book covers showed a placeholder.** The ASIN-derived Amazon URL pattern resolves for
+  only some ASINs; the rest return a 43-byte 1x1 tracking pixel with HTTP 200, which the
+  download correctly rejected but then remembered as a six-hour miss. `/cover` now asks the
+  Audible catalog for the real `product_images` URL for the ASIN first (the lookup is
+  memoised with the same 15-minute cache as every other catalog call, so repeats are free),
+  and falls back to the pattern only when the catalog has nothing. Books whose match data
+  already carries an image URL still use it without any lookup. Miss markers from the
+  pattern-URL era were cleared so every cover gets a fresh attempt on first view.
+
 ## [0.10.0] - 2026-11-07
 
 ### Added

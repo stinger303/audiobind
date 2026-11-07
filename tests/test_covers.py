@@ -100,9 +100,24 @@ class TestCoverCache(CoverBase):
                          "https://example.test/cover-500.jpg")
 
     def test_falls_back_to_the_asin_url_when_nothing_was_stored(self):
-        url = covers.stored_image_url(self.state, "B005EHN61O")
+        saved = catalog.product_images
+        catalog.product_images = lambda asin: {}
+        try:
+            url = covers.stored_image_url(self.state, "B005EHN61O")
+        finally:
+            catalog.product_images = saved
         self.assertIn("B005EHN61O", url)
         self.assertTrue(url.startswith("https://"))
+
+    def test_catalog_product_images_are_used_when_no_url_was_stored(self):
+        saved = catalog.product_images
+        catalog.product_images = lambda asin: {
+            "500": "https://example.test/catalog-500.jpg"}
+        try:
+            url = covers.stored_image_url(self.state, "B005EHN61O")
+        finally:
+            catalog.product_images = saved
+        self.assertEqual(url, "https://example.test/catalog-500.jpg")
 
     def test_published_cover_is_used_for_converted_books(self):
         book_dir = CONFIG.output_root / "Michael Lewis" / "Moneyball"
