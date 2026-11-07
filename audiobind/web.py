@@ -14,6 +14,7 @@ from .advice import explain
 from .config import CONFIG
 from .control import CONTROL
 from .covers import resolve as resolve_cover
+from . import overrides as overrides_mod
 from .pipeline import process_unit
 from .state import State
 from .units import discover_units
@@ -125,6 +126,28 @@ STYLES = """
  .ab-covbig { width:150px; height:150px; border-radius:8px; }
  .ab-covbig::after { font-size:40px; }
  .ab-covpanel { display:flex; align-items:flex-start; }
+
+ /* ---- 0.10.0 metadata editor ---- */
+ .ab-edit { grid-column:1/-1; border-top:1px solid #1c2230; padding-top:14px; }
+ .ab-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px 18px; }
+ .ab-field { display:flex; flex-direction:column; gap:4px; }
+ .ab-lab { font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:#8b93a7;
+           display:flex; align-items:center; gap:6px; }
+ .ab-in { font:inherit; font-size:12.5px; padding:7px 10px; border-radius:8px;
+          border:1px solid #2b3240; background:#0d1118; color:#e6e9ef; width:100%;
+          box-sizing:border-box; }
+ .ab-in:focus { outline:none; border-color:#2b5ea8; }
+ .ab-in::placeholder { color:#5d6479; font-style:italic; }
+ .ab-editbar { display:flex; align-items:center; gap:10px; margin-top:12px; }
+ .ab-save { font-size:12.5px; padding:6px 12px; background:#1e4fa0; border-color:#2b5ea8; }
+ .ab-fb { font-size:12.5px; color:#8b93a7; }
+ .ab-fb.ab-good { color:#5fd38d; }
+ .ab-fb.ab-bad { color:#f2686b; }
+ .ab-custom { font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
+              color:#12a89b; background:#10302c; border:1px solid #1b4a44; border-radius:999px;
+              padding:1px 7px; margin-left:8px; vertical-align:1px; }
+ .ab-custom[hidden] { display:none; }
+ .ab-hint { color:#8b93a7; font-size:11.5px; margin:2px 0 10px; }
 """
 
 SCRIPT = """
@@ -169,6 +192,53 @@ function unitAction(btn, action) {
 function abCoverFail(img) {
   // no cover on disk and none to fetch: fall back to the neutral placeholder behind it
   img.classList.add('ab-gone');
+}
+
+// ------------------------------------------------------------------ metadata editor
+// An empty box means "no override": the field goes back to whatever the catalog says.
+function abSaveMeta(btn) {
+  const panel = btn.closest('.ab-edit');
+  const path = panel.dataset.path;
+  const feedback = panel.querySelector('.ab-fb');
+  const fields = {};
+  panel.querySelectorAll('input.ab-in').forEach(input => {
+    fields[input.dataset.field] = input.value.trim();
+  });
+  btn.disabled = true;
+  feedback.className = 'ab-fb';
+  feedback.textContent = 'saving...';
+  fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
+                     body: JSON.stringify({action:'set_meta', path: path, fields: fields})})
+    .then(r => r.json().then(body => ({ok: r.ok, body: body})))
+    .then(res => {
+      btn.disabled = false;
+      if (!res.ok) {
+        feedback.className = 'ab-fb ab-bad';
+        feedback.textContent = res.body.error || 'could not save';
+        return;
+      }
+      feedback.className = 'ab-fb ab-good';
+      feedback.textContent = res.body.custom.length
+        ? 'saved - applied on the next conversion'
+        : 'saved - all fields back to the catalog';
+      abMarkCustom(panel, res.body.custom);
+      setTimeout(() => { feedback.textContent = ''; feedback.className = 'ab-fb'; }, 6000);
+    })
+    .catch(() => {
+      btn.disabled = false;
+      feedback.className = 'ab-fb ab-bad';
+      feedback.textContent = 'could not reach the daemon';
+    });
+}
+// no reload: the markers are updated in place so the panel stays exactly where it was
+function abMarkCustom(panel, custom) {
+  panel.querySelectorAll('.ab-lab .ab-custom').forEach(mark => {
+    mark.hidden = custom.indexOf(mark.dataset.field) === -1;
+  });
+  const row = [...document.querySelectorAll('tr.urow')]
+    .find(r => r.dataset.path === panel.dataset.path);
+  const badge = row && row.querySelector('.ab-custom');
+  if (badge) badge.hidden = custom.length === 0;
 }
 const OPEN_KEY = 'audiobind_open';
 function openSet() {
@@ -615,6 +685,35 @@ def render(state: State, status: str = "", query: str = "") -> str:
             return (f"<div><h4>{title}</h4><ul>"
                     + "".join(f"<li>{i}</li>" for i in items) + "</ul></div>")
 
+        match_data = data.get("match") or {}
+        custom = overrides_mod.describe(state.get_overrides(unit.path))
+        marked = overrides_mod.custom_fields(state.get_overrides(unit.path))
+
+        def field(key, label, catalog_value, width_hint=""):
+            mark = (f'<span class="ab-custom" data-field="{key}"'
+                    f'{"" if key in marked else " hidden"}>custom</span>')
+            placeholder = _attr(catalog_value or "catalog value")
+            return (f'<div class="ab-field"><span class="ab-lab">{label}{mark}</span>'
+                    f'<input class="ab-in" data-field="{key}" value="{_attr(custom[key])}" '
+                    f'placeholder="{placeholder}" spellcheck="false"{width_hint}></div>')
+
+        editor = (
+            f'<div class="ab-edit" data-path="{_attr(unit.path)}"><h4>Metadata</h4>'
+            '<p class="ab-hint">Overrides win over the catalog when this book is converted - '
+            'tags, metadata.json and the author/title layout. Leave a box empty to use the '
+            'catalog value; separate several names with a semicolon.</p>'
+            '<div class="ab-grid">'
+            + field("title", "title", match_data.get("title") or unit.title)
+            + field("authors", "author(s)", "; ".join(match_data.get("authors") or
+                                                      ([unit.author] if unit.author else [])))
+            + field("narrator", "narrator(s)", "")
+            + field("series", "series", "")
+            + field("series_index", "series index", "")
+            + '</div><div class="ab-editbar">'
+            '<button class="ab-save" onclick="abSaveMeta(this)">Save metadata</button>'
+            '<span class="ab-fb"></span></div></div>'
+        )
+
         explain_html = (
             '<div class="explain">'
             f'<div><h4>Why it is {unit.status}</h4><p>{_html(why)}</p></div>'
@@ -637,6 +736,7 @@ def render(state: State, status: str = "", query: str = "") -> str:
                 + block("Before", before)
                 + block("After", after)
                 + block("Decision", decision)
+                + editor
                 + actions
                 + "</div></td></tr>")
 
@@ -645,10 +745,13 @@ def render(state: State, status: str = "", query: str = "") -> str:
         data = " ".join(
             f'data-sort-{key}="{_attr(str(sort_value(unit, key)))}"' for key in SORT_COLUMNS
         )
+        has_custom = bool(state.get_overrides(unit.path))
+        badge = f'<span class="ab-custom"{"" if has_custom else " hidden"}>custom</span>'
         return (
-            f'<tr class="urow" onclick="toggleRow(this)" data-search="{_attr(haystack)}" {data}>'
+            f'<tr class="urow" onclick="toggleRow(this)" data-path="{_attr(unit.path)}" '
+            f'data-search="{_attr(haystack)}" {data}>'
             f'<td class="ab-covcell">{cover_html(unit)}</td>'
-            f'<td class="ab-book">{_html(unit.title or unit.path)}</td>'
+            f'<td class="ab-book">{_html(unit.title or unit.path)}{badge}</td>'
             f'<td class="{css(unit.status)}">{unit.status}</td>'
             f'<td class="dim">{unit.confidence or "-"}</td>'
             f'<td class="dim">{(unit.hours or 0):.1f}</td>'
@@ -836,6 +939,23 @@ class Handler(BaseHTTPRequestHandler):
 
         rel = str(payload.get("path", ""))
         action = str(payload.get("action", "")).lower()
+
+        if action == "set_meta":
+            # metadata editing only touches the DB, so it must not require a library scan
+            if self.state.get(rel) is None:
+                self._send(404, b'{"error":"no such unit"}', "application/json")
+                return
+            clean = overrides_mod.normalise(payload.get("fields") or {})
+            self.state.set_overrides(rel, clean)
+            logging.getLogger("audiobind").info(
+                "metadata overrides saved for %s: %s", rel, sorted(clean) or "none")
+            self._send(200, json.dumps({
+                "ok": True, "unit": rel,
+                "custom": sorted(overrides_mod.custom_fields(clean)),
+                "overrides": overrides_mod.describe(clean),
+            }).encode(), "application/json")
+            return
+
         unit = next((u for u in discover_units(CONFIG.library_root, CONFIG.ignore_globs)
                      if u.rel_path == rel), None)
         if unit is None:

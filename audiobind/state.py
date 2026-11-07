@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS units (
     out_mb      REAL DEFAULT 0,
     chapters    INTEGER DEFAULT 0,
     detail      TEXT DEFAULT '',
-    asin_override TEXT DEFAULT ''
+    asin_override TEXT DEFAULT '',
+    overrides   TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +57,8 @@ class UnitState:
     src_mb: float = 0.0
     out_mb: float = 0.0
     chapters: int = 0
-    detail: str = "" 
+    detail: str = ""
+    overrides: str = ""
 
 
 class State:
@@ -78,7 +80,8 @@ class State:
         existing = {row[1] for row in self.connection.execute("PRAGMA table_info(units)")}
         for name, ddl in (("src_mb", "REAL DEFAULT 0"), ("out_mb", "REAL DEFAULT 0"),
                           ("chapters", "INTEGER DEFAULT 0"), ("detail", "TEXT DEFAULT ''"),
-                          ("asin_override", "TEXT DEFAULT ''")):
+                          ("asin_override", "TEXT DEFAULT ''"),
+                          ("overrides", "TEXT DEFAULT ''")):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE units ADD COLUMN {name} {ddl}")
 
@@ -173,6 +176,27 @@ class State:
             row = self.connection.execute("SELECT asin_override FROM units WHERE path = ?",
                                           (path,)).fetchone()
         return (row["asin_override"] if row and row["asin_override"] else "")
+
+    # ------------------------------------------------- metadata overrides
+    def set_overrides(self, path: str, data: dict) -> None:
+        """Operator-entered metadata corrections (title/author/series/...)."""
+        with self._lock:
+            self.connection.execute(
+                "INSERT INTO units (path, status, overrides, updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(path) DO UPDATE SET overrides = excluded.overrides",
+                (path, "review", json.dumps(data), time.time()))
+
+    def get_overrides(self, path: str) -> dict:
+        with self._lock:
+            row = self.connection.execute("SELECT overrides FROM units WHERE path = ?",
+                                          (path,)).fetchone()
+        if not row or not row["overrides"]:
+            return {}
+        try:
+            data = json.loads(row["overrides"])
+        except ValueError:
+            return {}
+        return data if isinstance(data, dict) else {}
 
     def heartbeat(self) -> None:
         self.set_meta("heartbeat", time.time())

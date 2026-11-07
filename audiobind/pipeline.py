@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import catalog, encode, library, matching
+from . import overrides as overrides_mod
 from .config import CONFIG
 from .control import CONTROL, Stopped
 from .probe import probe
@@ -33,6 +34,8 @@ class Audit:
     notes: list[str] = field(default_factory=list)
     chapters_available: int = 0
     src_mb: float = 0.0
+    #: operator metadata corrections for this unit, from the state DB
+    overrides: dict = field(default_factory=dict)
 
     @property
     def runtime_matches(self) -> bool:
@@ -113,6 +116,9 @@ def convert_unit(audit: Audit, log=print):
         raise ValueError("cannot convert without a catalog match")
 
     book = catalog.book(match.asin)
+    # the operator's corrections are written into the catalog payload before anything reads it,
+    # so tags, metadata.json and the filing layout all agree with what the panel shows
+    book = overrides_mod.apply(book, audit.overrides)
     series = (book.get("seriesPrimary") or {}).get("name", "")
     sequence = str((book.get("seriesPrimary") or {}).get("position", "") or "")
     authors = [a.get("name") for a in (book.get("authors") or []) if a.get("name")] or match.product.authors
@@ -148,6 +154,7 @@ def convert_unit(audit: Audit, log=print):
 
 def record(state: State, audit: Audit, status: str, output: str = "", note: str = "",
            result=None) -> None:
+    custom = overrides_mod.normalise(audit.overrides)
     detail = json.dumps({
         "action": audit.action,
         "hours": audit.hours,
@@ -160,6 +167,7 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
             # kept so the status page can show cover art without a second catalog call
             "image": audit.match.product.image if audit.match.product else "",
         },
+        "overrides": overrides_mod.normalise(audit.overrides),
         "source": {
             "parts": len(audit.unit.parts),
             "files": audit.unit.n_files,
@@ -181,9 +189,12 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
         status=status,
         confidence=audit.confidence,
         asin=audit.match.asin,
-        title=(audit.match.product.title if audit.match.product else audit.unit.title_guess),
-        author=(audit.match.product.authors[0] if audit.match.product and audit.match.product.authors
-                else audit.unit.author_guess),
+        title=(custom.get("title")
+               or (audit.match.product.title if audit.match.product else audit.unit.title_guess)),
+        author=(custom["authors"][0] if custom.get("authors")
+                else (audit.match.product.authors[0]
+                      if audit.match.product and audit.match.product.authors
+                      else audit.unit.author_guess)),
         hours=audit.hours,
         files=audit.unit.n_files,
         output=output,
@@ -204,6 +215,9 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False) -
     """
     started = time.time()
     audit = audit_unit(unit, state.get_asin_override(unit.rel_path))
+    audit.overrides = state.get_overrides(unit.rel_path)
+    if audit.overrides:
+        audit.notes.append("operator metadata overrides applied")
     log(f"  {audit.confidence:6} {audit.hours:>6.2f}h {unit.n_files:>3}f  "
         f"{audit.match.product.title if audit.match.product else '-'}")
 
