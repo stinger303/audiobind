@@ -1030,6 +1030,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(state: State) -> ThreadingHTTPServer:
     Handler.state = state
+    # web_port == 0 asks the kernel for a free port, so tests never contend
+    # with a leftover listener; the bound port is written back to CONFIG.
     server = ThreadingHTTPServer(("0.0.0.0", CONFIG.web_port), Handler)
+    if CONFIG.web_port == 0:
+        CONFIG.web_port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True, name="web").start()
     return server

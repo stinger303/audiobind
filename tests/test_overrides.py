@@ -207,13 +207,13 @@ class TestEditorUI(unittest.TestCase):
         self.assertIn('<span class="ab-custom">custom</span>', page)      # badge on the row
 
     def test_endpoint_saves_and_clears_overrides(self):
-        CONFIG.web_port = 8096
+        CONFIG.web_port = 0                   # kernel picks a free port: no contention
         web.Handler.state = self.state
         server = web.serve(self.state)
         try:
             def post(body):
                 request = urllib.request.Request(
-                    "http://127.0.0.1:8096/api/unit", method="POST",
+                    f"http://127.0.0.1:{CONFIG.web_port}/api/unit", method="POST",
                     data=json.dumps(body).encode(),
                     headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(request, timeout=10) as response:

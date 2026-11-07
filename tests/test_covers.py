@@ -128,19 +128,20 @@ class TestCoverCache(CoverBase):
 class TestCoverEndpointAndMarkup(CoverBase):
     def test_endpoint_serves_bytes_then_404s_for_the_unknown(self):
         self.fake_download()
-        CONFIG.web_port = 8098
+        CONFIG.web_port = 0                   # kernel picks a free port: no contention
         web.Handler.state = self.state
         self.state.save(UnitState(path="A/B", status="ready", asin="B005EHN61O", title="B"))
         server = web.serve(self.state)
+        url = f"http://127.0.0.1:{CONFIG.web_port}/cover"
         try:
-            with urllib.request.urlopen("http://127.0.0.1:8098/cover?asin=B005EHN61O",
+            with urllib.request.urlopen(f"{url}?asin=B005EHN61O",
                                         timeout=10) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers["Content-Type"], "image/jpeg")
                 self.assertEqual(response.read(), JPEG)
             self.fake_download(ok=False)
             with self.assertRaises(urllib.error.HTTPError) as caught:
-                with urllib.request.urlopen("http://127.0.0.1:8098/cover?asin=B00NOTHING1",
+                with urllib.request.urlopen(f"{url}?asin=B00NOTHING1",
                                             timeout=10) as response:
                     response.read()
             caught.exception.close()
