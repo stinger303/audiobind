@@ -33,6 +33,8 @@ class Product:
     year: str = ""
     publisher: str = ""
     summary: str = ""
+    #: catalog cover art, kept with the match so the UI never has to search again
+    image: str = ""
 
     @staticmethod
     def from_audible(raw: dict) -> "Product":
@@ -51,7 +53,21 @@ class Product:
             year=(raw.get("release_date") or "")[:4],
             publisher=raw.get("publisher_name", ""),
             summary=summary,
+            image=product_image(raw),
         )
+
+
+def product_image(raw: dict) -> str:
+    """The best product_images URL an Audible search returned (we ask for 500 and 1000)."""
+    images = raw.get("product_images") or {}
+    for size in ("1000", "500"):
+        url = images.get(str(size))
+        if url:
+            return str(url)
+    for value in images.values():                # whatever size the API did send
+        if value:
+            return str(value)
+    return ""
 
 
 def re_strip(html: str) -> str:

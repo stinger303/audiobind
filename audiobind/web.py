@@ -7,11 +7,13 @@ import threading
 import time
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, quote, unquote
 
 from . import __version__
 from .advice import explain
 from .config import CONFIG
 from .control import CONTROL
+from .covers import resolve as resolve_cover
 from .pipeline import process_unit
 from .state import State
 from .units import discover_units
@@ -65,9 +67,9 @@ STYLES = """
  .ok { color:#5fd38d; } .warn { color:#e6b450; } .err { color:#f2686b; } .dim { color:#8b93a7; }
  tr.urow { cursor:pointer; }
  tr.urow:hover td { background:#141821; }
- tr.urow td:first-child::before { content:"+"; display:inline-block; width:13px; margin-right:6px;
-                                  color:#7c86a0; font-weight:700; }
- tr.urow.open td:first-child::before { content:"-"; color:#12a89b; }
+ tr.urow td.ab-book::before { content:"+"; display:inline-block; width:13px; margin-right:6px;
+                              color:#7c86a0; font-weight:700; }
+ tr.urow.open td.ab-book::before { content:"-"; color:#12a89b; }
  tr.drow td { background:#11151d; padding:0; border-bottom:1px solid #232833; }
  .dd { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:22px; padding:16px 22px 18px; }
  .explain { grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:22px;
@@ -110,6 +112,19 @@ STYLES = """
  .ab-sort .ab-arrow { visibility:hidden; }
  .ab-sort.ab-on .ab-arrow { visibility:visible; }
  .ab-empty td { color:#8b93a7; padding:14px 10px; }
+
+ /* ---- 0.10.0 cover art ---- */
+ .ab-covcell { padding:5px 6px 5px 10px; }
+ .ab-covwrap { position:relative; width:48px; height:48px; border-radius:5px; background:#161a22;
+               border:1px solid #232833; overflow:hidden; }
+ .ab-covwrap::after { content:"\\266B"; position:absolute; inset:0; display:flex;
+                      align-items:center; justify-content:center; color:#394152; font-size:17px; }
+ .ab-thumb { position:relative; z-index:1; display:block; width:100%; height:100%;
+             object-fit:cover; background:#161a22; }
+ .ab-thumb.ab-gone { display:none; }
+ .ab-covbig { width:150px; height:150px; border-radius:8px; }
+ .ab-covbig::after { font-size:40px; }
+ .ab-covpanel { display:flex; align-items:flex-start; }
 """
 
 SCRIPT = """
@@ -150,6 +165,10 @@ function unitAction(btn, action) {
     .then(r => r.json())
     .then(() => setTimeout(() => location.reload(), 400))
     .catch(() => { btn.disabled = false; });
+}
+function abCoverFail(img) {
+  // no cover on disk and none to fetch: fall back to the neutral placeholder behind it
+  img.classList.add('ab-gone');
 }
 const OPEN_KEY = 'audiobind_open';
 function openSet() {
@@ -428,6 +447,9 @@ COLUMNS = (
     ("runtime", "runtime", "96px", "dim"),
     ("scan", "last scan", "118px", "dim"),
 )
+#: the cover column is not sortable, so it sits outside COLUMNS
+COVER_WIDTH = "70px"
+TOTAL_COLUMNS = len(COLUMNS) + 1
 SORT_COLUMNS = tuple(key for key, *_ in COLUMNS)
 #: numeric columns sort by value, the rest by text
 NUMERIC_COLUMNS = {"status", "tier", "runtime", "scan"}
@@ -481,6 +503,26 @@ def sort_units(units: list, column: str, direction: str) -> list:
 
 def unit_title_key(unit) -> str:
     return (unit.title or unit.path or "").lower()
+
+
+def cover_src(unit) -> str:
+    """The /cover query for a unit, or "" when there is nothing to show."""
+    if unit.output:
+        return "/cover?path=" + quote(unit.path, safe="")
+    if unit.asin:
+        return "/cover?asin=" + quote(unit.asin, safe="")
+    return ""
+
+
+def cover_html(unit, big: bool = False) -> str:
+    """A fixed-size cover box: the placeholder glyph shows through when the image fails."""
+    classes = "ab-covwrap ab-covbig" if big else "ab-covwrap"
+    src = cover_src(unit)
+    if not src:
+        return f'<div class="{classes}"></div>'
+    alt = _attr(f"cover of {unit.title or unit.path}")
+    return (f'<div class="{classes}"><img class="ab-thumb" src="{src}" alt="{alt}" '
+            f'loading="lazy" onerror="abCoverFail(this)"></div>')
 
 
 def read_sort(state: State) -> tuple[str, str]:
@@ -588,9 +630,10 @@ def render(state: State, status: str = "", query: str = "") -> str:
             "</div>"
         )
         return (f'<tr class="drow" data-path="{_attr(unit.path)}" hidden>'
-                f'<td colspan="{len(COLUMNS)}">'
+                f'<td colspan="{TOTAL_COLUMNS}">'
                 f'<div class="dd" data-path="{_attr(unit.path)}">'
                 + explain_html
+                + f'<div class="ab-covpanel">{cover_html(unit, big=True)}</div>'
                 + block("Before", before)
                 + block("After", after)
                 + block("Decision", decision)
@@ -604,6 +647,7 @@ def render(state: State, status: str = "", query: str = "") -> str:
         )
         return (
             f'<tr class="urow" onclick="toggleRow(this)" data-search="{_attr(haystack)}" {data}>'
+            f'<td class="ab-covcell">{cover_html(unit)}</td>'
             f'<td class="ab-book">{_html(unit.title or unit.path)}</td>'
             f'<td class="{css(unit.status)}">{unit.status}</td>'
             f'<td class="dim">{unit.confidence or "-"}</td>'
@@ -613,16 +657,17 @@ def render(state: State, status: str = "", query: str = "") -> str:
 
     rows = "".join(row(u) + detail_panel(u) for u in units)
     if not units:
-        rows = f'<tr class="ab-empty"><td colspan="{len(COLUMNS)}">no books match this filter</td></tr>'
+        rows = (f'<tr class="ab-empty"><td colspan="{TOTAL_COLUMNS}">'
+                f'no books match this filter</td></tr>')
 
-    headers = "".join(
+    headers = '<th class="ab-covhead"></th>' + "".join(
         f'<th class="ab-sort{" ab-on" if key == sort_column else ""}" data-column="{key}">'
         f'{label}<span class="ab-arrow">'
         f'{"&#9660;" if (key == sort_column and sort_dir == "desc") else "&#9650;"}'
         f'</span></th>'
         for key, label, _width, _klass in COLUMNS
     )
-    colgroup = "".join(
+    colgroup = ('<col style="width:%s">' % COVER_WIDTH) + "".join(
         ('<col style="width:%s">' % width) if width else "<col>"
         for _k, _l, width, _c in COLUMNS
     )
@@ -692,7 +737,7 @@ def render(state: State, status: str = "", query: str = "") -> str:
         rows=rows,
         headers=headers,
         colgroup=colgroup,
-        columns=len(COLUMNS),
+        columns=TOTAL_COLUMNS,
         query=_attr(query),
         shown_label=shown_label,
         sort_column_js=json.dumps(sort_column),
@@ -726,8 +771,6 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):                       # noqa: N802 - http.server API
-        from urllib.parse import parse_qs, unquote
-
         path, _, query = self.path.partition("?")
         params = {k: v[0] for k, v in parse_qs(query, keep_blank_values=True).items()}
         status = params.get("status", "")
@@ -737,6 +780,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, icon.read_bytes(), "image/svg+xml")
             else:
                 self._send(404, b"no icon", "text/plain")
+            return
+        if path.startswith("/cover"):
+            self._send_cover(params.get("asin", ""), unquote(params.get("path", "")))
             return
         if path.startswith("/api/units"):
             units = self.state.all(status or None)
@@ -757,6 +803,28 @@ class Handler(BaseHTTPRequestHandler):
             return
         body = render(self.state, status, unquote(params.get("q", "")))
         self._send(200, body.encode(), "text/html; charset=utf-8")
+
+    def _send_cover(self, asin: str, rel_path: str) -> None:
+        """Serve cached cover art. A miss is a 404 and the page shows its placeholder."""
+        try:
+            found = resolve_cover(self.state, asin=asin, rel_path=rel_path)
+        except Exception:                   # noqa: BLE001 - art is never worth a 500
+            found = None
+        if found is None:
+            self._send(404, b"no cover", "text/plain")
+            return
+        try:
+            body = found.read_bytes()
+        except OSError:
+            self._send(404, b"no cover", "text/plain")
+            return
+        kind = "image/png" if found.suffix.lower() == ".png" else "image/jpeg"
+        self.send_response(200)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _handle_unit(self) -> None:
         try:

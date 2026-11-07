@@ -63,6 +63,7 @@ def match_from_asin(asin: str) -> Match:
         language=book.get("language") or "english",
         year=(book.get("releaseDate") or "")[:4],
         publisher=book.get("publisherName") or "",
+        image=book.get("image") or "",
     )
     match = Match(product=product, score=1.0, margin=1.0, title_sim=1.0, author_sim=1.0,
                   author_known=True, asin_override=True)

@@ -157,6 +157,8 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
             "authors": audit.match.product.authors if audit.match.product else [],
             "hours": audit.match.product.hours if audit.match.product else 0,
             "confidence": audit.confidence,
+            # kept so the status page can show cover art without a second catalog call
+            "image": audit.match.product.image if audit.match.product else "",
         },
         "source": {
             "parts": len(audit.unit.parts),

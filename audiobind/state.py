@@ -121,6 +121,16 @@ class State:
                 "SELECT status, COUNT(*) n FROM units GROUP BY status").fetchall()
         return {r["status"]: r["n"] for r in rows}
 
+    def detail_for_asin(self, asin: str) -> str:
+        """The newest detail blob recorded for an ASIN (the cover proxy reads the image URL)."""
+        if not asin:
+            return ""
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT detail FROM units WHERE asin = ? AND detail != '' "
+                "ORDER BY updated_at DESC LIMIT 1", (asin,)).fetchone()
+        return (row["detail"] if row else "") or ""
+
     # ---------------------------------------------------------------- runs
     def start_run(self) -> int:
         with self._lock:
