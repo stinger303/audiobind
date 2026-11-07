@@ -95,6 +95,10 @@ STYLES = """
  .chip.on { background:#1e4fa0; border-color:#2b5ea8; color:#fff; }
  .chip b { opacity:.65; font-weight:600; margin-left:5px; }
 
+ .ab-prog .ptrack { margin-top:9px; }
+ .ab-progsub { margin-top:7px; font-size:12px; color:#8b93a7;
+               text-transform:none; letter-spacing:0; }
+
  /* ---- 0.10.0 search and sort (ab- prefix, no shared class names) ---- */
  .ab-tools { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; }
  .ab-search { font:inherit; font-size:13.5px; padding:8px 12px; width:340px; max-width:100%;
@@ -452,6 +456,11 @@ PAGE = """<!doctype html>
  <div class="card"><span>held</span><b class="warn">{held}</b></div>
  <div class="card"><span>failed</span><b class="err">{failed}</b></div>
  <div class="card"><span>last scan</span><b>{last_scan}</b></div>
+ <div class="card"><span>hours converted</span><b>{stat_hours}</b></div>
+ <div class="card"><span>written to output</span><b>{stat_gb}</b></div>
+ <div class="card ab-prog"><span>library progress</span><b>{stat_pct}%</b>
+   <div class="ptrack"><i style="width:{stat_pct_width}%"></i></div>
+   <span class="ab-progsub">{stat_conv} of {stat_total} books converted</span></div>
 </div>
 
 <h2 style="font-size:14px;color:#8b93a7;font-weight:500;text-transform:uppercase;letter-spacing:.6px">Books</h2>
@@ -608,6 +617,7 @@ def read_sort(state: State) -> tuple[str, str]:
 
 def render(state: State, status: str = "", query: str = "") -> str:
     counts = state.counts()
+    stats = library_stats(state)
     wanted = status if status in counts else ""
     units = state.all(wanted or None)
     total = sum(counts.values())
@@ -835,6 +845,12 @@ def render(state: State, status: str = "", query: str = "") -> str:
         held=counts.get("held", 0),
         failed=counts.get("failed", 0),
         last_scan=_fmt_age(state.heartbeat_age()),
+        stat_hours=f"{stats['hours']:g} h",
+        stat_gb=f"{stats['gb']:g} GB",
+        stat_pct=f"{stats['progress']:g}",
+        stat_pct_width=max(0.0, min(100.0, stats["progress"])),
+        stat_conv=stats["converted"],
+        stat_total=stats["total"],
         chips=chips_html,
         overflow=overflow,
         rows=rows,
@@ -848,10 +864,31 @@ def render(state: State, status: str = "", query: str = "") -> str:
     )
 
 
+def library_stats(state: State) -> dict:
+    """Library-wide numbers, computed from the state DB on each call.
+
+    out_mb is recorded at publish time, so nothing scans the output tree.
+    """
+    units = state.all(None)
+    converted = [u for u in units if u.status == "converted"]
+    hours = sum(u.hours or 0.0 for u in converted)
+    out_mb = sum(u.out_mb or 0.0 for u in converted)
+    total = len(units)
+    progress = round(100.0 * len(converted) / total, 1) if total else 0.0
+    return {
+        "hours": round(hours, 1),
+        "gb": round(out_mb / 1024.0, 2),
+        "converted": len(converted),
+        "total": total,
+        "progress": progress,
+    }
+
+
 def snapshot(state: State) -> dict:
     return {
         "version": __version__,
         "counts": state.counts(),
+        "stats": library_stats(state),
         "last_run": state.last_run() or {},
         "heartbeat_age_seconds": state.heartbeat_age(),
         "library_root": str(CONFIG.library_root),
