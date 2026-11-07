@@ -95,7 +95,10 @@ STYLES = """
  .chip.on { background:#1e4fa0; border-color:#2b5ea8; color:#fff; }
  .chip b { opacity:.65; font-weight:600; margin-left:5px; }
 
- .ab-prog .ptrack { margin-top:9px; }
+ .ab-prog .ab-statbar { margin-top:9px; }
+ .ab-statbar { height:8px; border-radius:99px; background:#1c2230; overflow:hidden; }
+ .ab-statfill { display:block; height:100%; border-radius:99px;
+                background:linear-gradient(90deg,#2b5ea8,#12a89b); }
  .ab-progsub { margin-top:7px; font-size:12px; color:#8b93a7;
                text-transform:none; letter-spacing:0; }
 
@@ -459,7 +462,7 @@ PAGE = """<!doctype html>
  <div class="card"><span>hours converted</span><b>{stat_hours}</b></div>
  <div class="card"><span>written to output</span><b>{stat_gb}</b></div>
  <div class="card ab-prog"><span>library progress</span><b>{stat_pct}%</b>
-   <div class="ptrack"><i style="width:{stat_pct_width}%"></i></div>
+   <div class="ab-statbar"><i class="ab-statfill" style="width:{stat_pct_width}%"></i></div>
    <span class="ab-progsub">{stat_conv} of {stat_total} books converted</span></div>
 </div>
 
@@ -867,7 +870,9 @@ def render(state: State, status: str = "", query: str = "") -> str:
 def library_stats(state: State) -> dict:
     """Library-wide numbers, computed from the state DB on each call.
 
-    out_mb is recorded at publish time, so nothing scans the output tree.
+    out_mb is recorded at publish time as bytes/1e6, so MB here is decimal and a GB is 1000 MB,
+    not 1024 - mixing the two is what made this read 2.50 GB for 2.56 GB of audio. Nothing
+    scans the output tree.
     """
     units = state.all(None)
     converted = [u for u in units if u.status == "converted"]
@@ -877,7 +882,7 @@ def library_stats(state: State) -> dict:
     progress = round(100.0 * len(converted) / total, 1) if total else 0.0
     return {
         "hours": round(hours, 1),
-        "gb": round(out_mb / 1024.0, 2),
+        "gb": round(out_mb / 1000.0, 2),
         "converted": len(converted),
         "total": total,
         "progress": progress,

@@ -26,9 +26,14 @@ class TestLibraryStats(unittest.TestCase):
         self.save("A/Four", "failed")
         stats = web.library_stats(self.state)
         self.assertEqual(stats["hours"], 8.0)
-        self.assertEqual(stats["gb"], 2.5)                        # 2560 MB / 1024
+        self.assertEqual(stats["gb"], 2.56)                       # 2560 decimal MB
         self.assertEqual(stats["converted"], 2)
         self.assertEqual(stats["total"], 4)
+
+    def test_gb_follows_the_decimal_mb_the_pipeline_records(self):
+        """out_mb is bytes/1e6, so 1000 MB is exactly 1 GB - never 1024."""
+        self.save("A/One", "converted", out_mb=1000.0)
+        self.assertEqual(web.library_stats(self.state)["gb"], 1.0)
 
     def test_progress_is_converted_over_total(self):
         self.save("A/One", "converted")
@@ -51,13 +56,13 @@ class TestLibraryStats(unittest.TestCase):
         self.assertEqual(stats["progress"], 100.0)
 
     def test_snapshot_carries_the_stats_block(self):
-        self.save("A/One", "converted", hours=3.0, out_mb=1024.0)
+        self.save("A/One", "converted", hours=3.0, out_mb=1000.0)
         stats = web.snapshot(self.state)["stats"]
         self.assertEqual(stats["hours"], 3.0)
         self.assertEqual(stats["gb"], 1.0)
 
     def test_render_shows_the_stat_cards(self):
-        self.save("A/One", "converted", hours=6.0, out_mb=1536.0)
+        self.save("A/One", "converted", hours=6.0, out_mb=1500.0)
         self.save("A/Two", "ready")
         page = web.render(self.state)
         self.assertIn("hours converted", page)
@@ -67,6 +72,16 @@ class TestLibraryStats(unittest.TestCase):
         self.assertIn("50%", page)
         self.assertIn('style="width:50.0%"', page)
         self.assertIn("1 of 2 books converted", page)
+
+    def test_the_stats_bar_does_not_reuse_the_encode_bar_classes(self):
+        """A shared .bar class crushed the toolbar once; the stats bar owns its classes."""
+        self.save("A/One", "converted", hours=1.0, out_mb=100.0)
+        page = web.render(self.state)
+        self.assertIn('class="ab-statbar"', page)
+        self.assertIn('class="ab-statfill"', page)
+        # .ptrack belongs to the live encode progress bar and must not appear in a stat card
+        card = page.split('class="card ab-prog"')[1].split("</div>")[0]
+        self.assertNotIn("ptrack", card)
 
 
 if __name__ == "__main__":

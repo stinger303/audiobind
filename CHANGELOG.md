@@ -6,31 +6,75 @@ All notable changes to this project are documented here. This project follows
 ## [0.10.0] - 2026-11-07
 
 ### Added
-- The dashboard now carries a stats block alongside the status cards: total hours of audio
-  converted, total GB written to the output tree, and a library progress bar (converted vs
-  total discovered units) with the same card styling. The numbers are computed from the state
-  database on each render - output sizes are already recorded at publish time, so nothing scans
-  the output tree - and the same block is served on `/api/state` as `stats`.
-- The dashboard table gained a search box (title, author or path) and sortable columns; the
-  same match and sort rules run server-side in `web.search_matches()`/`web.sort_key()`.
-- Cover art appears in the table and the detail panel, served by a caching `/cover` proxy so
-  the upstream catalog is hit once per ASIN rather than once per page view.
-- The detail panel is now a metadata editor: title, author, series and ASIN can be overridden
-  per book, and the overrides feed matching on the next scan.
-- A prefetch lookahead: while the current book encodes, one background thread does the next
-  book's catalog lookups and leaves the results in the catalog's URL cache, so the wait
-  disappears from the main loop. The thread is read-only against the state and any failure is
-  logged and retried on the normal path.
+- **Search and column sort in the books table.** A live search box filters on title, author and
+  path (case-insensitive; every whitespace-separated term must match), and the column headers
+  sort on title, status, confidence tier, runtime and last scan, with the direction toggling on
+  re-click and an arrow marking the active column. Search composes with the existing status
+  chips. The rules are not JS-only: `web.search_matches()` and `web.sort_value()`/
+  `web.sort_units()` run the same logic server-side, and the chosen column and direction are
+  stored in the state database, so a restart restores them.
+- **Cover art in the table (48px) and the detail panel (150px).** Covers come from the
+  `cover.jpg` already published next to a finished m4b, or from the catalog image URL now
+  persisted with the match data (`Product.image`); books matched before 0.10.0 fall back to the
+  Amazon URL derived from their ASIN. Everything is served by `/cover`, which fetches an image
+  at most once into `STATE_DIR/cover-cache` and serves it from disk forever after, so the page
+  still renders with the network down. A failed fetch leaves a six-hour `.miss` marker so a dead
+  cover is not re-requested on every poll, and a miss falls back to a neutral placeholder. Only
+  an ASIN-shaped string can become a cache filename, and a published cover must resolve inside
+  `OUTPUT_ROOT`.
+- **A metadata editor in the detail panel.** Title, author(s), narrator(s), series and series
+  index can be corrected per book and are stored as overrides in the units table, beside the
+  ASIN override they follow; `save()` leaves the column alone, so a correction survives later
+  rescans. The overrides are written into the catalog payload before anything reads it, so the
+  m4b tags, `metadata.json` and the author/title filing layout all agree. Corrected fields are
+  marked *custom* in the panel and the book carries a badge in the table. An empty box means "no
+  override" rather than "blank this field", so clearing a box hands the field back to the
+  catalog; the catalog value is shown as the box's placeholder. Saving is one request with
+  inline feedback - no page reload, and no library scan.
+- **A catalog lookahead during the encode.** While a book encodes, one background thread does
+  the next eligible book's catalog search and chapter fetch, so the main loop does not wait on
+  the network when it gets there. Successful catalog responses are memoised by URL (15 minute
+  TTL, bounded at 256 entries; failures are never cached), which is where the pipeline already
+  looks. Exactly one lookahead runs at a time, the thread only reads `State` through the shared
+  `RLock` and writes nothing, and any failure is logged and forgotten - the normal path simply
+  fetches again.
+- **Stats cards on the dashboard**: total hours of audio converted, total GB written to the
+  output tree, and a library progress bar (converted vs total discovered units) in the existing
+  card style. The numbers are computed from the state database on each render - output sizes are
+  recorded at publish time, so nothing scans the output tree - and the same block is served on
+  `/api/state` as `stats`.
 
 ### Changed
-- The test suite grew from 48 tests in 0.9.3 to 183, covering the new UI, the stats
-  computation, the cover proxy and the prefetcher.
+- The page no longer reloads while a detail panel is open or while the search box is focused or
+  non-empty, so a refresh cannot interrupt reading or typing; open rows persist in
+  `sessionStorage`. Table columns have fixed widths so no header truncates.
+- The stylesheet and the script moved out of the `PAGE` format template into their own
+  constants. CSS and JS braces no longer have to be doubled, which is what produced the template
+  bugs in the 0.9.x line. Every class added in 0.10.0 is `ab-` prefixed and a test enforces it.
+- The test suite covers the new work: the search filter, the sort comparator, override
+  application in tag and `metadata.json` writing, cover caching with the network down, prefetch
+  thread safety under concurrent `State` access, and the stats computation. `docs/verify-page.py`
+  additionally boots the real server and checks the served HTML and inline JS.
 
 ### Fixed
-- The two tests that serve real HTTP endpoints bound fixed ports (8096/8098) and could fail
-  with `OSError: [Errno 98] Address already in use` when a listener from a previous run or
-  test lingered. They now ask the kernel for a free ephemeral port (`web_port = 0`, the bound
-  port is written back to `CONFIG`), so the port is never contended.
+- **The test suite collected nothing outside the container.** `tests/` was not a package, so
+  `python3 -m unittest discover` silently ran zero tests on Python 3.12+, where namespace-package
+  discovery was removed. With `tests/__init__.py` in place the documented command collects the
+  whole suite - 185 tests at this release.
+- **Total GB written was understated by about 2.4%.** The stats block divided megabytes by 1024,
+  but `out_mb` is recorded as bytes/1e6, so a GB here is 1000 MB; 2560 MB read as 2.50 GB
+  instead of 2.56 GB.
+- The library progress bar reused the live encode bar's `.ptrack` class. It now has its own
+  `.ab-statbar`/`.ab-statfill`, so restyling the encode bar cannot deform a stat card - the same
+  class collision that once crushed the toolbar.
+- A second catalog lookahead could start while the first was still being spawned: the guard read
+  `Thread.is_alive()`, which is still false between construction and `start()`. The busy flag is
+  now set inside the lock before the thread starts.
+- `State.last_run()` read the database without taking the shared lock. Harmless while only the
+  daemon and the web handlers existed; a background prefetch thread makes it a real race.
+- The two tests that serve real HTTP endpoints bound fixed ports (8096/8098) and could fail with
+  `OSError: [Errno 98] Address already in use` when a listener from a previous run lingered. They
+  now ask the kernel for a free ephemeral port.
 
 ## [0.9.3] - 2026-11-01
 
