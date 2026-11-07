@@ -3,6 +3,35 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-11-07
+
+### Added
+- The dashboard now carries a stats block alongside the status cards: total hours of audio
+  converted, total GB written to the output tree, and a library progress bar (converted vs
+  total discovered units) with the same card styling. The numbers are computed from the state
+  database on each render - output sizes are already recorded at publish time, so nothing scans
+  the output tree - and the same block is served on `/api/state` as `stats`.
+- The dashboard table gained a search box (title, author or path) and sortable columns; the
+  same match and sort rules run server-side in `web.search_matches()`/`web.sort_key()`.
+- Cover art appears in the table and the detail panel, served by a caching `/cover` proxy so
+  the upstream catalog is hit once per ASIN rather than once per page view.
+- The detail panel is now a metadata editor: title, author, series and ASIN can be overridden
+  per book, and the overrides feed matching on the next scan.
+- A prefetch lookahead: while the current book encodes, one background thread does the next
+  book's catalog lookups and leaves the results in the catalog's URL cache, so the wait
+  disappears from the main loop. The thread is read-only against the state and any failure is
+  logged and retried on the normal path.
+
+### Changed
+- The test suite grew from 48 tests in 0.9.3 to 183, covering the new UI, the stats
+  computation, the cover proxy and the prefetcher.
+
+### Fixed
+- The two tests that serve real HTTP endpoints bound fixed ports (8096/8098) and could fail
+  with `OSError: [Errno 98] Address already in use` when a listener from a previous run or
+  test lingered. They now ask the kernel for a free ephemeral port (`web_port = 0`, the bound
+  port is written back to `CONFIG`), so the port is never contended.
+
 ## [0.9.3] - 2026-11-01
 
 ### Added
