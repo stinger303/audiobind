@@ -28,5 +28,31 @@ class TestAsinOverride(unittest.TestCase):
         self.assertEqual(self.state.get_asin_override("C/D"), "")
 
 
+class TestDelete(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.state = State(pathlib.Path(self.dir.name))
+
+    def tearDown(self):
+        self.state.close()
+        self.dir.cleanup()
+
+    def test_delete_removes_the_row(self):
+        self.state.save(UnitState(path="A/B", status="converted", title="B"))
+        self.assertIsNotNone(self.state.get("A/B"))
+        self.assertTrue(self.state.delete("A/B"))
+        self.assertIsNone(self.state.get("A/B"))
+
+    def test_delete_nonexistent_returns_false(self):
+        self.assertFalse(self.state.delete("nowhere"))
+
+    def test_delete_only_removes_the_target_row(self):
+        self.state.save(UnitState(path="A/1", status="converted"))
+        self.state.save(UnitState(path="A/2", status="held"))
+        self.assertTrue(self.state.delete("A/1"))
+        self.assertIsNone(self.state.get("A/1"))
+        self.assertIsNotNone(self.state.get("A/2"))
+
+
 if __name__ == "__main__":
     unittest.main()

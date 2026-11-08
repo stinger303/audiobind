@@ -200,6 +200,13 @@ class State:
             return {}
         return data if isinstance(data, dict) else {}
 
+    def delete(self, path: str) -> bool:
+        """Remove a unit row from the database. Returns True if a row was deleted."""
+        with self._lock:
+            cursor = self.connection.execute("DELETE FROM units WHERE path = ?", (path,))
+            self.connection.commit()
+            return cursor.rowcount > 0
+
     def heartbeat(self) -> None:
         self.set_meta("heartbeat", time.time())
 

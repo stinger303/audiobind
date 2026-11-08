@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
@@ -339,6 +341,17 @@ tr.drow[hidden] td{padding:0}
   padding:1px 7px;margin-left:8px;vertical-align:1px;}
 .ab-custom[hidden]{display:none;}
 .ab-hint{color:var(--ab-text3);font-size:11.5px;margin:2px 0 10px;}
+.ab-delconfirm{display:flex;align-items:center;gap:10px;padding:10px 12px;
+  margin-top:14px;background:#1a1f28;border:1px solid rgba(242,78,107,.3);border-radius:8px;
+  font-size:12px;}
+.ab-delconfirm .ab-deltxt{color:var(--ab-text2);margin-right:auto}
+.ab-delconfirm .ab-dellab{color:var(--ab-text3);white-space:nowrap}
+.ab-delconfirm .ab-delin{font:inherit;font-size:12px;height:28px;width:130px;padding:0 8px;
+  background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:6px;
+  color:var(--ab-text);font-family:var(--ab-mono);}
+.ab-delconfirm .ab-delin:focus{outline:none;border-color:var(--ab-red);}
+.ab-delconfirm .ab-delerr{color:var(--ab-red);font-size:12px;display:none;}
+.ab-delconfirm .ab-delerr.on{display:inline;}
 .ab-progsub{font-size:12px;color:var(--ab-text3);text-transform:none;letter-spacing:0;}
 .ab-statbar{height:8px;border-radius:99px;background:#1c2230;overflow:hidden;}
 .ab-statfill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#2b5ea8,#12a89b);}
@@ -425,6 +438,58 @@ function rowAction(btn, action) {
     .then(r => r.json())
     .then(() => setTimeout(() => location.reload(), 700))
     .catch(() => { btn.disabled = false; btn.textContent = label; });
+}
+function unitDelete(btn) {
+  const panel = btn.closest('.dd');
+  const strip = panel.querySelector('.ab-delconfirm');
+  strip.hidden = false;
+  const input = strip.querySelector('.ab-delin');
+  input.value = '';
+  const err = strip.querySelector('.ab-delerr');
+  err.textContent = '';
+  err.classList.remove('on');
+  input.focus();
+}
+function unitDeleteCancel(btn) {
+  const strip = btn.closest('.ab-delconfirm');
+  strip.hidden = true;
+  strip.querySelector('.ab-delin').value = '';
+  strip.querySelector('.ab-delerr').classList.remove('on');
+}
+function unitDeleteConfirm(btn) {
+  const strip = btn.closest('.ab-delconfirm');
+  const panel = strip.closest('.dd');
+  const path = panel.dataset.path;
+  const input = strip.querySelector('.ab-delin');
+  const err = strip.querySelector('.ab-delerr');
+  if (input.value.trim() !== 'DELETE') {
+    err.textContent = 'type DELETE to confirm';
+    err.classList.add('on');
+    input.focus();
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'moving\u2026';
+  abToast('moving to trash\u2026');
+  fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
+                     body: JSON.stringify({action:'delete', path: path, confirm: true})})
+    .then(r => r.json())
+    .then(result => {
+      if (!result.ok) {
+        err.textContent = result.error || 'failed';
+        err.classList.add('on');
+        btn.disabled = false;
+        btn.textContent = 'Move to trash';
+        return;
+      }
+      setTimeout(() => location.reload(), 500);
+    })
+    .catch(e => {
+      err.textContent = 'could not reach the daemon';
+      err.classList.add('on');
+      btn.disabled = false;
+      btn.textContent = 'Move to trash';
+    });
 }
 function abToast(text) {
   const el = document.getElementById('ab-toast');
@@ -1085,6 +1150,15 @@ def render(state, status: str = "", query: str = "") -> str:
             + btn + force
             + '<input data-asin placeholder="ASIN, e.g. B005EHN61O" style="width:190px">'
             + asin_btn
+            + '<button class="btn danger" onclick="unitDelete(this)" style="margin-left:auto">Delete</button>'
+            + "</div>"
+            + '<div class="ab-delconfirm" hidden>'
+            + '<span class="ab-deltxt">Move this book\'s source folder and published files to the trash?</span>'
+            + '<span class="ab-dellab">Type DELETE to confirm.</span>'
+            + '<input class="ab-delin" placeholder="DELETE" spellcheck="false" autocomplete="off">'
+            + '<button class="btn danger" onclick="unitDeleteConfirm(this)">Move to trash</button>'
+            + '<button class="btn" onclick="unitDeleteCancel(this)">Cancel</button>'
+            + '<span class="ab-delerr"></span>'
             + "</div>"
         )
         return (
@@ -1402,6 +1476,92 @@ class Handler(BaseHTTPRequestHandler):
                 "custom": sorted(overrides_mod.custom_fields(clean)),
                 "overrides": overrides_mod.describe(clean),
             }).encode(), "application/json")
+            return
+
+        if action == "delete":
+            if not payload.get("confirm"):
+                self._send(400, b'{"error":"confirmation required"}', "application/json")
+                return
+
+            # Refuse while encoding
+            if CONTROL.running and CONTROL.current_unit == rel:
+                self._send(409, b'{"error":"cannot delete a book that is currently encoding"}',
+                           "application/json")
+                return
+
+            # Validate unit exists in state
+            unit_state = self.state.get(rel)
+            if unit_state is None:
+                self._send(404, b'{"error":"no such unit"}', "application/json")
+                return
+
+            # Path traversal guard: resolve source inside LIBRARY_ROOT
+            lib_root = Path(CONFIG.library_root).resolve()
+            src_path = (lib_root / rel).resolve()
+            try:
+                src_path.relative_to(lib_root)
+            except ValueError:
+                self._send(400, b'{"error":"source path escapes library root"}',
+                           "application/json")
+                return
+
+            # Path traversal guard: resolve output inside OUTPUT_ROOT
+            out_root = Path(CONFIG.output_root).resolve()
+            out_trash = None
+            if unit_state.output:
+                out_path = Path(unit_state.output).resolve()
+                try:
+                    out_path.relative_to(out_root)
+                except ValueError:
+                    self._send(400, b'{"error":"output path escapes output root"}',
+                               "application/json")
+                    return
+                out_parent = out_path.parent
+                if out_parent != out_root:
+                    out_trash = out_parent
+
+            # Move source folder to trash
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            src_trash_dir = lib_root / ".audiobind-trash"
+            src_trash_dir.mkdir(parents=True, exist_ok=True)
+            src_trash = src_trash_dir / f"{ts}_{src_path.name}"
+
+            log = logging.getLogger("audiobind")
+            try:
+                if src_path.exists():
+                    shutil.move(str(src_path), str(src_trash))
+                    log.info("deleted %s; source -> %s", rel, src_trash)
+                else:
+                    log.info("deleted %s; source folder not found at %s", rel, src_path)
+            except OSError as exc:
+                log.error("could not move source %s to trash: %s", src_path, exc)
+                self._send(500,
+                           ('{"error":"source move failed: %s"}' % exc).encode(),
+                           "application/json")
+                return
+
+            # Move output to trash
+            out_trash_path = "none"
+            if out_trash is not None and out_trash.exists():
+                out_trash_dir = out_root / ".audiobind-trash"
+                out_trash_dir.mkdir(parents=True, exist_ok=True)
+                out_dest = out_trash_dir / f"{ts}_{out_trash.name}"
+                try:
+                    shutil.move(str(out_trash), str(out_dest))
+                    log.info("deleted %s; output -> %s", rel, out_dest)
+                    out_trash_path = str(out_dest)
+                except OSError as exc:
+                    log.warning("could not move output %s to trash: %s", out_trash, exc)
+                    out_trash_path = f"move failed: {exc}"
+            else:
+                log.info("deleted %s; output -> none", rel)
+
+            # Remove from state
+            self.state.delete(rel)
+            self._send(200, json.dumps({"ok": True, "deleted": rel,
+                                         "source_trash": str(src_trash),
+                                         "output_trash": out_trash_path}).encode(),
+                       "application/json")
             return
 
         unit = next((u for u in discover_units(CONFIG.library_root, CONFIG.ignore_globs)
