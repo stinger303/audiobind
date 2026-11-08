@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import catalog
-from .config import CONFIG
+from .config import CONFIG, effective_val
 from .control import CONTROL, Stopped
 from .probe import has_embedded_cover, probe, probe_chapters, probe_streams
 from .units import BookUnit
@@ -48,7 +48,8 @@ def choose_bitrate(source_kbps: float, configured: str) -> int:
 
 
 def _nice_prefix() -> list[str]:
-    return ["nice", "-n", str(CONFIG.nice)] if CONFIG.nice else []
+    n = effective_val("nice")
+    return ["nice", "-n", str(n)] if n else []
 
 
 def build_chapters(audnex_chapters: list[dict], duration: float,
@@ -180,8 +181,9 @@ def encode(unit: BookUnit, match, book: dict, work_dir: Path, out_path: Path,
     else:
         source_bytes = sum(os.path.getsize(f) for f in unit.files if os.path.exists(f))
         source_kbps = (source_bytes * 8 / total_duration / 1000) if total_duration else 0
-        bitrate = choose_bitrate(source_kbps, CONFIG.audio_bitrate)
-        log(f"  audio: aac {bitrate}k (source {source_kbps:.0f}k, floor {CONFIG.audio_bitrate})")
+        eff_bitrate = effective_val("audio_bitrate")
+        bitrate = choose_bitrate(source_kbps, eff_bitrate)
+        log(f"  audio: aac {bitrate}k (source {source_kbps:.0f}k, floor {eff_bitrate})")
         command += ["-c:a", "aac", "-b:a", f"{bitrate}k",
                     "-ac", str(CONFIG.audio_channels), "-ar", str(CONFIG.sample_rate)]
     command += [

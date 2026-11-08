@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, daemon
-from .config import CONFIG
+from .config import CONFIG, set_effective, effective_val
 from .pipeline import audit_unit, process_unit
 from .state import State
 from .units import discover_units
@@ -96,8 +96,9 @@ def cmd_daemon(args) -> int:
 
 def cmd_health(args) -> int:
     state = State(CONFIG.state_dir)
+    set_effective(state)
     age = state.heartbeat_age()
-    limit = CONFIG.scan_interval_min * 60 * 2.5 + 300
+    limit = effective_val("scan_interval_min") * 60 * 2.5 + 300
     if age == float("inf"):
         print(f"stale (no scan recorded yet, limit {limit:.0f}s)")
         return 1

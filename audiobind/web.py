@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, quote, unquote
 
 from . import __version__
 from .advice import explain
-from .config import CONFIG
+from .config import CONFIG, set_effective, effective_val, is_custom, setting_effective, setting_env, SETTING_KEYS, effective_auto_tiers
 from .control import CONTROL
 from .covers import resolve as resolve_cover
 from . import overrides as overrides_mod
@@ -352,6 +352,27 @@ tr.drow[hidden] td{padding:0}
 .ab-statbar{height:8px;border-radius:99px;background:#1c2230;overflow:hidden;}
 .ab-statfill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#2b5ea8,#12a89b);}
 .ab-empty td{color:var(--ab-text3);padding:14px 10px;}
+.ab-hintbox{background:var(--ab-surface);border:1px solid var(--ab-border);
+  border-radius:8px;padding:12px 16px;margin-bottom:20px;
+  font-size:12.5px;color:var(--ab-text3);line-height:1.5;}
+.ab-hintbox b{color:var(--ab-text2);font-weight:500;}
+.ab-setting{display:flex;flex-direction:column;gap:6px;padding:12px 0;
+  border-bottom:1px solid var(--ab-border-subtle);}
+.ab-setting:last-of-type{border-bottom:none}
+.ab-setting-label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ab-text)}
+.ab-setting-hint{font-size:11.5px;color:var(--ab-text3);line-height:1.4;margin-bottom:2px}
+.ab-range-wrap{display:flex;align-items:center;gap:10px}
+.ab-range-val{font-family:var(--ab-mono);font-size:12px;color:var(--ab-text2);min-width:24px;text-align:right}
+input[type=range]{-webkit-appearance:none;appearance:none;height:6px;
+  background:rgba(255,255,255,.08);border-radius:3px;outline:none;flex:1;max-width:300px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;
+  border-radius:50%;background:var(--ab-accent-bright);cursor:pointer;border:none}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;
+  border-radius:50%;background:var(--ab-accent-bright);cursor:pointer;border:none}
+select.ab-in{font:inherit;font-size:12.5px;padding:7px 10px;border-radius:8px;
+  border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);max-width:200px}
+select.ab-in:focus{outline:none;border-color:#2b5ea8}
+input[type=number].ab-in{max-width:100px}
 .ab-overflow{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text4);padding:8px 24px;flex:none;}
 #ab-toast{position:fixed;right:18px;bottom:18px;z-index:50;max-width:420px;
   background:var(--ab-surface2);border:1px solid rgba(242,163,60,.4);border-radius:8px;
@@ -744,6 +765,9 @@ PAGE = """<!doctype html>
     <a class="ab-rail-item ab-active" href="/" aria-current="page">
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
+    <a class="ab-rail-item" href="/settings">
+      <span class="ab-glyph">&#9881;</span> Settings
+      </a>
   </nav>
   <div class="ab-rail-label">Attention</div>
   <nav class="ab-rail-section" aria-label="Attention">
@@ -836,6 +860,158 @@ window.AB_SORT_DIR = {sort_dir_js};
 {script}
 </script>
 </body></html>"""
+
+SETTINGS_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audiobind &middot; Settings</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<meta name="theme-color" content="#5e6ad2">
+<style>{styles}</style></head><body>
+<aside class="ab-rail">
+  <div class="ab-rail-brand">Audiobind</div>
+  <div class="ab-rail-label">Workspace</div>
+  <nav class="ab-rail-section" aria-label="Main">
+    <a class="ab-rail-item{lib_active}" href="/">
+      <span class="ab-glyph">&#8962;</span> Library
+      <span class="ab-count">{rail_total}</span></a>
+    <a class="ab-rail-item{set_active}" href="/settings">
+      <span class="ab-glyph">&#9881;</span> Settings
+      </a>
+  </nav>
+  <div class="ab-rail-label">Attention</div>
+  <nav class="ab-rail-section" aria-label="Attention">
+    <a class="ab-rail-item ab-alert" href="/?status=review">
+      <span class="ab-glyph">&#9873;</span> Review
+      <span class="ab-count">{rail_review_count}</span></a>
+    <a class="ab-rail-item ab-alert" href="/?status=held">
+      <span class="ab-glyph">&#x23F8;</span> Held
+      <span class="ab-count">{rail_held_count}</span></a>
+    <a class="ab-rail-item ab-alert" href="/?status=failed">
+      <span class="ab-glyph">&times;</span> Failed
+      <span class="ab-count">{rail_failed_count}</span></a>
+  </nav>
+  <div class="ab-rail-spacer"></div>
+  <div class="ab-rail-foot">
+    <b>library</b> <span title="{library_attr}">{library}</span><br>
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>
+  </div>
+</aside>
+<main class="ab-main">
+  <header class="ab-topbar">
+    <h1>Settings</h1>
+    <span class="ab-version">v{version}</span>
+    <div class="ab-right"></div>
+  </header>
+  <section class="ab-settings" style="padding:24px;max-width:640px;">
+    <div class="ab-hintbox">
+      <b>Apply later.</b> Changes take effect on the next scan or conversion. Existing m4b files are never touched.</div>
+    {controls}
+    <div class="ab-editbar" style="margin-top:8px;">
+      <button class="ab-save" onclick="abSaveSettings()">Save settings</button>
+      <button class="btn" onclick="abResetSettings()">Reset to defaults</button>
+      <span class="ab-fb" id="ab-settings-fb"></span>
+    </div>
+  </section>
+</main>
+<div id="ab-toast" role="status" aria-live="polite"></div>
+<script>
+{settings_script}
+</script>
+</body></html>"""
+
+SETTINGS_SCRIPT = """
+function abToastSettings(text) {{
+  const el = document.getElementById('ab-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('on');
+  clearTimeout(abToastSettings.t);
+  abToastSettings.t = setTimeout(() => el.classList.remove('on'), 5000);
+}}
+
+function abRangeShow(el) {{
+  const val = el.parentElement.querySelector('.ab-range-val');
+  if (val) val.textContent = el.value;
+}}
+
+function abSaveSettings() {{
+  const fb = document.getElementById('ab-settings-fb');
+  const settings = {{}};
+  document.querySelectorAll('[data-setting]').forEach(el => {{
+    const key = el.dataset.setting;
+    let val;
+    if (el.tagName === 'SELECT') val = el.value;
+    else if (el.type === 'range') val = parseInt(el.value, 10);
+    else if (el.type === 'number') val = parseInt(el.value, 10);
+    else val = el.value;
+    settings[key] = val;
+  }});
+  fb.className = 'ab-fb';
+  fb.textContent = 'saving...';
+  fetch('/api/settings', {{method:'POST', headers:{{'Content-Type':'application/json'}},
+                         body: JSON.stringify({{settings: settings}})}})
+    .then(r => r.json().then(body => ({{ok: r.ok, body: body}})))
+    .then(res => {{
+      if (!res.ok) {{
+        fb.className = 'ab-fb ab-bad';
+        fb.textContent = res.body.error || 'could not save';
+        return;
+      }}
+      fb.className = 'ab-fb ab-good';
+      fb.textContent = 'saved';
+      document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {{
+        const key = mark.dataset.field;
+        mark.hidden = res.body.custom.indexOf(key) === -1;
+      }});
+      setTimeout(() => {{ fb.textContent = ''; fb.className = 'ab-fb'; }}, 6000);
+    }})
+    .catch(() => {{
+      fb.className = 'ab-fb ab-bad';
+      fb.textContent = 'could not reach the daemon';
+    }});
+}}
+
+function abResetSettings() {{
+  const fb = document.getElementById('ab-settings-fb');
+  fb.className = 'ab-fb';
+  fb.textContent = 'resetting...';
+  fetch('/api/settings', {{method:'POST', headers:{{'Content-Type':'application/json'}},
+                         body: JSON.stringify({{reset: true}})}})
+    .then(r => r.json())
+    .then(body => {{
+      if (body.ok) {{
+        document.querySelectorAll('[data-setting]').forEach(el => {{
+          const key = el.dataset.setting;
+          const env = body.env_defaults[key];
+          if (env === undefined) return;
+          if (el.tagName === 'SELECT') el.value = String(env);
+          else if (el.type === 'range') {{ el.value = env; abRangeShow(el); }}
+          else if (el.type === 'number') el.value = env;
+        }});
+        document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {{
+          mark.hidden = true;
+        }});
+        fb.className = 'ab-fb ab-good';
+        fb.textContent = 'reset to environment defaults';
+        setTimeout(() => {{ fb.textContent = ''; fb.className = 'ab-fb'; }}, 6000);
+      }} else {{
+        fb.className = 'ab-fb ab-bad';
+        fb.textContent = body.error || 'could not reset';
+      }}
+    }})
+    .catch(() => {{
+      fb.className = 'ab-fb ab-bad';
+      fb.textContent = 'could not reach the daemon';
+    }});
+}}
+
+function abMarkCustom(key, isCustom, envVal) {{
+  const mark = document.querySelector('[data-setting=\\\"' + CSS.escape(key) + '\\"] .ab-cuestom');
+  if (mark) mark.hidden = !isCustom;
+}}
+"""
 
 
 def _html(text: str) -> str:
@@ -1031,6 +1207,132 @@ def _render_shelf(problem_units: list) -> str:
         '<span class="ab-sdot"></span> nothing needs attention</div>'
         '</section>'
     ).format(c=count, suf="" if count == 1 else "s", cards=cards_html)
+
+
+def render_settings(state) -> str:
+    """Render the settings page with current effective values."""
+    counts = state.counts()
+    total = sum(counts.values())
+    set_effective(state)
+
+    controls_parts = []
+
+    # 1. Auto-convert tier
+    tier = effective_val("auto_convert")
+    tier_custom = is_custom("auto_convert")
+    tier_env = setting_env("auto_convert")
+    controls_parts.append(_setting_select("auto_convert", "Auto-convert tier",
+        tier, ["HIGH", "MEDIUM", "OFF"],
+        tier_custom, tier_env))
+
+    # 2. Bitrate floor
+    bitrate = effective_val("audio_bitrate")
+    bitrate_custom = is_custom("audio_bitrate")
+    bitrate_env = setting_env("audio_bitrate")
+    controls_parts.append(_setting_select("audio_bitrate", "Output quality floor",
+        bitrate, ["64k", "128k", "192k", "256k"],
+        bitrate_custom, bitrate_env,
+        hint="A floor, not a target: a richer source keeps its own bitrate (capped at 320k). Applies to future conversions only."))
+
+    # 3. Runtime delta
+    delta = setting_effective("runtime_delta")
+    delta_custom = is_custom("max_runtime_delta")
+    delta_env = setting_env("runtime_delta")
+    controls_parts.append(_setting_range("runtime_delta", "Wrong-edition tolerance",
+        delta, 5, 50, "%", delta_custom, delta_env,
+        hint="How far the file runtime may differ from the Audible runtime before a book is HELD for review. Applies to future scans."))
+
+    # 4. Scan interval
+    interval = effective_val("scan_interval_min")
+    interval_custom = is_custom("scan_interval_min")
+    interval_env = setting_env("scan_interval")
+    controls_parts.append(_setting_number("scan_interval", "Scan interval",
+        interval, 5, 1440, "min", interval_custom, interval_env))
+
+    # 5. CPU priority
+    nice = effective_val("nice")
+    nice_custom = is_custom("nice")
+    nice_env = setting_env("nice")
+    controls_parts.append(_setting_range("nice", "CPU priority (nice)",
+        nice, 0, 19, "", nice_custom, nice_env,
+        hint="higher = kinder to the system; ffmpeg runs at this priority"))
+
+    # 6. Region
+    region = effective_val("region")
+    region_custom = is_custom("region")
+    region_env = setting_env("region")
+    controls_parts.append(_setting_select("region", "Catalog region",
+        region, ["us", "uk", "ca", "au", "de"],
+        region_custom, region_env,
+        hint="Applies to future catalog lookups."))
+
+    return SETTINGS_PAGE.format(
+        styles=STYLES,
+        version=__version__,
+        lib_active="",
+        set_active=" ab-active",
+        rail_total=total,
+        rail_review_count=counts.get("review", 0),
+        rail_held_count=counts.get("held", 0),
+        rail_failed_count=counts.get("failed", 0),
+        library=CONFIG.host_library or str(CONFIG.library_root),
+        library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
+        output=CONFIG.host_output or str(CONFIG.output_root),
+        output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
+        controls="\n".join(controls_parts),
+        settings_script=SETTINGS_SCRIPT,
+    )
+
+
+def _setting_select(key: str, label: str, value: str, options: list[str],
+                    custom: bool, env_val, hint: str = "") -> str:
+    mark = '<span class="ab-custom" data-field="{k}"{h}>custom (was {ev} from env)</span>'.format(
+        k=key, h="" if custom else " hidden", ev=_html(str(env_val)))
+    opt_html = "".join(
+        '<option value="{v}"{s}>{v}</option>'.format(
+            v=o, s=" selected" if str(o).upper() == str(value).upper() else "")
+        for o in options
+    )
+    hint_html = '<div class="ab-setting-hint">{h}</div>'.format(h=_html(hint)) if hint else ""
+    return (
+        '<div class="ab-setting" data-setting="{k}">'
+        '<span class="ab-setting-label">{lb}{mk}</span>'
+        '{hn}'
+        '<select class="ab-in">{op}</select>'
+        '</div>'
+    ).format(k=key, lb=_html(label), mk=mark, hn=hint_html, op=opt_html)
+
+
+def _setting_range(key: str, label: str, value: int, vmin: int, vmax: int,
+                   suffix: str, custom: bool, env_val, hint: str = "") -> str:
+    mark = '<span class="ab-custom" data-field="{k}"{h}>custom (was {ev} from env)</span>'.format(
+        k=key, h="" if custom else " hidden", ev=_html(str(env_val)))
+    hint_html = '<div class="ab-setting-hint">{h}</div>'.format(h=_html(hint)) if hint else ""
+    return (
+        '<div class="ab-setting" data-setting="{k}">'
+        '<span class="ab-setting-label">{lb}{mk}</span>'
+        '{hn}'
+        '<div class="ab-range-wrap">'
+        '<input type="range" min="{mn}" max="{mx}" value="{v}" step="1" '
+        'oninput="abRangeShow(this)">'
+        '<span class="ab-range-val">{v}{sf}</span>'
+        '</div></div>'
+    ).format(k=key, lb=_html(label), mk=mark, hn=hint_html,
+             mn=vmin, mx=vmax, v=value, sf=suffix)
+
+
+def _setting_number(key: str, label: str, value: int, vmin: int, vmax: int,
+                    suffix: str, custom: bool, env_val) -> str:
+    mark = '<span class="ab-custom" data-field="{k}"{h}>custom (was {ev} from env)</span>'.format(
+        k=key, h="" if custom else " hidden", ev=_html(str(env_val)))
+    return (
+        '<div class="ab-setting" data-setting="{k}">'
+        '<span class="ab-setting-label">{lb}{mk}</span>'
+        '<div class="ab-range-wrap">'
+        '<input type="number" class="ab-in" min="{mn}" max="{mx}" value="{v}" step="1">'
+        '<span>{sf}</span>'
+        '</div></div>'
+    ).format(k=key, lb=_html(label), mk=mark, mn=vmin, mx=vmax, v=value, sf=suffix)
 
 
 def render(state, status: str = "", query: str = "") -> str:
@@ -1327,15 +1629,18 @@ def render(state, status: str = "", query: str = "") -> str:
         ).format(ti=title_html, mp=" &middot; ".join(meta_parts), pc=percent)
 
     # health
+    set_effective(state)
     heartbeat_age = state.heartbeat_age()
-    healthy = heartbeat_age < CONFIG.scan_interval_min * 60 * 2.5 + 300
+    eff_interval = effective_val("scan_interval_min")
+    healthy = heartbeat_age < eff_interval * 60 * 2.5 + 300
     health_stale = "" if healthy else " ab-stale"
     health_text = "Healthy" if healthy else "Stale"
 
     # header indicators
+    eff_auto = effective_val("auto_convert")
     auto_text = (
         '<span style="font-family:var(--ab-mono);font-size:11px;color:var(--ab-text4)">'
-        'auto: {ac}</span>').format(ac=CONFIG.auto_convert) if CONFIG.auto_convert else ""
+        'auto: {ac}</span>').format(ac=eff_auto) if eff_auto else ""
     dry_header = (
         '<span style="font-family:var(--ab-mono);font-size:11px;color:var(--ab-amber)">'
         'dry run</span>') if CONTROL.dry_run else ""
@@ -1399,6 +1704,7 @@ def library_stats(state) -> dict:
 
 
 def snapshot(state) -> dict:
+    set_effective(state)
     return {
         "version": __version__,
         "counts": state.counts(),
@@ -1407,8 +1713,9 @@ def snapshot(state) -> dict:
         "heartbeat_age_seconds": state.heartbeat_age(),
         "library_root": str(CONFIG.library_root),
         "output_root": str(CONFIG.output_root),
-        "auto_convert": CONFIG.auto_convert,
+        "auto_convert": effective_val("auto_convert"),
         "dry_run": CONTROL.dry_run,
+        "settings": {sk: setting_effective(sk) for sk in SETTING_KEYS},
         **CONTROL.describe(),
     }
 
@@ -1454,8 +1761,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(snapshot(self.state)).encode(), "application/json")
             return
         if path.startswith("/healthz"):
-            healthy = self.state.heartbeat_age() < CONFIG.scan_interval_min * 60 * 2.5 + 300
+            set_effective(self.state)
+            eff_interval = effective_val("scan_interval_min")
+            healthy = self.state.heartbeat_age() < eff_interval * 60 * 2.5 + 300
             self._send(200 if healthy else 503, b"ok" if healthy else b"stale", "text/plain")
+            return
+        if path == "/settings" or path.startswith("/settings"):
+            body = render_settings(self.state)
+            self._send(200, body.encode(), "text/html; charset=utf-8")
             return
         body = render(self.state, status, unquote(params.get("q", "")))
         self._send(200, body.encode(), "text/html; charset=utf-8")
@@ -1614,9 +1927,110 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"ok": True, "action": action, "unit": rel}).encode(),
                    "application/json")
 
+    def _handle_settings(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, TypeError):
+            self._send(400, b'{"error":"bad request"}', "application/json")
+            return
+
+        # Reset: clear all six setting keys
+        if payload.get("reset"):
+            from .config import SETTING_KEYS
+            for key in SETTING_KEYS:
+                self.state.set_meta(f"setting_{key}", None)
+            set_effective(self.state)
+            from .config import SETTING_ENV_DEFAULTS as defaults
+            self._send(200, json.dumps({"ok": True, "env_defaults": defaults}).encode(),
+                       "application/json")
+            return
+
+        settings = payload.get("settings") or {}
+        if not isinstance(settings, dict):
+            self._send(400, b'{"error":"settings must be an object"}', "application/json")
+            return
+
+        errors = []
+        validated = {}
+
+        # auto_convert
+        if "auto_convert" in settings:
+            v = str(settings["auto_convert"]).upper()
+            if v not in ("HIGH", "MEDIUM", "OFF"):
+                errors.append("auto_convert: must be HIGH, MEDIUM or OFF")
+            else:
+                validated["auto_convert"] = v
+
+        # audio_bitrate
+        if "audio_bitrate" in settings:
+            v = str(settings["audio_bitrate"])
+            if v not in ("64k", "128k", "192k", "256k"):
+                errors.append("audio_bitrate: must be 64k, 128k, 192k or 256k")
+            else:
+                validated["audio_bitrate"] = v
+
+        # runtime_delta
+        if "runtime_delta" in settings:
+            try:
+                v = int(settings["runtime_delta"])
+                if v < 5 or v > 50:
+                    raise ValueError
+                validated["runtime_delta"] = v
+            except (ValueError, TypeError):
+                errors.append("runtime_delta: integer 5-50")
+
+        # scan_interval
+        if "scan_interval" in settings:
+            try:
+                v = int(settings["scan_interval"])
+                if v < 5 or v > 1440:
+                    raise ValueError
+                validated["scan_interval"] = v
+            except (ValueError, TypeError):
+                errors.append("scan_interval: integer 5-1440")
+
+        # nice
+        if "nice" in settings:
+            try:
+                v = int(settings["nice"])
+                if v < 0 or v > 19:
+                    raise ValueError
+                validated["nice"] = v
+            except (ValueError, TypeError):
+                errors.append("nice: integer 0-19")
+
+        # region
+        if "region" in settings:
+            v = str(settings["region"]).lower()
+            if v not in ("us", "uk", "ca", "au", "de"):
+                errors.append("region: must be us, uk, ca, au or de")
+            else:
+                validated["region"] = v
+
+        if errors:
+            self._send(400, json.dumps({"error": "; ".join(errors)}).encode(),
+                       "application/json")
+            return
+
+        from .config import SETTING_KEYS as all_keys
+        for key in all_keys:
+            if key in validated:
+                self.state.set_meta(f"setting_{key}", validated[key])
+            elif key in (settings or {}):
+                pass  # invalid but already reported above
+
+        set_effective(self.state)
+        custom = sorted(validated)
+        self._send(200, json.dumps({"ok": True, "custom": custom}).encode(),
+                   "application/json")
+
     def do_POST(self):                      # noqa: N802
         if self.path.startswith("/api/unit"):
             self._handle_unit()
+            return
+        if self.path.startswith("/api/settings"):
+            self._handle_settings()
             return
         if not self.path.startswith("/api/control"):
             self._send(404, b'{"error":"not found"}', "application/json")

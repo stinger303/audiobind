@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import catalog, encode, library, matching
 from . import overrides as overrides_mod
-from .config import CONFIG
+from .config import CONFIG, effective_val, effective_auto_tiers
 from .control import CONTROL, Stopped
 from .probe import probe
 from .state import State, UnitState
@@ -41,7 +41,7 @@ class Audit:
     def runtime_matches(self) -> bool:
         if not self.match.product:
             return True
-        return matching.runtime_ok(self.hours, self.match.product.hours, CONFIG.max_runtime_delta)
+        return matching.runtime_ok(self.hours, self.match.product.hours, effective_val("max_runtime_delta"))
 
 
 def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
@@ -243,7 +243,7 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False) -
             log(f"  FAILED: {exc}")
             record(state, audit, "failed", note=str(exc)[:300])
     elif (audit.action in ("merge+convert", "convert", "remux")
-          and audit.confidence in CONFIG.auto_tiers):
+          and audit.confidence in effective_auto_tiers()):
         try:
             result = convert_unit(audit, log=log)
             if result is None:                       # dry run, or already published

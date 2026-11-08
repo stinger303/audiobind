@@ -5,7 +5,7 @@ import logging
 import time
 
 from . import web
-from .config import CONFIG
+from .config import CONFIG, set_effective, effective_val
 from .control import CONTROL
 from .pipeline import process_unit
 from .prefetch import PREFETCH, next_eligible
@@ -17,6 +17,7 @@ log = logging.getLogger("audiobind")
 
 def scan_once(state: State, force: bool = False) -> dict:
     """One pass over the library. Already-decided units are skipped unless forced."""
+    set_effective(state)
     run_id = state.start_run()
     state.heartbeat()          # "last scan" should read fresh the moment a pass begins
     units = discover_units(CONFIG.library_root, CONFIG.ignore_globs)
@@ -65,11 +66,12 @@ def run() -> None:
         web.serve(state)
         log.info("status page on http://0.0.0.0:%d", CONFIG.web_port)
 
-    interval = max(60, CONFIG.scan_interval_min * 60)
+    set_effective(state)
     while True:
         if CONTROL.paused:
             CONTROL.clear_scan()            # a click while paused must not busy-loop
-            CONTROL.wait(interval)
+            CONTROL.wait(60)
+            set_effective(state)
             continue
 
         CONTROL.clear_scan()                # anything clicked during a scan triggers another
@@ -78,5 +80,14 @@ def run() -> None:
         except Exception:                   # noqa: BLE001 - never let the loop die
             log.exception("scan failed")
 
-        if CONTROL.wait(interval):
-            log.info("scan requested from the status page")
+        # Sleep in 15-second chunks so a lowered interval takes effect within ~15s.
+        set_effective(state)
+        interval_s = max(60, effective_val("scan_interval_min") * 60)
+        deadline = time.time() + interval_s
+        while time.time() < deadline and not CONTROL.paused and not CONTROL.scan_requested():
+            chunk = min(15, deadline - time.time())
+            if chunk <= 0:
+                break
+            if CONTROL.wait(chunk):
+                log.info("scan requested from the status page")
+                break

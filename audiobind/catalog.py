@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
-from .config import CONFIG
+from .config import CONFIG, effective_val
 
 USER_AGENT = "audiobind/0.1 (+https://github.com/stinger303/audiobind)"
 AUDIBLE = "https://api.audible.com/1.0/catalog/products"
@@ -156,11 +156,13 @@ def search(title: str | None = None, author: str | None = None, limit: int = 10)
 
 
 def book(asin: str) -> dict:
-    return _get_json(f"{AUDNEX}/books/{asin}?region={CONFIG.region}") or {}
+    eff_region = effective_val("region")
+    return _get_json(f"{AUDNEX}/books/{asin}?region={eff_region}") or {}
 
 
 def chapters(asin: str) -> list[dict]:
-    data = _get_json(f"{AUDNEX}/books/{asin}/chapters?region={CONFIG.region}") or {}
+    eff_region = effective_val("region")
+    data = _get_json(f"{AUDNEX}/books/{asin}/chapters?region={eff_region}") or {}
     return data.get("chapters") or []
 
 

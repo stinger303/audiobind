@@ -108,3 +108,91 @@ class Config:
 
 
 CONFIG = Config.from_env()
+
+#: Settings whose DB overrides take precedence over environment defaults.
+#: Keys match the ``setting_*`` meta rows in State; values are typed like the
+#: corresponding Config attribute (str, int, float).  Updated at the start of
+#: each scan and whenever the settings page saves.
+_EFFECTIVE: dict[str, object] = {}
+
+SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region")
+
+SETTING_MAP: dict[str, str] = {
+    "auto_convert": "auto_convert",
+    "audio_bitrate": "audio_bitrate",
+    "runtime_delta": "max_runtime_delta",
+    "scan_interval": "scan_interval_min",
+    "nice": "nice",
+    "region": "region",
+}
+
+SETTING_TYPES: dict[str, type] = {
+    "auto_convert": str,
+    "audio_bitrate": str,
+    "runtime_delta": int,           # percentage (5-50), divided by 100 at use
+    "scan_interval": int,
+    "nice": int,
+    "region": str,
+}
+
+SETTING_ENV_DEFAULTS: dict[str, object] = {
+    "auto_convert": "high",
+    "audio_bitrate": "128k",
+    "runtime_delta": 25,
+    "scan_interval": 30,
+    "nice": 10,
+    "region": "us",
+}
+
+
+def set_effective(state) -> None:
+    """Refresh all effective overrides from the State DB."""
+    for key in SETTING_KEYS:
+        db = state.get_meta(f"setting_{key}")
+        if db is not None:
+            _EFFECTIVE[key] = db
+        else:
+            _EFFECTIVE.pop(key, None)
+
+
+def effective_val(name: str):
+    """Return the DB override for *name* (the Config attribute), else the env default."""
+    setting_key = _config_to_setting(name)
+    if setting_key and setting_key in _EFFECTIVE:
+        raw = _EFFECTIVE[setting_key]
+        if setting_key == "runtime_delta":
+            return raw / 100.0          # percentage -> float tolerance
+        return raw
+    return getattr(CONFIG, name)
+
+
+def is_custom(name: str) -> bool:
+    """True when *name* (the Config attribute) has an active DB override."""
+    setting_key = _config_to_setting(name)
+    return setting_key is not None and setting_key in _EFFECTIVE
+
+
+def setting_effective(key: str):
+    """Return the effective value for a setting key (e.g. ``runtime_delta``)."""
+    if key in _EFFECTIVE:
+        return _EFFECTIVE[key]
+    return SETTING_ENV_DEFAULTS.get(key)
+
+
+def setting_env(key: str):
+    """Return the env default for a setting key."""
+    return SETTING_ENV_DEFAULTS.get(key)
+
+
+def _config_to_setting(name: str) -> str | None:
+    for sk, cn in SETTING_MAP.items():
+        if cn == name:
+            return sk
+    return None
+
+
+def effective_auto_tiers() -> set[str]:
+    """Return the auto-convert tiers using the effective override or env default."""
+    tier = effective_val("auto_convert")
+    mapping = {"high": {"HIGH"}, "medium": {"HIGH", "MEDIUM"}, "off": set()}
+    return mapping.get(tier, {"HIGH"})
