@@ -68,6 +68,8 @@ body{
   display:flex;flex-direction:column;padding:12px 8px;}
 .ab-rail-brand{display:flex;align-items:center;gap:8px;padding:8px 10px 16px;
   font-weight:600;font-size:14px;letter-spacing:-.2px;}
+.ab-rail-brand a{color:inherit;text-decoration:none}
+.ab-rail-brand a:hover{color:var(--ab-text2)}
 .ab-rail-section{margin-top:6px;display:flex;flex-direction:column;gap:5px}
 .ab-rail-label{font-size:10px;font-weight:500;color:var(--ab-text4);
   text-transform:uppercase;letter-spacing:.8px;padding:8px 10px 4px;}
@@ -759,7 +761,7 @@ PAGE = """<!doctype html>
 <meta name="theme-color" content="#5e6ad2">
 <style>{styles}</style></head><body>
 <aside class="ab-rail">
-  <div class="ab-rail-brand">Audiobind</div>
+  <div class="ab-rail-brand"><a href="/" title="Back to the library">Audiobind</a></div>
   <div class="ab-rail-label">Workspace</div>
   <nav class="ab-rail-section" aria-label="Main">
     <a class="ab-rail-item ab-active" href="/" aria-current="page">
@@ -790,12 +792,10 @@ PAGE = """<!doctype html>
 
 <main class="ab-main">
   <header class="ab-topbar">
-    <h1>Audiobind</h1>
+    <h1><a href="/" title="Back to the library" style="color:inherit;text-decoration:none">Audiobind</a></h1>
     <span class="ab-status{health_stale}"><span class="ab-dot"></span>{health_text}<small> &middot; last scan {health_scan}</small></span>
     <span class="ab-version">v{version}</span>
-    <div class="ab-right">
-      {auto_text}{dry_text}
-    </div>
+    {auto_text}{dry_text}
   </header>
 
 {queue_strip}
@@ -870,7 +870,7 @@ SETTINGS_PAGE = """<!doctype html>
 <meta name="theme-color" content="#5e6ad2">
 <style>{styles}</style></head><body>
 <aside class="ab-rail">
-  <div class="ab-rail-brand">Audiobind</div>
+  <div class="ab-rail-brand"><a href="/" title="Back to the library">Audiobind</a></div>
   <div class="ab-rail-label">Workspace</div>
   <nav class="ab-rail-section" aria-label="Main">
     <a class="ab-rail-item{lib_active}" href="/">

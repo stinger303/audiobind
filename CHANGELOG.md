@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-11-08
+
+### Changed
+- **Both "Audiobind" names are links home.** The sidebar brand and the page
+  title now take you back to the main library view from anywhere (Settings
+  included) - they used to be dead text.
+- The lone "auto: high" indicator that floated at the far right of the header
+  now sits with the version badge instead of hanging by itself.
+
 ## [0.12.1] - 2026-11-08
 
 ### Fixed
