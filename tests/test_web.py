@@ -1,8 +1,12 @@
+import json
 import pathlib
 import tempfile
 import unittest
+import urllib.error
+import urllib.request
 
 from audiobind import web
+from audiobind.config import CONFIG
 from audiobind.state import State, UnitState
 
 
@@ -179,11 +183,14 @@ class TestDeleteUI(unittest.TestCase):
         shelf_section = page.split('id="ab-shelf"')[1].split("</section>")[0]
         self.assertNotIn("ab-delconfirm", shelf_section)
 
-    def test_confirm_strip_contains_delete_prompt(self):
+    def test_confirm_strip_warns_of_permanent_deletion(self):
         page = web.render(self.state)
-        self.assertIn("Type DELETE to confirm.", page)
-        self.assertIn("Move to trash", page)
-        self.assertIn('class="ab-delconfirm"', page)
+        self.assertIn("permanently deletes", page)
+        self.assertIn("cannot be undone", page)
+        self.assertIn("Delete permanently", page)
+        self.assertIn(">Cancel<", page)
+        self.assertNotIn("Move to trash", page)
+        self.assertNotIn("Type DELETE", page)
 
     def test_delete_js_functions_present(self):
         page = web.render(self.state)
@@ -193,133 +200,102 @@ class TestDeleteUI(unittest.TestCase):
 
 
 class TestDeleteHandler(unittest.TestCase):
+    """Hard delete, exercised through the real HTTP handler."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.tmp.name)
         self.lib = self.root / "library"
         self.out = self.root / "output"
-        self.state_dir = self.root / "state_dir"
         self.lib.mkdir()
         self.out.mkdir()
-        self.state = State(self.state_dir)
+        self.state = State(self.root / "state")
+        self.saved = (CONFIG.library_root, CONFIG.output_root, CONFIG.web_port)
+        CONFIG.library_root, CONFIG.output_root = self.lib, self.out
+        CONFIG.web_port = 0
+        self.server = web.serve(self.state)
+        self.base = "http://127.0.0.1:%d" % CONFIG.web_port
 
     def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        web.Handler.state = None
+        CONFIG.library_root, CONFIG.output_root, CONFIG.web_port = self.saved
         self.state.close()
         self.tmp.cleanup()
 
-    def test_trash_path_is_built_with_timestamp(self):
-        from audiobind import config
-        ts = "20261108T120000Z"
-        src_path = self.lib / "Author" / "Book"
-        trash_dir = self.lib / ".audiobind-trash"
-        trash = trash_dir / f"{ts}_{src_path.name}"
-        self.assertEqual(trash.parent.name, ".audiobind-trash")
-        self.assertIn("20261108T", str(trash.name))
+    def post(self, payload):
+        req = urllib.request.Request(
+            self.base + "/api/unit", data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                return response.status, json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read() or b"{}")
 
-    def test_ignore_globs_contains_trash(self):
-        from audiobind.config import CONFIG
-        self.assertIn(".audiobind-trash", CONFIG.ignore_globs)
+    def make_book(self):
+        src = self.lib / "Author" / "Book"
+        src.mkdir(parents=True, exist_ok=True)
+        (src / "01.mp3").write_text("audio")
+        out_book = self.out / "Author" / "Book"
+        out_book.mkdir(parents=True, exist_ok=True)
+        (out_book / "Book.m4b").write_text("m4b")
+        self.state.save(UnitState(path="Author/Book", status="converted",
+                                  title="Book", output=str(out_book / "Book.m4b")))
+        return src, out_book
 
     def test_delete_refuses_without_confirm(self):
-        # Simulate: POST /api/unit {"action":"delete","path":"Book"}
-        # Without confirm:true, returns 400
-        from io import BytesIO
-        from audiobind.web import Handler as MockHandler
-        import json
+        status, body = self.post({"action": "delete", "path": "Author/Book"})
+        self.assertEqual(status, 400)
+        self.assertIn("confirmation", body["error"])
 
-        # We test the payload parsing directly
-        payload = {"action": "delete", "path": "Book"}
-        self.assertIsNone(payload.get("confirm"))
-
-    def test_delete_moves_source_and_output_to_trash(self):
-        import shutil
-        src = self.lib / "Author"
-        src.mkdir(parents=True, exist_ok=True)
-        (src / "Book").mkdir()
-        (src / "Book" / "file.mp3").write_text("audio")
-
-        out_book = self.out / "Author - Book - 2024"
-        out_book.mkdir(parents=True, exist_ok=True)
-        (out_book / "cover.jpg").write_text("cover")
-
-        ts = "20261108T120000Z"
-        self.state.save(UnitState(
-            path="Author/Book", status="converted",
-            title="Book", output=str(out_book / "Book.m4b")))
-
-        # Move source
-        trash_dir = self.lib / ".audiobind-trash"
-        trash_dir.mkdir(parents=True, exist_ok=True)
-        src_trash = trash_dir / f"{ts}_{src.name}"
-        self.assertTrue(src.exists())
-        shutil.move(str(src), str(src_trash))
+    def test_hard_delete_removes_source_output_and_row(self):
+        src, out_book = self.make_book()
+        status, body = self.post({"action": "delete", "path": "Author/Book",
+                                  "confirm": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["source_removed"])
+        self.assertEqual(body["output"], "removed")
         self.assertFalse(src.exists())
-        self.assertTrue((src_trash / "Book" / "file.mp3").is_file())
-
-        # Move output
-        out_trash = self.out / ".audiobind-trash"
-        out_trash.mkdir(parents=True, exist_ok=True)
-        out_dest = out_trash / f"{ts}_{out_book.name}"
-        shutil.move(str(out_book), str(out_dest))
         self.assertFalse(out_book.exists())
-        self.assertTrue((out_dest / "cover.jpg").is_file())
-
-        # Delete row
-        self.assertTrue(self.state.delete("Author/Book"))
         self.assertIsNone(self.state.get("Author/Book"))
 
-    def test_delete_refuses_path_traversal_source(self):
-        # A relative path with .. should not escape library root
-        resolved = (self.lib / "../escape").resolve()
-        lib_resolved = self.lib.resolve()
-        try:
-            resolved.relative_to(lib_resolved)
-            escapes = False
-        except ValueError:
-            escapes = True
-        self.assertTrue(escapes, ".. should not resolve inside library root")
+    def test_delete_with_no_published_output_still_removes_the_source(self):
+        src = self.lib / "Author" / "Book"
+        src.mkdir(parents=True)
+        (src / "01.mp3").write_text("audio")
+        self.state.save(UnitState(path="Author/Book", status="review"))
+        status, body = self.post({"action": "delete", "path": "Author/Book",
+                                  "confirm": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["source_removed"])
+        self.assertEqual(body["output"], "absent")
+        self.assertFalse(src.exists())
+        self.assertIsNone(self.state.get("Author/Book"))
+
+    def test_delete_refuses_path_traversal(self):
+        # the row must exist for the request to reach the traversal guard
+        self.state.save(UnitState(path="../escape", status="review"))
+        status, body = self.post({"action": "delete", "path": "../escape",
+                                  "confirm": True})
+        self.assertEqual(status, 400)
+        self.assertIn("escapes", body["error"])
+        # and nothing outside the library root was touched
+        self.assertFalse((self.root / "escape").exists())
 
     def test_delete_refuses_while_encoding(self):
         from audiobind.control import CONTROL
+        self.make_book()
         CONTROL.begin_unit("Author/Book")
-        self.assertTrue(CONTROL.running)
-        self.assertEqual(CONTROL.current_unit, "Author/Book")
-        CONTROL.end_unit()  # clean up
-
-    def test_delete_moves_output_folder_when_it_is_not_the_root(self):
-        # If output is OUTPUT_ROOT/Subdir/Book.m4b, move OUTPUT_ROOT/Subdir
-        import shutil
-        subdir = self.out / "Subdir"
-        subdir.mkdir()
-        (subdir / "Book.m4b").write_text("m4b")
-
-        self.state.save(UnitState(
-            path="Author/Book", status="converted",
-            title="Book", output=str(subdir / "Book.m4b")))
-
-        ts = "20261108T120000Z"
-        out_trash = self.out / ".audiobind-trash"
-        out_trash.mkdir(parents=True, exist_ok=True)
-        out_dest = out_trash / f"{ts}_{subdir.name}"
-        shutil.move(str(subdir), str(out_dest))
-        self.assertFalse(subdir.exists())
-        self.assertTrue((out_dest / "Book.m4b").is_file())
-
-    def test_confirm_strip_appears_in_panel_not_row(self):
-        self.state.save(UnitState(
-            path="Author/Book", status="held", confidence="LOW",
-            title="Book", hours=1, files=1))
-        page = web.render(self.state)
-        # Confirm strip inside a detail panel (.drow)
-        drow_start = page.find('class="drow"')
-        drow_end = page.find("</tr>", drow_start)
-        drow_section = page[drow_start:drow_end]
-        self.assertIn("ab-delconfirm", drow_section)
-        # Not in the shelf
-        shelf_start = page.find('id="ab-shelf"')
-        shelf_end = page.find("/section", shelf_start)
-        shelf_section = page[shelf_start:shelf_end]
-        self.assertNotIn("ab-delconfirm", shelf_section)
+        try:
+            status, body = self.post({"action": "delete", "path": "Author/Book",
+                                      "confirm": True})
+            self.assertEqual(status, 409)
+            self.assertIn("encoding", body["error"])
+            self.assertTrue((self.lib / "Author" / "Book").exists())
+        finally:
+            CONTROL.end_unit()
 
 
 if __name__ == "__main__":

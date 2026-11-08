@@ -182,6 +182,25 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         self.assertIn('id="ab-toast"', page)
         self.assertIn("function abToast(", page)
 
+    def test_control_buttons_carry_hover_tooltips(self):
+        page = web.render(self.state)
+        self.assertIn('title="Re-check every book in the library', page)
+        self.assertIn('title="Finish the book that is encoding', page)
+        self.assertIn('title="Abort the current conversion immediately', page)
+        self.assertIn('title="Preview mode: reports what it would do', page)
+        self.assertIn('title="Re-check this book against the catalog', page)
+        self.assertIn('title="Convert this book even though', page)
+        self.assertIn('title="Pin this catalog entry to the book', page)
+        self.assertIn('title="Permanently delete this book', page)
+
+    def test_dry_run_sits_with_the_other_controls(self):
+        page = web.render(self.state)
+        controls = page.split('aria-label="Controls"')[1].split("</section>")[0]
+        dry_at = controls.find(">Dry run")
+        spacer_at = controls.find("ab-spacer")
+        self.assertGreater(dry_at, 0)
+        self.assertGreater(spacer_at, dry_at)
+
     def test_new_classes_do_not_collide_with_existing_ones(self):
         """Every class added in 0.10.0 is ab- prefixed (the .bar collision bug)."""
         existing = {"sub", "toolbar", "working", "wline", "pct", "ptrack", "wmeta", "pill",

@@ -6,7 +6,6 @@ import logging
 import shutil
 import threading
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
@@ -345,11 +344,6 @@ tr.drow[hidden] td{padding:0}
   margin-top:14px;background:#1a1f28;border:1px solid rgba(242,78,107,.3);border-radius:8px;
   font-size:12px;}
 .ab-delconfirm .ab-deltxt{color:var(--ab-text2);margin-right:auto}
-.ab-delconfirm .ab-dellab{color:var(--ab-text3);white-space:nowrap}
-.ab-delconfirm .ab-delin{font:inherit;font-size:12px;height:28px;width:130px;padding:0 8px;
-  background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:6px;
-  color:var(--ab-text);font-family:var(--ab-mono);}
-.ab-delconfirm .ab-delin:focus{outline:none;border-color:var(--ab-red);}
 .ab-delconfirm .ab-delerr{color:var(--ab-red);font-size:12px;display:none;}
 .ab-delconfirm .ab-delerr.on{display:inline;}
 .ab-progsub{font-size:12px;color:var(--ab-text3);text-transform:none;letter-spacing:0;}
@@ -443,34 +437,24 @@ function unitDelete(btn) {
   const panel = btn.closest('.dd');
   const strip = panel.querySelector('.ab-delconfirm');
   strip.hidden = false;
-  const input = strip.querySelector('.ab-delin');
-  input.value = '';
   const err = strip.querySelector('.ab-delerr');
   err.textContent = '';
   err.classList.remove('on');
-  input.focus();
 }
 function unitDeleteCancel(btn) {
   const strip = btn.closest('.ab-delconfirm');
   strip.hidden = true;
-  strip.querySelector('.ab-delin').value = '';
   strip.querySelector('.ab-delerr').classList.remove('on');
 }
 function unitDeleteConfirm(btn) {
   const strip = btn.closest('.ab-delconfirm');
   const panel = strip.closest('.dd');
   const path = panel.dataset.path;
-  const input = strip.querySelector('.ab-delin');
   const err = strip.querySelector('.ab-delerr');
-  if (input.value.trim() !== 'DELETE') {
-    err.textContent = 'type DELETE to confirm';
-    err.classList.add('on');
-    input.focus();
-    return;
-  }
+  const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'moving\u2026';
-  abToast('moving to trash\u2026');
+  btn.textContent = 'deleting\u2026';
+  abToast('deleting permanently\u2026');
   fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
                      body: JSON.stringify({action:'delete', path: path, confirm: true})})
     .then(r => r.json())
@@ -479,7 +463,7 @@ function unitDeleteConfirm(btn) {
         err.textContent = result.error || 'failed';
         err.classList.add('on');
         btn.disabled = false;
-        btn.textContent = 'Move to trash';
+        btn.textContent = label;
         return;
       }
       setTimeout(() => location.reload(), 500);
@@ -488,7 +472,7 @@ function unitDeleteConfirm(btn) {
       err.textContent = 'could not reach the daemon';
       err.classList.add('on');
       btn.disabled = false;
-      btn.textContent = 'Move to trash';
+      btn.textContent = label;
     });
 }
 function abToast(text) {
@@ -772,8 +756,8 @@ PAGE = """<!doctype html>
     {scan_button}
     {pause_button}
     {stop_button}
-    <span class="ab-spacer"></span>
     {dry_button}
+    <span class="ab-spacer"></span>
     {dry_note}
   </section>
 
@@ -969,9 +953,9 @@ def _render_shelf(problem_units: list) -> str:
         reason_class = ("held" if unit.status == "held"
                         else ("failed" if unit.status == "failed" else ""))
 
-        btn = '<button class="btn primary" onclick="rowAction(this,\'retry\')">Retry now</button>'
-        force = '<button class="btn warn" onclick="rowAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button class="btn" onclick="rowAction(this,\'set_asin\')">Use this ASIN</button>'
+        btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="rowAction(this,\'retry\')">Retry now</button>'
+        force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="rowAction(this,\'force\')">Convert anyway</button>'
+        asin_btn = '<button class="btn" title="Pin this catalog entry to the book, then re-check it against it." onclick="rowAction(this,\'set_asin\')">Use this ASIN</button>'
 
         cards.append(
             ('<div class="ab-problem" data-path="{dp}">'
@@ -1133,9 +1117,9 @@ def render(state, status: str = "", query: str = "") -> str:
             '<span class="ab-fb"></span></div></div>'
         ).format(dp=_attr(unit.path))
 
-        btn = '<button onclick="unitAction(this,\'retry\')">Retry now</button>'
-        force = '<button class="warn" onclick="unitAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
+        btn = '<button title="Re-check this book against the catalog and convert it if it passes the rules." onclick="unitAction(this,\'retry\')">Retry now</button>'
+        force = '<button class="warn" title="Convert this book even though the automatic checks flagged it." onclick="unitAction(this,\'force\')">Convert anyway</button>'
+        asin_btn = '<button title="Pin this catalog entry to the book, then re-check it against it." onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
 
         explain_html = (
             '<div class="explain">'
@@ -1150,13 +1134,15 @@ def render(state, status: str = "", query: str = "") -> str:
             + btn + force
             + '<input data-asin placeholder="ASIN, e.g. B005EHN61O" style="width:190px">'
             + asin_btn
-            + '<button class="btn danger" onclick="unitDelete(this)" style="margin-left:auto">Delete</button>'
+            + '<button class="btn danger" title="Permanently delete this book\'s source folder '
+              'and its published files. Cannot be undone." onclick="unitDelete(this)" '
+              'style="margin-left:auto">Delete</button>'
             + "</div>"
             + '<div class="ab-delconfirm" hidden>'
-            + '<span class="ab-deltxt">Move this book\'s source folder and published files to the trash?</span>'
-            + '<span class="ab-dellab">Type DELETE to confirm.</span>'
-            + '<input class="ab-delin" placeholder="DELETE" spellcheck="false" autocomplete="off">'
-            + '<button class="btn danger" onclick="unitDeleteConfirm(this)">Move to trash</button>'
+            + '<span class="ab-deltxt">This permanently deletes the book\'s source folder and '
+              'its published files. This cannot be undone.</span>'
+            + '<button class="btn danger" onclick="unitDeleteConfirm(this)">Delete '
+              'permanently</button>'
             + '<button class="btn" onclick="unitDeleteCancel(this)">Cancel</button>'
             + '<span class="ab-delerr"></span>'
             + "</div>"
@@ -1187,9 +1173,9 @@ def render(state, status: str = "", query: str = "") -> str:
 
         act_html = ""
         if unit.status in ("held", "review", "failed"):
-            btn = '<button class="btn primary" onclick="event.stopPropagation();rowAction(this,\'retry\')">Retry now</button>'
-            force = '<button class="btn warn" onclick="event.stopPropagation();rowAction(this,\'force\')">Convert anyway</button>'
-            asin_btn = '<button class="btn" onclick="event.stopPropagation();rowAction(this,\'set_asin\')">Use this ASIN</button>'
+            btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="event.stopPropagation();rowAction(this,\'retry\')">Retry now</button>'
+            force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="event.stopPropagation();rowAction(this,\'force\')">Convert anyway</button>'
+            asin_btn = '<button class="btn" title="Pin this catalog entry to the book, then re-check it against it." onclick="event.stopPropagation();rowAction(this,\'set_asin\')">Use this ASIN</button>'
             act_html = '<div class="ab-rowact">' + btn + force + asin_btn + '</div>'
 
         reason_html = ""
@@ -1247,24 +1233,38 @@ def render(state, status: str = "", query: str = "") -> str:
 
     # controls
     paused = CONTROL.paused
-    scan_button = '<button class="btn primary" onclick="act(\'scan\')"{di}>Scan now</button>'.format(
+    scan_button = ('<button class="btn primary" title="Re-check every book in the library now and '
+                   'convert the ones that pass the automatic rules." '
+                   'onclick="act(\'scan\')"{di}>Scan now</button>').format(
         di="" if not paused else " disabled")
     pause_button = (
-        '<button class="btn" onclick="act(\'resume\')">Resume</button>' if paused
-        else '<button class="btn warn" onclick="act(\'pause\')">Pause after this book</button>'
+        '<button class="btn" title="Finish the book that is encoding, then stop converting '
+        'until you press Resume." onclick="act(\'resume\')">Resume</button>' if paused
+        else '<button class="btn warn" title="Finish the book that is encoding, then stop '
+             'converting until you press Resume." onclick="act(\'pause\')">Pause after this '
+             'book</button>'
     )
     dry_button = (
-        '<button class="btn dry on" onclick="dry(false)">Dry run <span class="ab-switch"></span></button>'
+        '<button class="btn dry on" title="Preview mode: reports what it would do but writes '
+        'nothing to the output library. Click to turn it off." onclick="dry(false)">'
+        'Dry run <span class="ab-switch"></span></button>'
         if CONTROL.dry_run
-        else '<button class="btn dry" onclick="dry(true)">Dry run <span class="ab-switch"></span></button>'
+        else '<button class="btn dry" title="Preview mode: reports what it would do but writes '
+             'nothing to the output library. Click to turn it on." onclick="dry(true)">'
+             'Dry run <span class="ab-switch"></span></button>'
     )
     dry_note = (
         '<span class="ab-note">Dry run is on &mdash; no files will be written</span>'
         if CONTROL.dry_run else "")
     stop_button = (
-        '<button class="btn danger" onclick="stop_now()">Stop now</button>'
+        '<button class="btn danger" title="Abort the current conversion immediately: the '
+        'partial file is discarded and the book is retried on the next scan." '
+        'onclick="stop_now()">Stop now</button>'
         if CONTROL.running
-        else '<button class="btn danger" disabled>Stop now</button>'
+        else '<button class="btn danger" disabled title="Abort the current conversion '
+             'immediately: the partial file is discarded and the book is retried on the '
+             'next scan. Nothing is encoding right now.">'
+             'Stop now</button>'
     )
 
     # encode strip
@@ -1520,47 +1520,43 @@ class Handler(BaseHTTPRequestHandler):
                 if out_parent != out_root:
                     out_trash = out_parent
 
-            # Move source folder to trash
-            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            src_trash_dir = lib_root / ".audiobind-trash"
-            src_trash_dir.mkdir(parents=True, exist_ok=True)
-            src_trash = src_trash_dir / f"{ts}_{src_path.name}"
-
+            # HARD DELETE: the source folder and its published output are removed
+            # permanently. The path guards above are the only thing between this call
+            # and the filesystem, so they must stay strict.
             log = logging.getLogger("audiobind")
-            try:
-                if src_path.exists():
-                    shutil.move(str(src_path), str(src_trash))
-                    log.info("deleted %s; source -> %s", rel, src_trash)
-                else:
-                    log.info("deleted %s; source folder not found at %s", rel, src_path)
-            except OSError as exc:
-                log.error("could not move source %s to trash: %s", src_path, exc)
-                self._send(500,
-                           ('{"error":"source move failed: %s"}' % exc).encode(),
-                           "application/json")
-                return
-
-            # Move output to trash
-            out_trash_path = "none"
-            if out_trash is not None and out_trash.exists():
-                out_trash_dir = out_root / ".audiobind-trash"
-                out_trash_dir.mkdir(parents=True, exist_ok=True)
-                out_dest = out_trash_dir / f"{ts}_{out_trash.name}"
+            source_removed = False
+            if src_path.exists():
                 try:
-                    shutil.move(str(out_trash), str(out_dest))
-                    log.info("deleted %s; output -> %s", rel, out_dest)
-                    out_trash_path = str(out_dest)
+                    shutil.rmtree(str(src_path))
                 except OSError as exc:
-                    log.warning("could not move output %s to trash: %s", out_trash, exc)
-                    out_trash_path = f"move failed: {exc}"
+                    log.error("HARD DELETE %s; source removal failed: %s", rel, exc)
+                    self._send(500,
+                               ('{"error":"source removal failed: %s"}' % exc).encode(),
+                               "application/json")
+                    return
+                source_removed = True
+                log.info("HARD DELETE %s; source removed: %s", rel, src_path)
             else:
-                log.info("deleted %s; output -> none", rel)
+                log.info("HARD DELETE %s; source folder not found at %s", rel, src_path)
+
+            output_removed = "absent"
+            if out_trash is not None and out_trash.exists():
+                try:
+                    shutil.rmtree(str(out_trash))
+                    output_removed = "removed"
+                    log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
+                except OSError as exc:
+                    output_removed = f"failed: {exc}"
+                    log.error("HARD DELETE %s; could not remove output %s: %s",
+                              rel, out_trash, exc)
+            else:
+                log.info("HARD DELETE %s; output -> none", rel)
 
             # Remove from state
             self.state.delete(rel)
             self._send(200, json.dumps({"ok": True, "deleted": rel,
-                                         "source_trash": str(src_trash),
-                                         "output_trash": out_trash_path}).encode(),
+                                         "source_removed": source_removed,
+                                         "output": output_removed}).encode(),
                        "application/json")
             return
 

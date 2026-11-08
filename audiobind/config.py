@@ -53,7 +53,7 @@ class Config:
     host_library: str = ""
     host_output: str = ""
 
-    ignore_globs: list[str] = field(default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information", ".audiobind-trash"])
+    ignore_globs: list[str] = field(default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"])
 
     @classmethod
     def from_env(cls) -> "Config":

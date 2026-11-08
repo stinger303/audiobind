@@ -10,12 +10,19 @@ All notable changes to this project are documented here. This project follows
   and failed units now show the "why" text from their advice explanation directly
   in the books table (amber for held/review, red for failed), so you can see what
   is wrong without expanding the detail panel.
-- **Delete a book entirely — as a move-to-trash, never a deletion.** A new
-  Delete button in the detail panel's action row moves the book's source folder
-  to `<LIBRARY_ROOT>/.audiobind-trash/<utcstamp>_<foldername>/` and its published
-  output folder to `<OUTPUT_ROOT>/.audiobind-trash/`. The scanner ignores
-  `.audiobind-trash` automatically. The delete requires a two-step confirm (type
-  DELETE to confirm) and refuses while the book is encoding.
+- **Delete a book — permanently.** A Delete button in the detail panel's action
+  row opens a warning dialog ("This permanently deletes the book's source folder
+  and its published files. This cannot be undone."); deleting requires clicking
+  the red "Delete permanently" button. The deletion removes the book's source
+  folder under the library and its published output folder under the output
+  library, then drops the book from the state database. It refuses while the
+  book is encoding and on any path that would escape the library or output
+  roots. (The library mount must be read-write for the source deletion.)
+- **Hover tooltips on every control.** Scan now, Pause, Stop, Resume, Dry run and
+  the per-book actions each explain what they do before you click.
+- **Host paths in the rail footer.** Optional `HOST_LIBRARY` / `HOST_OUTPUT`
+  environment variables are shown when set, so the footer names the real Unraid
+  folders instead of the container's `/library` and `/output`.
 
 ### Changed
 - **The books table is more compact.** The permanent action-buttons column is
@@ -23,6 +30,8 @@ All notable changes to this project are documented here. This project follows
   compact overlay with a solid background, matching the approved mockup. The
   column no longer reserves ~350px of width, so the table fits at 1080p without
   horizontal scrolling.
+- **The Dry run button sits with the other controls** (Scan now / Pause / Stop)
+  instead of alone at the right edge of the control row.
 
 ### Fixed
 - No fixes in this release.
