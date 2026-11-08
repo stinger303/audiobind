@@ -232,7 +232,7 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-search::placeholder{color:var(--ab-text4)}
 .ab-search:focus{outline:none;border-color:var(--ab-accent-bright);background:rgba(255,255,255,.04)}
 .ab-clear{font-size:12px;padding:0 10px;height:28px;}
-.ab-shown{font-size:12px;color:var(--ab-text4);font-variant-numeric:tabular-nums;white-space:nowrap;}
+
 
 .ab-tablewrap{flex:1;padding:0 24px 24px}
 .ab-tbl{width:100%;border-collapse:collapse;table-layout:fixed}
@@ -640,11 +640,6 @@ function abApplyView() {
     panel.hidden = !wanted;
     row.classList.toggle('ab-sel', wanted);
   });
-  const label = document.getElementById('ab-shown');
-  if (label) {
-    label.textContent = terms.length ? (shown + ' of ' + pairs.length + ' shown')
-                                     : (pairs.length + ' book' + (pairs.length === 1 ? '' : 's'));
-  }
   const empty = document.getElementById('ab-empty');
   if (empty) empty.hidden = shown !== 0 || pairs.length === 0;
   document.querySelectorAll('th.ab-sort').forEach(th => {
@@ -808,7 +803,6 @@ PAGE = """<!doctype html>
       <input id="ab-search" class="ab-search" type="search" autocomplete="off" spellcheck="false"
              placeholder="Filter books&hellip;" value="{query}">
       <button class="ab-clear btn" onclick="abClearSearch()">Clear</button>
-      <span id="ab-shown" class="ab-shown">{shown_label}</span>
     </div>
   </section>
 
@@ -1264,8 +1258,6 @@ def render(state, status: str = "", query: str = "") -> str:
         ('<col style="width:{w}">'.format(w=width)) if width else "<col>"
         for _k, _l, width, _c in COLUMNS
     )
-    shown_label = ("{sn} of {tt} shown".format(sn=shown, tt=total) if query
-                   else "{sn} book{su}".format(sn=shown, su="" if shown == 1 else "s"))
 
     # controls
     paused = CONTROL.paused
@@ -1385,7 +1377,6 @@ def render(state, status: str = "", query: str = "") -> str:
         colgroup=colgroup,
         columns=TOTAL_COLUMNS,
         query=_attr(query),
-        shown_label=shown_label,
         sort_column_js=json.dumps(sort_column),
         sort_dir_js=json.dumps(sort_dir),
     )
