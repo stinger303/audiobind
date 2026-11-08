@@ -1188,7 +1188,7 @@ def _render_shelf(problem_units: list) -> str:
 
         btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="rowAction(this,\'retry\')">Retry now</button>'
         force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="rowAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button class="btn" title="Open this book\'s details and pin a catalog entry." onclick="abEditAsin(this)">Edit ASIN</button>'
+        asin_btn = '<button class="btn" title="Open this book\'s details and lock an Audible entry." onclick="abEditAsin(this)">Edit ASIN</button>'
 
         cards.append(
             ('<div class="ab-problem" data-path="{dp}">'
@@ -1542,7 +1542,7 @@ def render(state, status: str = "", query: str = "") -> str:
 
         btn = '<button title="Re-check this book against the catalog and convert it if it passes the rules." onclick="unitAction(this,\'retry\')">Retry now</button>'
         force = '<button class="warn" title="Convert this book even though the automatic checks flagged it." onclick="unitAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button title="Pin this catalog entry to the book, then re-check it against it." onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
+        asin_btn = '<button title="Lock this catalog entry to the book, then re-check against it." onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
 
         explain_html = (
             '<div class="explain">'
@@ -1555,13 +1555,14 @@ def render(state, status: str = "", query: str = "") -> str:
         actions = (
             '<div class="ab-actrow">' + force + btn + "</div>"
             + '<div class="ab-pinrow">'
-            + '<span class="ab-pinlab">Pin an exact ASIN:</span>'
+            + '<span class="ab-pinlab">Lock this book to one exact Audible entry:</span>'
             + '<input data-asin value="{av}" placeholder="ASIN, e.g. B005EHN61O">'.format(
                 av=_attr(unit.asin or ""))
             + asin_btn
-            + '<span class="ab-pinhint">Re-checks the book against this exact Audible '
-              'entry. Passes your setting &rarr; converts automatically. Still too '
-              'unsure &rarr; this panel re-opens with the reason.</span>'
+            + '<span class="ab-pinhint">Locks the match permanently - every future '
+              'scan checks this book against this exact entry instead of guessing. '
+              'Passes your confidence setting &rarr; converts automatically. Still '
+              'too unsure &rarr; this panel re-opens with the reason.</span>'
             + "</div>"
         )
         delete_act = (
@@ -1611,7 +1612,7 @@ def render(state, status: str = "", query: str = "") -> str:
         if unit.status in ("held", "review", "failed"):
             btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="event.stopPropagation();rowAction(this,\'retry\')">Retry now</button>'
             force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="event.stopPropagation();rowAction(this,\'force\')">Convert anyway</button>'
-            asin_btn = '<button class="btn" title="Open this book\'s details and pin a catalog entry." onclick="event.stopPropagation();abEditAsin(this)">Edit ASIN</button>'
+            asin_btn = '<button class="btn" title="Open this book\'s details and lock an Audible entry." onclick="event.stopPropagation();abEditAsin(this)">Edit ASIN</button>'
             act_html = '<div class="ab-rowact">' + btn + force + asin_btn + '</div>'
 
         reason_html = ""

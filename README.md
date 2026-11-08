@@ -23,12 +23,12 @@ library-in/                         library-out/
 
 Audiobind is a **beta**: a solo project with a single front-end developer, and the
 code is written with heavy AI assistance (designed, reviewed and tested by a human,
-but not hand-written line by line). It reads, moves and deletes folders in real
-audiobook libraries, and software like that can fail badly — **you may experience
-data loss**. Converted source folders are moved to a `.audiobind-trash/` folder
-rather than shredded, and the hard delete asks for typed confirmation, but there is
-no undo button for your library. Keep backups, run it against a copy first, and pin
-a tagged release instead of `latest` if reproducible behavior matters to you.
+but not hand-written line by line). It reads real audiobook libraries and writes to
+a separate output library, and software like that can fail badly — **you may
+experience data loss**. The source library is only ever *read* — converted books go
+to a separate output folder — and the hard delete asks for typed confirmation, but there
+is no undo button. Keep backups, run it against a copy first, and pin a tagged
+release instead of `latest` if reproducible behavior matters to you.
 
 ## How it works
 
@@ -56,11 +56,11 @@ a tagged release instead of `latest` if reproducible behavior matters to you.
 | `COLLECTION` | several books in one folder | left for review |
 | held | runtime disagrees with the catalog by >25% - usually the wrong edition | not converted |
 
-A book's source folder is only touched after its output has been verified: then the
-folder is moved to `<LIBRARY_ROOT>/.audiobind-trash/<timestamp>/`, where it stays
-until you empty it. The web UI's **Delete** is the one destructive path — it removes
-the source folder *and* the published output permanently, and requires typing
-`DELETE` to confirm.
+Your source library is only ever read. Converted books are written to the separate
+output library, and the source folder stays in place so you can verify the result
+and clean up at your own pace. The web UI's **Delete** is the one destructive path —
+it removes the source folder *and* the published output permanently, and requires
+typing `DELETE` to confirm.
 
 ## Installation
 

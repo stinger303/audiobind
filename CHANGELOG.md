@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.5] - 2026-11-08
+
+### Changed
+- **The ASIN row speaks plain English.** "Pin an exact ASIN:" is now "Lock this
+  book to one exact Audible entry:", the hint explains what locking actually does
+  (every future scan checks this book against this exact entry instead of
+  guessing), and the Edit ASIN / Use this ASIN tooltips say "lock" instead of
+  "pin".
+- **The README now tells the truth about source safety.** The beta disclaimer
+  explains the real mechanics: the source library is only ever read, converted
+  books are written to the separate output library, and the hard delete is the
+  one destructive path. (A stale note claimed converted sources were moved to a
+  trash folder - that behavior never shipped, and the README no longer claims it.)
+
 ## [0.12.4] - 2026-11-08
 
 ### Changed

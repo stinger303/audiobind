@@ -214,7 +214,7 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         self.assertIn('title="Preview mode: reports what it would do', page)
         self.assertIn('title="Re-check this book against the catalog', page)
         self.assertIn('title="Convert this book even though', page)
-        self.assertIn('title="Pin this catalog entry to the book', page)
+        self.assertIn('title="Lock this catalog entry to the book', page)
         self.assertIn('title="Permanently delete this book', page)
 
     def test_dry_run_sits_with_the_other_controls(self):
