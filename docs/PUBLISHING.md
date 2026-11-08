@@ -13,6 +13,14 @@ git tag -a v0.2.0 -m "v0.2.0"
 git push origin main --tags
 ```
 
+Pushing needs the deploy key - the default `~/.ssh` key is not authorized for
+this repo, so prefix the push (or the whole release) with:
+
+```bash
+GIT_SSH_COMMAND='ssh -i /opt/data/ssh/github_audiobind -o IdentitiesOnly=yes' \
+  git push origin main --tags
+```
+
 The GitHub Actions workflow builds `ghcr.io/stinger303/audiobind` and pushes:
 
 | Tag pushed | Image tags produced |
