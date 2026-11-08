@@ -11,7 +11,7 @@
   <Project>https://github.com/stinger303/audiobind</Project>
   <Overview>Finds audiobooks that are split into many files, checks each one against the Audible catalog, merges the parts into a single tagged m4b with real chapter marks and cover art, and files it into a clean Author/Title library. Runs on a timer and only converts books it is confident about.</Overview>
   <Category>MediaApp:Other Tools:Utilities</Category>
-  <Icon>https://raw.githubusercontent.com/stinger303/audiobind/main/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/stinger303/audiobind/main/images/audiobind-icon.png</Icon>
   <WebUI>http://[IP]:[PORT:8080]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/stinger303/audiobind/main/templates/audiobind.xml</TemplateURL>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
