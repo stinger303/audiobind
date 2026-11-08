@@ -241,7 +241,7 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-tbl thead th:hover{color:var(--ab-text2)}
 .ab-tbl thead th.ab-on{color:var(--ab-text2)}
 .ab-tbl tbody td{padding:0 10px;border-bottom:1px solid var(--ab-border-subtle);vertical-align:middle;white-space:nowrap;}
-.ab-tbl tbody tr{height:44px;transition:background .1s}
+.ab-tbl tbody tr{height:auto;min-height:44px;transition:background .1s}
 .ab-tbl tbody tr:hover{background:rgba(255,255,255,.025)}
 .ab-tbl tbody tr.ab-sel{background:rgba(94,106,210,.08)}
 .ab-covcell{padding:0 6px 0 10px!important}
@@ -284,12 +284,14 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0}
 .ab-num{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text2)}
 .ab-scan{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text4)}
 
-.ab-rowact{display:flex;gap:6px;justify-content:flex-end;opacity:0;transition:opacity .1s}
-tr:hover .ab-rowact, tr:focus-within .ab-rowact{opacity:1}
+.ab-rowact{display:flex;gap:6px;position:absolute;right:14px;top:50%;transform:translateY(-50%);z-index:3;
+  background:var(--ab-bg);padding:4px 10px;border-radius:6px;
+  box-shadow:-12px 0 18px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .1s}
+tr:hover .ab-rowact, tr:focus-within .ab-rowact{opacity:1;pointer-events:auto}
 .ab-rowact button{height:26px;padding:0 9px;font-size:11.5px;border-radius:5px}
 .ab-rowact button.warn{color:var(--ab-amber)}
 .ab-rowact button.warn:hover{background:var(--ab-amber-soft);border-color:rgba(242,163,60,.3)}
-.ab-actcol{width:1%}
+.ab-actcol{padding:0!important;width:0;position:relative;overflow:visible}
 
 tr.drow td{background:#11151d;padding:0;border-bottom:1px solid var(--ab-border);}
 tr.drow[hidden] td{padding:0}
