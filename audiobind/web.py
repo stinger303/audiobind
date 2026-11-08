@@ -1223,7 +1223,14 @@ def render_settings(state) -> str:
     tier_env = setting_env("auto_convert")
     controls_parts.append(_setting_select("auto_convert", "Auto-convert tier",
         tier, ["HIGH", "MEDIUM", "OFF"],
-        tier_custom, tier_env))
+        tier_custom, tier_env,
+        hint="What converts without you touching a row. "
+             "HIGH: title and author match Audible strongly with a clear margin - safe to "
+             "convert automatically. MEDIUM: a good match with weaker evidence (e.g. the "
+             "author came from the catalog) - converts when this tier is MEDIUM. LOW: weak "
+             "match - always held for review; fix it with Edit ASIN on the book row. "
+             "COLLECTION/NONE: the folder looks like several books mixed together, or nothing "
+             "in the catalog matched - these are never auto-converted."))
 
     # 2. Bitrate floor
     bitrate = effective_val("audio_bitrate")
@@ -1513,10 +1520,11 @@ def render(state, status: str = "", query: str = "") -> str:
         reason_html = ""
         if unit.status in ("held", "review", "failed"):
             try:
-                data = json.loads(unit.detail or "{}")
+                detail_data = json.loads(unit.detail or "{}")
             except ValueError:
-                data = {}
-            why, _todo = explain(unit.status, unit.confidence or "", unit.note, data)
+                detail_data = {}
+            why, _todo = explain(unit.status, unit.confidence or "", unit.note,
+                                 detail_data)
             rc = " failed" if unit.status == "failed" else ""
             reason_html = '<span class="ab-breason{rc}">{wh}</span>'.format(
                 rc=rc, wh=_html(why))

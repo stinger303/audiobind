@@ -239,3 +239,42 @@ class TestRenderedSearchAndSort(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSortAttributes(unittest.TestCase):
+    """A shadowed variable once rendered rows with a literal {} instead of the
+    data-sort-* attributes - clicking any column header then sorted nothing."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.state = State(pathlib.Path(self.dir.name))
+        self.state.save(UnitState(path="A/One", status="converted",
+                                  confidence="HIGH", hours=6, files=1))
+        self.state.save(UnitState(path="A/Two", status="review",
+                                  confidence="LOW", hours=1, files=1,
+                                  note="runtime 1.0h vs catalog 9.0h"))
+
+    def tearDown(self):
+        self.state.close()
+        self.dir.cleanup()
+
+    def test_every_row_carries_its_sort_attributes(self):
+        page = web.render(self.state)
+        for column in ("title", "status", "tier", "runtime", "scan"):
+            self.assertIn("data-sort-%s=" % column, page)
+        self.assertNotIn("{}=", page)
+
+    def test_sort_attributes_survive_the_reason_line(self):
+        """The reason block used to shadow the sort-attribute string."""
+        page = web.render(self.state)
+        row = [seg for seg in page.split('<tr class="urow"')
+               if 'data-path="A/Two"' in seg.split(">")[0] or 'data-path="A/Two"' in seg[:120]]
+        self.assertTrue(row, "review row not found")
+        review_row = row[-1].split("</tr>")[0]
+        self.assertIn("data-sort-status=", review_row)
+        self.assertIn("data-sort-tier=", review_row)
+        self.assertNotIn("{}=", review_row)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -3,6 +3,22 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-11-08
+
+### Fixed
+- **Column sorting works again - on every column.** A shadowed variable in the
+  row renderer replaced each book's five sort attributes with a literal `{}`,
+  so clicking any column header (not just Status and Tier) silently sorted
+  nothing. The reason-line block was overwriting the sort-attribute string with
+  the parsed detail blob; it now uses its own variable. Regression test asserts
+  every rendered row carries all five sort keys, with and without a reason line.
+
+### Added
+- **What the tiers mean, in Settings.** The Auto-convert tier dropdown now
+  explains HIGH (strong title+author match with a clear margin - safe to
+  auto-convert), MEDIUM (good match, weaker evidence), LOW (held for review -
+  fix with Edit ASIN), and COLLECTION/NONE (never auto-converted).
+
 ## [0.12.0] - 2026-11-08
 
 ### Added
