@@ -19,6 +19,17 @@ library-in/                         library-out/
 
 ![Audiobind status page](docs/screenshot.png)
 
+## Status: beta — read this before you point it at your library
+
+Audiobind is a **beta**: a solo project with a single front-end developer, and the
+code is written with heavy AI assistance (designed, reviewed and tested by a human,
+but not hand-written line by line). It reads, moves and deletes folders in real
+audiobook libraries, and software like that can fail badly — **you may experience
+data loss**. Converted source folders are moved to a `.audiobind-trash/` folder
+rather than shredded, and the hard delete asks for typed confirmation, but there is
+no undo button for your library. Keep backups, run it against a copy first, and pin
+a tagged release instead of `latest` if reproducible behavior matters to you.
+
 ## How it works
 
 1. **Group parts into books.** `Book/Disc 1..9` and `Book/Part 1..3` collapse into one unit. A
@@ -45,7 +56,11 @@ library-in/                         library-out/
 | `COLLECTION` | several books in one folder | left for review |
 | held | runtime disagrees with the catalog by >25% - usually the wrong edition | not converted |
 
-Your source library is mounted **read-only** and is never modified. Nothing is deleted, ever.
+A book's source folder is only touched after its output has been verified: then the
+folder is moved to `<LIBRARY_ROOT>/.audiobind-trash/<timestamp>/`, where it stays
+until you empty it. The web UI's **Delete** is the one destructive path — it removes
+the source folder *and* the published output permanently, and requires typing
+`DELETE` to confirm.
 
 ## Installation
 
