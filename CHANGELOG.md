@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.4] - 2026-11-08
+
+### Fixed
+- The rail footer still said the library was "(read-only)" after 0.11.3 made it
+  read-write for the delete feature. The stale note is gone.
+
 ## [0.11.3] - 2026-11-08
 
 ### Added
