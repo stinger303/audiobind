@@ -286,11 +286,11 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:
 .ab-num{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text2)}
 .ab-scan{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text4)}
 
-.ab-rowact{display:inline-flex;gap:6px;
-  background:var(--ab-bg);padding:4px 10px;border-radius:6px;
+.ab-rowact{display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;max-width:100%;
+  background:var(--ab-bg);padding:4px 8px;border-radius:6px;
   box-shadow:-12px 0 18px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .1s}
 tr:hover .ab-rowact, tr:focus-within .ab-rowact{opacity:1;pointer-events:auto}
-.ab-rowact button{height:26px;padding:0 9px;font-size:11.5px;border-radius:5px}
+.ab-rowact button{height:26px;padding:0 7px;font-size:11px;border-radius:5px;white-space:nowrap}
 .ab-rowact button.warn{color:var(--ab-amber)}
 .ab-rowact button.warn:hover{background:var(--ab-amber-soft);border-color:rgba(242,163,60,.3)}
 .ab-actcol{padding:0!important;width:auto;position:relative;overflow:hidden;text-align:right}

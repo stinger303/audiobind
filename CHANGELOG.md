@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.7] - 2026-11-08
+
+### Fixed
+- **The hover action buttons no longer clip at the screen edge.** The three
+  row buttons (Retry now / Convert anyway / Edit ASIN) were wider than the
+  actions cell at typical viewports, and the cell's hidden-overflow clipped
+  them mid-word. They now wrap to a second line inside the cell when space is
+  tight, with tighter padding so all three fit on one line at 1080p.
+
 ## [0.11.6] - 2026-11-08
 
 ### Fixed
