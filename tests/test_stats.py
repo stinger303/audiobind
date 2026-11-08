@@ -66,8 +66,11 @@ class TestLibraryStats(unittest.TestCase):
         self.save("A/Two", "ready")
         page = web.render(self.state)
         self.assertIn("converted", page)
-        self.assertIn("6.0 h", page)
-        self.assertIn("1.5 GB", page)
+        # the value and its unit are separate elements, so the unit must not be doubled
+        self.assertIn("<b>6.0</b><span class=\"ab-unit\">h</span>", page)
+        self.assertIn("<b>1.5</b><span class=\"ab-unit\">GB</span>", page)
+        self.assertNotIn("h h", page)
+        self.assertNotIn("GB GB", page)
         self.assertIn("library progress", page)
         self.assertIn("50.0%", page)
         self.assertIn('style="width:50.0%"', page)
