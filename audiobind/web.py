@@ -495,6 +495,25 @@ function abToast(text) {
   clearTimeout(abToast.t);
   abToast.t = setTimeout(() => el.classList.remove('on'), 5000);
 }
+function abEditAsin(btn) {
+  const el = btn.closest('[data-path]');
+  if (!el) return;
+  const path = el.dataset.path;
+  const row = document.querySelector('tr.urow[data-path=\"' + CSS.escape(path) + '\"]');
+  if (!row) return;
+  const panel = row.nextElementSibling;
+  if (!panel || !panel.classList.contains('drow')) return;
+  panel.hidden = false;
+  row.classList.add('ab-sel');
+  const set = openSet();
+  set.add(path);
+  saveOpen(set);
+  const input = panel.querySelector('input[data-asin]');
+  if (input) {
+    input.scrollIntoView({block: 'center', behavior: 'smooth'});
+    input.focus();
+  }
+}
 function abCoverFail(img) {
   img.classList.add('ab-gone');
 }
@@ -979,7 +998,7 @@ def _render_shelf(problem_units: list) -> str:
 
         btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="rowAction(this,\'retry\')">Retry now</button>'
         force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="rowAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button class="btn" title="Pin this catalog entry to the book, then re-check it against it." onclick="rowAction(this,\'set_asin\')">Use this ASIN</button>'
+        asin_btn = '<button class="btn" title="Open this book\'s details and pin a catalog entry." onclick="abEditAsin(this)">Edit ASIN</button>'
 
         cards.append(
             ('<div class="ab-problem" data-path="{dp}">'
@@ -1192,7 +1211,7 @@ def render(state, status: str = "", query: str = "") -> str:
         if unit.status in ("held", "review", "failed"):
             btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="event.stopPropagation();rowAction(this,\'retry\')">Retry now</button>'
             force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="event.stopPropagation();rowAction(this,\'force\')">Convert anyway</button>'
-            asin_btn = '<button class="btn" title="Pin this catalog entry to the book, then re-check it against it." onclick="event.stopPropagation();rowAction(this,\'set_asin\')">Use this ASIN</button>'
+            asin_btn = '<button class="btn" title="Open this book\'s details and pin a catalog entry." onclick="event.stopPropagation();abEditAsin(this)">Edit ASIN</button>'
             act_html = '<div class="ab-rowact">' + btn + force + asin_btn + '</div>'
 
         reason_html = ""

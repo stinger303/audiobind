@@ -158,6 +158,10 @@ class TestCompactActions(unittest.TestCase):
         page = web.render(self.state)
         self.assertIn("Retry now", page)
         self.assertIn("Convert anyway", page)
+        self.assertIn("Edit ASIN", page)
+        self.assertIn("function abEditAsin(", page)
+        # Panel button is still "Use this ASIN" (not renamed)
+        self.assertIn("Use this ASIN", page)
 
 
 class TestDeleteUI(unittest.TestCase):

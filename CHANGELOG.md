@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.5] - 2026-11-08
+
+### Fixed
+- Rail footer now wraps long host paths inside the sidebar (overflow-wrap:anywhere, 10.5px).
+- BOOK column constrained to 38%/520px; title and author truncate with ellipsis.
+- Hover action buttons anchored inside a fixed-width last column (170px), no longer cause horizontal scroll.
+
+### Changed
+- Delete confirmation is now a shared modal overlay instead of an inline strip.
+- Row-hover "Use this ASIN" renamed to "Edit ASIN"; clicking it opens the detail panel and focuses the ASIN input (shelf cards too). Panel button unchanged.
+
 ## [0.11.4] - 2026-11-08
 
 ### Fixed
