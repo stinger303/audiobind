@@ -300,12 +300,25 @@ tr:hover .ab-rowact, tr:focus-within .ab-rowact{opacity:1;pointer-events:auto}
 tr.drow td{background:#11151d;padding:0;border-bottom:1px solid var(--ab-border);white-space:normal}
 tr.drow[hidden] td{padding:0}
 .dd{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:22px;padding:16px 22px 18px;}
-.explain{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:22px;
-  background:#141a24;border:1px solid #232b38;border-radius:10px;padding:14px 16px;}
+.ab-toprow{grid-column:1/-1;display:flex;gap:26px;align-items:flex-start;}
+.ab-topcov{flex:none;}
+.ab-topmain{flex:1;min-width:0;}
+.explain{margin:0 0 14px;}
 .explain h4{margin:0 0 6px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
-  color:var(--ab-text3);font-weight:600;}
+  color:var(--ab-amber);font-weight:600;}
 .explain p{margin:0;color:#d7dce7;}
+.explain .todo{margin-top:12px;}
 .explain .todo h4{color:var(--ab-amber);}
+.ab-actrow{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px;}
+.ab-actrow button{height:36px;padding:0 18px;font-size:13px;border-radius:8px;}
+.ab-actrow .warn{background:var(--ab-amber);border-color:transparent;
+  color:#1a1200;font-weight:600;}
+.ab-actrow .warn:hover{background:#f6b95d;color:#1a1200;}
+.ab-pinrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.ab-pinrow input{font:inherit;font-size:13px;padding:8px 12px;border-radius:8px;
+  border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);width:240px;}
+.ab-pinlab{font-size:12.5px;color:var(--ab-text3);}
+.ab-pinhint{width:100%;font-size:12px;color:var(--ab-text3);}
 .ab-meter{display:flex;gap:6px;margin:8px 0 2px;}
 .ab-meter span{flex:0 0 92px;text-align:center;font-size:11px;font-weight:700;letter-spacing:.06em;border-radius:6px;padding:4px 0;}
 .ab-meter .ab-off{background:var(--ab-surface2);color:var(--ab-text3);}
@@ -321,15 +334,15 @@ tr.drow[hidden] td{padding:0}
 .acts input{font:inherit;font-size:12.5px;padding:6px 10px;border-radius:8px;
   border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);}
 .dd h4{margin:0 0 8px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
-  color:var(--ab-text3);font-weight:600;}
+  color:var(--ab-amber);font-weight:600;}
 .dd ul{margin:0;padding-left:16px;}
 .dd li{margin:3px 0;color:#c7cddb;}
 .dd code{color:#9fd7c8;}
 
-.ab-covbigwrap{position:relative;width:150px;height:150px;border-radius:8px;
+.ab-covbigwrap{position:relative;width:190px;height:190px;border-radius:8px;
   background:#161a22;border:1px solid #232833;overflow:hidden;}
 .ab-covbigwrap::after{content:"\\266B";position:absolute;inset:0;display:flex;
-  align-items:center;justify-content:center;color:#394152;font-size:40px;}
+  align-items:center;justify-content:center;color:#394152;font-size:48px;}
 .ab-covbigwrap .ab-thumb{position:relative;z-index:1;display:block;width:100%;height:100%;object-fit:cover;background:#161a22;}
 .ab-covpanel{display:flex;align-items:flex-start;}
 .ab-edit{grid-column:1/-1;border-top:1px solid #1c2230;padding-top:14px;}
@@ -1532,8 +1545,7 @@ def render(state, status: str = "", query: str = "") -> str:
         asin_btn = '<button title="Pin this catalog entry to the book, then re-check it against it." onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
 
         explain_html = (
-            banner
-            + '<div class="explain">'
+            '<div class="explain">'
             + '<div><h4>{wh}</h4><p>{w}</p>{m}</div>'.format(
                 wh=why_header, w=_html(why), m=meter)
             + '<div class="todo"><h4>Your options</h4><p>{td}</p></div>'.format(
@@ -1541,10 +1553,19 @@ def render(state, status: str = "", query: str = "") -> str:
             + "</div>"
         )
         actions = (
-            '<div class="acts">'
-            + btn + force
-            + '<input data-asin placeholder="ASIN, e.g. B005EHN61O" style="width:190px">'
+            '<div class="ab-actrow">' + force + btn + "</div>"
+            + '<div class="ab-pinrow">'
+            + '<span class="ab-pinlab">Pin an exact ASIN:</span>'
+            + '<input data-asin value="{av}" placeholder="ASIN, e.g. B005EHN61O">'.format(
+                av=_attr(unit.asin or ""))
             + asin_btn
+            + '<span class="ab-pinhint">Re-checks the book against this exact Audible '
+              'entry. Passes your setting &rarr; converts automatically. Still too '
+              'unsure &rarr; this panel re-opens with the reason.</span>'
+            + "</div>"
+        )
+        delete_act = (
+            '<div class="acts">'
             + '<button class="btn danger" title="Permanently delete this book\'s source folder '
               'and its published files. Cannot be undone." onclick="unitDelete(this)" '
               'data-path="{dp}" data-title="{ti}" '
@@ -1555,17 +1576,23 @@ def render(state, status: str = "", query: str = "") -> str:
                        if data.get("reopen")
                        and unit.status in ("review", "held", "failed") else "")
         after_title = "What you got" if out else "What you'll get"
+        toprow = (
+            '<div class="ab-toprow">'
+            + '<div class="ab-topcov">{cov}</div>'.format(cov=cover_html(unit, big=True))
+            + '<div class="ab-topmain">' + explain_html + actions + "</div>"
+            + "</div>"
+        )
         return (
             '<tr class="drow" data-path="{dp}"{ro} hidden>'
             '<td colspan="{tc}">'
             '<div class="dd" data-path="{dp}">'
-            + explain_html
-            + actions
-            + '<div class="ab-covpanel">{cov}</div>'.format(cov=cover_html(unit, big=True))
+            + banner
+            + toprow
             + block("Your source files", before)
             + block(after_title, after)
             + block("The Audible match", decision)
             + editor
+            + delete_act
             + "</div></td></tr>"
         ).format(dp=_attr(unit.path), ti=_attr(unit.title or unit.path),
                  tc=TOTAL_COLUMNS, ro=reopen_attr)

@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.4] - 2026-11-08
+
+### Changed
+- **The detail panel layout matches the approved mockup.** The cover now sits
+  beside the explanation instead of below the buttons; "Why it's waiting for
+  you" and "Your options" stack in one column next to it; Convert anyway is the
+  filled amber primary and Retry now the ghost button; the ASIN pin row carries
+  a "Pin an exact ASIN:" label, the current ASIN pre-filled, and the hint line
+  underneath. Delete moves to its own row at the very bottom, away from the
+  action buttons.
+- All detail section headers (including Your source files / What you'll get /
+  The Audible match) render in the amber accent, and the big cover grew to
+  190px, as in the mockup.
+
 ## [0.12.3] - 2026-11-08
 
 ### Changed
