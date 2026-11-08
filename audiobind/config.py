@@ -49,6 +49,9 @@ class Config:
     notify_url: str = ""
     region: str = "us"
     nice: int = 10
+    #: host-side paths shown in the UI when the container paths are meaningless to the user
+    host_library: str = ""
+    host_output: str = ""
 
     ignore_globs: list[str] = field(default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"])
 
@@ -71,6 +74,8 @@ class Config:
             notify_url=_env("NOTIFY_URL", ""),
             region=_env("REGION", "us"),
             nice=_env_int("NICE", 10),
+            host_library=_env("HOST_LIBRARY", ""),
+            host_output=_env("HOST_OUTPUT", ""),
         )
 
     def ensure_dirs(self) -> None:

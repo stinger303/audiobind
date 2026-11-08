@@ -165,6 +165,18 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         self.assertIn("(read-only)", page)
         self.assertIn("<b>output</b>", page)
 
+    def test_the_rail_footer_prefers_the_host_paths(self):
+        saved = (web.CONFIG.host_library, web.CONFIG.host_output)
+        web.CONFIG.host_library = "/mnt/user/data/media/audiobooks"
+        web.CONFIG.host_output = "/mnt/user/data/media/audiobooks-fixed"
+        try:
+            page = web.render(self.state)
+        finally:
+            web.CONFIG.host_library, web.CONFIG.host_output = saved
+        self.assertIn("/mnt/user/data/media/audiobooks", page)
+        self.assertIn("/mnt/user/data/media/audiobooks-fixed", page)
+        self.assertNotIn(">&nbsp;/library<", page)
+
     def test_the_action_toast_exists(self):
         page = web.render(self.state)
         self.assertIn('id="ab-toast"', page)
