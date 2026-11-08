@@ -153,9 +153,14 @@ def convert_unit(audit: Audit, log=print):
 
 
 def record(state: State, audit: Audit, status: str, output: str = "", note: str = "",
-           result=None) -> None:
+           result=None, reopen: bool = False) -> None:
+    """Record one audit outcome. ``reopen`` marks a manual re-check that still ended
+    in a decision-needed state, so the web panel re-opens with the reason."""
     custom = overrides_mod.normalise(audit.overrides)
     detail = json.dumps({
+        # a manual re-check (Retry now / Use this ASIN) that still needs a decision
+        # tells the status page to re-open this book's panel with the reason
+        "reopen": bool(reopen),
         "action": audit.action,
         "hours": audit.hours,
         "match": {
@@ -208,13 +213,20 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
     ))
 
 
-def process_unit(state: State, unit: BookUnit, log=print, force: bool = False) -> Audit:
+def process_unit(state: State, unit: BookUnit, log=print, force: bool = False,
+                 manual: bool = False) -> Audit:
     """Audit, then convert when the confidence tier and runtime check allow it.
 
     ``force`` is the operator saying "I looked at this, convert it anyway": the tier, the runtime
     hold and the damaged-source hold are bypassed, but the output is still verified before it is
-    published.
+    published. ``manual`` marks a one-off re-check triggered from the web UI (Retry now /
+    Use this ASIN): if it still ends in a decision-needed state, the detail is flagged so the
+    panel re-opens with the reason instead of the change going unnoticed.
     """
+    def rec(status: str, **kw) -> None:
+        record(state, audit, status,
+               reopen=manual and status in ("review", "held", "failed"), **kw)
+
     started = time.time()
     audit = audit_unit(unit, state.get_asin_override(unit.rel_path))
     audit.overrides = state.get_overrides(unit.rel_path)
@@ -225,43 +237,43 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False) -
 
     if not force and audit.unreadable and audit.action in ("merge+convert", "convert", "remux"):
         log(f"  skipping: {audit.unreadable} unreadable source file(s) - fix the source first")
-        record(state, audit, "review",
-               note=f"{audit.unreadable} unreadable source file(s); not converted")
+        rec("review",
+            note=f"{audit.unreadable} unreadable source file(s); not converted")
     elif force and audit.match.product:
         log("  forced by operator - converting regardless of tier/hold")
         try:
             result = convert_unit(audit, log=log)
             if result is None:
-                record(state, audit, "ready", note="already published")
+                rec("ready", note="already published")
             else:
-                record(state, audit, "converted", str(result.path), result=result)
+                rec("converted", output=str(result.path), result=result)
         except Stopped:
             log("  stopped by operator - partial file discarded, book will be retried")
-            record(state, audit, "interrupted", note="stopped by operator - retried next scan")
+            rec("interrupted", note="stopped by operator - retried next scan")
             CONTROL.pause()
         except Exception as exc:                        # noqa: BLE001
             log(f"  FAILED: {exc}")
-            record(state, audit, "failed", note=str(exc)[:300])
+            rec("failed", note=str(exc)[:300])
     elif (audit.action in ("merge+convert", "convert", "remux")
           and audit.confidence in effective_auto_tiers()):
         try:
             result = convert_unit(audit, log=log)
             if result is None:                       # dry run, or already published
-                record(state, audit, "ready", note="dry run - nothing written")
+                rec("ready", note="dry run - nothing written")
             else:
-                record(state, audit, "converted", str(result.path), result=result)
+                rec("converted", output=str(result.path), result=result)
         except Stopped:
             log("  stopped by operator - partial file discarded, book will be retried")
-            record(state, audit, "interrupted", note="stopped by operator - retried next scan")
+            rec("interrupted", note="stopped by operator - retried next scan")
             CONTROL.pause()
         except Exception as exc:                        # noqa: BLE001 - one book must not stop a scan
             log(f"  FAILED: {exc}")
-            record(state, audit, "failed", note=str(exc)[:300])
+            rec("failed", note=str(exc)[:300])
     elif audit.action == "hold":
         log("  held: runtime disagrees with the catalog (wrong edition?)")
-        record(state, audit, "held")
+        rec("held")
     else:
-        record(state, audit, "review")
+        rec("review")
     log(f"  done in {time.time() - started:.0f}s")
     state.heartbeat()          # keep "last scan" honest while a long pass is still running
     return audit

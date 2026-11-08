@@ -1,6 +1,10 @@
 """Turn a book's state into "why is it like this" and "what should I do".
 
 Kept separate from the web layer so it can be tested directly and reused by the CLI.
+
+The copy here is operator-facing: plain sentences that say what happened, why the
+book is in this state, and what pressing each button will do. Approved wording,
+v0.12.3 - keep new strings in the same voice.
 """
 from __future__ import annotations
 
@@ -20,9 +24,9 @@ def explain(status: str, confidence: str, note: str = "", detail: dict | None = 
     match = (detail or {}).get("match") or {}
     pin = str(match.get("asin_pin_failed") or "").strip()
     if pin:
-        why = (f"Your pinned ASIN {pin} has no catalog data - Audible serves nothing for it - "
-               "so the catalog search result was used. " + why)
-        what = (what + " The pin stays saved - re-pin with a live ASIN to replace it.")
+        why = (f"Your pinned ASIN {pin} is not in Audible's catalog - nothing is published "
+               f"under it - so the best search result was used instead. {why}")
+        what = (what + " The pin stays saved until you replace it with a live ASIN.")
     return why, what
 
 
@@ -47,59 +51,63 @@ def _explain_base(status: str, confidence: str, note: str = "", detail: dict | N
         out = detail.get("output") or {}
         chapters = out.get("chapters")
         tail = f" with {chapters} chapters" if chapters else ""
-        return (f"Converted and published{tail}.",
-                "Nothing to do - it is in your output library.")
+        return (f"Converted and filed in your library{tail}.",
+                "Nothing to do. It's already on your shelf.")
 
     if status == "ready":
-        return ("Everything checked out, but dry run is on so nothing was written.",
-                "Turn Dry run off, then either press Scan now or use Convert anyway on this row.")
+        return ("This book passed every check, but Dry Run is on, so nothing was actually written.",
+                "Turn Dry Run off in Settings, then press Scan now - or hit Convert anyway on this row.")
 
     if status == "interrupted":
-        return ("Encoding was stopped before it finished. The partial file was discarded, so "
-                "nothing half-written reached the library.",
-                "Press Retry now - it starts again from scratch.")
+        return ("The encoding was stopped partway through. The half-written file was thrown "
+                "away, so nothing broken reached your library.",
+                "Press Retry now - it starts over from the beginning.")
 
     if status == "failed":
         reason = note or "the encoder returned an error"
-        return (f"The conversion failed: {reason}",
-                "Check the source files first (a damaged file is the usual cause), then Retry now.")
+        return (f"This one failed: {reason}. A damaged source file is the usual suspect.",
+                "Check the source files, then press Retry now.")
 
     if status == "held":
         if catalog_hours and hours:
             delta = hours - catalog_hours
             pct = abs(delta) / catalog_hours * 100
-            why = (f"Your files run {hours:.2f} h but Audible lists {catalog_hours:.2f} h for this "
-                   f"edition - {pct:.0f}% {'shorter' if delta < 0 else 'longer'}.")
+            why = (f"Your files run {hours:.2f} hours, but Audible lists {catalog_hours:.2f} for "
+                   f"this edition - {pct:.0f}% {'longer' if delta > 0 else 'shorter'}.")
         else:
             why = note or "The runtime does not match the catalog entry."
-        return (why + " That usually means a different edition (radio drama, abridged, "
-                "omnibus) or missing parts.",
-                "If you are sure the files are complete, use Convert anyway. If the catalog entry "
-                "is the wrong edition, paste the correct ASIN and press Retry now.")
+        return (why + " That gap usually means a different edition (radio drama, abridged, "
+                "omnibus) or missing files.",
+                "Sure the files are complete? Press Convert anyway. Wrong edition in the "
+                "catalog? Paste the right ASIN and press Retry now.")
 
     if status == "review":
         lower = note.lower()
         unreadable = re.search(r"(\d+)\s+unreadable", lower)
         if unreadable:
-            return (f"{unreadable.group(1)} source file(s) cannot be decoded by ffmpeg.",
-                    "Replace or re-rip those files, then press Retry now. Convert anyway will "
-                    "also fail until the file is fixed.")
+            return (f"{unreadable.group(1)} source files are damaged or in a format we can't read.",
+                    "Replace or re-rip those files, then press Retry now. Convert anyway won't "
+                    "help - it hits the same broken file.")
         if confidence == "NONE":
-            return ("No Audible entry matched this title, so there is nothing trustworthy to "
-                    "label the book with.",
-                    "Find it on Audible and paste its ASIN (best), then Retry now. Convert anyway "
-                    "will convert it using the folder name only.")
+            return ("We couldn't find this book on Audible, so there's nothing trustworthy to "
+                    "label it with.",
+                    "Find it on Audible and paste its ASIN, then press Retry now. Or Convert "
+                    "anyway to go with the folder name.")
         if confidence == "COLLECTION":
-            return ("This folder looks like several books at once rather than a single title.",
-                    "Split it into one folder per book and press Scan now, or pin this folder to "
-                    "one book with its ASIN and use Convert anyway.")
+            return ("This folder looks like several books bundled together, not one title.",
+                    "Split it into one folder per book and press Scan now - or pin it to one "
+                    "book with its ASIN and Convert anyway.")
         if confidence == "LOW":
-            return ("The automatic match was not confident enough to trust - the folder name and "
-                    "the catalog entry disagree.",
-                    "Paste the correct ASIN and press Retry now. If you know the title is right, "
+            return ("The match we found isn't trustworthy - the folder name and the Audible "
+                    "entry disagree.",
+                    "Paste the correct ASIN and press Retry now. Sure the title is right? "
                     "Convert anyway skips the check.")
-        return (note or "This book needs a decision before it is converted.",
-                "Retry now after fixing the source, or Convert anyway to proceed as it is.")
+        return (note or ("We found the Audible entry for this book, but the match is only "
+                         "Medium confidence - the folder name and the listing don't line up "
+                         "exactly. Auto-convert is set to High, so anything less than a sure "
+                         "match waits for your OK."),
+                "Cover and title below look right? Press Convert anyway. Want it locked in? "
+                "Paste the ASIN and press Use this ASIN.")
 
-    return (note or "No state recorded yet.",
-            "Press Scan now to assess this book.")
+    return (note or "We haven't looked at this book yet.",
+            "Press Scan now and we'll take a look.")

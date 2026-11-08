@@ -124,6 +124,17 @@ class State:
                 "SELECT status, COUNT(*) n FROM units GROUP BY status").fetchall()
         return {r["status"]: r["n"] for r in rows}
 
+    def rev(self) -> str:
+        """A cheap 'did anything change' signature: newest row timestamp + row count.
+
+        Unlike counts(), this moves even when a re-check ends in the same status, so
+        the web page can notice a manual Retry / ASIN re-check that changed nothing
+        but the detail blob."""
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT MAX(updated_at), COUNT(*) FROM units").fetchone()
+        return "{:.6f}|{}".format(row[0] or 0.0, row[1])
+
     def detail_for_asin(self, asin: str) -> str:
         """The newest detail blob recorded for an ASIN (the cover proxy reads the image URL)."""
         if not asin:

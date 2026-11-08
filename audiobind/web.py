@@ -306,6 +306,15 @@ tr.drow[hidden] td{padding:0}
   color:var(--ab-text3);font-weight:600;}
 .explain p{margin:0;color:#d7dce7;}
 .explain .todo h4{color:var(--ab-amber);}
+.ab-meter{display:flex;gap:6px;margin:8px 0 2px;}
+.ab-meter span{flex:0 0 92px;text-align:center;font-size:11px;font-weight:700;letter-spacing:.06em;border-radius:6px;padding:4px 0;}
+.ab-meter .ab-off{background:var(--ab-surface2);color:var(--ab-text3);}
+.ab-meter .ab-on{background:var(--ab-amber);color:#1a1200;}
+.ab-meterhint{font-size:12px;color:var(--ab-text3);}
+.ab-rebanner{grid-column:1/-1;background:rgba(242,163,60,.12);border:1px solid rgba(242,163,60,.5);
+  border-radius:10px;padding:12px 16px;font-size:14px;color:var(--ab-amber);margin-bottom:4px;}
+.ab-rebanner b{color:var(--ab-amber);}
+.ab-alink{color:var(--ab-blue);border-bottom:1px dotted var(--ab-border);text-decoration:none;}
 .acts{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;
   border-top:1px solid #1c2230;padding-top:14px;}
 .acts button{font-size:12.5px;padding:6px 12px;}
@@ -583,29 +592,25 @@ function abMarkCustom(panel, custom) {
   const badge = row && row.querySelector('.ab-custom');
   if (badge) badge.hidden = custom.length === 0;
 }
-const OPEN_KEY = 'audiobind_open';
+// Panels start closed on every page load - an open panel only exists because
+// the operator opened it this visit, or a re-check asked for it to re-open.
 function openSet() {
-  try { return new Set(JSON.parse(sessionStorage.getItem(OPEN_KEY) || '[]')); }
-  catch (e) { return new Set(); }
+  const s = new Set();
+  document.querySelectorAll('tr.drow:not([hidden])').forEach(p => {
+    if (p.dataset.path) s.add(p.dataset.path);
+  });
+  return s;
 }
-function saveOpen(set) {
-  try { sessionStorage.setItem(OPEN_KEY, JSON.stringify([...set])); } catch (e) {}
-}
+function saveOpen() {}
 function toggleRow(row) {
   const panel = row.nextElementSibling;
   if (!panel || !panel.classList.contains('drow')) return;
   panel.hidden = !panel.hidden;
   row.classList.toggle('ab-sel', !panel.hidden);
-  const set = openSet();
-  const key = panel.dataset.path || '';
-  if (panel.hidden) { set.delete(key); } else { set.add(key); }
-  saveOpen(set);
 }
 document.addEventListener('DOMContentLoaded', () => {
-  const set = openSet();
-  if (!set.size) return;
-  document.querySelectorAll('tr.drow').forEach(panel => {
-    if (!set.has(panel.dataset.path)) return;
+  // a manual Retry now / Use this ASIN that still needs a decision re-opens its panel
+  document.querySelectorAll('tr.drow[data-reopen]').forEach(panel => {
     panel.hidden = false;
     if (panel.previousElementSibling) panel.previousElementSibling.classList.add('ab-sel');
   });
@@ -744,7 +749,9 @@ setInterval(tick, 2000);
 let lastCounts = null;
 function watch() {
   fetch('/api/state').then(r => r.json()).then(d => {
-    const sig = JSON.stringify(d.counts) + '|' + d.running;
+    // rev moves even when a re-check ends in the same status, so a manual
+    // Retry now / Use this ASIN always gets its fresh detail rendered
+    const sig = JSON.stringify(d.counts) + '|' + d.running + '|' + (d.rev || '');
     if (lastCounts === null) { lastCounts = sig; return; }
     if (sig !== lastCounts && !abBusy()) { location.reload(); }
   }).catch(() => {});
@@ -1393,11 +1400,16 @@ def render(state, status: str = "", query: str = "") -> str:
         mb = src.get("mb") or unit.src_mb
         size = "{:.0f} MB &middot; ".format(mb) if mb else ""
         codecs = " + ".join(src.get("codecs") or [])
+        n_parts = src.get("parts", 1)
+        n_files = src.get("files") or unit.files
         before = [
-            "{} part(s) &middot; {} file(s)".format(
-                src.get("parts", 1), src.get("files") or unit.files),
-            "{sz}{hr:.2f} h".format(sz=size, hr=src.get("hours") or unit.hours),
-            (codecs or "codec not recorded")
+            "{nf} audio file{fs} in {np} part{ps}".format(
+                nf=n_files, fs="" if n_files == 1 else "s",
+                np=n_parts, ps="" if n_parts == 1 else "s"),
+            "{sz}{hr:.2f} hours of audio".format(
+                sz=size, hr=src.get("hours") or unit.hours),
+            ("Audio format: " + codecs if codecs
+             else "Audio format not detected in the files")
             + (" &middot; {} ch".format(", ".join(src.get("channels") or []))
                if src.get("channels") else ""),
             '<span class="dim"><code>{pa}</code></span>'.format(pa=_html(unit.path)),
@@ -1414,15 +1426,68 @@ def render(state, status: str = "", query: str = "") -> str:
                     op=_html(str(out.get("path") or ""))),
             ]
         else:
-            after = ["not converted &mdash; status <b>{st}</b>".format(st=unit.status),
-                     "planned action: {ac}".format(ac=data.get("action") or "n/a")]
+            after = ["Nothing converted yet &mdash; still in your source folder.",
+                     "Once it converts: <b>one M4B</b> with chapters, cover and "
+                     "tags, filed into your library."]
 
-        decision = ["match: <b>{co}</b>".format(co=unit.confidence or "-"),
-                    "asin: {av}".format(av=unit.asin or "-")]
+        match_data = data.get("match") or {}
+        mtitle = match_data.get("title") or unit.title
+        decision = ["Audible match: <b>{t}</b>".format(t=_html(mtitle))]
+        if unit.confidence:
+            decision.append("Match confidence: <b>{co}</b>".format(co=unit.confidence))
+        if unit.asin:
+            decision.append(
+                'ASIN <a class="ab-alink" href="https://www.audible.com/pd?asin={a}" '
+                'target="_blank" rel="noopener">{a}</a>'.format(a=_attr(unit.asin)))
+        else:
+            decision.append("ASIN &mdash;")
         if unit.note:
             decision.append(_html(unit.note))
 
         why, todo = explain(unit.status, unit.confidence or "", unit.note, data)
+
+        # status-specific plain-English section titles
+        why_headers = {
+            "review": "Why it's waiting for you",
+            "held": "Why it's paused",
+            "failed": "Why it failed",
+            "ready": "Why nothing was written",
+            "interrupted": "Why it stopped",
+            "converted": "What happened",
+        }
+        why_header = why_headers.get(unit.status, "Status")
+
+        meter = ""
+        if unit.confidence in ("LOW", "MEDIUM", "HIGH"):
+            cells = "".join(
+                '<span class="{cls}">{t}</span>'.format(
+                    cls="ab-on" if t == unit.confidence else "ab-off", t=t)
+                for t in ("LOW", "MEDIUM", "HIGH"))
+            meter = ('<div class="ab-meter">{c}</div>'
+                     '<div class="ab-meterhint">How sure we are this is the '
+                     'right book</div>').format(c=cells)
+
+        # a manual re-check (Retry now / Use this ASIN) that still ended in a
+        # decision-needed state says so up top
+        banner = ""
+        if data.get("reopen") and unit.status in ("review", "held", "failed"):
+            tier = str(effective_val("auto_convert") or "high").lower()
+            if unit.status == "review":
+                if tier == "off":
+                    btxt = ("<b>Re-checked &mdash; still needs your decision.</b> "
+                            "Auto-convert is off, so every book waits for your OK.")
+                else:
+                    btxt = ("<b>Re-checked &mdash; still not confident enough.</b> "
+                            "ASIN {a} matches at <b>{c}</b>, below your {t} "
+                            "auto-convert setting.").format(
+                                a=_html(unit.asin or "the pinned one"),
+                                c=unit.confidence or "?", t=tier)
+            elif unit.status == "held":
+                btxt = ("<b>Re-checked &mdash; still not a runtime match.</b> "
+                        "This edition still disagrees with the catalog runtime.")
+            else:
+                btxt = "<b>Re-checked &mdash; the conversion failed again.</b>"
+            banner = '<div class="ab-rebanner">{t}</div>'.format(t=btxt)
 
         def block(title, items):
             return ("<div><h4>{t}</h4><ul>".format(t=title)
@@ -1443,7 +1508,6 @@ def render(state, status: str = "", query: str = "") -> str:
             ).format(lb=label_str, mk=mark, k=key, cv=_attr(custom[key]),
                      ph=placeholder, wh=width_hint)
 
-        match_data = data.get("match") or {}
         editor = (
             '<div class="ab-edit" data-path="{dp}"><h4>Metadata</h4>'
             '<p class="ab-hint">Overrides win over the catalog when this book is '
@@ -1468,10 +1532,11 @@ def render(state, status: str = "", query: str = "") -> str:
         asin_btn = '<button title="Pin this catalog entry to the book, then re-check it against it." onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
 
         explain_html = (
-            '<div class="explain">'
-            + '<div><h4>Why it is {st}</h4><p>{wh}</p></div>'.format(
-                st=unit.status, wh=_html(why))
-            + '<div class="todo"><h4>What to do</h4><p>{td}</p></div>'.format(
+            banner
+            + '<div class="explain">'
+            + '<div><h4>{wh}</h4><p>{w}</p>{m}</div>'.format(
+                wh=why_header, w=_html(why), m=meter)
+            + '<div class="todo"><h4>Your options</h4><p>{td}</p></div>'.format(
                 td=_html(todo))
             + "</div>"
         )
@@ -1486,19 +1551,24 @@ def render(state, status: str = "", query: str = "") -> str:
               'style="margin-left:auto">Delete</button>'
             + "</div>"
         )
+        reopen_attr = (' data-reopen="1"'
+                       if data.get("reopen")
+                       and unit.status in ("review", "held", "failed") else "")
+        after_title = "What you got" if out else "What you'll get"
         return (
-            '<tr class="drow" data-path="{dp}" hidden>'
+            '<tr class="drow" data-path="{dp}"{ro} hidden>'
             '<td colspan="{tc}">'
             '<div class="dd" data-path="{dp}">'
             + explain_html
-            + '<div class="ab-covpanel">{cov}</div>'.format(cov=cover_html(unit, big=True))
-            + block("Before", before)
-            + block("After", after)
-            + block("Decision", decision)
-            + editor
             + actions
+            + '<div class="ab-covpanel">{cov}</div>'.format(cov=cover_html(unit, big=True))
+            + block("Your source files", before)
+            + block(after_title, after)
+            + block("The Audible match", decision)
+            + editor
             + "</div></td></tr>"
-        ).format(dp=_attr(unit.path), ti=_attr(unit.title or unit.path), tc=TOTAL_COLUMNS)
+        ).format(dp=_attr(unit.path), ti=_attr(unit.title or unit.path),
+                 tc=TOTAL_COLUMNS, ro=reopen_attr)
 
     def row(unit) -> str:
         haystack = " ".join(filter(None, [unit.title, unit.author, unit.path]))
@@ -1716,6 +1786,9 @@ def snapshot(state) -> dict:
     return {
         "version": __version__,
         "counts": state.counts(),
+        # cheap change signature: moves even when a re-check ends in the same status,
+        # so the page notices a manual Retry / ASIN re-check and reloads
+        "rev": state.rev(),
         "stats": library_stats(state),
         "last_run": state.last_run() or {},
         "heartbeat_age_seconds": state.heartbeat_age(),
@@ -1930,7 +2003,7 @@ class Handler(BaseHTTPRequestHandler):
         logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
         threading.Thread(target=process_unit,
                          kwargs={"state": self.state, "unit": unit, "log": _log,
-                                 "force": action == "force"},
+                                 "force": action == "force", "manual": True},
                          daemon=True).start()
         self._send(200, json.dumps({"ok": True, "action": action, "unit": rel}).encode(),
                    "application/json")

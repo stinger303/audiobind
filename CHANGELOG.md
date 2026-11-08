@@ -3,6 +3,42 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2026-11-08
+
+### Changed
+- **The review panel speaks plain English.** "Why it is review / What to do /
+  Before / After / Decision" are now "Why it's waiting for you / Your options /
+  Your source files / What you'll get / The Audible match", with status-specific
+  headers everywhere ("Why it failed", "Why it's paused", ...). The field copy
+  reads like sentences: "32 audio files in 1 part", "31.79 hours of audio",
+  "Audio format not detected in the files". The match block names the book and
+  links the ASIN to Audible, and a LOW/MEDIUM/HIGH confidence meter sits under
+  the explanation.
+- **Every advice string was rewritten** in the approved plain-English voice
+  (converted, ready/dry-run, interrupted, failed, held, unreadable sources,
+  no-match, collection, low confidence, medium-confidence fallback, dead pinned
+  ASIN, never-scanned).
+- **Book action buttons now live inside the detail panel** - Convert anyway /
+  Retry now / the ASIN pin row sit right under "Your options" instead of only
+  on hover at the end of the table.
+
+### Added
+- **Manual re-checks that still need a decision re-open their panel.** Retry
+  now and Use this ASIN run a manual re-check; if it still ends below your
+  auto-convert level (or held/failed), the detail is flagged, the page reloads
+  and the panel re-opens by itself with an amber banner saying what the
+  re-check found and what to do next. If the re-check passes, the book simply
+  starts converting and the panel stays closed.
+
+### Fixed
+- **A same-status re-check used to go unnoticed.** The page only reloaded when
+  book counts changed, so a Retry now that ended in the same status refreshed
+  nothing while a panel was open. The page now watches a change signature that
+  moves on every row write.
+- **Detail panels no longer persist across refreshes.** Every panel starts
+  closed on page load; the only panels that open by themselves are the ones a
+  manual re-check asked to re-open.
+
 ## [0.12.2] - 2026-11-08
 
 ### Changed

@@ -16,7 +16,7 @@ class TestExplain(unittest.TestCase):
     def test_dry_run_ready_explains_the_switch(self):
         why, todo = explain("ready", "HIGH", "dry run - nothing written", {})
         self.assertIn("dry run", why.lower())
-        self.assertIn("Turn Dry run off", todo)
+        self.assertIn("Turn Dry Run off", todo)
 
     def test_held_shows_both_runtimes(self):
         why, todo = explain("held", "HIGH", "runtime 9.74h vs catalog 3.45h", DETAIL)
@@ -31,7 +31,7 @@ class TestExplain(unittest.TestCase):
 
     def test_interrupted_says_partial_file_discarded(self):
         why, todo = explain("interrupted", "HIGH", "", {})
-        self.assertIn("discarded", why)
+        self.assertIn("thrown away", why)
         self.assertIn("Retry now", todo)
 
     def test_unreadable_source_is_named(self):
@@ -41,12 +41,12 @@ class TestExplain(unittest.TestCase):
 
     def test_no_match_points_at_the_asin_field(self):
         why, todo = explain("review", "NONE", "", {})
-        self.assertIn("No Audible entry", why)
+        self.assertIn("couldn't find this book on Audible", why)
         self.assertIn("ASIN", todo)
 
     def test_low_confidence_explains_the_disagreement(self):
         why, todo = explain("review", "LOW", "", {})
-        self.assertIn("not confident", why)
+        self.assertIn("isn't trustworthy", why)
         self.assertIn("ASIN", todo)
 
     def test_failed_quotes_the_error(self):
@@ -66,7 +66,7 @@ class TestExplain(unittest.TestCase):
                   "source": {"hours": 0.99}}
         why, todo = explain("review", "LOW", "", detail)
         self.assertIn("B013ILGDHQ", why)
-        self.assertIn("no catalog data", why)
+        self.assertIn("not in Audible's catalog", why)
         self.assertIn("pin stays saved", todo)
 
 

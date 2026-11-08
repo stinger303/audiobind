@@ -54,5 +54,31 @@ class TestDelete(unittest.TestCase):
         self.assertIsNotNone(self.state.get("A/2"))
 
 
+class TestRev(unittest.TestCase):
+    """rev() is the page's change signature: it must move even when a re-check
+    ends in the same status and the counts do not change."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.state = State(pathlib.Path(self.dir.name))
+        self.state.save(UnitState(path="A/B", status="review", title="B"))
+
+    def tearDown(self):
+        self.state.close()
+        self.dir.cleanup()
+
+    def test_rev_moves_when_a_row_is_rewritten_with_the_same_status(self):
+        before = self.state.rev()
+        counts_before = self.state.counts()
+        self.state.save(UnitState(path="A/B", status="review", title="B"))
+        self.assertNotEqual(self.state.rev(), before)
+        self.assertEqual(self.state.counts(), counts_before)
+
+    def test_rev_changes_when_the_count_changes(self):
+        before = self.state.rev()
+        self.state.save(UnitState(path="A/C", status="held", title="C"))
+        self.assertNotEqual(self.state.rev(), before)
+
+
 if __name__ == "__main__":
     unittest.main()
