@@ -65,23 +65,23 @@ class TestLibraryStats(unittest.TestCase):
         self.save("A/One", "converted", hours=6.0, out_mb=1500.0)
         self.save("A/Two", "ready")
         page = web.render(self.state)
-        self.assertIn("hours converted", page)
-        self.assertIn("6 h", page)
+        self.assertIn("converted", page)
+        self.assertIn("6.0 h", page)
         self.assertIn("1.5 GB", page)
         self.assertIn("library progress", page)
-        self.assertIn("50%", page)
+        self.assertIn("50.0%", page)
         self.assertIn('style="width:50.0%"', page)
-        self.assertIn("1 of 2 books converted", page)
+        self.assertIn("<b>1</b> of 2", page)
 
     def test_the_stats_bar_does_not_reuse_the_encode_bar_classes(self):
         """A shared .bar class crushed the toolbar once; the stats bar owns its classes."""
         self.save("A/One", "converted", hours=1.0, out_mb=100.0)
         page = web.render(self.state)
-        self.assertIn('class="ab-statbar"', page)
-        self.assertIn('class="ab-statfill"', page)
-        # .ptrack belongs to the live encode progress bar and must not appear in a stat card
-        card = page.split('class="card ab-prog"')[1].split("</div>")[0]
-        self.assertNotIn("ptrack", card)
+        self.assertIn('class="ab-statsline"', page)
+        self.assertIn('class="ab-libbar"', page)
+        # .ptrack belongs to the live encode progress bar and must not appear in the stats line
+        stats_section = page.split('class="ab-statsline"')[1].split("</section>")[0]
+        self.assertNotIn("ptrack", stats_section)
 
 
 if __name__ == "__main__":

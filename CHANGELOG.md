@@ -3,6 +3,34 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-11-08
+
+### Added
+- **Left sidebar rail** with live unit counts for Library, Review, Held, and Failed. Clicking
+  an attention item sets the corresponding status filter; "Library" clears all filters.
+- **Needs-attention shelf**: collapsible card strip showing held/review/failed units (failed
+  first, capped at 12 with "+N more"), each with cover, explanation, and quick-action buttons
+  (Retry now, Convert anyway, Use this ASIN). Collapsed state persists in localStorage.
+- **Pinned now-encoding strip** showing live title, percent, speed, and ETA with Pause/Stop.
+  Hidden entirely when no encode is running — no empty stub.
+- **Hover row actions** on problem rows (held/review/failed) in the table: Retry now, Convert
+  anyway, and Use this ASIN appear on row hover without needing to open the detail panel.
+
+### Changed
+- **Full page redesign** matching the approved dark-theme mockup: left sidebar + main content
+  layout, CSS custom properties, Inter/JetBrains Mono approximated with offline-safe system
+  font stacks (no Google Fonts — the container works without internet).
+- Stats display replaced with a slim monospaced stats line (hours, GB, progress with mini bar).
+- Filter chips restyled as rounded pills matching the mockup's toolbar.
+- Status pills and tier badges redesigned with coloured dots and soft backgrounds.
+- Detail panel restyled with darker background and tighter spacing; metadata editor unchanged.
+- Search box and controls row restyled to match the new design vocabulary.
+
+### Fixed
+- All existing API endpoints, polling behaviour, sessionStorage persistence, and dry-run toggle
+  preserved unchanged. Page polls every 2s with the same busy-guard rules (open panels, focused
+  search, interactive elements prevent reload).
+
 ## [0.10.1] - 2026-11-07
 
 ### Fixed

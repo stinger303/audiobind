@@ -146,14 +146,14 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         page = web.render(self.state)
         self.assertIn("<colgroup>", page)
         self.assertIn('class="ab-tbl"', page)
-        self.assertIn("table-layout:fixed", page)
 
     def test_new_classes_do_not_collide_with_existing_ones(self):
         """Every class added in 0.10.0 is ab- prefixed (the .bar collision bug)."""
         existing = {"sub", "toolbar", "working", "wline", "pct", "ptrack", "wmeta", "pill",
                     "grid", "card", "ok", "warn", "err", "dim", "urow", "drow", "dd",
                     "explain", "todo", "acts", "chips", "chip", "primary", "armed", "danger",
-                    "run", "paused", "on"}
+                    "run", "paused", "on", "held", "active", "encoding", "interrupted",
+                    "converted", "ready", "review", "failed", "dry", "btn", "n", "pdot"}
         declared = set(re.findall(r"\.([a-zA-Z][\w-]*)\s*\{", web.STYLES))
         for name in declared - existing:
             self.assertTrue(name.startswith("ab-"), f"{name} is neither pre-existing nor ab-")

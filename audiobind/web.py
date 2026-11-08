@@ -20,141 +20,331 @@ from .state import State
 from .units import discover_units
 
 _log = logging.getLogger("audiobind").info
-#: /app/icon.svg in the image, ./icon.svg in a checkout
 ICON_PATH = Path(__file__).resolve().parent.parent / "icon.svg"
 
-# The stylesheet and the script live outside PAGE on purpose: PAGE goes through str.format(),
-# where every CSS and JS brace would have to be doubled. Keeping them out means new rules and
-# new functions are written normally, which is how the 0.9.x brace bugs happened.
-# Every class added after 0.9.3 carries the "ab-" prefix: a bare .bar once collided with the
-# toolbar and crushed it, so new components never reuse an existing class name.
 STYLES = """
- :root { color-scheme: dark; }
- body { margin:0; padding:32px; background:#0f1115; color:#e6e9ef;
-        font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
- h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.2px; }
- .sub { color:#8b93a7; font-size:13px; margin-bottom:22px; }
- .toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:26px; }
- button { font:inherit; font-size:14px; font-weight:500; padding:9px 16px; border-radius:9px;
-          border:1px solid #2b3240; background:#1b2029; color:#e6e9ef; cursor:pointer; }
- button:hover { background:#232a35; border-color:#3a4353; }
- button.primary { background:#1e4fa0; border-color:#2b5ea8; }
- button.primary:hover { background:#2b5ea8; }
- button.warn { background:#5a4210; border-color:#7a5a16; }
- button.armed { background:#5c1f22; border-color:#7d2a2e; }
- button.armed:hover { background:#7d2a2e; }
- button.danger { background:#3a1416; border-color:#6b2226; color:#ffb4b4; }
- button.danger:hover { background:#6b2226; color:#fff; }
- .working { margin:-14px 0 26px; font-size:13px; color:#8b93a7; }
- .working b { color:#e6e9ef; font-weight:600; }
- .wline { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:7px; }
- .pct { font-variant-numeric:tabular-nums; font-weight:600; color:#e6e9ef; font-size:13px; }
- .ptrack { height:8px; border-radius:99px; background:#1c2230; overflow:hidden; }
- .ptrack i { display:block; height:100%; border-radius:99px;
-             background:linear-gradient(90deg,#2b5ea8,#12a89b); transition:width .6s ease; }
- .wmeta { margin-top:7px; font-size:12px; }
- button:disabled { opacity:.45; cursor:default; }
- .pill { font-size:12px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
-         padding:6px 12px; border-radius:999px; }
- .pill.run { background:#12311f; color:#5fd38d; }
- .pill.paused { background:#3a2a07; color:#e6b450; }
- .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin-bottom:28px; }
- .card { background:#171a21; border:1px solid #232833; border-radius:10px; padding:14px 16px; }
- .card b { display:block; font-size:24px; font-weight:600; }
- .card span { color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:.6px; }
- table { width:100%; border-collapse:collapse; font-size:13px; }
- th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #232833; }
- th { color:#8b93a7; font-weight:500; text-transform:uppercase; font-size:11px; letter-spacing:.6px; }
- .ok { color:#5fd38d; } .warn { color:#e6b450; } .err { color:#f2686b; } .dim { color:#8b93a7; }
- tr.urow { cursor:pointer; }
- tr.urow:hover td { background:#141821; }
- tr.urow td.ab-book::before { content:"+"; display:inline-block; width:13px; margin-right:6px;
-                              color:#7c86a0; font-weight:700; }
- tr.urow.open td.ab-book::before { content:"-"; color:#12a89b; }
- tr.drow td { background:#11151d; padding:0; border-bottom:1px solid #232833; }
- .dd { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:22px; padding:16px 22px 18px; }
- .explain { grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:22px;
-            background:#141a24; border:1px solid #232b38; border-radius:10px; padding:14px 16px; }
- .explain h4 { margin:0 0 6px; font-size:11px; letter-spacing:.6px; text-transform:uppercase;
-               color:#8b93a7; font-weight:600; }
- .explain p { margin:0; color:#d7dce7; }
- .explain .todo h4 { color:#e6b450; }
- .acts { grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
-         border-top:1px solid #1c2230; padding-top:14px; }
- .acts button { font-size:12.5px; padding:6px 12px; }
- .acts input { font:inherit; font-size:12.5px; padding:6px 10px; border-radius:8px;
-               border:1px solid #2b3240; background:#0d1118; color:#e6e9ef; }
- .dd h4 { margin:0 0 8px; font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:#8b93a7; font-weight:600; }
- .dd ul { margin:0; padding-left:16px; }
- .dd li { margin:3px 0; color:#c7cddb; }
- .dd code { color:#9fd7c8; }
- .chips { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px; }
- .chip { font-size:12.5px; padding:6px 12px; border-radius:999px; text-decoration:none;
-         background:#171a21; border:1px solid #232833; color:#c7cddb; }
- .chip:hover { border-color:#3a4353; }
- .chip.on { background:#1e4fa0; border-color:#2b5ea8; color:#fff; }
- .chip b { opacity:.65; font-weight:600; margin-left:5px; }
+:root {
+  --ab-bg:#08090a;
+  --ab-panel:#0f1011;
+  --ab-surface:#191a1b;
+  --ab-surface2:#1c1d1f;
+  --ab-border:rgba(255,255,255,.08);
+  --ab-border-subtle:rgba(255,255,255,.05);
+  --ab-text:#f7f8f8;
+  --ab-text2:#d0d6e0;
+  --ab-text3:#8a8f98;
+  --ab-text4:#62666d;
+  --ab-accent:#5e6ad2;
+  --ab-accent-bright:#7170ff;
+  --ab-green:#27a644;
+  --ab-green-soft:rgba(39,166,68,.12);
+  --ab-amber:#f2a33c;
+  --ab-amber-soft:rgba(242,163,60,.12);
+  --ab-red:#f24e6b;
+  --ab-red-soft:rgba(242,78,107,.12);
+  --ab-blue:#4f9cf7;
+  --ab-blue-soft:rgba(79,156,247,.12);
+  --ab-sans:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  --ab-mono:ui-monospace,'Cascadia Code','Source Code Pro',Menlo,Consolas,'DejaVu Sans Mono',monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--ab-sans);
+  font-size:13.5px;line-height:1.5;
+  background:var(--ab-bg);color:var(--ab-text);
+  display:flex;overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:rgba(94,106,210,.45)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#23252a;border-radius:6px;border:2px solid var(--ab-bg)}
+::-webkit-scrollbar-track{background:transparent}
 
- .ab-prog .ab-statbar { margin-top:9px; }
- .ab-statbar { height:8px; border-radius:99px; background:#1c2230; overflow:hidden; }
- .ab-statfill { display:block; height:100%; border-radius:99px;
-                background:linear-gradient(90deg,#2b5ea8,#12a89b); }
- .ab-progsub { margin-top:7px; font-size:12px; color:#8b93a7;
-               text-transform:none; letter-spacing:0; }
+.ab-rail{width:212px;flex:none;background:var(--ab-panel);
+  border-right:1px solid var(--ab-border-subtle);
+  display:flex;flex-direction:column;padding:12px 8px;}
+.ab-rail-brand{display:flex;align-items:center;gap:8px;padding:8px 10px 16px;
+  font-weight:600;font-size:14px;letter-spacing:-.2px;}
+.ab-rail-section{margin-top:6px;display:flex;flex-direction:column;gap:5px}
+.ab-rail-label{font-size:10px;font-weight:500;color:var(--ab-text4);
+  text-transform:uppercase;letter-spacing:.8px;padding:8px 10px 4px;}
+.ab-rail-item{display:flex;align-items:center;gap:9px;position:relative;
+  padding:0 10px;height:34px;color:var(--ab-text3);text-decoration:none;
+  border-radius:6px;font-size:13px;font-weight:500;border:1px solid transparent;
+  transition:background .12s,color .12s;}
+.ab-rail-item:hover{background:rgba(255,255,255,.04);color:var(--ab-text2)}
+.ab-rail-item:focus-visible{outline:none;border-color:var(--ab-accent-bright)}
+.ab-rail-item.ab-active{background:rgba(94,106,210,.14);color:var(--ab-text)}
+.ab-rail-item .ab-glyph{width:16px;text-align:center;color:var(--ab-text4);font-size:12px}
+.ab-rail-item.ab-active .ab-glyph{color:var(--ab-accent-bright)}
+.ab-rail-item .ab-count{margin-left:auto;font-family:var(--ab-mono);font-size:11px;
+  color:var(--ab-text4);background:rgba(255,255,255,.04);
+  border:1px solid var(--ab-border-subtle);border-radius:4px;
+  padding:0 5px;min-width:20px;text-align:center;}
+.ab-rail-item.ab-alert .ab-count{color:var(--ab-amber);border-color:rgba(242,163,60,.25)}
+.ab-rail-spacer{flex:1}
+.ab-rail-foot{padding:10px;font-family:var(--ab-mono);font-size:11px;
+  color:var(--ab-text4);line-height:1.7;}
+.ab-rail-foot b{color:var(--ab-text3);font-weight:500}
 
- /* ---- 0.10.0 search and sort (ab- prefix, no shared class names) ---- */
- .ab-tools { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; }
- .ab-search { font:inherit; font-size:13.5px; padding:8px 12px; width:340px; max-width:100%;
-              border-radius:9px; border:1px solid #2b3240; background:#0d1118; color:#e6e9ef; }
- .ab-search::placeholder { color:#6a7187; }
- .ab-search:focus { outline:none; border-color:#2b5ea8; background:#0f141c; }
- .ab-clear { font-size:12.5px; padding:6px 12px; }
- .ab-shown { color:#8b93a7; font-size:12.5px; font-variant-numeric:tabular-nums; }
- .ab-tbl { table-layout:fixed; }
- .ab-tbl th, .ab-tbl td { overflow:hidden; text-overflow:ellipsis; }
- .ab-tbl td.ab-book { white-space:nowrap; }
- .ab-sort { cursor:pointer; user-select:none; white-space:nowrap; }
- .ab-sort:hover { color:#c7cddb; }
- .ab-sort.ab-on { color:#9fd7c8; }
- .ab-arrow { font-size:9px; margin-left:5px; opacity:.8; }
- .ab-sort .ab-arrow { visibility:hidden; }
- .ab-sort.ab-on .ab-arrow { visibility:visible; }
- .ab-empty td { color:#8b93a7; padding:14px 10px; }
+.ab-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto}
 
- /* ---- 0.10.0 cover art ---- */
- .ab-covcell { padding:5px 6px 5px 10px; }
- .ab-covwrap { position:relative; width:48px; height:48px; border-radius:5px; background:#161a22;
-               border:1px solid #232833; overflow:hidden; }
- .ab-covwrap::after { content:"\\266B"; position:absolute; inset:0; display:flex;
-                      align-items:center; justify-content:center; color:#394152; font-size:17px; }
- .ab-thumb { position:relative; z-index:1; display:block; width:100%; height:100%;
-             object-fit:cover; background:#161a22; }
- .ab-thumb.ab-gone { display:none; }
- .ab-covbig { width:150px; height:150px; border-radius:8px; }
- .ab-covbig::after { font-size:40px; }
- .ab-covpanel { display:flex; align-items:flex-start; }
+.ab-topbar{display:flex;align-items:center;gap:14px;
+  padding:14px 24px 12px;border-bottom:1px solid var(--ab-border-subtle);flex:none;}
+.ab-topbar h1{font-size:16px;font-weight:600;letter-spacing:-.2px}
+.ab-status{display:inline-flex;align-items:center;gap:6px;
+  font-size:12px;font-weight:500;color:var(--ab-text2);
+  padding:3px 9px 3px 7px;border-radius:999px;
+  background:var(--ab-green-soft);border:1px solid rgba(39,166,68,.28);}
+.ab-status.ab-stale{background:var(--ab-amber-soft);border-color:rgba(242,163,60,.28);color:var(--ab-amber)}
+.ab-status.ab-stale .ab-dot{background:var(--ab-amber);box-shadow:0 0 6px rgba(242,163,60,.7)}
+.ab-status .ab-dot{width:6px;height:6px;border-radius:50%;
+  background:var(--ab-green);box-shadow:0 0 6px rgba(39,166,68,.7)}
+.ab-status small{font-weight:400;color:var(--ab-text3)}
+.ab-version{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text3);
+  background:rgba(255,255,255,.04);border:1px solid var(--ab-border-subtle);
+  border-radius:4px;padding:2px 7px;}
+.ab-topbar .ab-right{margin-left:auto;display:flex;align-items:center;gap:12px}
 
- /* ---- 0.10.0 metadata editor ---- */
- .ab-edit { grid-column:1/-1; border-top:1px solid #1c2230; padding-top:14px; }
- .ab-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px 18px; }
- .ab-field { display:flex; flex-direction:column; gap:4px; }
- .ab-lab { font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:#8b93a7;
-           display:flex; align-items:center; gap:6px; }
- .ab-in { font:inherit; font-size:12.5px; padding:7px 10px; border-radius:8px;
-          border:1px solid #2b3240; background:#0d1118; color:#e6e9ef; width:100%;
-          box-sizing:border-box; }
- .ab-in:focus { outline:none; border-color:#2b5ea8; }
- .ab-in::placeholder { color:#5d6479; font-style:italic; }
- .ab-editbar { display:flex; align-items:center; gap:10px; margin-top:12px; }
- .ab-save { font-size:12.5px; padding:6px 12px; background:#1e4fa0; border-color:#2b5ea8; }
- .ab-fb { font-size:12.5px; color:#8b93a7; }
- .ab-fb.ab-good { color:#5fd38d; }
- .ab-fb.ab-bad { color:#f2686b; }
- .ab-custom { font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
-              color:#12a89b; background:#10302c; border:1px solid #1b4a44; border-radius:999px;
-              padding:1px 7px; margin-left:8px; vertical-align:1px; }
- .ab-custom[hidden] { display:none; }
- .ab-hint { color:#8b93a7; font-size:11.5px; margin:2px 0 10px; }
+.ab-controls{flex:none;display:flex;align-items:center;gap:8px;padding:12px 24px 4px;}
+.ab-controls .ab-spacer{flex:1}
+.ab-controls .ab-note{font-size:11.5px;color:var(--ab-text4)}
+
+button, .btn{display:inline-flex;align-items:center;gap:6px;position:relative;
+  height:30px;padding:0 12px;background:rgba(255,255,255,.02);
+  color:var(--ab-text2);border:1px solid rgba(255,255,255,.08);
+  border-radius:6px;font:inherit;font-size:12.5px;font-weight:500;
+  cursor:pointer;white-space:nowrap;
+  transition:background .12s,border-color .12s,color .12s;}
+button:hover, .btn:hover{background:rgba(255,255,255,.05);color:var(--ab-text)}
+button:focus-visible, .btn:focus-visible{outline:2px solid var(--ab-accent-bright);outline-offset:1px}
+button.primary, .btn.primary{background:var(--ab-accent);border-color:transparent;color:#fff}
+button.primary:hover, .btn.primary:hover{background:#828fff}
+button.danger, .btn.danger{color:var(--ab-red)}
+button.danger:hover, .btn.danger:hover{background:var(--ab-red-soft);border-color:rgba(242,78,107,.3)}
+button:disabled, .btn:disabled{opacity:.38;cursor:not-allowed}
+button:disabled:hover, .btn:disabled:hover{background:rgba(255,255,255,.02);color:var(--ab-text2)}
+button.primary:disabled:hover, .btn.primary:disabled:hover{background:var(--ab-accent)}
+button.warn{color:var(--ab-amber)}
+button.warn:hover{background:var(--ab-amber-soft);border-color:rgba(242,163,60,.3)}
+button.dry{border-color:rgba(242,163,60,.35);color:var(--ab-amber);background:var(--ab-amber-soft)}
+button.dry.on{border-color:rgba(242,163,60,.55);color:var(--ab-amber);background:var(--ab-amber-soft)}
+button.dry .ab-switch{width:22px;height:12px;border-radius:6px;background:rgba(242,163,60,.4);position:relative;flex:none}
+button.dry .ab-switch::after{content:"";position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:var(--ab-amber);transition:left .15s}
+button.dry.on .ab-switch::after{left:12px}
+
+.ab-queue{flex:none;margin:12px 24px 0;
+  background:var(--ab-surface);border:1px solid var(--ab-border);
+  border-radius:10px;padding:12px 16px;
+  display:grid;grid-template-columns:1fr auto;gap:4px 16px;align-items:center;}
+.ab-queue .ab-label{grid-column:1/-1;font-size:10px;font-weight:500;
+  text-transform:uppercase;letter-spacing:.8px;color:var(--ab-text4);
+  display:flex;align-items:center;gap:6px;}
+.ab-queue .ab-pulse{width:6px;height:6px;border-radius:50%;
+  background:var(--ab-accent-bright);animation:ab-pulse 1.6s ease-in-out infinite}
+@keyframes ab-pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.ab-queue .ab-qtitle{font-size:13.5px;font-weight:600;letter-spacing:-.1px}
+.ab-queue .ab-qmeta{display:flex;align-items:center;gap:14px;
+  font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text3)}
+.ab-queue .ab-qmeta b{color:var(--ab-text2);font-weight:500}
+.ab-queue .ab-qact{display:flex;gap:8px}
+.ab-queue .ab-qbarwrap{grid-column:1/-1;display:flex;align-items:center;gap:14px}
+.ab-queue .ab-qbar{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}
+.ab-queue .ab-qbar i{display:block;height:100%;
+  background:linear-gradient(90deg,var(--ab-accent),var(--ab-accent-bright));border-radius:4px}
+.ab-queue .ab-qpct{font-family:var(--ab-mono);font-size:11.5px;
+  color:var(--ab-accent-bright);font-weight:500;min-width:36px}
+
+.ab-shelf{flex:none;margin:12px 24px 0;
+  background:var(--ab-surface);border:1px solid var(--ab-border);border-radius:10px;}
+.ab-shelf-head{display:flex;align-items:center;gap:10px;padding:10px 14px;
+  cursor:pointer;user-select:none;}
+.ab-shelf-head:hover{background:rgba(255,255,255,.03)}
+.ab-shelf-head h2{font-size:10.5px;font-weight:500;text-transform:uppercase;
+  letter-spacing:.7px;color:var(--ab-text4);}
+.ab-shelf-head .ab-scount{font-family:var(--ab-mono);font-size:11px;color:var(--ab-amber);
+  background:var(--ab-amber-soft);border:1px solid rgba(242,163,60,.28);
+  border-radius:4px;padding:0 6px;min-width:20px;text-align:center;}
+.ab-shelf-head .ab-shint{font-size:11.5px;color:var(--ab-text4)}
+.ab-shelf-head .ab-caret{margin-left:auto;color:var(--ab-text4);font-size:10px;
+  transition:transform .15s;flex:none;}
+.ab-shelf.ab-collapsed .ab-caret{transform:rotate(-90deg)}
+.ab-shelf.ab-collapsed .ab-shelf-body{display:none}
+.ab-shelf-body{display:flex;gap:10px;overflow-x:auto;
+  padding:12px 14px;border-top:1px solid var(--ab-border-subtle);scrollbar-width:thin;}
+.ab-shelf-empty{display:none;align-items:center;gap:8px;
+  padding:14px;font-size:12.5px;color:var(--ab-text3);}
+.ab-shelf-empty .ab-sdot{width:6px;height:6px;border-radius:50%;background:var(--ab-green);flex:none}
+.ab-problem{flex:0 0 300px;display:flex;flex-direction:column;gap:8px;
+  background:var(--ab-surface2);border:1px solid var(--ab-border);
+  border-radius:8px;padding:10px;}
+.ab-problem-head{display:flex;align-items:center;gap:8px;min-width:0}
+.ab-problem-head .pill{margin-left:auto;flex:none}
+.ab-problem .ab-pbook{display:flex;flex-direction:column;gap:1px;min-width:0}
+.ab-problem .ab-ptitle{font-weight:500;font-size:13px;color:var(--ab-text);
+  letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ab-problem .ab-pauthor{font-size:11px;color:var(--ab-text3)}
+.ab-problem .ab-preason{font-size:11.5px;color:var(--ab-text3);line-height:1.4}
+.ab-problem .ab-preason b{font-family:var(--ab-mono);font-size:11px;font-weight:500;color:var(--ab-text2)}
+.ab-problem .ab-preason.held{color:var(--ab-amber)}
+.ab-problem .ab-preason.failed{color:var(--ab-red)}
+.ab-problem .ab-pactions{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap}
+.ab-problem .ab-pactions button{height:26px;padding:0 9px;font-size:11.5px;border-radius:5px}
+
+.ab-statsline{flex:none;display:flex;align-items:center;gap:0;
+  padding:10px 24px 12px;border-bottom:1px solid var(--ab-border-subtle);
+  font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text3);}
+.ab-stat{display:flex;align-items:baseline;gap:7px;padding:0 18px}
+.ab-stat:first-child{padding-left:0}
+.ab-stat+.ab-stat{border-left:1px solid var(--ab-border-subtle)}
+.ab-stat b{color:var(--ab-text);font-weight:500;font-size:13px}
+.ab-stat .ab-unit{color:var(--ab-text4)}
+.ab-stat label{color:var(--ab-text4);font-family:var(--ab-sans);font-size:11px}
+.ab-libprog{display:flex;align-items:center;gap:10px;margin-left:18px;
+  padding-left:18px;border-left:1px solid var(--ab-border-subtle)}
+.ab-libprog .ab-libbar{width:120px;height:4px;border-radius:3px;
+  background:rgba(255,255,255,.06);overflow:hidden}
+.ab-libprog .ab-libbar i{display:block;height:100%;
+  background:var(--ab-accent-bright);border-radius:3px}
+.ab-libprog .ab-libnum{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text2)}
+
+.ab-toolbar{flex:none;display:flex;align-items:center;gap:14px;padding:14px 24px 10px;}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;position:relative;
+  height:28px;padding:0 10px;background:transparent;color:var(--ab-text3);
+  border:1px solid rgba(255,255,255,.08);border-radius:999px;
+  font:inherit;font-size:12px;font-weight:500;cursor:pointer;
+  transition:background .12s,color .12s,border-color .12s;text-decoration:none;}
+.chip:hover{background:rgba(255,255,255,.04);color:var(--ab-text2)}
+.chip:focus-visible{outline:2px solid var(--ab-accent-bright);outline-offset:1px}
+.chip .n{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text4)}
+.chip.on, .chip.active{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.16);color:var(--ab-text)}
+.chip.on .n, .chip.active .n{color:var(--ab-text2)}
+
+.ab-searchwrap{margin-left:auto;display:flex;align-items:center;gap:8px}
+.ab-search{font:inherit;font-size:12.5px;height:30px;width:240px;
+  padding:0 10px;background:rgba(255,255,255,.02);
+  border:1px solid rgba(255,255,255,.08);border-radius:6px;
+  color:var(--ab-text);transition:border-color .12s,background .12s;}
+.ab-search::placeholder{color:var(--ab-text4)}
+.ab-search:focus{outline:none;border-color:var(--ab-accent-bright);background:rgba(255,255,255,.04)}
+.ab-clear{font-size:12px;padding:0 10px;height:28px;}
+.ab-shown{font-size:12px;color:var(--ab-text4);font-variant-numeric:tabular-nums;white-space:nowrap;}
+
+.ab-tablewrap{flex:1;padding:0 24px 24px}
+.ab-tbl{width:100%;border-collapse:collapse}
+.ab-tbl thead th{position:sticky;top:0;background:var(--ab-bg);z-index:2;cursor:pointer;user-select:none;white-space:nowrap;
+  text-align:left;font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.7px;
+  color:var(--ab-text4);padding:6px 10px;border-bottom:1px solid var(--ab-border);}
+.ab-tbl thead th:hover{color:var(--ab-text2)}
+.ab-tbl thead th.ab-on{color:var(--ab-text2)}
+.ab-tbl tbody td{padding:0 10px;border-bottom:1px solid var(--ab-border-subtle);vertical-align:middle;white-space:nowrap;}
+.ab-tbl tbody tr{height:44px;transition:background .1s}
+.ab-tbl tbody tr:hover{background:rgba(255,255,255,.025)}
+.ab-tbl tbody tr.ab-sel{background:rgba(94,106,210,.08)}
+.ab-covcell{padding:0 6px 0 10px!important}
+.ab-covwrap{position:relative;width:30px;height:30px;border-radius:6px;
+  background:var(--ab-surface);border:1px solid rgba(255,255,255,.12);overflow:hidden;}
+.ab-covwrap::after{content:"\\266B";position:absolute;inset:0;display:flex;
+  align-items:center;justify-content:center;color:var(--ab-text4);font-size:12px;}
+.ab-thumb{position:relative;z-index:1;display:block;width:100%;height:100%;
+  object-fit:cover;background:var(--ab-surface);}
+.ab-thumb.ab-gone{display:none}
+.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0}
+.ab-bookcell .ab-btitle{font-weight:500;font-size:13px;color:var(--ab-text);letter-spacing:-.1px}
+.ab-bookcell .ab-bauthor{font-size:11.5px;color:var(--ab-text3)}
+.ab-bookcell .ab-breason{font-size:11.5px;color:var(--ab-amber);margin-top:2px;
+  white-space:normal;max-width:420px;line-height:1.35;}
+.ab-bookcell .ab-breason b{font-weight:500;font-family:var(--ab-mono);font-size:11px;color:var(--ab-text2)}
+
+.pill{display:inline-flex;align-items:center;gap:6px;
+  height:22px;padding:0 9px;border-radius:999px;
+  font-size:11px;font-weight:500;border:1px solid transparent;}
+.pill .pdot{width:5px;height:5px;border-radius:50%;flex:none}
+.pill.converted, .pill.ok{color:#7fd99a;background:var(--ab-green-soft);border-color:rgba(39,166,68,.25)}
+.pill.converted .pdot, .pill.ok .pdot{background:var(--ab-green)}
+.pill.encoding{color:#a9b4ff;background:rgba(94,106,210,.14);border-color:rgba(94,106,210,.35)}
+.pill.encoding .pdot{background:var(--ab-accent-bright)}
+.pill.held{color:var(--ab-amber);background:var(--ab-amber-soft);border-color:rgba(242,163,60,.28)}
+.pill.held .pdot{background:var(--ab-amber)}
+.pill.review, .pill.ready, .pill.interrupted{color:var(--ab-text2);background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12)}
+.pill.review .pdot, .pill.ready .pdot, .pill.interrupted .pdot{background:var(--ab-text4)}
+.pill.failed{color:var(--ab-red);background:var(--ab-red-soft);border-color:rgba(242,78,107,.28)}
+.pill.failed .pdot{background:var(--ab-red)}
+
+.ok{color:#7fd99a}.warn{color:var(--ab-amber)}.err{color:var(--ab-red)}.dim{color:var(--ab-text3)}
+
+.ab-tier{font-family:var(--ab-mono);font-size:11px;font-weight:500}
+.ab-tier.ab-high{color:var(--ab-green)}
+.ab-tier.ab-medium{color:var(--ab-text3)}
+.ab-tier.ab-low{color:var(--ab-text4)}
+
+.ab-num{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text2)}
+.ab-scan{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text4)}
+
+.ab-rowact{display:flex;gap:6px;justify-content:flex-end;opacity:0;transition:opacity .1s}
+tr:hover .ab-rowact, tr:focus-within .ab-rowact{opacity:1}
+.ab-rowact button{height:26px;padding:0 9px;font-size:11.5px;border-radius:5px}
+.ab-rowact button.warn{color:var(--ab-amber)}
+.ab-rowact button.warn:hover{background:var(--ab-amber-soft);border-color:rgba(242,163,60,.3)}
+.ab-actcol{width:1%}
+
+tr.drow td{background:#11151d;padding:0;border-bottom:1px solid var(--ab-border);}
+tr.drow[hidden] td{padding:0}
+.dd{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:22px;padding:16px 22px 18px;}
+.explain{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:22px;
+  background:#141a24;border:1px solid #232b38;border-radius:10px;padding:14px 16px;}
+.explain h4{margin:0 0 6px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--ab-text3);font-weight:600;}
+.explain p{margin:0;color:#d7dce7;}
+.explain .todo h4{color:var(--ab-amber);}
+.acts{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+  border-top:1px solid #1c2230;padding-top:14px;}
+.acts button{font-size:12.5px;padding:6px 12px;}
+.acts input{font:inherit;font-size:12.5px;padding:6px 10px;border-radius:8px;
+  border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);}
+.dd h4{margin:0 0 8px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--ab-text3);font-weight:600;}
+.dd ul{margin:0;padding-left:16px;}
+.dd li{margin:3px 0;color:#c7cddb;}
+.dd code{color:#9fd7c8;}
+
+.ab-covbigwrap{position:relative;width:150px;height:150px;border-radius:8px;
+  background:#161a22;border:1px solid #232833;overflow:hidden;}
+.ab-covbigwrap::after{content:"\\266B";position:absolute;inset:0;display:flex;
+  align-items:center;justify-content:center;color:#394152;font-size:40px;}
+.ab-covbigwrap .ab-thumb{position:relative;z-index:1;display:block;width:100%;height:100%;object-fit:cover;background:#161a22;}
+.ab-covpanel{display:flex;align-items:flex-start;}
+.ab-edit{grid-column:1/-1;border-top:1px solid #1c2230;padding-top:14px;}
+.ab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 18px;}
+.ab-field{display:flex;flex-direction:column;gap:4px;}
+.ab-lab{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--ab-text3);
+  display:flex;align-items:center;gap:6px;}
+.ab-in{font:inherit;font-size:12.5px;padding:7px 10px;border-radius:8px;
+  border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);width:100%;box-sizing:border-box;}
+.ab-in:focus{outline:none;border-color:#2b5ea8;}
+.ab-in::placeholder{color:#5d6479;font-style:italic;}
+.ab-editbar{display:flex;align-items:center;gap:10px;margin-top:12px;}
+.ab-save{font-size:12.5px;padding:6px 12px;background:#1e4fa0;border-color:#2b5ea8;}
+.ab-fb{font-size:12.5px;color:var(--ab-text3);}
+.ab-fb.ab-good{color:#5fd38d;}
+.ab-fb.ab-bad{color:#f2686b;}
+.ab-custom{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  color:#12a89b;background:#10302c;border:1px solid #1b4a44;border-radius:999px;
+  padding:1px 7px;margin-left:8px;vertical-align:1px;}
+.ab-custom[hidden]{display:none;}
+.ab-hint{color:var(--ab-text3);font-size:11.5px;margin:2px 0 10px;}
+.ab-progsub{font-size:12px;color:var(--ab-text3);text-transform:none;letter-spacing:0;}
+.ab-statbar{height:8px;border-radius:99px;background:#1c2230;overflow:hidden;}
+.ab-statfill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#2b5ea8,#12a89b);}
+.ab-empty td{color:var(--ab-text3);padding:14px 10px;}
+.ab-overflow{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text4);padding:8px 24px;flex:none;}
+
+@media(max-width:1080px){.ab-rail{display:none}}
+@media(max-width:820px){.ab-hidemd{display:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 """
 
 SCRIPT = """
@@ -196,13 +386,26 @@ function unitAction(btn, action) {
     .then(() => setTimeout(() => location.reload(), 400))
     .catch(() => { btn.disabled = false; });
 }
+function rowAction(btn, action) {
+  const el = btn.closest('[data-path]');
+  if (!el) return;
+  const path = el.dataset.path;
+  const body = {action: action, path: path};
+  if (action === 'set_asin') {
+    const input = el.querySelector('input[data-asin]');
+    body.asin = (input && input.value || '').trim();
+    if (!body.asin) { input.focus(); return; }
+  }
+  btn.disabled = true;
+  fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
+                     body: JSON.stringify(body)})
+    .then(r => r.json())
+    .then(() => setTimeout(() => location.reload(), 400))
+    .catch(() => { btn.disabled = false; });
+}
 function abCoverFail(img) {
-  // no cover on disk and none to fetch: fall back to the neutral placeholder behind it
   img.classList.add('ab-gone');
 }
-
-// ------------------------------------------------------------------ metadata editor
-// An empty box means "no override": the field goes back to whatever the catalog says.
 function abSaveMeta(btn) {
   const panel = btn.closest('.ab-edit');
   const path = panel.dataset.path;
@@ -237,7 +440,6 @@ function abSaveMeta(btn) {
       feedback.textContent = 'could not reach the daemon';
     });
 }
-// no reload: the markers are updated in place so the panel stays exactly where it was
 function abMarkCustom(panel, custom) {
   panel.querySelectorAll('.ab-lab .ab-custom').forEach(mark => {
     mark.hidden = custom.indexOf(mark.dataset.field) === -1;
@@ -259,37 +461,30 @@ function toggleRow(row) {
   const panel = row.nextElementSibling;
   if (!panel || !panel.classList.contains('drow')) return;
   panel.hidden = !panel.hidden;
-  row.classList.toggle('open', !panel.hidden);
+  row.classList.toggle('ab-sel', !panel.hidden);
   const set = openSet();
   const key = panel.dataset.path || '';
   if (panel.hidden) { set.delete(key); } else { set.add(key); }
   saveOpen(set);
 }
-// a refresh must not close what the operator opened
 document.addEventListener('DOMContentLoaded', () => {
   const set = openSet();
   if (!set.size) return;
   document.querySelectorAll('tr.drow').forEach(panel => {
     if (!set.has(panel.dataset.path)) return;
     panel.hidden = false;
-    if (panel.previousElementSibling) panel.previousElementSibling.classList.add('open');
+    if (panel.previousElementSibling) panel.previousElementSibling.classList.add('ab-sel');
   });
 });
-
-// ------------------------------------------------------------------ search + sort
-// The same rules run server-side in web.search_matches()/web.sort_key(); keep them in step.
 const SEARCH_KEY = 'audiobind_query';
 const AB_NUMERIC = {status: true, tier: true, runtime: true, scan: true, title: false};
 let abSort = {column: window.AB_SORT_COLUMN || 'scan', dir: window.AB_SORT_DIR || 'desc'};
-
 function abSearchBox() { return document.getElementById('ab-search'); }
-
 function abRowMatches(row, terms) {
   if (!terms.length) return true;
   const hay = (row.dataset.search || '').toLowerCase();
   return terms.every(t => hay.indexOf(t) !== -1);
 }
-
 function abCompare(a, b, column, dir) {
   const key = 'sort' + column.charAt(0).toUpperCase() + column.slice(1);
   let x = a.dataset[key], y = b.dataset[key];
@@ -301,11 +496,10 @@ function abCompare(a, b, column, dir) {
   }
   if (result === 0) {
     result = String(a.dataset.sortTitle || '').localeCompare(String(b.dataset.sortTitle || ''));
-    return result;                       // the tie-break is always ascending by title
+    return result;
   }
   return dir === 'desc' ? -result : result;
 }
-
 function abApplyView() {
   const body = document.getElementById('ab-body');
   if (!body) return;
@@ -316,7 +510,6 @@ function abApplyView() {
     const panel = row.nextElementSibling;
     return [row, (panel && panel.classList.contains('drow')) ? panel : null];
   });
-
   let shown = 0;
   pairs.forEach(([row, panel]) => {
     const hit = abRowMatches(row, terms);
@@ -324,22 +517,18 @@ function abApplyView() {
     if (panel) panel.hidden = !hit ? true : panel.hidden;
     if (hit) shown += 1;
   });
-
   pairs.sort((p, q) => abCompare(p[0], q[0], abSort.column, abSort.dir));
   pairs.forEach(([row, panel]) => {
     body.appendChild(row);
     if (panel) body.appendChild(panel);
   });
-
-  // reopening after a sort: a hidden row's panel must not stay visible
   const open = openSet();
   pairs.forEach(([row, panel]) => {
     if (!panel) return;
     const wanted = open.has(panel.dataset.path) && !row.hidden;
     panel.hidden = !wanted;
-    row.classList.toggle('open', wanted);
+    row.classList.toggle('ab-sel', wanted);
   });
-
   const label = document.getElementById('ab-shown');
   if (label) {
     label.textContent = terms.length ? (shown + ' of ' + pairs.length + ' shown')
@@ -347,7 +536,6 @@ function abApplyView() {
   }
   const empty = document.getElementById('ab-empty');
   if (empty) empty.hidden = shown !== 0 || pairs.length === 0;
-
   document.querySelectorAll('th.ab-sort').forEach(th => {
     const on = th.dataset.column === abSort.column;
     th.classList.toggle('ab-on', on);
@@ -355,7 +543,6 @@ function abApplyView() {
     if (arrow) arrow.textContent = (on && abSort.dir === 'desc') ? '\\u25bc' : '\\u25b2';
   });
 }
-
 function abSortBy(column) {
   if (abSort.column === column) {
     abSort.dir = abSort.dir === 'asc' ? 'desc' : 'asc';
@@ -364,24 +551,20 @@ function abSortBy(column) {
     abSort.dir = (column === 'scan' || column === 'runtime') ? 'desc' : 'asc';
   }
   abApplyView();
-  // the choice is an operator preference: persist it so a restart restores it
   fetch('/api/control', {method:'POST', headers:{'Content-Type':'application/json'},
                         body: JSON.stringify({action:'sort', column: abSort.column,
                                               direction: abSort.dir})}).catch(() => {});
 }
-
 function abSearchChanged() {
   const box = abSearchBox();
   try { sessionStorage.setItem(SEARCH_KEY, (box && box.value) || ''); } catch (e) {}
   abApplyView();
 }
-
 function abClearSearch() {
   const box = abSearchBox();
   if (box) { box.value = ''; box.focus(); }
   abSearchChanged();
 }
-
 document.addEventListener('DOMContentLoaded', () => {
   const box = abSearchBox();
   if (box) {
@@ -393,9 +576,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   abApplyView();
 });
-
-// ------------------------------------------------------------------ polling
-// Never reload while the operator is reading a panel or typing in the search box.
+const SHELF_KEY = 'audiobind_shelf_collapsed';
+function abShelfInit() {
+  const shelf = document.getElementById('ab-shelf');
+  if (!shelf) return;
+  const head = document.getElementById('ab-shelf-head');
+  if (!head) return;
+  let collapsed = false;
+  try { collapsed = sessionStorage.getItem(SHELF_KEY) === '1'; } catch (e) {}
+  if (collapsed) shelf.classList.add('ab-collapsed');
+  head.addEventListener('click', () => {
+    shelf.classList.toggle('ab-collapsed');
+    try { sessionStorage.setItem(SHELF_KEY, shelf.classList.contains('ab-collapsed') ? '1' : '0'); }
+    catch (e) {}
+  });
+}
+document.addEventListener('DOMContentLoaded', abShelfInit);
 function abBusy() {
   const box = abSearchBox();
   if (box && (document.activeElement === box || box.value.trim() !== '')) return true;
@@ -404,22 +600,18 @@ function abBusy() {
   if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return true;
   return false;
 }
-
-// poll the encode position so the bar moves smoothly, then reload when the book finishes
 function tick() {
   fetch('/api/state').then(r => r.json()).then(d => {
-    const bar = document.getElementById('prog');
-    if (!bar) return;                       // nothing converting here
+    const bar = document.getElementById('ab-qfill');
+    if (!bar) return;
     if (!d.running) { if (!abBusy()) location.reload(); return; }
     const p = (d.progress && d.progress.percent) || 0;
     bar.style.width = p.toFixed(1) + '%';
-    const label = document.getElementById('pct');
+    const label = document.getElementById('ab-qpct');
     if (label) label.textContent = p.toFixed(1) + '%';
   }).catch(() => {});
 }
 setInterval(tick, 2000);
-
-// refresh only when something actually changed, so an open panel is not disrupted
 let lastCounts = null;
 function watch() {
   fetch('/api/state').then(r => r.json()).then(d => {
@@ -437,50 +629,88 @@ PAGE = """<!doctype html>
 <title>Audiobind</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="/favicon.svg">
-<meta name="theme-color" content="#1e4fa0">
+<meta name="theme-color" content="#5e6ad2">
 <style>{styles}</style></head><body>
-<h1>Audiobind</h1>
-<div class="sub">v{version} &middot; library <code>{library}</code> &rarr; <code>{output}</code>
- &middot; auto: {auto}{dry}</div>
+<aside class="ab-rail">
+  <div class="ab-rail-brand">Audiobind</div>
+  <div class="ab-rail-label">Workspace</div>
+  <nav class="ab-rail-section" aria-label="Main">
+    <a class="ab-rail-item ab-active" href="/" aria-current="page">
+      <span class="ab-glyph">&boxur;</span> Library
+      <span class="ab-count">{rail_total}</span></a>
+  </nav>
+  <div class="ab-rail-label">Attention</div>
+  <nav class="ab-rail-section" aria-label="Attention">
+    <a class="ab-rail-item ab-alert" href="/?status=review">
+      <span class="ab-glyph">&flag;</span> Review
+      <span class="ab-count">{rail_review_count}</span></a>
+    <a class="ab-rail-item ab-alert" href="/?status=held">
+      <span class="ab-glyph">&#x23F8;</span> Held
+      <span class="ab-count">{rail_held_count}</span></a>
+    <a class="ab-rail-item ab-alert" href="/?status=failed">
+      <span class="ab-glyph">&times;</span> Failed
+      <span class="ab-count">{rail_failed_count}</span></a>
+  </nav>
+  <div class="ab-rail-spacer"></div>
+  <div class="ab-rail-foot">
+    <b>{library}</b><br>
+    &rarr; {output}
+  </div>
+</aside>
 
-<div class="toolbar">
-  <span class="pill {state_class}">{state_text}</span>
-  <button class="primary" onclick="act('scan')" {scan_disabled}>Scan now</button>
-  {pause_button}
-  {stop_button}
-  {dry_button}
-</div>
-{working}
+<main class="ab-main">
+  <header class="ab-topbar">
+    <h1>Audiobind</h1>
+    <span class="ab-status{health_stale}"><span class="ab-dot"></span>{health_text}<small> &middot; last scan {health_scan}</small></span>
+    <span class="ab-version">v{version}</span>
+    <div class="ab-right">
+      {auto_text}{dry_text}
+    </div>
+  </header>
 
-<div class="grid">
- <div class="card"><span>converted</span><b class="ok">{converted}</b></div>
- <div class="card"><span>ready{dry_tag}</span><b class="warn">{ready}</b></div>
- <div class="card"><span>review</span><b class="warn">{review}</b></div>
- <div class="card"><span>held</span><b class="warn">{held}</b></div>
- <div class="card"><span>failed</span><b class="err">{failed}</b></div>
- <div class="card"><span>last scan</span><b>{last_scan}</b></div>
- <div class="card"><span>hours converted</span><b>{stat_hours}</b></div>
- <div class="card"><span>written to output</span><b>{stat_gb}</b></div>
- <div class="card ab-prog"><span>library progress</span><b>{stat_pct}%</b>
-   <div class="ab-statbar"><i class="ab-statfill" style="width:{stat_pct_width}%"></i></div>
-   <span class="ab-progsub">{stat_conv} of {stat_total} books converted</span></div>
-</div>
+{queue_strip}
 
-<h2 style="font-size:14px;color:#8b93a7;font-weight:500;text-transform:uppercase;letter-spacing:.6px">Books</h2>
-<div class="chips">{chips}</div>
-<div class="ab-tools">
-  <input id="ab-search" class="ab-search" type="search" autocomplete="off" spellcheck="false"
-         placeholder="Search title, author or path&hellip;" value="{query}">
-  <button class="ab-clear" onclick="abClearSearch()">Clear</button>
-  <span id="ab-shown" class="ab-shown">{shown_label}</span>
-</div>
-<table class="ab-tbl">
-<colgroup>{colgroup}</colgroup>
-<thead><tr>{headers}</tr></thead>
-<tbody id="ab-body">{rows}
-<tr id="ab-empty" class="ab-empty" hidden><td colspan="{columns}">no books match this search</td></tr>
-</tbody></table>
+{shelf_html}
+
+  <section class="ab-controls" aria-label="Controls">
+    {scan_button}
+    {pause_button}
+    {stop_button}
+    <span class="ab-spacer"></span>
+    {dry_button}
+    {dry_note}
+  </section>
+
+  <section class="ab-statsline" aria-label="Library statistics">
+    <div class="ab-stat"><b>{stat_hours}</b><span class="ab-unit">h</span><label>converted</label></div>
+    <div class="ab-stat"><b>{stat_gb}</b><span class="ab-unit">GB</span><label>written</label></div>
+    <div class="ab-stat"><b>{stat_pct}%</b><label>library progress</label></div>
+    <div class="ab-libprog">
+      <div class="ab-libbar"><i style="width:{stat_pct_width}%"></i></div>
+      <span class="ab-libnum"><b>{stat_conv}</b> of {stat_total}</span>
+    </div>
+  </section>
+
+  <section class="ab-toolbar" aria-label="Filters">
+    <div class="chips">{chips}</div>
+    <div class="ab-searchwrap">
+      <input id="ab-search" class="ab-search" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Filter books&hellip;" value="{query}">
+      <button class="ab-clear btn" onclick="abClearSearch()">Clear</button>
+      <span id="ab-shown" class="ab-shown">{shown_label}</span>
+    </div>
+  </section>
+
+  <div class="ab-tablewrap">
+    <table class="ab-tbl">
+    <colgroup>{colgroup}<col class="ab-actcol"></colgroup>
+    <thead><tr>{headers}<th class="ab-actcol"></th></tr></thead>
+    <tbody id="ab-body">{rows}
+    <tr id="ab-empty" class="ab-empty" hidden><td colspan="{columns}">no books match this search</td></tr>
+    </tbody></table>
+  </div>
 {overflow}
+</main>
 
 <script>
 window.AB_SORT_COLUMN = {sort_column_js};
@@ -495,55 +725,47 @@ def _html(text: str) -> str:
 
 
 def _attr(text: str) -> str:
-    """Escape for a double-quoted HTML attribute (titles do contain quotes)."""
     return _html(text).replace('"', "&quot;")
 
 
 def _fmt_duration(seconds: float) -> str:
     seconds = int(max(0, seconds))
     if seconds < 60:
-        return f"{seconds}s"
+        return "{}s".format(seconds)
     if seconds < 3600:
-        return f"{seconds // 60}m"
-    return f"{seconds // 3600}h {(seconds % 3600) // 60:02d}m"
+        return "{}m".format(seconds // 60)
+    return "{}h {:02d}m".format(seconds // 3600, (seconds % 3600) // 60)
 
 
 def _fmt_age(seconds: float) -> str:
     if seconds == float("inf"):
         return "never"
     if seconds < 90:
-        return f"{seconds:.0f}s ago"
+        return "{:.0f}s ago".format(seconds)
     if seconds < 5400:
-        return f"{seconds / 60:.0f}m ago"
-    return f"{seconds / 3600:.1f}h ago"
+        return "{:.0f}m ago".format(seconds / 60)
+    return "{:.1f}h ago".format(seconds / 3600)
 
 
 STATUS_ORDER = ("converted", "ready", "review", "held", "failed", "interrupted")
 MAX_ROWS = 400
+MAX_SHELF_CARDS = 12
 
-#: sortable columns, in table order: (key, header label, width, css class)
 COLUMNS = (
-    ("title", "book", "", "ab-book"),
-    ("status", "status", "110px", ""),
-    ("tier", "conf", "124px", "dim"),
-    ("runtime", "runtime", "96px", "dim"),
-    ("scan", "last scan", "118px", "dim"),
+    ("title", "Book", "", "ab-bookcell"),
+    ("status", "Status", "110px", ""),
+    ("tier", "Tier", "90px", "ab-hidemd"),
+    ("runtime", "Runtime", "90px", ""),
+    ("scan", "Last scan", "110px", "ab-hidemd"),
 )
-#: the cover column is not sortable, so it sits outside COLUMNS
-COVER_WIDTH = "70px"
-TOTAL_COLUMNS = len(COLUMNS) + 1
+COVER_WIDTH = "50px"
+TOTAL_COLUMNS = len(COLUMNS) + 1 + 1
 SORT_COLUMNS = tuple(key for key, *_ in COLUMNS)
-#: numeric columns sort by value, the rest by text
 NUMERIC_COLUMNS = {"status", "tier", "runtime", "scan"}
-#: best match first when sorting by confidence tier
 TIER_ORDER = ("HIGH", "MEDIUM", "LOW", "COLLECTION", "NONE")
 
 
 def search_matches(unit, query: str) -> bool:
-    """True when every whitespace-separated term appears in title, author or path.
-
-    Case-insensitive, substring, AND across terms - mirrored by abRowMatches() in the page.
-    """
     terms = (query or "").strip().lower().split()
     if not terms:
         return True
@@ -562,7 +784,6 @@ def status_rank(status: str) -> int:
 
 
 def sort_value(unit, column: str):
-    """The raw value a column sorts on (also written into the row's data- attributes)."""
     if column == "status":
         return status_rank(unit.status)
     if column == "tier":
@@ -575,7 +796,6 @@ def sort_value(unit, column: str):
 
 
 def sort_units(units: list, column: str, direction: str) -> list:
-    """Sort a copy of ``units``; ties always break on title ascending, as the page does."""
     if column not in SORT_COLUMNS:
         column = "scan"
     reverse = str(direction).lower() == "desc"
@@ -588,7 +808,6 @@ def unit_title_key(unit) -> str:
 
 
 def cover_src(unit) -> str:
-    """The /cover query for a unit, or "" when there is nothing to show."""
     if unit.output:
         return "/cover?path=" + quote(unit.path, safe="")
     if unit.asin:
@@ -597,18 +816,17 @@ def cover_src(unit) -> str:
 
 
 def cover_html(unit, big: bool = False) -> str:
-    """A fixed-size cover box: the placeholder glyph shows through when the image fails."""
-    classes = "ab-covwrap ab-covbig" if big else "ab-covwrap"
+    classes = "ab-covbigwrap" if big else "ab-covwrap"
     src = cover_src(unit)
     if not src:
-        return f'<div class="{classes}"></div>'
-    alt = _attr(f"cover of {unit.title or unit.path}")
-    return (f'<div class="{classes}"><img class="ab-thumb" src="{src}" alt="{alt}" '
-            f'loading="lazy" onerror="abCoverFail(this)"></div>')
+        return '<div class="{}"></div>'.format(classes)
+    alt = _attr("cover of {}".format(unit.title or unit.path))
+    return ('<div class="{c}"><img class="ab-thumb" src="{s}" alt="{a}" '
+            'loading="lazy" onerror="abCoverFail(this)"></div>').format(
+                c=classes, s=src, a=alt)
 
 
-def read_sort(state: State) -> tuple[str, str]:
-    """The operator's stored sort preference; newest scan first until they choose."""
+def read_sort(state) -> tuple:
     column = state.get_meta("sort_column", "scan")
     direction = state.get_meta("sort_dir", "desc")
     if column not in SORT_COLUMNS:
@@ -618,7 +836,86 @@ def read_sort(state: State) -> tuple[str, str]:
     return column, direction
 
 
-def render(state: State, status: str = "", query: str = "") -> str:
+def _tier_class(confidence: str) -> str:
+    t = (confidence or "").upper()
+    if t == "HIGH":
+        return "ab-high"
+    if t == "MEDIUM":
+        return "ab-medium"
+    return "ab-low"
+
+
+def _render_shelf(problem_units: list) -> str:
+    if not problem_units:
+        return (
+            '<section class="ab-shelf" id="ab-shelf" aria-label="Needs attention">'
+            '<div class="ab-shelf-head" id="ab-shelf-head" role="button" tabindex="0" '
+            'aria-expanded="false" aria-controls="ab-shelf-body">'
+            '<h2>Needs attention</h2>'
+            '<span class="ab-scount" id="ab-shelf-count">0</span>'
+            '<span class="ab-shint">nothing needs attention</span>'
+            '<span class="ab-caret" aria-hidden="true">&#9660;</span>'
+            '</div>'
+            '<div class="ab-shelf-body" id="ab-shelf-body" hidden></div>'
+            '<div class="ab-shelf-empty" id="ab-shelf-empty" style="display:flex">'
+            '<span class="ab-sdot"></span> nothing needs attention</div>'
+            '</section>'
+        )
+
+    visible = problem_units[:MAX_SHELF_CARDS]
+    more = len(problem_units) - len(visible)
+
+    cards = []
+    for unit in visible:
+        why, _todo = explain(unit.status, unit.confidence or "", unit.note,
+                             json.loads(unit.detail or "{}"))
+        reason_class = ("held" if unit.status == "held"
+                        else ("failed" if unit.status == "failed" else ""))
+
+        btn = '<button class="btn primary" onclick="rowAction(this,\'retry\')">Retry now</button>'
+        force = '<button class="btn warn" onclick="rowAction(this,\'force\')">Convert anyway</button>'
+        asin_btn = '<button class="btn" onclick="rowAction(this,\'set_asin\')">Use this ASIN</button>'
+
+        cards.append(
+            ('<div class="ab-problem" data-path="{dp}">'
+             '<div class="ab-problem-head">{cov}'
+             '<div class="ab-pbook">'
+             '<span class="ab-ptitle">{ti}</span>'
+             '<span class="ab-pauthor">{au}</span></div>'
+             '<span class="pill {st}"><span class="pdot"></span>{st}</span></div>'
+             '<div class="ab-preason {rc}">{wh}</div>'
+             '<div class="ab-pactions">{btns}</div></div>'
+             ).format(
+                dp=_attr(unit.path), cov=cover_html(unit),
+                ti=_html(unit.title or unit.path),
+                au=_html(unit.author or ""),
+                st=unit.status, rc=reason_class, wh=_html(why),
+                btns=btn + force + asin_btn))
+    cards_html = "\n".join(cards)
+    if more:
+        cards_html += (
+            '\n<div class="ab-problem" style="display:flex;align-items:center;'
+            'justify-content:center;color:var(--ab-text3);font-size:12.5px">'
+            '+{} more &mdash; filter in the table below</div>').format(more)
+
+    count = len(problem_units)
+    return (
+        '<section class="ab-shelf" id="ab-shelf" aria-label="Needs attention">'
+        '<div class="ab-shelf-head" id="ab-shelf-head" role="button" tabindex="0" '
+        'aria-expanded="true" aria-controls="ab-shelf-body">'
+        '<h2>Needs attention</h2>'
+        '<span class="ab-scount" id="ab-shelf-count">{c}</span>'
+        '<span class="ab-shint">action needed on {c} book{suf}</span>'
+        '<span class="ab-caret" aria-hidden="true">&#9660;</span>'
+        '</div>'
+        '<div class="ab-shelf-body" id="ab-shelf-body">{cards}</div>'
+        '<div class="ab-shelf-empty" id="ab-shelf-empty">'
+        '<span class="ab-sdot"></span> nothing needs attention</div>'
+        '</section>'
+    ).format(c=count, suf="" if count == 1 else "s", cards=cards_html)
+
+
+def render(state, status: str = "", query: str = "") -> str:
     counts = state.counts()
     stats = library_stats(state)
     wanted = status if status in counts else ""
@@ -630,29 +927,30 @@ def render(state: State, status: str = "", query: str = "") -> str:
     if query:
         units = [u for u in units if search_matches(u, query)]
 
-    chips = [f'<a class="chip{" on" if not wanted else ""}" href="/">all <b>{total}</b></a>']
+    # chips
+    chips = ['<a class="chip{on}" href="/">All <span class="n">{n}</span></a>'.format(
+        on=" on" if not wanted else "", n=total)]
     for name in STATUS_ORDER:
         if not counts.get(name):
             continue
         chips.append(
-            f'<a class="chip{" on" if wanted == name else ""}" href="/?status={name}">'
-            f'{name} <b>{counts[name]}</b></a>'
+            '<a class="chip{on}" href="/?status={st}">{st} <span class="n">{n}</span></a>'.format(
+                on=" on" if wanted == name else "", st=name, n=counts[name])
         )
     chips_html = "".join(chips)
+
+    # problem units for shelf
+    shelf_order = {"failed": 0, "held": 1, "review": 2}
+    problem_units = [u for u in state.all(None) if u.status in ("held", "review", "failed")]
+    problem_units.sort(key=lambda u: (shelf_order.get(u.status, 99), unit_title_key(u)))
+
+    # table
     shown = len(units)
     units = units[:MAX_ROWS]
-    overflow = (f'<div class="wmeta">showing the first {MAX_ROWS} of {shown} - '
-                f'filter by status or use <code>/api/units?status=</code></div>'
-                if shown > MAX_ROWS else "")
-
-    def css(status: str) -> str:
-        if status == "converted":
-            return "ok"
-        if status in ("ready", "review", "held", "interrupted"):
-            return "warn"
-        if status == "failed":
-            return "err"
-        return "dim"
+    overflow = (
+        '<div class="ab-overflow">showing the first {max} of {sh} - '
+        'filter by status or use <code>/api/units?status=</code></div>'
+    ).format(max=MAX_ROWS, sh=shown) if shown > MAX_ROWS else ""
 
     def detail_panel(unit) -> str:
         try:
@@ -661,196 +959,267 @@ def render(state: State, status: str = "", query: str = "") -> str:
             data = {}
         src = data.get("source") or {}
         out = data.get("output") or {}
-        # rows written before the detail blob existed still carry the flat columns
         if not out and unit.output:
             out = {"path": unit.output, "mb": unit.out_mb, "hours": unit.hours,
                    "chapters": unit.chapters, "chapters_from": ""}
 
         mb = src.get("mb") or unit.src_mb
-        size = f"{mb:.0f} MB &middot; " if mb else ""
+        size = "{:.0f} MB &middot; ".format(mb) if mb else ""
         codecs = " + ".join(src.get("codecs") or [])
         before = [
-            f"{src.get('parts', 1)} part(s) &middot; {src.get('files') or unit.files} file(s)",
-            f"{size}{(src.get('hours') or unit.hours):.2f} h",
+            "{} part(s) &middot; {} file(s)".format(
+                src.get("parts", 1), src.get("files") or unit.files),
+            "{sz}{hr:.2f} h".format(sz=size, hr=src.get("hours") or unit.hours),
             (codecs or "codec not recorded")
-            + (f" &middot; {', '.join(src.get('channels') or [])} ch" if src.get("channels") else ""),
-            f"<span class=\"dim\"><code>{_html(unit.path)}</code></span>",
+            + (" &middot; {} ch".format(", ".join(src.get("channels") or []))
+               if src.get("channels") else ""),
+            '<span class="dim"><code>{pa}</code></span>'.format(pa=_html(unit.path)),
         ]
         if out:
             after = [
-                f"<code>{_html(Path(out.get('path', '')).name)}</code>",
-                f"{(out.get('mb') or 0):.0f} MB &middot; {(out.get('hours') or 0):.2f} h",
-                f"{out.get('chapters', 0)} chapters ({_html(str(out.get('chapters_from') or ''))})",
-                f"<span class=\"dim\">{_html(str(out.get('path') or ''))}</span>",
+                "<code>{nm}</code>".format(nm=_html(Path(out.get("path", "")).name)),
+                "{mb:.0f} MB &middot; {hr:.2f} h".format(
+                    mb=out.get("mb") or 0, hr=out.get("hours") or 0),
+                "{ch} chapters ({cf})".format(
+                    ch=out.get("chapters", 0),
+                    cf=_html(str(out.get("chapters_from") or ""))),
+                '<span class="dim">{op}</span>'.format(
+                    op=_html(str(out.get("path") or ""))),
             ]
         else:
-            after = [f"not converted &mdash; status <b>{unit.status}</b>",
-                     f"planned action: {data.get('action') or 'n/a'}"]
+            after = ["not converted &mdash; status <b>{st}</b>".format(st=unit.status),
+                     "planned action: {ac}".format(ac=data.get("action") or "n/a")]
 
-        decision = [f"match: <b>{unit.confidence or '-'}</b>",
-                    f"asin: {unit.asin or '-'}"]
+        decision = ["match: <b>{co}</b>".format(co=unit.confidence or "-"),
+                    "asin: {av}".format(av=unit.asin or "-")]
         if unit.note:
             decision.append(_html(unit.note))
 
         why, todo = explain(unit.status, unit.confidence or "", unit.note, data)
 
         def block(title, items):
-            return (f"<div><h4>{title}</h4><ul>"
-                    + "".join(f"<li>{i}</li>" for i in items) + "</ul></div>")
+            return ("<div><h4>{t}</h4><ul>".format(t=title)
+                    + "".join("<li>{i}</li>".format(i=i) for i in items)
+                    + "</ul></div>")
 
-        match_data = data.get("match") or {}
         custom = overrides_mod.describe(state.get_overrides(unit.path))
         marked = overrides_mod.custom_fields(state.get_overrides(unit.path))
 
-        def field(key, label, catalog_value, width_hint=""):
-            mark = (f'<span class="ab-custom" data-field="{key}"'
-                    f'{"" if key in marked else " hidden"}>custom</span>')
+        def field(key, label_str, catalog_value, width_hint=""):
+            mark = ('<span class="ab-custom" data-field="{k}"{h}>custom</span>').format(
+                k=key, h="" if key in marked else " hidden")
             placeholder = _attr(catalog_value or "catalog value")
-            return (f'<div class="ab-field"><span class="ab-lab">{label}{mark}</span>'
-                    f'<input class="ab-in" data-field="{key}" value="{_attr(custom[key])}" '
-                    f'placeholder="{placeholder}" spellcheck="false"{width_hint}></div>')
+            return (
+                '<div class="ab-field"><span class="ab-lab">{lb}{mk}</span>'
+                '<input class="ab-in" data-field="{k}" value="{cv}" '
+                'placeholder="{ph}" spellcheck="false"{wh}></div>'
+            ).format(lb=label_str, mk=mark, k=key, cv=_attr(custom[key]),
+                     ph=placeholder, wh=width_hint)
 
+        match_data = data.get("match") or {}
         editor = (
-            f'<div class="ab-edit" data-path="{_attr(unit.path)}"><h4>Metadata</h4>'
-            '<p class="ab-hint">Overrides win over the catalog when this book is converted - '
-            'tags, metadata.json and the author/title layout. Leave a box empty to use the '
-            'catalog value; separate several names with a semicolon.</p>'
+            '<div class="ab-edit" data-path="{dp}"><h4>Metadata</h4>'
+            '<p class="ab-hint">Overrides win over the catalog when this book is '
+            'converted - tags, metadata.json and the author/title layout. '
+            'Leave a box empty to use the catalog value; '
+            'separate several names with a semicolon.</p>'
             '<div class="ab-grid">'
             + field("title", "title", match_data.get("title") or unit.title)
-            + field("authors", "author(s)", "; ".join(match_data.get("authors") or
-                                                      ([unit.author] if unit.author else [])))
+            + field("authors", "author(s)",
+                    "; ".join(match_data.get("authors") or
+                              ([unit.author] if unit.author else [])))
             + field("narrator", "narrator(s)", "")
             + field("series", "series", "")
             + field("series_index", "series index", "")
             + '</div><div class="ab-editbar">'
             '<button class="ab-save" onclick="abSaveMeta(this)">Save metadata</button>'
             '<span class="ab-fb"></span></div></div>'
-        )
+        ).format(dp=_attr(unit.path))
+
+        btn = '<button onclick="unitAction(this,\'retry\')">Retry now</button>'
+        force = '<button class="warn" onclick="unitAction(this,\'force\')">Convert anyway</button>'
+        asin_btn = '<button onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
 
         explain_html = (
             '<div class="explain">'
-            f'<div><h4>Why it is {unit.status}</h4><p>{_html(why)}</p></div>'
-            f'<div class="todo"><h4>What to do</h4><p>{_html(todo)}</p></div>'
-            "</div>"
+            + '<div><h4>Why it is {st}</h4><p>{wh}</p></div>'.format(
+                st=unit.status, wh=_html(why))
+            + '<div class="todo"><h4>What to do</h4><p>{td}</p></div>'.format(
+                td=_html(todo))
+            + "</div>"
         )
         actions = (
             '<div class="acts">'
-            f'<button onclick="unitAction(this,\'retry\')">Retry now</button>'
-            f'<button class="warn" onclick="unitAction(this,\'force\')">Convert anyway</button>'
-            '<input data-asin placeholder="ASIN, e.g. B005EHN61O" style="width:190px">'
-            f'<button onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
-            "</div>"
+            + btn + force
+            + '<input data-asin placeholder="ASIN, e.g. B005EHN61O" style="width:190px">'
+            + asin_btn
+            + "</div>"
         )
-        return (f'<tr class="drow" data-path="{_attr(unit.path)}" hidden>'
-                f'<td colspan="{TOTAL_COLUMNS}">'
-                f'<div class="dd" data-path="{_attr(unit.path)}">'
-                + explain_html
-                + f'<div class="ab-covpanel">{cover_html(unit, big=True)}</div>'
-                + block("Before", before)
-                + block("After", after)
-                + block("Decision", decision)
-                + editor
-                + actions
-                + "</div></td></tr>")
+        return (
+            '<tr class="drow" data-path="{dp}" hidden>'
+            '<td colspan="{tc}">'
+            '<div class="dd" data-path="{dp}">'
+            + explain_html
+            + '<div class="ab-covpanel">{cov}</div>'.format(cov=cover_html(unit, big=True))
+            + block("Before", before)
+            + block("After", after)
+            + block("Decision", decision)
+            + editor
+            + actions
+            + "</div></td></tr>"
+        ).format(dp=_attr(unit.path), tc=TOTAL_COLUMNS)
 
     def row(unit) -> str:
         haystack = " ".join(filter(None, [unit.title, unit.author, unit.path]))
         data = " ".join(
-            f'data-sort-{key}="{_attr(str(sort_value(unit, key)))}"' for key in SORT_COLUMNS
+            'data-sort-{k}="{v}"'.format(k=key, v=_attr(str(sort_value(unit, key))))
+            for key in SORT_COLUMNS
         )
         has_custom = bool(state.get_overrides(unit.path))
-        badge = f'<span class="ab-custom"{"" if has_custom else " hidden"}>custom</span>'
+        badge = '<span class="ab-custom"{h}>custom</span>'.format(
+            h="" if has_custom else " hidden")
+
+        act_html = ""
+        if unit.status in ("held", "review", "failed"):
+            btn = '<button class="btn primary" onclick="event.stopPropagation();rowAction(this,\'retry\')">Retry now</button>'
+            force = '<button class="btn warn" onclick="event.stopPropagation();rowAction(this,\'force\')">Convert anyway</button>'
+            asin_btn = '<button class="btn" onclick="event.stopPropagation();rowAction(this,\'set_asin\')">Use this ASIN</button>'
+            act_html = '<div class="ab-rowact">' + btn + force + asin_btn + '</div>'
+
         return (
-            f'<tr class="urow" onclick="toggleRow(this)" data-path="{_attr(unit.path)}" '
-            f'data-search="{_attr(haystack)}" {data}>'
-            f'<td class="ab-covcell">{cover_html(unit)}</td>'
-            f'<td class="ab-book">{_html(unit.title or unit.path)}{badge}</td>'
-            f'<td class="{css(unit.status)}">{unit.status}</td>'
-            f'<td class="dim">{unit.confidence or "-"}</td>'
-            f'<td class="dim">{(unit.hours or 0):.1f}</td>'
-            f'<td class="dim">{_fmt_age(time.time() - (unit.updated_at or 0))}</td></tr>'
-        )
+            '<tr class="urow" onclick="toggleRow(this)" data-path="{dp}" '
+            'data-search="{hs}" {da}>'
+            '<td class="ab-covcell">{cov}</td>'
+            '<td class="ab-bookcell"><span class="ab-btitle">{ti}{bd}</span>'
+            '<span class="ab-bauthor">{au}</span></td>'
+            '<td><span class="pill {st}"><span class="pdot"></span>{st}</span></td>'
+            '<td class="ab-hidemd"><span class="ab-tier {tc}">{co}</span></td>'
+            '<td class="ab-num">{hr:.1f}h</td>'
+            '<td class="ab-hidemd ab-scan">{ag}</td>'
+            '<td class="ab-actcol">{ac}</td></tr>'
+        ).format(
+            dp=_attr(unit.path), hs=_attr(haystack), da=data,
+            cov=cover_html(unit),
+            ti=_html(unit.title or unit.path), bd=badge,
+            au=_html(unit.author or ""),
+            st=unit.status,
+            tc=_tier_class(unit.confidence), co=unit.confidence or "-",
+            hr=unit.hours or 0,
+            ag=_fmt_age(time.time() - (unit.updated_at or 0)),
+            ac=act_html)
 
     rows = "".join(row(u) + detail_panel(u) for u in units)
     if not units:
-        rows = (f'<tr class="ab-empty"><td colspan="{TOTAL_COLUMNS}">'
-                f'no books match this filter</td></tr>')
+        rows = ('<tr class="ab-empty"><td colspan="{tc}">'
+                'no books match this filter</td></tr>').format(tc=TOTAL_COLUMNS)
 
     headers = '<th class="ab-covhead"></th>' + "".join(
-        f'<th class="ab-sort{" ab-on" if key == sort_column else ""}" data-column="{key}">'
-        f'{label}<span class="ab-arrow">'
-        f'{"&#9660;" if (key == sort_column and sort_dir == "desc") else "&#9650;"}'
-        f'</span></th>'
-        for key, label, _width, _klass in COLUMNS
+        '<th class="ab-sort{on} {kl}" data-column="{k}">'
+        '{lb}<span class="ab-arrow">{ar}</span></th>'.format(
+            on=" ab-on" if key == sort_column else "", kl=klass, k=key,
+            lb=label,
+            ar="&#9660;" if (key == sort_column and sort_dir == "desc") else "&#9650;")
+        for key, label, _width, klass in COLUMNS
     )
-    colgroup = ('<col style="width:%s">' % COVER_WIDTH) + "".join(
-        ('<col style="width:%s">' % width) if width else "<col>"
+    colgroup = ('<col style="width:{cw}">'.format(cw=COVER_WIDTH)) + "".join(
+        ('<col style="width:{w}">'.format(w=width)) if width else "<col>"
         for _k, _l, width, _c in COLUMNS
     )
-    shown_label = (f"{shown} of {total} shown" if query
-                   else f"{shown} book{'' if shown == 1 else 's'}")
+    shown_label = ("{sn} of {tt} shown".format(sn=shown, tt=total) if query
+                   else "{sn} book{su}".format(sn=shown, su="" if shown == 1 else "s"))
 
+    # controls
     paused = CONTROL.paused
+    scan_button = '<button class="btn primary" onclick="act(\'scan\')"{di}>Scan now</button>'.format(
+        di="" if not paused else " disabled")
     pause_button = (
-        '<button onclick="act(\'resume\')">Resume</button>' if paused
-        else '<button class="warn" onclick="act(\'pause\')">Pause after this book</button>'
+        '<button class="btn" onclick="act(\'resume\')">Resume</button>' if paused
+        else '<button class="btn warn" onclick="act(\'pause\')">Pause after this book</button>'
     )
     dry_button = (
-        '<button class="warn" onclick="dry(false)">Dry run: ON &middot; turn off</button>'
+        '<button class="btn dry on" onclick="dry(false)">Dry run <span class="ab-switch"></span></button>'
         if CONTROL.dry_run
-        else '<button class="armed" onclick="dry(true)">Dry run: OFF &middot; turn on</button>'
+        else '<button class="btn dry" onclick="dry(true)">Dry run <span class="ab-switch"></span></button>'
     )
-    # Stop only makes sense while something is actually encoding; pause is for between books
+    dry_note = (
+        '<span class="ab-note">Dry run is on &mdash; no files will be written</span>'
+        if CONTROL.dry_run else "")
     stop_button = (
-        '<button class="danger" onclick="stop_now()">Stop now</button>'
+        '<button class="btn danger" onclick="stop_now()">Stop now</button>'
         if CONTROL.running
-        else '<button class="danger" disabled>Stop now</button>'
+        else '<button class="btn danger" disabled>Stop now</button>'
     )
-    working = ""
+
+    # encode strip
+    queue_strip = ""
     if CONTROL.running:
         prog = CONTROL.progress or {}
         percent = float(prog.get("percent") or 0)
-        meta = []
+        meta_parts = []
         if prog.get("speed"):
-            meta.append(f"{prog['speed']}x realtime")
+            meta_parts.append("<b>{}x</b> realtime".format(prog["speed"]))
         if prog.get("eta"):
-            meta.append(f"~{_fmt_duration(prog['eta'])} left")
+            meta_parts.append("<b>{}</b> left".format(_fmt_duration(prog["eta"])))
         if prog.get("elapsed"):
-            meta.append(f"{_fmt_duration(prog['elapsed'])} elapsed")
+            meta_parts.append("{} elapsed".format(_fmt_duration(prog["elapsed"])))
         if not prog:
-            meta.append("analysing - the bar appears once encoding starts")
-        working = (
-            f'<div class="working">'
-            f'<div class="wline"><span>converting <b>{_html(CONTROL.current_unit)}</b></span>'
-            f'<span class="pct" id="pct">{percent:.1f}%</span></div>'
-            f'<div class="ptrack"><i id="prog" style="width:{percent:.1f}%"></i></div>'
-            f'<div class="wmeta">{" &middot; ".join(meta)}</div></div>'
-        )
+            meta_parts.append("analysing - the bar appears once encoding starts")
+
+        title_html = _html(CONTROL.current_unit)
+        queue_strip = (
+            '<section class="ab-queue" aria-label="Currently encoding">'
+            '<div class="ab-label"><span class="ab-pulse"></span> Now encoding</div>'
+            '<div class="ab-qtitle">{ti}</div>'
+            '<div class="ab-qact">'
+            '<button class="btn" onclick="act(\'pause\')">Pause</button>'
+            '<button class="btn danger" onclick="stop_now()">Stop</button>'
+            '</div>'
+            '<div class="ab-qmeta">{mp}</div>'
+            '<div class="ab-qbarwrap">'
+            '<div class="ab-qbar"><i id="ab-qfill" style="width:{pc:.1f}%"></i></div>'
+            '<span class="ab-qpct" id="ab-qpct">{pc:.1f}%</span>'
+            '</div></section>'
+        ).format(ti=title_html, mp=" &middot; ".join(meta_parts), pc=percent)
+
+    # health
+    heartbeat_age = state.heartbeat_age()
+    healthy = heartbeat_age < CONFIG.scan_interval_min * 60 * 2.5 + 300
+    health_stale = "" if healthy else " ab-stale"
+    health_text = "Healthy" if healthy else "Stale"
+
+    # header indicators
+    auto_text = (
+        '<span style="font-family:var(--ab-mono);font-size:11px;color:var(--ab-text4)">'
+        'auto: {ac}</span>').format(ac=CONFIG.auto_convert) if CONFIG.auto_convert else ""
+    dry_header = (
+        '<span style="font-family:var(--ab-mono);font-size:11px;color:var(--ab-amber)">'
+        'dry run</span>') if CONTROL.dry_run else ""
+
     return PAGE.format(
         styles=STYLES,
         script=SCRIPT,
         version=__version__,
         library=CONFIG.library_root,
         output=CONFIG.output_root,
-        auto=CONFIG.auto_convert,
-        dry=" · dry run" if CONTROL.dry_run else "",
-        dry_tag=" (dry run)" if CONTROL.dry_run else "",
-        state_class="paused" if paused else "run",
-        state_text="paused" if paused else "running",
-        scan_disabled="" if not paused else "disabled",
+        auto_text=auto_text,
+        dry_text=dry_header,
+        health_stale=health_stale,
+        health_text=health_text,
+        health_scan=_fmt_age(heartbeat_age),
+        rail_total=total,
+        rail_review_count=counts.get("review", 0),
+        rail_held_count=counts.get("held", 0),
+        rail_failed_count=counts.get("failed", 0),
+        scan_button=scan_button,
         pause_button=pause_button,
         stop_button=stop_button,
         dry_button=dry_button,
-        working=working,
-        converted=counts.get("converted", 0),
-        ready=counts.get("ready", 0),
-        review=counts.get("review", 0),
-        held=counts.get("held", 0),
-        failed=counts.get("failed", 0),
-        last_scan=_fmt_age(state.heartbeat_age()),
-        stat_hours=f"{stats['hours']:g} h",
-        stat_gb=f"{stats['gb']:g} GB",
-        stat_pct=f"{stats['progress']:g}",
+        dry_note=dry_note,
+        queue_strip=queue_strip,
+        shelf_html=_render_shelf(problem_units),
+        stat_hours="{} h".format(stats["hours"]),
+        stat_gb="{} GB".format(stats["gb"]),
+        stat_pct="{}".format(stats["progress"]),
         stat_pct_width=max(0.0, min(100.0, stats["progress"])),
         stat_conv=stats["converted"],
         stat_total=stats["total"],
@@ -867,13 +1236,7 @@ def render(state: State, status: str = "", query: str = "") -> str:
     )
 
 
-def library_stats(state: State) -> dict:
-    """Library-wide numbers, computed from the state DB on each call.
-
-    out_mb is recorded at publish time as bytes/1e6, so MB here is decimal and a GB is 1000 MB,
-    not 1024 - mixing the two is what made this read 2.50 GB for 2.56 GB of audio. Nothing
-    scans the output tree.
-    """
+def library_stats(state) -> dict:
     units = state.all(None)
     converted = [u for u in units if u.status == "converted"]
     hours = sum(u.hours or 0.0 for u in converted)
@@ -889,7 +1252,7 @@ def library_stats(state: State) -> dict:
     }
 
 
-def snapshot(state: State) -> dict:
+def snapshot(state) -> dict:
     return {
         "version": __version__,
         "counts": state.counts(),
@@ -905,8 +1268,8 @@ def snapshot(state: State) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    state: State = None                     # set by serve()
-    server_version = f"audiobind/{__version__}"
+    state = None
+    server_version = "audiobind/{}".format(__version__)
 
     def _send(self, code: int, body: bytes, content_type: str) -> None:
         self.send_response(code)
@@ -915,7 +1278,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self):                       # noqa: N802 - http.server API
+    def do_GET(self):                       # noqa: N802
         path, _, query = self.path.partition("?")
         params = {k: v[0] for k, v in parse_qs(query, keep_blank_values=True).items()}
         status = params.get("status", "")
@@ -931,10 +1294,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/units"):
             units = self.state.all(status or None)
-            payload = [{"path": u.path, "title": u.title, "author": u.author, "status": u.status,
-                        "confidence": u.confidence, "asin": u.asin, "hours": u.hours,
-                        "files": u.files, "note": u.note, "output": u.output,
-                        "src_mb": u.src_mb, "out_mb": u.out_mb, "chapters": u.chapters}
+            payload = [{"path": u.path, "title": u.title, "author": u.author,
+                        "status": u.status, "confidence": u.confidence,
+                        "asin": u.asin, "hours": u.hours, "files": u.files,
+                        "note": u.note, "output": u.output,
+                        "src_mb": u.src_mb, "out_mb": u.out_mb,
+                        "chapters": u.chapters}
                        for u in units]
             self._send(200, json.dumps({"count": len(payload), "units": payload}).encode(),
                        "application/json")
@@ -950,10 +1315,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, body.encode(), "text/html; charset=utf-8")
 
     def _send_cover(self, asin: str, rel_path: str) -> None:
-        """Serve cached cover art. A miss is a 404 and the page shows its placeholder."""
         try:
             found = resolve_cover(self.state, asin=asin, rel_path=rel_path)
-        except Exception:                   # noqa: BLE001 - art is never worth a 500
+        except Exception:                   # noqa: BLE001
             found = None
         if found is None:
             self._send(404, b"no cover", "text/plain")
@@ -983,7 +1347,6 @@ class Handler(BaseHTTPRequestHandler):
         action = str(payload.get("action", "")).lower()
 
         if action == "set_meta":
-            # metadata editing only touches the DB, so it must not require a library scan
             if self.state.get(rel) is None:
                 self._send(404, b'{"error":"no such unit"}', "application/json")
                 return
@@ -1064,16 +1427,15 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(400, b'{"error":"unknown action"}', "application/json")
             return
-        self._send(200, json.dumps({"ok": True, **CONTROL.describe()}).encode(), "application/json")
+        self._send(200, json.dumps({"ok": True, **CONTROL.describe()}).encode(),
+                   "application/json")
 
-    def log_message(self, *args):           # keep container logs clean
+    def log_message(self, *args):
         return
 
 
-def serve(state: State) -> ThreadingHTTPServer:
+def serve(state):
     Handler.state = state
-    # web_port == 0 asks the kernel for a free port, so tests never contend
-    # with a leftover listener; the bound port is written back to CONFIG.
     server = ThreadingHTTPServer(("0.0.0.0", CONFIG.web_port), Handler)
     if CONFIG.web_port == 0:
         CONFIG.web_port = server.server_address[1]

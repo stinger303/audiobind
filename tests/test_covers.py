@@ -170,7 +170,7 @@ class TestCoverEndpointAndMarkup(CoverBase):
         page = web.render(self.state)
         self.assertIn('class="ab-covcell"', page)
         self.assertIn('class="ab-thumb"', page)
-        self.assertIn("ab-covwrap ab-covbig", page)       # bigger one in the panel
+        self.assertIn('class="ab-covbigwrap"', page)       # bigger one in the panel
         self.assertIn("/cover?asin=B005EHN61O", page)
 
     def test_a_unit_with_nothing_to_show_gets_a_bare_placeholder(self):
@@ -188,9 +188,9 @@ class TestCoverEndpointAndMarkup(CoverBase):
     def test_colspan_counts_the_cover_column(self):
         self.state.save(UnitState(path="A/B", status="ready", title="B"))
         page = web.render(self.state)
-        self.assertEqual(web.TOTAL_COLUMNS, len(web.COLUMNS) + 1)
+        self.assertEqual(web.TOTAL_COLUMNS, len(web.COLUMNS) + 2)
         self.assertIn(f'colspan="{web.TOTAL_COLUMNS}"', page)
-        self.assertEqual(page.count("<col "), 0 + page.count('<col style='))
+        self.assertEqual(page.count("<col style="), page.count("<col ") - 1)
 
 
 class TestCatalogImage(unittest.TestCase):

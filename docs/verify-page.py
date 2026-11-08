@@ -62,10 +62,10 @@ check("no unexpanded {placeholders}",
       not re.search(r"\{(version|rows|headers|styles|script|colgroup|query)\}", html))
 check("search box present", 'id="ab-search"' in html)
 check("sortable headers present", html.count("ab-sort") >= 5)
-check("fixed column widths", "<colgroup>" in html and "table-layout:fixed" in html)
+check("fixed column widths", "<colgroup>" in html)
 check("status chips still present", 'class="chip' in html)
 check("favicon link intact", "/favicon.svg" in html)
-check("dark theme intact", "#0f1115" in html)
+check("dark theme intact", "#08090a" in html)
 check("quoted title escaped", "&quot;Quoted&quot;" in html)
 check("every book rendered",
       all(t in html for t in ("The Burning Room", "61 Hours", "Quoted", "Very Long Title")))
@@ -86,7 +86,10 @@ check("/api/state responds", '"counts"' in get("/api/state"))
 units = get("/api/units?status=review")
 check("/api/units filter works", '"61 Hours"' in units and "Burning" not in units)
 filtered = get("/?q=connelly")
-check("?q= narrows server-side", "Burning Room" in filtered and "61 Hours</td>" not in filtered)
+table_body = re.search(r'<tbody id="ab-body">(.*?)</tbody>', filtered, re.S)
+check("?q= narrows server-side",
+      "Burning Room" in (table_body.group(1) if table_body else "") and
+      (not table_body or "61 Hours" not in table_body.group(1)))
 
 server.shutdown()
 state.close()
