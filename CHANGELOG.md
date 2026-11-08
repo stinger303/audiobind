@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.8] - 2026-11-08
+
+### Fixed
+- **The expanded detail panel no longer forces the page sideways.** The detail
+  row inherited the books table's no-wrap cell rule, so the Why/What text, the
+  Before/After blocks and the metadata hint could not wrap and pushed the table
+  wider than the screen. The detail row now wraps text normally; the compact
+  book rows keep their no-wrap cells.
+
 ## [0.11.7] - 2026-11-08
 
 ### Fixed

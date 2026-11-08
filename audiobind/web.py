@@ -295,7 +295,7 @@ tr:hover .ab-rowact, tr:focus-within .ab-rowact{opacity:1;pointer-events:auto}
 .ab-rowact button.warn:hover{background:var(--ab-amber-soft);border-color:rgba(242,163,60,.3)}
 .ab-actcol{padding:0!important;width:auto;position:relative;overflow:hidden;text-align:right}
 
-tr.drow td{background:#11151d;padding:0;border-bottom:1px solid var(--ab-border);}
+tr.drow td{background:#11151d;padding:0;border-bottom:1px solid var(--ab-border);white-space:normal}
 tr.drow[hidden] td{padding:0}
 .dd{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:22px;padding:16px 22px 18px;}
 .explain{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:22px;
