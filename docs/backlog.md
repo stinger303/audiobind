@@ -5,39 +5,36 @@ Ideas folded in from a side-by-side test of **Listenarr** (grabber) and
 2026-11-08. Items are research, not commitments — pull them into a version
 scope one at a time.
 
-## v0.13 candidates (from Chaptarr / Listenarr)
+## v0.13 candidates (from Chaptarr / Listenarr) — decided 2026-11-08
 
-1. **Chapter preservation on M4B conversion** (Chaptarr).
-   The merger already joins split files into one M4B. Delta: when the source
-   files carry chapter tags, keep them end-to-end; when they don't, synthesize
-   chapters from the Audible chapter data for the matched ASIN.
-   _Lands in:_ the encode/remux pipeline.
+1. **Chapter preservation on M4B conversion** (Chaptarr) — SHIPPED in v0.13.0.
+   Sources with embedded chapter tags keep them end-to-end (offset-accumulated
+   across parts, titles preserved). Priority over Audible chapter data for
+   single-part m4b/mp3 sources; Audnex wins for multi-part and other
+   containers; per-file fallback unchanged.
 
-2. **Narrator-aware metadata** (Chaptarr).
-   Add a narrator field to the metadata editor and a `narrator` naming token.
-   Narrators are the audiobook equivalent of "artist" and both arrs treat them
-   as first-class; our editor currently doesn't.
-   _Lands in:_ metadata editor + naming scheme.
+2. **Narrator-aware metadata** (Chaptarr) — SHIPPED in v0.13.0 (scoped).
+   The narrator tag and the metadata editor field already existed; what was
+   missing was surfacing: the detail panel now shows "Narrated by …" and the
+   editor's narrator box pre-fills from the match. The filing layout stays
+   Author/Title, so there is no narrator naming token — not worth restructuring
+   existing libraries for.
 
-3. **Multi-edition as first-class data** (Chaptarr).
-   Wrong-edition tolerance and the "Lock this book to one exact Audible
-   entry" flow already exist — the upgrade is an explicit edition model: one
-   title, several Audible entries, each tracked as an edition with its own
-   ASIN. Locking stops being a hack and becomes the data structure.
-   _Lands in:_ review queue + ASIN lock.
+3. **Multi-edition as first-class data** (Chaptarr) — SHIPPED in v0.13.0
+   (scoped). The top runners-up from the matching search are persisted per
+   unit; the detail panel lists them as "Other editions seen" with one-click
+   "Use this edition" ASIN pins (the existing lock flow). A full edition
+   model with per-edition history remains out of scope.
 
-4. **Named quality profiles** (both, Listenarr's "Prefer M4B container").
-   Replace the flat settings list (auto-convert tier, bitrate floor) with
-   selectable named profiles, each defining tier, bitrate floor, and output
-   container preference. Familiar shape for any *arr user.
-   _Lands in:_ settings page.
+4. **Named quality profiles** (both) — SHIPPED in v0.13.0. Settings page gains
+   a Balanced / High / Source-match select that presets the auto-convert tier
+   and bitrate floor client-side, flipping to Custom when those fields are
+   edited. Container preference not included — output is always m4b.
 
-5. **Metadata consensus before confidence scoring** (Chaptarr).
-   Today an Audible match is single-source with a confidence rating. The
-   Chaptarr idea: query a second metadata source and only flag
-   MEDIUM/low-confidence when the two disagree — fewer false review-queue
-   entries.
-   _Lands in:_ catalog matching (needs a second metadata provider).
+5. **Metadata consensus before confidence scoring** (Chaptarr) — DEFERRED.
+   No second audiobook-grade metadata provider exists; Open Library
+   cross-checks would increase false review flags, not reduce them. Revisit
+   if a second provider is added.
 
 ## Explicitly not pulled
 

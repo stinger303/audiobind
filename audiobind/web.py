@@ -345,6 +345,14 @@ tr.drow[hidden] td{padding:0}
   align-items:center;justify-content:center;color:#394152;font-size:48px;}
 .ab-covbigwrap .ab-thumb{position:relative;z-index:1;display:block;width:100%;height:100%;object-fit:cover;background:#161a22;}
 .ab-covpanel{display:flex;align-items:flex-start;}
+.ab-editions{grid-column:1/-1;border-top:1px solid #1c2230;padding-top:14px;}
+.ab-editions .ab-edition{display:flex;align-items:center;gap:12px;padding:6px 0;
+  border-bottom:1px solid var(--ab-border-subtle);}
+.ab-editions .ab-edition:last-of-type{border-bottom:none}
+.ab-editions .ab-edmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}
+.ab-editions .ab-edmain b{font-size:13px;font-weight:500;color:var(--ab-text)}
+.ab-editions .ab-edsub{font-size:11.5px;color:var(--ab-text3)}
+.ab-editions button{height:28px;padding:0 12px;font-size:12px;border-radius:6px;flex:none}
 .ab-edit{grid-column:1/-1;border-top:1px solid #1c2230;padding-top:14px;}
 .ab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 18px;}
 .ab-field{display:flex;flex-direction:column;gap:4px;}
@@ -539,6 +547,22 @@ function abToast(text) {
   el.classList.add('on');
   clearTimeout(abToast.t);
   abToast.t = setTimeout(() => el.classList.remove('on'), 5000);
+}
+function abUseEdition(btn) {
+  const panel = btn.closest('.dd');
+  if (!panel) return;
+  const path = panel.dataset.path;
+  const asin = btn.dataset.asin;
+  if (!path || !asin) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'pinning\\u2026';
+  abToast('pinning ' + asin + ' - re-checking\\u2026');
+  fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
+                     body: JSON.stringify({action:'set_asin', path: path, asin: asin})})
+    .then(r => r.json())
+    .then(() => setTimeout(() => location.reload(), 700))
+    .catch(() => { btn.disabled = false; btn.textContent = label; });
 }
 function abEditAsin(btn) {
   const el = btn.closest('[data-path]');
@@ -942,24 +966,24 @@ SETTINGS_PAGE = """<!doctype html>
 </body></html>"""
 
 SETTINGS_SCRIPT = """
-function abToastSettings(text) {{
+function abToastSettings(text) {
   const el = document.getElementById('ab-toast');
   if (!el) return;
   el.textContent = text;
   el.classList.add('on');
   clearTimeout(abToastSettings.t);
   abToastSettings.t = setTimeout(() => el.classList.remove('on'), 5000);
-}}
+}
 
-function abRangeShow(el) {{
+function abRangeShow(el) {
   const val = el.parentElement.querySelector('.ab-range-val');
   if (val) val.textContent = el.value;
-}}
+}
 
-function abSaveSettings() {{
+function abSaveSettings() {
   const fb = document.getElementById('ab-settings-fb');
-  const settings = {{}};
-  document.querySelectorAll('[data-setting]').forEach(el => {{
+  const settings = {};
+  document.querySelectorAll('[data-setting]').forEach(el => {
     const key = el.dataset.setting;
     let val;
     if (el.tagName === 'SELECT') val = el.value;
@@ -967,70 +991,110 @@ function abSaveSettings() {{
     else if (el.type === 'number') val = parseInt(el.value, 10);
     else val = el.value;
     settings[key] = val;
-  }});
+  });
   fb.className = 'ab-fb';
   fb.textContent = 'saving...';
-  fetch('/api/settings', {{method:'POST', headers:{{'Content-Type':'application/json'}},
-                         body: JSON.stringify({{settings: settings}})}})
-    .then(r => r.json().then(body => ({{ok: r.ok, body: body}})))
-    .then(res => {{
-      if (!res.ok) {{
+  fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
+                         body: JSON.stringify({settings: settings})})
+    .then(r => r.json().then(body => ({ok: r.ok, body: body})))
+    .then(res => {
+      if (!res.ok) {
         fb.className = 'ab-fb ab-bad';
         fb.textContent = res.body.error || 'could not save';
         return;
-      }}
+      }
       fb.className = 'ab-fb ab-good';
       fb.textContent = 'saved';
-      document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {{
+      document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {
         const key = mark.dataset.field;
         mark.hidden = res.body.custom.indexOf(key) === -1;
-      }});
-      setTimeout(() => {{ fb.textContent = ''; fb.className = 'ab-fb'; }}, 6000);
-    }})
-    .catch(() => {{
+      });
+      setTimeout(() => { fb.textContent = ''; fb.className = 'ab-fb'; }, 6000);
+    })
+    .catch(() => {
       fb.className = 'ab-fb ab-bad';
       fb.textContent = 'could not reach the daemon';
-    }});
-}}
+    });
+}
 
-function abResetSettings() {{
+function abResetSettings() {
   const fb = document.getElementById('ab-settings-fb');
   fb.className = 'ab-fb';
   fb.textContent = 'resetting...';
-  fetch('/api/settings', {{method:'POST', headers:{{'Content-Type':'application/json'}},
-                         body: JSON.stringify({{reset: true}})}})
+  fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
+                         body: JSON.stringify({reset: true})})
     .then(r => r.json())
-    .then(body => {{
-      if (body.ok) {{
-        document.querySelectorAll('[data-setting]').forEach(el => {{
+    .then(body => {
+      if (body.ok) {
+        document.querySelectorAll('[data-setting]').forEach(el => {
           const key = el.dataset.setting;
           const env = body.env_defaults[key];
           if (env === undefined) return;
           if (el.tagName === 'SELECT') el.value = String(env);
-          else if (el.type === 'range') {{ el.value = env; abRangeShow(el); }}
+          else if (el.type === 'range') { el.value = env; abRangeShow(el); }
           else if (el.type === 'number') el.value = env;
-        }});
-        document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {{
+        });
+        document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {
           mark.hidden = true;
-        }});
+        });
+        abSyncProfile();
         fb.className = 'ab-fb ab-good';
         fb.textContent = 'reset to environment defaults';
-        setTimeout(() => {{ fb.textContent = ''; fb.className = 'ab-fb'; }}, 6000);
-      }} else {{
+        setTimeout(() => { fb.textContent = ''; fb.className = 'ab-fb'; }, 6000);
+      } else {
         fb.className = 'ab-fb ab-bad';
         fb.textContent = body.error || 'could not reset';
-      }}
-    }})
-    .catch(() => {{
+      }
+    })
+    .catch(() => {
       fb.className = 'ab-fb ab-bad';
       fb.textContent = 'could not reach the daemon';
-    }});
-}}
+    });
+}
 
-function abMarkCustom(key, isCustom, envVal) {{
-  const mark = document.querySelector('[data-setting=\\\"' + CSS.escape(key) + '\\"] .ab-cuestom');
-  if (mark) mark.hidden = !isCustom;
-}}
+// ---- quality profiles: named presets for the two conversion settings below ----
+const AB_PROFILES = {
+  'balanced':     {label: 'Balanced',      auto_convert: 'HIGH', audio_bitrate: '128k'},
+  'high':         {label: 'High',          auto_convert: 'HIGH', audio_bitrate: '256k'},
+  'source-match': {label: 'Source-match',  auto_convert: 'HIGH', audio_bitrate: '64k'},
+};
+
+function abProfileField(key) {
+  const wrap = document.querySelector('[data-setting="' + key + '"]');
+  return wrap ? wrap.querySelector('select') : null;
+}
+
+function abSyncProfile() {
+  const sel = document.getElementById('ab-profile');
+  if (!sel) return;
+  const tier = abProfileField('auto_convert');
+  const bitrate = abProfileField('audio_bitrate');
+  for (const [name, p] of Object.entries(AB_PROFILES)) {
+    if (tier && bitrate && tier.value === p.auto_convert && bitrate.value === p.audio_bitrate) {
+      sel.value = name;
+      return;
+    }
+  }
+  sel.value = 'custom';
+}
+
+function abApplyProfile(name) {
+  const preset = AB_PROFILES[name];
+  if (!preset) return;
+  const tier = abProfileField('auto_convert');
+  const bitrate = abProfileField('audio_bitrate');
+  if (tier) tier.value = preset.auto_convert;
+  if (bitrate) bitrate.value = preset.audio_bitrate;
+  abSyncProfile();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  abSyncProfile();
+  ['auto_convert', 'audio_bitrate'].forEach(key => {
+    const el = abProfileField(key);
+    if (el) el.addEventListener('change', abSyncProfile);
+  });
+});
 """
 
 
@@ -1236,6 +1300,21 @@ def render_settings(state) -> str:
     set_effective(state)
 
     controls_parts = []
+
+    # 0. Quality profile (client-side preset - not itself a stored setting)
+    controls_parts.append(
+        '<div class="ab-setting" data-profile>'
+        '<span class="ab-setting-label">Quality profile</span>'
+        '<div class="ab-setting-hint">Named presets for the two conversion settings '
+        'below. Picking one fills them in; edit either field afterwards and the '
+        'profile switches to Custom so you can see it is no longer a preset.</div>'
+        '<select class="ab-in" id="ab-profile" onchange="abApplyProfile(this.value)">'
+        '<option value="balanced">Balanced - HIGH tier, 128k floor</option>'
+        '<option value="high">High - HIGH tier, 256k floor</option>'
+        '<option value="source-match">Source-match - HIGH tier, 64k floor (keeps '
+        'the source bitrate)</option>'
+        '<option value="custom">Custom</option>'
+        '</select></div>')
 
     # 1. Auto-convert tier
     tier = effective_val("auto_convert")
@@ -1446,6 +1525,9 @@ def render(state, status: str = "", query: str = "") -> str:
         match_data = data.get("match") or {}
         mtitle = match_data.get("title") or unit.title
         decision = ["Audible match: <b>{t}</b>".format(t=_html(mtitle))]
+        narrators = match_data.get("narrators") or []
+        if narrators:
+            decision.append("Narrated by <b>{n}</b>".format(n=_html("; ".join(narrators))))
         if unit.confidence:
             decision.append("Match confidence: <b>{co}</b>".format(co=unit.confidence))
         if unit.asin:
@@ -1532,13 +1614,42 @@ def render(state, status: str = "", query: str = "") -> str:
             + field("authors", "author(s)",
                     "; ".join(match_data.get("authors") or
                               ([unit.author] if unit.author else [])))
-            + field("narrator", "narrator(s)", "")
+            + field("narrator", "narrator(s)", "; ".join(match_data.get("narrators") or []))
             + field("series", "series", "")
             + field("series_index", "series index", "")
             + '</div><div class="ab-editbar">'
             '<button class="ab-save" onclick="abSaveMeta(this)">Save metadata</button>'
             '<span class="ab-fb"></span></div></div>'
         ).format(dp=_attr(unit.path))
+
+        # other editions the catalog search also scored highly, with one-click pins
+        editions_html = ""
+        try:
+            alternates = json.loads(unit.alternates) if getattr(unit, "alternates", "") else []
+        except ValueError:
+            alternates = []
+        others = [a for a in alternates if a.get("asin") and a.get("asin") != unit.asin][:4]
+        if others:
+            edition_rows = []
+            for alt in others:
+                edition_rows.append((
+                    '<div class="ab-edition">'
+                    '<span class="ab-edmain"><b>{ti}</b>'
+                    '<span class="ab-edsub">{au} &middot; '
+                    '<a class="ab-alink" href="https://www.audible.com/pd?asin={a}" '
+                    'target="_blank" rel="noopener">{a}</a></span></span>'
+                    '<button title="Lock this book to this Audible entry, then re-check '
+                    'against it." onclick="abUseEdition(this)" data-asin="{a}">'
+                    'Use this edition</button></div>').format(
+                        ti=_html(str(alt.get("title") or "")),
+                        au=_html("; ".join(alt.get("authors") or [])),
+                        a=_attr(str(alt.get("asin")))))
+            editions_html = (
+                '<div class="ab-editions"><h4>Other editions seen</h4>'
+                + "".join(edition_rows)
+                + '<p class="ab-hint">Audible entries the search also scored highly for '
+                  'this book - different narrations or editions of the same title. '
+                  'Pinning one locks the match permanently.</p></div>')
 
         btn = '<button title="Re-check this book against the catalog and convert it if it passes the rules." onclick="unitAction(this,\'retry\')">Retry now</button>'
         force = '<button class="warn" title="Convert this book even though the automatic checks flagged it." onclick="unitAction(this,\'force\')">Convert anyway</button>'
@@ -1592,6 +1703,7 @@ def render(state, status: str = "", query: str = "") -> str:
             + block("Your source files", before)
             + block(after_title, after)
             + block("The Audible match", decision)
+            + editions_html
             + editor
             + delete_act
             + "</div></td></tr>"

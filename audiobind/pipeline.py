@@ -167,6 +167,7 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
             "asin": audit.match.asin,
             "title": audit.match.product.title if audit.match.product else "",
             "authors": audit.match.product.authors if audit.match.product else [],
+            "narrators": audit.match.product.narrators if audit.match.product else [],
             "hours": audit.match.product.hours if audit.match.product else 0,
             "confidence": audit.confidence,
             # kept so the status page can show cover art without a second catalog call
@@ -209,6 +210,9 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
         src_mb=audit.src_mb,
         out_mb=round(result.size / 1e6, 1) if result else 0.0,
         chapters=result.chapters if result else 0,
+        # runners-up from the catalog search (other editions, near misses) are kept
+        # so the detail panel can offer one-click "use this edition" ASIN pins
+        alternates=json.dumps(audit.match.alternates),
         detail=detail,
     ))
 

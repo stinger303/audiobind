@@ -52,25 +52,101 @@ def _nice_prefix() -> list[str]:
     return ["nice", "-n", str(n)] if n else []
 
 
+#: containers that usually carry the publisher's own chapter tags
+_CHAPTERED_EXTS = (".m4b", ".m4a", ".mp3")
+
+
+def _source_chapters(unit: BookUnit) -> list[dict]:
+    """Chapter markers embedded in the source files themselves.
+
+    Offset-accumulated across parts so a multi-disc rip becomes one continuous
+    timeline; titles are preserved exactly as tagged.  Returns [] when the
+    sources carry no usable chapter metadata (fewer than two usable markers,
+    or a file whose duration cannot be probed, since then the offsets
+    cannot be trusted).
+    """
+    chapters: list[dict] = []
+    cursor = 0.0
+    for part in unit.parts:
+        for path in sorted(part.files, key=lambda p: os.path.basename(p).lower()):
+            length = probe(path).duration
+            if length <= 0:
+                return []           # cannot place chapters on a timeline we cannot measure
+            for item in probe_chapters(path):
+                try:
+                    start = float(item.get("start_time") or 0)
+                    end = float(item.get("end_time") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if end <= start:
+                    continue
+                title = ((item.get("tags") or {}).get("title")
+                         or f"Chapter {len(chapters) + 1}").strip()
+                chapters.append({
+                    "start": round(cursor + min(start, length), 3),
+                    "end": round(cursor + min(end, length), 3),
+                    "title": title,
+                })
+            cursor += length
+    return chapters if len(chapters) >= 2 else []
+
+
+def _audnex_chapters(audnex_chapters: list[dict], duration: float) -> list[dict] | None:
+    """Audnex timings mapped onto the merged timeline, or None when they disagree."""
+    if not audnex_chapters:
+        return None
+    total = sum(catalog.chapter_ms(c) for c in audnex_chapters) / 1000.0
+    if total <= 0 or not 0.85 <= duration / total <= 1.20:
+        return None
+    scale = duration / total
+    chapters, cursor = [], 0.0
+    for item in audnex_chapters:
+        length = catalog.chapter_ms(item) / 1000.0 * scale
+        chapters.append({
+            "start": round(cursor, 3),
+            "end": round(cursor + length, 3),
+            "title": (item.get("title") or f"Chapter {len(chapters) + 1}").strip(),
+        })
+        cursor += length
+    if chapters:
+        chapters[-1]["end"] = round(duration, 3)
+    return chapters
+
+
 def build_chapters(audnex_chapters: list[dict], duration: float,
                    unit: BookUnit) -> tuple[list[dict], str]:
-    """Audnex timings mapped onto the merged timeline, else one chapter per source file."""
-    if audnex_chapters:
-        total = sum(catalog.chapter_ms(c) for c in audnex_chapters) / 1000.0
-        if total > 0 and 0.85 <= duration / total <= 1.20:
-            scale = duration / total
-            chapters, cursor = [], 0.0
-            for item in audnex_chapters:
-                length = catalog.chapter_ms(item) / 1000.0 * scale
-                chapters.append({
-                    "start": round(cursor, 3),
-                    "end": round(cursor + length, 3),
-                    "title": (item.get("title") or f"Chapter {len(chapters) + 1}").strip(),
-                })
-                cursor += length
-            if chapters:
-                chapters[-1]["end"] = round(duration, 3)
-                return chapters, f"audnex ({len(chapters)} chapters, scaled {scale:.3f})"
+    """Chapter plan for the merged m4b, using the best evidence available.
+
+    Three tiers, in priority order:
+
+    1. ``source-embedded`` - chapter tags inside the source files themselves,
+       offset-accumulated across parts, titles preserved.  This is the
+       publisher's own data, so when it is present AND Audible chapter data is
+       also available, it wins for single-part m4b/mp3 sources, where the tags
+       are almost certainly the real thing.  Multi-part merges and other
+       containers prefer Audnex timings instead, because per-file tags can
+       repeat or drift at part boundaries.
+    2. ``audnex`` - Audible's chapter list for the matched ASIN, scaled onto
+       the measured runtime (durations must agree within 0.85-1.20x).
+    3. ``per-file`` - one chapter per source file, the last-resort fallback.
+
+    Returns (chapters, source-label); the label names the winning tier so the
+    "chapters: N from X" log line records which evidence was used.
+    """
+    src_chapters = _source_chapters(unit)
+    audnex_plan = _audnex_chapters(audnex_chapters, duration)
+
+    if src_chapters and audnex_plan:
+        single_part_tagged = (not unit.multi_part
+                              and all(os.path.splitext(f)[1].lower() in _CHAPTERED_EXTS
+                                      for f in unit.files))
+        if single_part_tagged:
+            return src_chapters, f"source-embedded ({len(src_chapters)} chapters)"
+        return audnex_plan, f"audnex ({len(audnex_plan)} chapters, scaled)"
+    if src_chapters:
+        return src_chapters, f"source-embedded ({len(src_chapters)} chapters)"
+    if audnex_plan:
+        return audnex_plan, f"audnex ({len(audnex_plan)} chapters, scaled)"
 
     chapters, cursor = [], 0.0
     for part in unit.parts:

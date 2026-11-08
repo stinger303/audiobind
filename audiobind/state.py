@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS units (
     chapters    INTEGER DEFAULT 0,
     detail      TEXT DEFAULT '',
     asin_override TEXT DEFAULT '',
-    overrides   TEXT DEFAULT ''
+    overrides   TEXT DEFAULT '',
+    alternates  TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +60,7 @@ class UnitState:
     chapters: int = 0
     detail: str = ""
     overrides: str = ""
+    alternates: str = ""
 
 
 class State:
@@ -81,7 +83,8 @@ class State:
         for name, ddl in (("src_mb", "REAL DEFAULT 0"), ("out_mb", "REAL DEFAULT 0"),
                           ("chapters", "INTEGER DEFAULT 0"), ("detail", "TEXT DEFAULT ''"),
                           ("asin_override", "TEXT DEFAULT ''"),
-                          ("overrides", "TEXT DEFAULT ''")):
+                          ("overrides", "TEXT DEFAULT ''"),
+                          ("alternates", "TEXT DEFAULT ''")):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE units ADD COLUMN {name} {ddl}")
 
@@ -98,17 +101,19 @@ class State:
     def _save_locked(self, state: UnitState) -> None:
         self.connection.execute(
             """INSERT INTO units (path, status, confidence, asin, title, author, hours, files,
-                                  output, note, updated_at, src_mb, out_mb, chapters, detail)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                  output, note, updated_at, src_mb, out_mb, chapters, detail,
+                                  alternates)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(path) DO UPDATE SET
                  status=excluded.status, confidence=excluded.confidence, asin=excluded.asin,
                  title=excluded.title, author=excluded.author, hours=excluded.hours,
                  files=excluded.files, output=excluded.output, note=excluded.note,
                  updated_at=excluded.updated_at, src_mb=excluded.src_mb, out_mb=excluded.out_mb,
-                 chapters=excluded.chapters, detail=excluded.detail""",
+                 chapters=excluded.chapters, detail=excluded.detail,
+                 alternates=excluded.alternates""",
             (state.path, state.status, state.confidence, state.asin, state.title,
              state.author, state.hours, state.files, state.output, state.note, time.time(),
-             state.src_mb, state.out_mb, state.chapters, state.detail),
+             state.src_mb, state.out_mb, state.chapters, state.detail, state.alternates),
         )
         self.connection.commit()
 
@@ -210,6 +215,27 @@ class State:
         except ValueError:
             return {}
         return data if isinstance(data, dict) else {}
+
+    # ------------------------------------------------- alternate editions
+    def set_alternates(self, path: str, data: list[dict]) -> None:
+        """Other Audible candidates seen while matching this unit (top few editions)."""
+        with self._lock:
+            self.connection.execute(
+                "INSERT INTO units (path, status, alternates, updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(path) DO UPDATE SET alternates = excluded.alternates",
+                (path, "review", json.dumps(data or []), time.time()))
+
+    def get_alternates(self, path: str) -> list[dict]:
+        with self._lock:
+            row = self.connection.execute("SELECT alternates FROM units WHERE path = ?",
+                                          (path,)).fetchone()
+        if not row or not row["alternates"]:
+            return []
+        try:
+            data = json.loads(row["alternates"])
+        except ValueError:
+            return []
+        return data if isinstance(data, list) else []
 
     def delete(self, path: str) -> bool:
         """Remove a unit row from the database. Returns True if a row was deleted."""

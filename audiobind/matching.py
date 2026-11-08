@@ -1,7 +1,7 @@
 """Pick the right catalog entry for a unit, and say how sure we are."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from . import catalog
 from .catalog import Product
@@ -22,6 +22,9 @@ class Match:
     #: set when a user-pinned ASIN had no catalog data and the search was used instead
     asin_pin_failed: str = ""
     confidence: str = "NONE"
+    #: other candidates the search scored highly (other editions of the same work);
+    #: [{"asin", "title", "authors", "score"}], best first, chosen one excluded
+    alternates: list[dict] = field(default_factory=list)
 
     @property
     def asin(self) -> str:
@@ -131,6 +134,13 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
     )
     match.confidence = grade(match)
     match.asin_pin_failed = asin_override
+    # keep the runners-up (other editions of the same work, near misses) so the
+    # detail panel can offer one-click "use this edition" ASIN pins
+    match.alternates = [
+        {"asin": s["product"].asin, "title": s["product"].title,
+         "authors": list(s["product"].authors or []), "score": s["score"]}
+        for s in ranked[1:5] if s["product"].asin != best["product"].asin
+    ]
     return match
 
 

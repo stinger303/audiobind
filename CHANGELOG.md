@@ -3,6 +3,48 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-11-08
+
+Four ideas from the Chaptarr / Listenarr comparison landed. The fifth
+(metadata consensus) is deferred - see the backlog for why.
+
+### Added
+- **Chapters survive the merge when the sources have them.** The m4b builder
+  now reads the chapter tags inside the source files themselves and uses them
+  for the merged book's chapter list, keeping the publisher's own titles
+  ("Chapter One" beats "01 - Part_01.mp3"). Across a multi-disc rip the
+  markers stack onto one continuous timeline so disc two's chapter one starts
+  where disc one ended. The rules, in order: source tags win for single-part
+  m4b/mp3 sources; for multi-part merges or odd containers the Audible
+  chapter data is preferred (per-file tags can repeat or drift at part
+  boundaries); with no tags anywhere and no usable Audible data, it falls
+  back to one chapter per file as before. The log line now says which won -
+  `chapters: 31 from source-embedded (31 chapters)`, audnex, or per-file.
+- **Other editions are one click away.** While matching, the top runners-up
+  from the Audible search (usually other editions of the same book - unabridged
+  vs abridged, different narrators) are now saved with the book. A new "Other
+  editions seen" section in the book's detail panel lists them with a
+  "Use this edition" button that locks the match to that ASIN and re-checks
+  the book, reusing the existing pin flow.
+- **Named quality profiles on the settings page.** A select at the top
+  presets the two conversion settings: Balanced (HIGH tier, 128k floor),
+  High (HIGH tier, 256k floor) and Source-match (HIGH tier, 64k floor, which
+  keeps the source bitrate as-is). Editing either setting afterwards flips
+  the profile to Custom so it is visible when the settings stopped being a
+  preset. All six existing settings behave exactly as before.
+- **Narrator now surfaces in the UI.** The detail panel's "The Audible match"
+  block shows "Narrated by …" when the catalog knows the narrator, and the
+  metadata editor's narrator box pre-fills its suggestion from the match
+  (the narrator tag in the m4b and the editor field itself existed already -
+  this closes the loop from match to editor).
+
+### Fixed
+- **The settings page's Save button works again.** The page's JavaScript was
+  being served with doubled braces from a templating artifact, which made the
+  whole script a syntax error - Save, Reset and toast feedback silently did
+  nothing (the underlying POST handler was fine; the buttons just couldn't
+  call it). The script is now plain JavaScript and parses.
+
 ## [0.12.5] - 2026-11-08
 
 ### Changed
