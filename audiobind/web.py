@@ -86,8 +86,8 @@ body{
   padding:0 5px;min-width:20px;text-align:center;}
 .ab-rail-item.ab-alert .ab-count{color:var(--ab-amber);border-color:rgba(242,163,60,.25)}
 .ab-rail-spacer{flex:1}
-.ab-rail-foot{padding:10px;font-family:var(--ab-mono);font-size:11px;
-  color:var(--ab-text4);line-height:1.7;}
+.ab-rail-foot{padding:10px;font-family:var(--ab-mono);font-size:10.5px;
+  color:var(--ab-text4);line-height:1.7;overflow-wrap:anywhere;}
 .ab-rail-foot b{color:var(--ab-text3);font-weight:500}
 
 .ab-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto}
@@ -733,8 +733,8 @@ PAGE = """<!doctype html>
   </nav>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
-    <b>library</b> {library}<br>
-    <b>output</b> &rarr; {output}
+    <b>library</b> <span title="{library_attr}">{library}</span><br>
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>
   </div>
 </aside>
 
@@ -1317,7 +1317,9 @@ def render(state, status: str = "", query: str = "") -> str:
         script=SCRIPT,
         version=__version__,
         library=CONFIG.host_library or str(CONFIG.library_root),
+        library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
         output=CONFIG.host_output or str(CONFIG.output_root),
+        output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         auto_text=auto_text,
         dry_text=dry_header,
         health_stale=health_stale,

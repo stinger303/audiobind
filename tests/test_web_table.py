@@ -176,6 +176,18 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         self.assertIn("/mnt/user/data/media/audiobooks-fixed", page)
         self.assertNotIn(">&nbsp;/library<", page)
 
+    def test_rail_footer_paths_wrap_and_carry_title_attributes(self):
+        saved = (web.CONFIG.host_library, web.CONFIG.host_output)
+        web.CONFIG.host_library = "/mnt/user/data/media/audiobooks-extra-long-path"
+        web.CONFIG.host_output = "/mnt/user/data/media/audiobooks-fixed-long-path"
+        try:
+            page = web.render(self.state)
+        finally:
+            web.CONFIG.host_library, web.CONFIG.host_output = saved
+        self.assertIn("overflow-wrap:anywhere", web.STYLES)
+        self.assertIn('title="/mnt/user/data/media/audiobooks-extra-long-path"', page)
+        self.assertIn('title="/mnt/user/data/media/audiobooks-fixed-long-path"', page)
+
     def test_the_action_toast_exists(self):
         page = web.render(self.state)
         self.assertIn('id="ab-toast"', page)
