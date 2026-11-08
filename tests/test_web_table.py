@@ -147,6 +147,29 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         self.assertIn("<colgroup>", page)
         self.assertIn('class="ab-tbl"', page)
 
+    def test_the_sticky_header_spans_every_column(self):
+        """A .ab-bookcell th once got display:flex from the cell rule and broke the bar."""
+        page = web.render(self.state)
+        self.assertNotIn('<th class="ab-sort ab-bookcell"', page)
+        self.assertIn("td.ab-bookcell{", page)
+        self.assertNotIn("\n.ab-bookcell{", page)
+
+    def test_rail_glyphs_are_real_html_entities(self):
+        page = web.render(self.state)
+        self.assertNotIn("&flag;", page)
+        self.assertNotIn("&boxur;", page)
+
+    def test_the_rail_footer_labels_its_paths(self):
+        page = web.render(self.state)
+        self.assertIn("<b>library</b>", page)
+        self.assertIn("(read-only)", page)
+        self.assertIn("<b>output</b>", page)
+
+    def test_the_action_toast_exists(self):
+        page = web.render(self.state)
+        self.assertIn('id="ab-toast"', page)
+        self.assertIn("function abToast(", page)
+
     def test_new_classes_do_not_collide_with_existing_ones(self):
         """Every class added in 0.10.0 is ab- prefixed (the .bar collision bug)."""
         existing = {"sub", "toolbar", "working", "wline", "pct", "ptrack", "wmeta", "pill",

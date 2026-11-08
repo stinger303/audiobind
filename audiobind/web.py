@@ -252,7 +252,7 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-thumb{position:relative;z-index:1;display:block;width:100%;height:100%;
   object-fit:cover;background:var(--ab-surface);}
 .ab-thumb.ab-gone{display:none}
-.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0}
+td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0}
 .ab-bookcell .ab-btitle{font-weight:500;font-size:13px;color:var(--ab-text);letter-spacing:-.1px}
 .ab-bookcell .ab-bauthor{font-size:11.5px;color:var(--ab-text3)}
 .ab-bookcell .ab-breason{font-size:11.5px;color:var(--ab-amber);margin-top:2px;
@@ -341,6 +341,12 @@ tr.drow[hidden] td{padding:0}
 .ab-statfill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#2b5ea8,#12a89b);}
 .ab-empty td{color:var(--ab-text3);padding:14px 10px;}
 .ab-overflow{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text4);padding:8px 24px;flex:none;}
+#ab-toast{position:fixed;right:18px;bottom:18px;z-index:50;max-width:420px;
+  background:var(--ab-surface2);border:1px solid rgba(242,163,60,.4);border-radius:8px;
+  padding:10px 14px;font-size:12.5px;color:var(--ab-amber);
+  opacity:0;transform:translateY(6px);pointer-events:none;
+  transition:opacity .15s,transform .15s;}
+#ab-toast.on{opacity:1;transform:none}
 
 @media(max-width:1080px){.ab-rail{display:none}}
 @media(max-width:820px){.ab-hidemd{display:none}}
@@ -374,34 +380,56 @@ function unitAction(btn, action) {
   const panel = btn.closest('.dd');
   const path = panel.dataset.path;
   const body = {action: action, path: path};
+  let note = 'queued - re-checking\u2026';
   if (action === 'set_asin') {
     const input = panel.querySelector('input[data-asin]');
     body.asin = (input && input.value || '').trim();
     if (!body.asin) { input.focus(); return; }
+    note = 'pinning ' + body.asin + ' - re-checking\u2026';
+  } else if (action === 'force') {
+    note = 'queued - converting\u2026';
   }
+  const label = btn.textContent;
   btn.disabled = true;
+  btn.textContent = 'working\u2026';
+  abToast(note);
   fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
                      body: JSON.stringify(body)})
     .then(r => r.json())
-    .then(() => setTimeout(() => location.reload(), 400))
-    .catch(() => { btn.disabled = false; });
+    .then(() => setTimeout(() => location.reload(), 700))
+    .catch(() => { btn.disabled = false; btn.textContent = label; });
 }
 function rowAction(btn, action) {
   const el = btn.closest('[data-path]');
   if (!el) return;
   const path = el.dataset.path;
   const body = {action: action, path: path};
+  let note = 'queued - re-checking\u2026';
   if (action === 'set_asin') {
     const input = el.querySelector('input[data-asin]');
     body.asin = (input && input.value || '').trim();
     if (!body.asin) { input.focus(); return; }
+    note = 'pinning ' + body.asin + ' - re-checking\u2026';
+  } else if (action === 'force') {
+    note = 'queued - converting\u2026';
   }
+  const label = btn.textContent;
   btn.disabled = true;
+  btn.textContent = 'working\u2026';
+  abToast(note);
   fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
                      body: JSON.stringify(body)})
     .then(r => r.json())
-    .then(() => setTimeout(() => location.reload(), 400))
-    .catch(() => { btn.disabled = false; });
+    .then(() => setTimeout(() => location.reload(), 700))
+    .catch(() => { btn.disabled = false; btn.textContent = label; });
+}
+function abToast(text) {
+  const el = document.getElementById('ab-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('on');
+  clearTimeout(abToast.t);
+  abToast.t = setTimeout(() => el.classList.remove('on'), 5000);
 }
 function abCoverFail(img) {
   img.classList.add('ab-gone');
@@ -636,13 +664,13 @@ PAGE = """<!doctype html>
   <div class="ab-rail-label">Workspace</div>
   <nav class="ab-rail-section" aria-label="Main">
     <a class="ab-rail-item ab-active" href="/" aria-current="page">
-      <span class="ab-glyph">&boxur;</span> Library
+      <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
   </nav>
   <div class="ab-rail-label">Attention</div>
   <nav class="ab-rail-section" aria-label="Attention">
     <a class="ab-rail-item ab-alert" href="/?status=review">
-      <span class="ab-glyph">&flag;</span> Review
+      <span class="ab-glyph">&#9873;</span> Review
       <span class="ab-count">{rail_review_count}</span></a>
     <a class="ab-rail-item ab-alert" href="/?status=held">
       <span class="ab-glyph">&#x23F8;</span> Held
@@ -653,8 +681,8 @@ PAGE = """<!doctype html>
   </nav>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
-    <b>{library}</b><br>
-    &rarr; {output}
+    <b>library</b> {library} <span class="dim">(read-only)</span><br>
+    <b>output</b> &rarr; {output}
   </div>
 </aside>
 
@@ -711,6 +739,7 @@ PAGE = """<!doctype html>
   </div>
 {overflow}
 </main>
+<div id="ab-toast" role="status" aria-live="polite"></div>
 
 <script>
 window.AB_SORT_COLUMN = {sort_column_js};
@@ -752,7 +781,7 @@ MAX_ROWS = 400
 MAX_SHELF_CARDS = 12
 
 COLUMNS = (
-    ("title", "Book", "", "ab-bookcell"),
+    ("title", "Book", "", ""),
     ("status", "Status", "110px", ""),
     ("tier", "Tier", "90px", "ab-hidemd"),
     ("runtime", "Runtime", "90px", ""),

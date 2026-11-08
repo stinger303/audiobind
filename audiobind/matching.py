@@ -19,6 +19,8 @@ class Match:
     author_known: bool = False
     author_from_series: bool = False
     asin_override: bool = False
+    #: set when a user-pinned ASIN had no catalog data and the search was used instead
+    asin_pin_failed: str = ""
     confidence: str = "NONE"
 
     @property
@@ -112,7 +114,9 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
             break
 
     if not scored:
-        return Match(author_from_series=author_from_series)
+        fallback = Match(author_from_series=author_from_series)
+        fallback.asin_pin_failed = asin_override
+        return fallback
 
     ranked = sorted(scored.values(), key=lambda s: s["score"], reverse=True)
     best = ranked[0]
@@ -126,6 +130,7 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
         author_known=bool(author), author_from_series=author_from_series,
     )
     match.confidence = grade(match)
+    match.asin_pin_failed = asin_override
     return match
 
 

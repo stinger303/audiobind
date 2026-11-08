@@ -44,3 +44,41 @@ class TestRuntimeCheck(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAsinPin(unittest.TestCase):
+    def test_match_unit_records_a_pin_that_has_no_catalog_data(self):
+        from audiobind import catalog, matching
+        from audiobind.units import BookUnit
+        saved_book, saved_search = catalog.book, catalog.search
+        catalog.book = lambda asin: {}
+        catalog.search = lambda *a, **k: []
+        try:
+            unit = BookUnit(path="X", name="X", parent="", parts=[],
+                            title_guess="Get Up", author_guess="James Levine")
+            match = matching.match_unit(unit, "B013ILGDHQ")
+        finally:
+            catalog.book, catalog.search = saved_book, saved_search
+        self.assertIsNone(match.product)
+        self.assertEqual(match.asin_pin_failed, "B013ILGDHQ")
+
+    def test_a_live_pinned_asin_does_not_set_the_failure_flag(self):
+        from audiobind import catalog, matching
+        from audiobind.units import BookUnit
+        saved = catalog.book
+        catalog.book = lambda asin: {
+            "asin": asin, "title": "Get Up!", "authors": [{"name": "James A. Levine"}],
+            "narrators": [], "runtimeLengthMin": 451, "language": "english"}
+        try:
+            unit = BookUnit(path="X", name="X", parent="", parts=[],
+                            title_guess="Get Up", author_guess="James Levine")
+            match = matching.match_unit(unit, "B00LZZQBIY")
+        finally:
+            catalog.book = saved
+        self.assertIsNotNone(match.product)
+        self.assertEqual(match.asin_pin_failed, "")
+        self.assertEqual(match.confidence, "HIGH")
+
+
+if __name__ == "__main__":
+    unittest.main()

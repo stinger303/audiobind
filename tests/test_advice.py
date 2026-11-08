@@ -59,6 +59,16 @@ class TestExplain(unittest.TestCase):
         self.assertIn("several books", why)
         self.assertIn("Split", todo)
 
+    def test_a_dead_pinned_asin_is_explained(self):
+        detail = {"match": {"asin": "B00LZZQBIY", "title": "Get Up!",
+                            "hours": 7.52, "confidence": "LOW",
+                            "asin_pin_failed": "B013ILGDHQ"},
+                  "source": {"hours": 0.99}}
+        why, todo = explain("review", "LOW", "", detail)
+        self.assertIn("B013ILGDHQ", why)
+        self.assertIn("no catalog data", why)
+        self.assertIn("pin stays saved", todo)
+
 
 if __name__ == "__main__":
     unittest.main()

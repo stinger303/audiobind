@@ -3,6 +3,28 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-11-08
+
+### Added
+- **Every manual action now answers.** Retry now / Convert anyway / Use this ASIN show a toast
+  ("pinning B013ILGDHQ - re-checking…") immediately, and the button itself flips to "working…" —
+  previously a click was followed by silence until the next render.
+- **A pinned ASIN that Audible will not serve is explained, not swallowed.** Some ASINs are
+  ghost catalog entries: the API returns `REGION_UNAVAILABLE` (checked across five regions) and
+  no metadata at all. When a pin falls back to the search result, the book's Why/What panel now
+  says so in plain English and notes that the pin stays saved.
+
+### Fixed
+- **The sticky table header stopped one column short.** The Book header cell carried the
+  `ab-bookcell` class, which also styles the body's title cell as `display:flex` - the same
+  class-collision family as the old `.bar` bug, and it broke the sticky bar's layout so it did
+  not span the full width. The header cell now has no cell class and the rule is scoped to
+  `td.ab-bookcell`.
+- The rail's Review glyph was the invalid entity `&flag;` (rendered as literal "&flag;" text)
+  and Library used the nonexistent `&boxur;`; both are real unicode glyphs now.
+- The rail footer's paths are labelled (`library /library (read-only)`, `output → /output`)
+  instead of two bare paths.
+
 ## [0.11.0] - 2026-11-08
 
 ### Added

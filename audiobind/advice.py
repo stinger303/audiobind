@@ -16,6 +16,18 @@ def _n(value, default=0.0) -> float:
 
 def explain(status: str, confidence: str, note: str = "", detail: dict | None = None) -> tuple[str, str]:
     """Return (why, what_to_do) in plain English for one unit."""
+    why, what = _explain_base(status, confidence, note, detail)
+    match = (detail or {}).get("match") or {}
+    pin = str(match.get("asin_pin_failed") or "").strip()
+    if pin:
+        why = (f"Your pinned ASIN {pin} has no catalog data - Audible serves nothing for it - "
+               "so the catalog search result was used. " + why)
+        what = (what + " The pin stays saved - re-pin with a live ASIN to replace it.")
+    return why, what
+
+
+def _explain_base(status: str, confidence: str, note: str = "", detail: dict | None = None) -> tuple[str, str]:
+    """The status-specific explanation, without the pinned-ASIN annotation."""
     detail = detail or {}
     match = detail.get("match") or {}
     src = detail.get("source") or {}

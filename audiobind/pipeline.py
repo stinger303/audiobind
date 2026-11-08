@@ -166,6 +166,8 @@ def record(state: State, audit: Audit, status: str, output: str = "", note: str 
             "confidence": audit.confidence,
             # kept so the status page can show cover art without a second catalog call
             "image": audit.match.product.image if audit.match.product else "",
+            # a user-pinned ASIN that had no catalog data; the search result was used
+            "asin_pin_failed": audit.match.asin_pin_failed,
         },
         "overrides": overrides_mod.normalise(audit.overrides),
         "source": {
