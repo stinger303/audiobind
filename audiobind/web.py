@@ -258,6 +258,7 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0}
 .ab-bookcell .ab-breason{font-size:11.5px;color:var(--ab-amber);margin-top:2px;
   white-space:normal;max-width:420px;line-height:1.35;}
 .ab-bookcell .ab-breason b{font-weight:500;font-family:var(--ab-mono);font-size:11px;color:var(--ab-text2)}
+.ab-bookcell .ab-breason.failed{color:var(--ab-red)}
 
 .pill{display:inline-flex;align-items:center;gap:6px;
   height:22px;padding:0 9px;border-radius:999px;
@@ -1117,12 +1118,23 @@ def render(state, status: str = "", query: str = "") -> str:
             asin_btn = '<button class="btn" onclick="event.stopPropagation();rowAction(this,\'set_asin\')">Use this ASIN</button>'
             act_html = '<div class="ab-rowact">' + btn + force + asin_btn + '</div>'
 
+        reason_html = ""
+        if unit.status in ("held", "review", "failed"):
+            try:
+                data = json.loads(unit.detail or "{}")
+            except ValueError:
+                data = {}
+            why, _todo = explain(unit.status, unit.confidence or "", unit.note, data)
+            rc = " failed" if unit.status == "failed" else ""
+            reason_html = '<span class="ab-breason{rc}">{wh}</span>'.format(
+                rc=rc, wh=_html(why))
+
         return (
             '<tr class="urow" onclick="toggleRow(this)" data-path="{dp}" '
             'data-search="{hs}" {da}>'
             '<td class="ab-covcell">{cov}</td>'
             '<td class="ab-bookcell"><span class="ab-btitle">{ti}{bd}</span>'
-            '<span class="ab-bauthor">{au}</span></td>'
+            '<span class="ab-bauthor">{au}</span>{rs}</td>'
             '<td><span class="pill {st}"><span class="pdot"></span>{st}</span></td>'
             '<td class="ab-hidemd"><span class="ab-tier {tc}">{co}</span></td>'
             '<td class="ab-num">{hr:.1f}h</td>'
@@ -1132,7 +1144,7 @@ def render(state, status: str = "", query: str = "") -> str:
             dp=_attr(unit.path), hs=_attr(haystack), da=data,
             cov=cover_html(unit),
             ti=_html(unit.title or unit.path), bd=badge,
-            au=_html(unit.author or ""),
+            au=_html(unit.author or ""), rs=reason_html,
             st=unit.status,
             tc=_tier_class(unit.confidence), co=unit.confidence or "-",
             hr=unit.hours or 0,
