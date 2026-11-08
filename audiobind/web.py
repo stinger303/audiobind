@@ -340,12 +340,14 @@ tr.drow[hidden] td{padding:0}
   padding:1px 7px;margin-left:8px;vertical-align:1px;}
 .ab-custom[hidden]{display:none;}
 .ab-hint{color:var(--ab-text3);font-size:11.5px;margin:2px 0 10px;}
-.ab-delconfirm{display:flex;align-items:center;gap:10px;padding:10px 12px;
-  margin-top:14px;background:#1a1f28;border:1px solid rgba(242,78,107,.3);border-radius:8px;
-  font-size:12px;}
-.ab-delconfirm .ab-deltxt{color:var(--ab-text2);margin-right:auto}
-.ab-delconfirm .ab-delerr{color:var(--ab-red);font-size:12px;display:none;}
-.ab-delconfirm .ab-delerr.on{display:inline;}
+.ab-modal:not([hidden]){display:flex;position:fixed;inset:0;z-index:100;
+  align-items:center;justify-content:center;}
+.ab-modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.6);}
+.ab-modal-dialog{position:relative;background:var(--ab-surface);border:1px solid var(--ab-border);
+  border-radius:10px;padding:24px;max-width:420px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,.5);}
+.ab-modal-dialog h3{font-size:16px;font-weight:600;color:var(--ab-text);margin:0 0 12px;}
+.ab-modal-dialog p{font-size:13px;color:var(--ab-text2);margin:0 0 20px;line-height:1.5;}
+.ab-modal-actions{display:flex;gap:8px;justify-content:flex-end;}
 .ab-progsub{font-size:12px;color:var(--ab-text3);text-transform:none;letter-spacing:0;}
 .ab-statbar{height:8px;border-radius:99px;background:#1c2230;overflow:hidden;}
 .ab-statfill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#2b5ea8,#12a89b);}
@@ -434,23 +436,29 @@ function rowAction(btn, action) {
     .catch(() => { btn.disabled = false; btn.textContent = label; });
 }
 function unitDelete(btn) {
-  const panel = btn.closest('.dd');
-  const strip = panel.querySelector('.ab-delconfirm');
-  strip.hidden = false;
-  const err = strip.querySelector('.ab-delerr');
-  err.textContent = '';
-  err.classList.remove('on');
+  const path = btn.dataset.path;
+  const title = btn.dataset.title || path;
+  abOpenDeleteModal(path, title, btn);
 }
-function unitDeleteCancel(btn) {
-  const strip = btn.closest('.ab-delconfirm');
-  strip.hidden = true;
-  strip.querySelector('.ab-delerr').classList.remove('on');
+let abDeleteTrigger = null;
+function abOpenDeleteModal(path, title, trigger) {
+  abDeleteTrigger = trigger;
+  document.getElementById('ab-modal-title').textContent = 'Delete this book?';
+  document.getElementById('ab-modal-warning').textContent =
+    'This permanently deletes ' + title + "'s source folder and its published files. This cannot be undone."
+  document.getElementById('ab-modal').hidden = false;
+  document.getElementById('ab-modal-cancel').focus();
 }
-function unitDeleteConfirm(btn) {
-  const strip = btn.closest('.ab-delconfirm');
-  const panel = strip.closest('.dd');
-  const path = panel.dataset.path;
-  const err = strip.querySelector('.ab-delerr');
+
+function abModalCancel() {
+  document.getElementById('ab-modal').hidden = true;
+  if (abDeleteTrigger) abDeleteTrigger.focus();
+}
+
+function abModalConfirm() {
+  const path = abDeleteTrigger ? abDeleteTrigger.dataset.path : '';
+  if (!path) return;
+  const btn = document.getElementById('ab-modal-confirm');
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = 'deleting\u2026';
@@ -460,21 +468,25 @@ function unitDeleteConfirm(btn) {
     .then(r => r.json())
     .then(result => {
       if (!result.ok) {
-        err.textContent = result.error || 'failed';
-        err.classList.add('on');
+        abToast(result.error || 'delete failed');
         btn.disabled = false;
         btn.textContent = label;
         return;
       }
       setTimeout(() => location.reload(), 500);
     })
-    .catch(e => {
-      err.textContent = 'could not reach the daemon';
-      err.classList.add('on');
+    .catch(() => {
+      abToast('could not reach the daemon');
       btn.disabled = false;
       btn.textContent = label;
     });
 }
+
+window.addEventListener('keydown', function(e) {
+  const modal = document.getElementById('ab-modal');
+  if (e.key === 'Escape' && modal && !modal.hidden) abModalCancel();
+});
+
 function abToast(text) {
   const el = document.getElementById('ab-toast');
   if (!el) return;
@@ -792,6 +804,18 @@ PAGE = """<!doctype html>
 {overflow}
 </main>
 <div id="ab-toast" role="status" aria-live="polite"></div>
+
+<div id="ab-modal" class="ab-modal" hidden>
+  <div class="ab-modal-backdrop" onclick="abModalCancel()"></div>
+  <div class="ab-modal-dialog" role="dialog" aria-labelledby="ab-modal-title">
+    <h3 id="ab-modal-title"></h3>
+    <p id="ab-modal-warning"></p>
+    <div class="ab-modal-actions">
+      <button class="btn danger" id="ab-modal-confirm" onclick="abModalConfirm()">Delete permanently</button>
+      <button class="btn" id="ab-modal-cancel" onclick="abModalCancel()">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <script>
 window.AB_SORT_COLUMN = {sort_column_js};
@@ -1136,15 +1160,8 @@ def render(state, status: str = "", query: str = "") -> str:
             + asin_btn
             + '<button class="btn danger" title="Permanently delete this book\'s source folder '
               'and its published files. Cannot be undone." onclick="unitDelete(this)" '
+              'data-path="{dp}" data-title="{ti}" '
               'style="margin-left:auto">Delete</button>'
-            + "</div>"
-            + '<div class="ab-delconfirm" hidden>'
-            + '<span class="ab-deltxt">This permanently deletes the book\'s source folder and '
-              'its published files. This cannot be undone.</span>'
-            + '<button class="btn danger" onclick="unitDeleteConfirm(this)">Delete '
-              'permanently</button>'
-            + '<button class="btn" onclick="unitDeleteCancel(this)">Cancel</button>'
-            + '<span class="ab-delerr"></span>'
             + "</div>"
         )
         return (
@@ -1159,7 +1176,7 @@ def render(state, status: str = "", query: str = "") -> str:
             + editor
             + actions
             + "</div></td></tr>"
-        ).format(dp=_attr(unit.path), tc=TOTAL_COLUMNS)
+        ).format(dp=_attr(unit.path), ti=_attr(unit.title or unit.path), tc=TOTAL_COLUMNS)
 
     def row(unit) -> str:
         haystack = " ".join(filter(None, [unit.title, unit.author, unit.path]))

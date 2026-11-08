@@ -174,13 +174,14 @@ class TestDeleteUI(unittest.TestCase):
 
     def test_delete_button_is_in_detail_panel_not_shelf_or_row(self):
         page = web.render(self.state)
-        # Delete appears inside the detail panel (drow)
+        # Delete still appears inside the detail panel (drow)
         detail_section = page.split('<tr class="drow"')[1].split("</tr>")[0]
         self.assertIn(">Delete<", detail_section)
-        self.assertIn("ab-delconfirm", detail_section)
+        # The confirmation is now a shared modal, not inline
+        self.assertIn('id="ab-modal"', page)
         # Shelf cards should NOT have Delete
         shelf_section = page.split('id="ab-shelf"')[1].split("</section>")[0]
-        self.assertNotIn("ab-delconfirm", shelf_section)
+        self.assertNotIn(">Delete<", shelf_section)
 
     def test_confirm_strip_warns_of_permanent_deletion(self):
         page = web.render(self.state)
@@ -194,8 +195,11 @@ class TestDeleteUI(unittest.TestCase):
     def test_delete_js_functions_present(self):
         page = web.render(self.state)
         self.assertIn("function unitDelete(", page)
-        self.assertIn("function unitDeleteConfirm(", page)
-        self.assertIn("function unitDeleteCancel(", page)
+        self.assertIn("function abModalConfirm(", page)
+        self.assertIn("function abModalCancel(", page)
+        self.assertIn("function abOpenDeleteModal(", page)
+        self.assertIn('id="ab-modal"', page)
+        self.assertIn("Escape", page)  # escape key handler wired
 
 
 class TestDeleteHandler(unittest.TestCase):
