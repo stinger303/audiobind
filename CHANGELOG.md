@@ -3,7 +3,29 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.11.2] - 2026-11-08
+## [0.11.3] - 2026-11-08
+
+### Added
+- **A plain-English reason line under the title for problem rows.** Held, review
+  and failed units now show the "why" text from their advice explanation directly
+  in the books table (amber for held/review, red for failed), so you can see what
+  is wrong without expanding the detail panel.
+- **Delete a book entirely — as a move-to-trash, never a deletion.** A new
+  Delete button in the detail panel's action row moves the book's source folder
+  to `<LIBRARY_ROOT>/.audiobind-trash/<utcstamp>_<foldername>/` and its published
+  output folder to `<OUTPUT_ROOT>/.audiobind-trash/`. The scanner ignores
+  `.audiobind-trash` automatically. The delete requires a two-step confirm (type
+  DELETE to confirm) and refuses while the book is encoding.
+
+### Changed
+- **The books table is more compact.** The permanent action-buttons column is
+  gone — Retry now / Convert anyway / Use this ASIN now appear on row hover as a
+  compact overlay with a solid background, matching the approved mockup. The
+  column no longer reserves ~350px of width, so the table fits at 1080p without
+  horizontal scrolling.
+
+### Fixed
+- No fixes in this release.
 
 ### Added
 - **The rail footer shows the real host paths.** The container only ever knows `/library` and
