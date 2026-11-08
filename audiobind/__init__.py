@@ -1,3 +1,3 @@
 """Audiobind - merge, convert and correctly tag audiobook libraries."""
 
-__version__ = "0.11.8"
+__version__ = "0.12.0"

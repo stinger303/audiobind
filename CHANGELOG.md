@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-11-08
+
+### Added
+- **Settings page** at `/settings` with six controls: auto-convert tier, output quality floor,
+  wrong-edition tolerance, scan interval, CPU priority (nice), and catalog region. Values are
+  persisted in the database and override environment defaults. The daemon wakes early when the scan
+  interval is lowered and every consumer reads the effective value.
+- **Settings link** in the left rail (gear icon, below Library).
+- **`/api/settings` endpoint** with server-side validation; `/api/state` now includes an effective
+  `settings` object and uses the effective `auto_convert` for the top-bar indicator.
+- **README installation section** with Unraid (manual template), `docker run`, and Docker Compose
+  paths, plus a first-run paragraph.
+
+### Changed
+- **Row counter removed** from the toolbar next to the search box — the static "N books" / "N of M
+  shown" label, the `.ab-shown` CSS, and the JS that updated it are gone. The empty-state message
+  is unchanged.
+
 ## [0.11.8] - 2026-11-08
 
 ### Fixed

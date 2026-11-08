@@ -47,29 +47,70 @@ library-in/                         library-out/
 
 Your source library is mounted **read-only** and is never modified. Nothing is deleted, ever.
 
-## Quick start
+## Installation
+
+### Unraid (Community Applications)
+
+Audiobind is pending publication in Community Applications. Until it is listed:
+
+1. Copy the template into the Unraid template directory:
+   ```bash
+   cp templates/audiobind.xml /boot/config/plugins/dockerMan/templates-user/
+   ```
+2. In the Unraid web UI, go to **Apps** > **Settings** (gear icon) and check **"Allow install of second instance"**.
+3. Click **Docker** > **Add Container** and select **audiobind** from the template dropdown.
+4. Fill in the paths for your library (read-only), output directory, and appdata, then click **Apply**.
+
+The template sets `PUID=99 PGID=100 --restart=unless-stopped` and exposes port 8080 for the web UI.
+
+### Docker run
+
+```bash
+docker run -d \
+  --name audiobind \
+  --restart unless-stopped \
+  -e PUID=99 \
+  -e PGID=100 \
+  -e AUDIO_BITRATE=128k \
+  -e AUTO_CONVERT=high \
+  -e SCAN_INTERVAL_MIN=30 \
+  -e REGION=us \
+  -e DRY_RUN=false \
+  -v /path/to/audiobooks:/library:ro \
+  -v /path/to/audiobooks-fixed:/output \
+  -v /path/to/appdata/audiobind:/config \
+  -p 8080:8080 \
+  ghcr.io/stinger303/audiobind:0.12.0
+```
+
+### Docker Compose
 
 ```yaml
 services:
   audiobind:
-    image: ghcr.io/stinger303/audiobind:latest
+    image: ghcr.io/stinger303/audiobind:0.12.0
     restart: unless-stopped
     environment:
       - PUID=99
       - PGID=100
+      - AUDIO_BITRATE=128k
       - AUTO_CONVERT=high
       - SCAN_INTERVAL_MIN=30
+      - REGION=us
+      - DRY_RUN=false
     volumes:
-      - /mnt/user/data/media/audiobooks:/library:ro
-      - /mnt/user/data/media/audiobooks-fixed:/output
-      - /mnt/user/appdata/audiobind:/config
+      - /path/to/audiobooks:/library:ro
+      - /path/to/audiobooks-fixed:/output
+      - /path/to/appdata/audiobind:/config
     ports:
       - "8080:8080"
 ```
 
-Then open `http://<host>:8080` for the status page.
+### First run
 
-### Controls in the web UI
+Open `http://<host>:8080` for the status page. Books are discovered on the first scan (within `SCAN_INTERVAL_MIN` minutes). Review and held books need attention in the sidebar — you decide what to convert. See the [CHANGELOG](CHANGELOG.md) for what changed in each release.
+
+## Controls in the web UI
 
 The status page is also the control panel:
 
@@ -120,11 +161,6 @@ docker exec audiobind audiobind health             # exit 0 while the daemon is 
 | `WEB_PORT` | `8080` | Status page port |
 | `NOTIFY_URL` | | Optional webhook for a per-scan summary |
 | `PUID` / `PGID` | `99` / `100` | Ownership of written files |
-
-## Unraid
-
-The repository ships an Unraid template in [`templates/audiobind.xml`](templates/audiobind.xml).
-Install from Community Applications once published.
 
 ## Notes on correctness
 
