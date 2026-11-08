@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.6] - 2026-11-08
+
+### Fixed
+- **The table can no longer grow past its columns.** The books table now uses
+  `table-layout: fixed`, so long titles can never push the STATUS/TIER/RUNTIME
+  columns (and the hover actions) off-screen again - the max-width cap alone did
+  not hold under auto layout. The BOOK column is capped at `min(560px, 30vw)`
+  with the title truncating on ellipsis, and the freed width flows into the
+  actions column where the hover buttons sit, right of Last Scan like the
+  mockup. The hover overlay is clipped inside its cell, so no width produces a
+  horizontal scrollbar.
+
 ## [0.11.5] - 2026-11-08
 
 ### Fixed

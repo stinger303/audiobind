@@ -235,7 +235,7 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-shown{font-size:12px;color:var(--ab-text4);font-variant-numeric:tabular-nums;white-space:nowrap;}
 
 .ab-tablewrap{flex:1;padding:0 24px 24px}
-.ab-tbl{width:100%;border-collapse:collapse}
+.ab-tbl{width:100%;border-collapse:collapse;table-layout:fixed}
 .ab-tbl thead th{position:sticky;top:0;background:var(--ab-bg);z-index:2;cursor:pointer;user-select:none;white-space:nowrap;
   text-align:left;font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.7px;
   color:var(--ab-text4);padding:6px 10px;border-bottom:1px solid var(--ab-border);}
@@ -253,11 +253,11 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-thumb{position:relative;z-index:1;display:block;width:100%;height:100%;
   object-fit:cover;background:var(--ab-surface);}
 .ab-thumb.ab-gone{display:none}
-td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:38%;max-width:520px}
-.ab-bookcell .ab-btitle{font-weight:500;font-size:13px;color:var(--ab-text);letter-spacing:-.1px;overflow:hidden;text-overflow:ellipsis}
-.ab-bookcell .ab-bauthor{font-size:11.5px;color:var(--ab-text3);overflow:hidden;text-overflow:ellipsis}
+td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:520px}
+.ab-bookcell .ab-btitle{font-weight:500;font-size:13px;color:var(--ab-text);letter-spacing:-.1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.ab-bookcell .ab-bauthor{font-size:11.5px;color:var(--ab-text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .ab-bookcell .ab-breason{font-size:11.5px;color:var(--ab-amber);margin-top:2px;
-  white-space:normal;max-width:420px;line-height:1.35;}
+  white-space:normal;overflow-wrap:anywhere;line-height:1.35;}
 .ab-bookcell .ab-breason b{font-weight:500;font-family:var(--ab-mono);font-size:11px;color:var(--ab-text2)}
 .ab-bookcell .ab-breason.failed{color:var(--ab-red)}
 
@@ -293,7 +293,7 @@ tr:hover .ab-rowact, tr:focus-within .ab-rowact{opacity:1;pointer-events:auto}
 .ab-rowact button{height:26px;padding:0 9px;font-size:11.5px;border-radius:5px}
 .ab-rowact button.warn{color:var(--ab-amber)}
 .ab-rowact button.warn:hover{background:var(--ab-amber-soft);border-color:rgba(242,163,60,.3)}
-.ab-actcol{padding:0!important;width:170px;position:relative;overflow:visible;text-align:right}
+.ab-actcol{padding:0!important;width:auto;position:relative;overflow:hidden;text-align:right}
 
 tr.drow td{background:#11151d;padding:0;border-bottom:1px solid var(--ab-border);}
 tr.drow[hidden] td{padding:0}
@@ -814,7 +814,7 @@ PAGE = """<!doctype html>
 
   <div class="ab-tablewrap">
     <table class="ab-tbl">
-    <colgroup>{colgroup}<col class="ab-actcol" style="width:170px"></colgroup>
+    <colgroup>{colgroup}<col class="ab-actcol"></colgroup>
     <thead><tr>{headers}<th class="ab-actcol"></th></tr></thead>
     <tbody id="ab-body">{rows}
     <tr id="ab-empty" class="ab-empty" hidden><td colspan="{columns}">no books match this search</td></tr>
@@ -876,7 +876,7 @@ MAX_ROWS = 400
 MAX_SHELF_CARDS = 12
 
 COLUMNS = (
-    ("title", "Book", "", ""),
+    ("title", "Book", "min(560px,30vw)", ""),
     ("status", "Status", "110px", ""),
     ("tier", "Tier", "90px", "ab-hidemd"),
     ("runtime", "Runtime", "90px", ""),

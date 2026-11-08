@@ -150,8 +150,7 @@ class TestCompactActions(unittest.TestCase):
     def test_actions_live_inside_a_fixed_width_actcol(self):
         page = web.render(self.state)
         self.assertIn(".ab-rowact", page)
-        # Actcol has a real width, hover overlay is inline-flex inside it
-        self.assertIn("width:170px", web.STYLES)
+
         self.assertIn("display:inline-flex", web.STYLES)
 
     def test_actions_still_render_for_problem_rows(self):

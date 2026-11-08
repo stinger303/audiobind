@@ -150,8 +150,15 @@ class TestRenderedSearchAndSort(unittest.TestCase):
     def test_book_cell_has_max_width_and_actcol_is_fixed(self):
         page = web.render(self.state)
         self.assertIn("max-width:520px", web.STYLES)
-        self.assertIn("width:170px", web.STYLES)
+        self.assertIn('style="width:min(560px,30vw)"', page)
         self.assertIn("text-overflow:ellipsis", web.STYLES)
+
+    def test_the_table_layout_is_fixed_so_columns_never_grow(self):
+        """Auto table layout let long titles push columns past any max-width."""
+        page = web.render(self.state)
+        self.assertIn("table-layout:fixed", page)
+        self.assertIn("white-space:nowrap", web.STYLES.split(".ab-btitle")[1][:200])
+        self.assertNotIn("max-width:38%", web.STYLES)
 
     def test_the_sticky_header_spans_every_column(self):
         """A .ab-bookcell th once got display:flex from the cell rule and broke the bar."""
