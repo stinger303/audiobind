@@ -147,13 +147,12 @@ class TestCompactActions(unittest.TestCase):
         self.state.close()
         self.dir.cleanup()
 
-    def test_actions_are_absolutely_positioned_not_in_column_flow(self):
+    def test_actions_live_inside_a_fixed_width_actcol(self):
         page = web.render(self.state)
-        self.assertIn("position:absolute", web.STYLES)
-        self.assertIn("pointer-events:none", web.STYLES)
         self.assertIn(".ab-rowact", page)
-        # The ab-actcol td shrinks to zero width
-        self.assertIn("width:0", web.STYLES)
+        # Actcol has a real width, hover overlay is inline-flex inside it
+        self.assertIn("width:170px", web.STYLES)
+        self.assertIn("display:inline-flex", web.STYLES)
 
     def test_actions_still_render_for_problem_rows(self):
         page = web.render(self.state)

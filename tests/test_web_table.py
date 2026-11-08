@@ -147,6 +147,12 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         self.assertIn("<colgroup>", page)
         self.assertIn('class="ab-tbl"', page)
 
+    def test_book_cell_has_max_width_and_actcol_is_fixed(self):
+        page = web.render(self.state)
+        self.assertIn("max-width:520px", web.STYLES)
+        self.assertIn("width:170px", web.STYLES)
+        self.assertIn("text-overflow:ellipsis", web.STYLES)
+
     def test_the_sticky_header_spans_every_column(self):
         """A .ab-bookcell th once got display:flex from the cell rule and broke the bar."""
         page = web.render(self.state)
