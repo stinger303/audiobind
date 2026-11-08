@@ -22,7 +22,9 @@ All notable changes to this project are documented here. This project follows
   the per-book actions each explain what they do before you click.
 - **Host paths in the rail footer.** Optional `HOST_LIBRARY` / `HOST_OUTPUT`
   environment variables are shown when set, so the footer names the real Unraid
-  folders instead of the container's `/library` and `/output`.
+  folders instead of the container's `/library` and `/output`. The stale
+  "(read-only)" note was removed - the library is mounted read-write since the
+  delete feature exists.
 
 ### Changed
 - **The books table is more compact.** The permanent action-buttons column is

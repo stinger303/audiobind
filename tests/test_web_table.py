@@ -162,7 +162,6 @@ class TestRenderedSearchAndSort(unittest.TestCase):
     def test_the_rail_footer_labels_its_paths(self):
         page = web.render(self.state)
         self.assertIn("<b>library</b>", page)
-        self.assertIn("(read-only)", page)
         self.assertIn("<b>output</b>", page)
 
     def test_the_rail_footer_prefers_the_host_paths(self):

@@ -733,7 +733,7 @@ PAGE = """<!doctype html>
   </nav>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
-    <b>library</b> {library} <span class="dim">(read-only)</span><br>
+    <b>library</b> {library}<br>
     <b>output</b> &rarr; {output}
   </div>
 </aside>
