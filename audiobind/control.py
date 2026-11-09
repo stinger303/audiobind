@@ -39,6 +39,7 @@ class Control:
         self._scanning = False
         self._scan_done = 0
         self._scan_total = 0
+        self._scan_force = False
 
     # ---------------------------------------------------------------- pause
     @property
@@ -145,11 +146,22 @@ class Control:
                     "done": self._scan_done, "total": self._scan_total}
 
     # ---------------------------------------------------------------- scan
-    def request_scan(self) -> None:
+    def request_scan(self, force: bool = False) -> None:
+        """Ask for a pass. ``force`` re-audits books that already have a verdict."""
         self._scan.set()
+        with self._lock:
+            self._scan_force = bool(force)
 
     def scan_requested(self) -> bool:
         return self._scan.is_set()
+
+    @property
+    def scan_force(self) -> bool:
+        """One-shot: the next pass re-audits decided books, then the flag resets."""
+        with self._lock:
+            force = self._scan_force
+            self._scan_force = False
+            return force
 
     def clear_scan(self) -> None:
         self._scan.clear()

@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.2] - 2026-11-08
+
+### Added
+- **Re-check all.** A new button next to Scan now re-audits every book against
+  Audible, including ones that already have a verdict. This is what fills in
+  the "Other editions seen" panel for a whole existing library in one pass
+  (and refreshes chapter data along the way). Books still follow the
+  auto-convert rules - only a HIGH-confidence match converts. The scan
+  progress indicator covers the pass; expect it to take a while (98 books =
+  98 catalog lookups).
+
+### Fixed
+- **The scan indicator explains quiet passes.** A plain Scan now skips books
+  that already have a verdict and can finish in under two seconds - faster
+  than the first status poll, so the indicator was invisible. The controls
+  row now explains what Scan now covers in its tooltip, and Re-check all is
+  the button for a full pass.
+
 ## [0.13.1] - 2026-11-08
 
 ### Added

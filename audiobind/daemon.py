@@ -79,9 +79,10 @@ def run() -> None:
             set_effective(state)
             continue
 
+        force = CONTROL.scan_force          # a Re-check all click re-audits decided books
         CONTROL.clear_scan()                # anything clicked during a scan triggers another
         try:
-            scan_once(state)
+            scan_once(state, force=force)
         except Exception:                   # noqa: BLE001 - never let the loop die
             log.exception("scan failed")
 

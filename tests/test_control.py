@@ -123,6 +123,13 @@ class TestScanProgress(unittest.TestCase):
         self.c.end_scan()
         self.assertFalse(self.c.describe()["scan"]["scanning"])
 
+    def test_scan_force_is_one_shot(self):
+        self.c.request_scan(force=True)
+        self.assertTrue(self.c.scan_force)
+        self.assertFalse(self.c.scan_force)   # consumed by the first read
+        self.c.request_scan()                 # a plain Scan now never sets it
+        self.assertFalse(self.c.scan_force)
+
 
 if __name__ == "__main__":
     unittest.main()

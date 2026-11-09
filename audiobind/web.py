@@ -780,17 +780,21 @@ function abBusy() {
 function abScanUI(scan) {
   const live = document.getElementById('ab-scanlive');
   const btn = document.getElementById('ab-scanbtn');
+  const re = document.getElementById('ab-recheckbtn');
   if (!live) return;
   live.hidden = false;
   const text = document.getElementById('ab-scanlive-text');
   if (text) text.textContent = 'Scanning ' + (scan.done || 0) + '/' + (scan.total || 0) + '\u2026';
   if (btn) { btn.disabled = true; btn.textContent = 'Scanning\u2026'; }
+  if (re) re.disabled = true;
 }
 function abScanIdle() {
   const live = document.getElementById('ab-scanlive');
   const btn = document.getElementById('ab-scanbtn');
+  const re = document.getElementById('ab-recheckbtn');
   if (live) live.hidden = true;
   if (btn && btn.disabled) { btn.disabled = false; btn.textContent = 'Scan now'; }
+  if (re) re.disabled = false;
 }
 function tick() {
   fetch('/api/state').then(r => r.json()).then(d => {
@@ -871,6 +875,7 @@ PAGE = """<!doctype html>
 
   <section class="ab-controls" aria-label="Controls">
     {scan_button}
+    {recheck_button}
     {pause_button}
     {stop_button}
     {dry_button}
@@ -1813,6 +1818,12 @@ def render(state, status: str = "", query: str = "") -> str:
         di=" disabled" if (paused or scanning) else "",
         lbl=("Scanning {} / {}&hellip;".format(prog["done"], prog["total"])
              if scanning else "Scan now"))
+    recheck_button = (
+        '<button class="btn" id="ab-recheckbtn" title="Re-check every book against '
+        'Audible, including ones already decided - refreshes the match, the Other '
+        'editions list and the chapters. Books still follow the auto-convert rules." '
+        'onclick="act(\'recheck\')"{di2}>Re-check all</button>').format(
+        di2=" disabled" if (paused or scanning) else "")
     pause_button = (
         '<button class="btn" title="Finish the book that is encoding, then stop converting '
         'until you press Resume." onclick="act(\'resume\')">Resume</button>' if paused
@@ -1904,6 +1915,7 @@ def render(state, status: str = "", query: str = "") -> str:
         rail_held_count=counts.get("held", 0),
         rail_failed_count=counts.get("failed", 0),
         scan_button=scan_button,
+        recheck_button=recheck_button,
         pause_button=pause_button,
         stop_button=stop_button,
         dry_button=dry_button,
@@ -2295,6 +2307,8 @@ class Handler(BaseHTTPRequestHandler):
             self.state.set_meta("paused", False)
         elif action == "scan":
             CONTROL.request_scan()
+        elif action == "recheck":
+            CONTROL.request_scan(force=True)
         elif action == "stop":
             CONTROL.stop()
             self.state.set_meta("paused", True)
