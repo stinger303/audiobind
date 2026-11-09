@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import shutil
@@ -512,7 +513,10 @@ function abOpenDeleteModal(path, title, trigger) {
   abDeleteTrigger = trigger;
   document.getElementById('ab-modal-title').textContent = 'Delete this book?';
   document.getElementById('ab-modal-warning').textContent =
-    'This permanently deletes ' + title + "'s source folder and its published files. This cannot be undone."
+    'This permanently deletes ' + title + "'s published files from your output library " +
+    'and removes the book from Audiobind. Your source library is read-only, so the source ' +
+    'folder stays on disk and the book will reappear on the next scan unless you remove ' +
+    "the folder from the share. This cannot be undone."
   document.getElementById('ab-modal').hidden = false;
   document.getElementById('ab-modal-cancel').focus();
 }
@@ -539,6 +543,11 @@ function abModalConfirm() {
         btn.disabled = false;
         btn.textContent = label;
         return;
+      }
+      if (result.source_kept) {
+        abToast('Deleted from Audiobind and your output library. The source folder stays ' +
+                '(your library is read-only) - it will reappear on the next scan unless ' +
+                'you remove the folder from the share.');
       }
       setTimeout(() => location.reload(), 500);
     })
@@ -2305,22 +2314,34 @@ class Handler(BaseHTTPRequestHandler):
                 if out_parent != out_root:
                     out_trash = out_parent
 
-            # HARD DELETE: the source folder and its published output are removed
-            # permanently. The path guards above are the only thing between this call
-            # and the filesystem, so they must stay strict.
+            # HARD DELETE: the published output is removed permanently and the book is
+            # forgotten. The source folder is removed too when the library mount allows
+            # writes; on a read-only library (the documented, recommended setup) the
+            # source stays on disk and the book reappears on the next scan until the
+            # operator removes the folder from the share. The path guards above are the
+            # only thing between this call and the filesystem, so they must stay strict.
             log = logging.getLogger("audiobind")
             source_removed = False
+            source_kept_reason = ""
             if src_path.exists():
                 try:
                     shutil.rmtree(str(src_path))
+                    source_removed = True
+                    log.info("HARD DELETE %s; source removed: %s", rel, src_path)
                 except OSError as exc:
-                    log.error("HARD DELETE %s; source removal failed: %s", rel, exc)
-                    self._send(
-                        500, ('{"error":"source removal failed: %s"}' % exc).encode(), "application/json"
-                    )
-                    return
-                source_removed = True
-                log.info("HARD DELETE %s; source removed: %s", rel, src_path)
+                    if exc.errno in (errno.EACCES, errno.EROFS) or "Read-only" in str(exc):
+                        source_kept_reason = (
+                            "your source library is mounted read-only"
+                        )
+                        log.info("HARD DELETE %s; source kept: %s (%s)", rel, src_path, exc)
+                    else:
+                        log.error("HARD DELETE %s; source removal failed: %s", rel, exc)
+                        self._send(
+                            500,
+                            ('{"error":"source removal failed: %s"}' % exc).encode(),
+                            "application/json",
+                        )
+                        return
             else:
                 log.info("HARD DELETE %s; source folder not found at %s", rel, src_path)
 
@@ -2341,7 +2362,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(
                 200,
                 json.dumps(
-                    {"ok": True, "deleted": rel, "source_removed": source_removed, "output": output_removed}
+                    {
+                        "ok": True,
+                        "deleted": rel,
+                        "source_removed": source_removed,
+                        "source_kept": bool(source_kept_reason),
+                        "output": output_removed,
+                    }
                 ).encode(),
                 "application/json",
             )

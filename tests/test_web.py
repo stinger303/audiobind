@@ -319,6 +319,22 @@ class TestDeleteHandler(unittest.TestCase):
         self.assertFalse(src.exists())
         self.assertIsNone(self.state.get("Author/Book"))
 
+    def test_delete_on_a_read_only_library_keeps_the_source(self):
+        # the documented, recommended setup mounts the library :ro - a delete then
+        # removes the published output and forgets the book, and says so
+        src, out_book = self.make_book()
+        src.chmod(0o500)
+        try:
+            status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
+        finally:
+            src.chmod(0o755)
+        self.assertEqual(status, 200)
+        self.assertFalse(body["source_removed"])
+        self.assertTrue(body["source_kept"])
+        self.assertEqual(body["output"], "removed")
+        self.assertTrue(src.exists())
+        self.assertIsNone(self.state.get("Author/Book"))
+
     def test_delete_refuses_path_traversal(self):
         # the row must exist for the request to reach the traversal guard
         self.state.save(UnitState(path="../escape", status="review"))

@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-11-08
+
+### Fixed
+- **Delete works on a read-only library — and tells the truth.** The hard
+  delete was built when the library was mounted read-write; on the
+  recommended read-only mount it errored with "source removal failed:
+  Read-only file system". Now a delete always removes the published output
+  and forgets the book; when the library is read-only it says so plainly in
+  the dialog and the toast: the source folder stays on disk and the book
+  reappears on the next scan unless the folder is removed from the share.
+  Other source-removal failures (permissions, disk errors) still fail loudly.
+  Regression test covers the read-only path.
+
 ## [0.14.0] - 2026-11-08
 
 ### Added
