@@ -777,6 +777,19 @@ function abBusy() {
   if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return true;
   return false;
 }
+let abScanToastDone = false;
+function abScanFinishedToast(d) {
+  // a pass can end faster than the first status poll, so the page also
+  // announces a scan that finished moments before this page loaded
+  if (abScanToastDone) return;
+  abScanToastDone = true;
+  const lr = d.last_run;
+  if (!lr || !lr.finished_at) return;
+  if (Date.now() / 1000 - lr.finished_at > 20) return;
+  abToast('Scan finished - ' + (lr.seen || 0) + ' checked, '
+          + (lr.converted || 0) + ' converted, ' + (lr.held || 0) + ' held, '
+          + (lr.failed || 0) + ' failed');
+}
 function abScanUI(scan) {
   const live = document.getElementById('ab-scanlive');
   const btn = document.getElementById('ab-scanbtn');
@@ -798,6 +811,7 @@ function abScanIdle() {
 }
 function tick() {
   fetch('/api/state').then(r => r.json()).then(d => {
+    abScanFinishedToast(d);
     const bar = document.getElementById('ab-qfill');
     if (d.scan && d.scan.scanning) { abScanUI(d.scan); return; }
     abScanIdle();

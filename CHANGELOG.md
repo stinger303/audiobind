@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.3] - 2026-11-08
+
+### Added
+- **"Scan finished" toast.** A pass can end faster than the page's first status
+  poll, so even the spinner can be missed. When a page loads within ~20 seconds
+  of a scan pass ending, it now toasts the outcome: "Scan finished - 98
+  checked, 0 converted, 0 held, 0 failed". Quiet passes are now provably
+  quiet instead of invisible.
+
 ## [0.13.2] - 2026-11-08
 
 ### Added
