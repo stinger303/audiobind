@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import json
 import logging
+import os
 import shutil
 import threading
 import time
@@ -27,7 +28,7 @@ from .config import (
 from .control import CONTROL
 from .covers import resolve as resolve_cover
 from .pipeline import process_unit
-from .units import discover_units
+from .units import files_under, find_unit, foreign_audio, owned_paths
 
 _log = logging.getLogger("audiobind").info
 ICON_PATH = Path(__file__).resolve().parent.parent / "icon.svg"
@@ -543,9 +544,9 @@ function abModalConfirm() {
         return;
       }
       if (result.source_kept) {
-        abToast('Deleted from Audiobind and your output library. The source folder stays ' +
-                '(your library is read-only) - it will reappear on the next scan unless ' +
-                'you remove the folder from the share.');
+        abToast('Deleted from Audiobind and your output library. The source folder stays (' +
+                (result.source_kept_reason || 'your library is read-only') +
+                ') - it will reappear on the next scan unless you remove it from the share.');
       }
       setTimeout(() => location.reload(), 500);
     })
@@ -2296,12 +2297,45 @@ class Handler(BaseHTTPRequestHandler):
 
             # Path traversal guard: resolve source inside LIBRARY_ROOT
             lib_root = Path(CONFIG.library_root).resolve()
-            src_path = (lib_root / rel).resolve()
+            src_path = (lib_root / rel.split("#", 1)[0]).resolve()
             try:
                 src_path.relative_to(lib_root)
             except ValueError:
                 self._send(400, b'{"error":"source path escapes library root"}', "application/json")
                 return
+
+            # What this book owns on disk - its own folder or part folders, never a parent it
+            # shares with sibling books. Each target must sit strictly inside LIBRARY_ROOT.
+            unit = find_unit(CONFIG.library_root, CONFIG.ignore_globs, rel)
+            targets: list[Path] = []
+            if unit is not None:
+                owned = owned_paths(unit)
+                if any(Path(p).resolve() == lib_root for p in owned):
+                    owned = [os.path.join(unit.parent, part.name) for part in unit.parts]
+                for p in owned:
+                    resolved = Path(p).resolve()
+                    try:
+                        resolved.relative_to(lib_root)
+                    except ValueError:
+                        self._send(400, b'{"error":"source path escapes library root"}', "application/json")
+                        return
+                    if resolved == lib_root:
+                        self._send(400, b'{"error":"refusing to delete the library root"}', "application/json")
+                        return
+                    targets.append(Path(p))
+                foreign = foreign_audio(unit, [str(t) for t in targets])
+                if foreign:
+                    self._send(
+                        409,
+                        json.dumps(
+                            {
+                                "error": f"this folder also holds {len(foreign)} audio file(s) that belong "
+                                "to other books - nothing was deleted. Remove this book's files by hand."
+                            }
+                        ).encode(),
+                        "application/json",
+                    )
+                    return
 
             # Path traversal guard: resolve output inside OUTPUT_ROOT
             out_root = Path(CONFIG.output_root).resolve()
@@ -2326,25 +2360,58 @@ class Handler(BaseHTTPRequestHandler):
             log = logging.getLogger("audiobind")
             source_removed = False
             source_kept_reason = ""
-            if src_path.exists():
-                try:
-                    shutil.rmtree(str(src_path))
+            if targets:
+                before = files_under([str(t) for t in targets])
+                error: OSError | None = None
+                for target in targets:
+                    try:
+                        if target.is_dir() and not target.is_symlink():
+                            shutil.rmtree(str(target))
+                        elif target.exists() or target.is_symlink():
+                            target.unlink()
+                    except OSError as exc:
+                        error = exc
+                        break
+                remaining = {f for f in before if os.path.lexists(f)}
+                if error is None:
                     source_removed = True
-                    log.info("HARD DELETE %s; source removed: %s", rel, src_path)
-                except OSError as exc:
-                    if exc.errno in (errno.EACCES, errno.EROFS) or "Read-only" in str(exc):
-                        source_kept_reason = (
-                            "your source library is mounted read-only"
-                        )
-                        log.info("HARD DELETE %s; source kept: %s (%s)", rel, src_path, exc)
-                    else:
-                        log.error("HARD DELETE %s; source removal failed: %s", rel, exc)
-                        self._send(
-                            500,
-                            ('{"error":"source removal failed: %s"}' % exc).encode(),
-                            "application/json",
-                        )
-                        return
+                    log.info("HARD DELETE %s; source removed: %s", rel, ", ".join(map(str, targets)))
+                elif remaining and remaining != before:
+                    # some files are already gone: never call that "kept", and keep the row
+                    # (and the published output) so the operator can see and finish the job
+                    log.error("HARD DELETE %s; source PARTIALLY removed: %s", rel, error)
+                    self._send(
+                        500,
+                        json.dumps(
+                            {
+                                "error": f"the source was only partly deleted ({len(before) - len(remaining)} "
+                                f"of {len(before)} files removed) before this error: {error}. "
+                                "Nothing else was touched - fix the permissions and delete again.",
+                                "source_partial": True,
+                            }
+                        ).encode(),
+                        "application/json",
+                    )
+                    return
+                elif error.errno == errno.EROFS or "Read-only" in str(error):
+                    source_kept_reason = "your source library is mounted read-only"
+                    log.info("HARD DELETE %s; source kept: %s", rel, error)
+                elif error.errno in (errno.EACCES, errno.EPERM):
+                    source_kept_reason = "Audiobind doesn't have permission to delete the source folder"
+                    log.info("HARD DELETE %s; source kept: %s", rel, error)
+                else:
+                    log.error("HARD DELETE %s; source removal failed: %s", rel, error)
+                    self._send(
+                        500,
+                        json.dumps({"error": f"source removal failed: {error}"}).encode(),
+                        "application/json",
+                    )
+                    return
+            elif src_path.exists() and "#" not in rel:
+                # a row whose folder no longer holds a book we recognise: never rmtree a
+                # folder we cannot prove belongs to this one book
+                source_kept_reason = "the folder no longer holds this book's audio, so it was left alone"
+                log.info("HARD DELETE %s; source left alone - no matching book on disk at %s", rel, src_path)
             else:
                 log.info("HARD DELETE %s; source folder not found at %s", rel, src_path)
 
@@ -2370,6 +2437,7 @@ class Handler(BaseHTTPRequestHandler):
                         "deleted": rel,
                         "source_removed": source_removed,
                         "source_kept": bool(source_kept_reason),
+                        "source_kept_reason": source_kept_reason,
                         "output": output_removed,
                     }
                 ).encode(),
@@ -2377,9 +2445,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        unit = next(
-            (u for u in discover_units(CONFIG.library_root, CONFIG.ignore_globs) if u.rel_path == rel), None
-        )
+        unit = find_unit(CONFIG.library_root, CONFIG.ignore_globs, rel)
         if unit is None:
             self._send(404, b'{"error":"no such unit"}', "application/json")
             return
