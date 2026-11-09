@@ -248,7 +248,11 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False,
         try:
             result = convert_unit(audit, log=log)
             if result is None:
-                rec("ready", note="already published")
+                prev = state.get(unit.rel_path)
+                if prev and prev.output:
+                    log("  already published - converted row unchanged")
+                else:
+                    rec("ready", note="already published - the output file exists")
             else:
                 rec("converted", output=str(result.path), result=result)
         except Stopped:
@@ -263,7 +267,15 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False,
         try:
             result = convert_unit(audit, log=log)
             if result is None:                       # dry run, or already published
-                rec("ready", note="dry run - nothing written")
+                if CONTROL.dry_run:
+                    rec("ready", note="dry run - nothing written")
+                else:
+                    prev = state.get(unit.rel_path)
+                    if prev and prev.output:
+                        # a re-check of an already-converted book must not downgrade it
+                        log("  already published - converted row unchanged")
+                    else:
+                        rec("ready", note="already published - the output file exists")
             else:
                 rec("converted", output=str(result.path), result=result)
         except Stopped:

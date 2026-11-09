@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.4] - 2026-11-08
+
+### Fixed
+- **A re-check of an already-converted book can no longer downgrade it.**
+  `convert_unit` returns "nothing written" both for a dry run and for "the
+  output already exists", and the recorder treated both as `ready` - wiping
+  the row's output path and chapters. Found live: Re-check all hit one
+  converted book whose m4b already existed and flipped it to "ready" with a
+  wrong dry-run note. Now the recorder distinguishes the two cases: a dry run
+  is still `ready`, and an already-published book with an existing converted
+  row is left untouched (its row keeps the output path, chapter count and
+  detail). A book with no previous row gets an explicit
+  "already published - the output file exists" note instead of a phantom
+  dry-run message.
+
 ## [0.13.3] - 2026-11-08
 
 ### Added
