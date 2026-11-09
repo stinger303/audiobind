@@ -52,7 +52,13 @@ class TestAsinPin(unittest.TestCase):
         from audiobind.units import BookUnit
         saved_book, saved_search = catalog.book, catalog.search
         catalog.book = lambda asin: {}
-        catalog.search = lambda *a, **k: []
+        calls = []
+
+        def fake_search(*a, **k):
+            calls.append(a)
+            return []
+
+        catalog.search = fake_search
         try:
             unit = BookUnit(path="X", name="X", parent="", parts=[],
                             title_guess="Get Up", author_guess="James Levine")
@@ -61,6 +67,10 @@ class TestAsinPin(unittest.TestCase):
             catalog.book, catalog.search = saved_book, saved_search
         self.assertIsNone(match.product)
         self.assertEqual(match.asin_pin_failed, "B013ILGDHQ")
+        # a dead pin must never fall through to a search that could convert
+        # a different edition
+        self.assertEqual(calls, [])
+        self.assertEqual(match.confidence, "NONE")
 
     def test_a_live_pinned_asin_does_not_set_the_failure_flag(self):
         from audiobind import catalog, matching

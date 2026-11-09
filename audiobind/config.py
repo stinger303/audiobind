@@ -24,6 +24,13 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(_env(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 @dataclass
 class Config:
     library_root: Path = Path("/library")
@@ -66,7 +73,7 @@ class Config:
             sample_rate=_env_int("SAMPLE_RATE", 44100),
             jobs=max(1, _env_int("JOBS", 1)),
             auto_convert=_env("AUTO_CONVERT", "high").lower(),
-            max_runtime_delta=float(_env("MAX_RUNTIME_DELTA", "0.25") or 0.25),
+            max_runtime_delta=_env_float("MAX_RUNTIME_DELTA", 0.25),
             scan_interval_min=max(1, _env_int("SCAN_INTERVAL_MIN", 30)),
             dry_run=_env_bool("DRY_RUN", False),
             web_enabled=_env_bool("WEB_ENABLED", True),
@@ -193,6 +200,6 @@ def _config_to_setting(name: str) -> str | None:
 
 def effective_auto_tiers() -> set[str]:
     """Return the auto-convert tiers using the effective override or env default."""
-    tier = effective_val("auto_convert")
+    tier = str(effective_val("auto_convert") or "high").lower()
     mapping = {"high": {"HIGH"}, "medium": {"HIGH", "MEDIUM"}, "off": set()}
     return mapping.get(tier, {"HIGH"})

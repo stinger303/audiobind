@@ -18,9 +18,10 @@ def _n(value, default=0.0) -> float:
         return default
 
 
-def explain(status: str, confidence: str, note: str = "", detail: dict | None = None) -> tuple[str, str]:
+def explain(status: str, confidence: str, note: str = "", detail: dict | None = None,
+            tier: str = "high") -> tuple[str, str]:
     """Return (why, what_to_do) in plain English for one unit."""
-    why, what = _explain_base(status, confidence, note, detail)
+    why, what = _explain_base(status, confidence, note, detail, tier)
     match = (detail or {}).get("match") or {}
     pin = str(match.get("asin_pin_failed") or "").strip()
     if pin:
@@ -30,7 +31,8 @@ def explain(status: str, confidence: str, note: str = "", detail: dict | None = 
     return why, what
 
 
-def _explain_base(status: str, confidence: str, note: str = "", detail: dict | None = None) -> tuple[str, str]:
+def _explain_base(status: str, confidence: str, note: str = "", detail: dict | None = None,
+                  tier: str = "high") -> tuple[str, str]:
     """The status-specific explanation, without the pinned-ASIN annotation."""
     detail = detail or {}
     match = detail.get("match") or {}
@@ -102,10 +104,16 @@ def _explain_base(status: str, confidence: str, note: str = "", detail: dict | N
                     "entry disagree.",
                     "Paste the correct ASIN and press Retry now. Sure the title is right? "
                     "Convert anyway skips the check.")
+        low_tier = (tier or "high").lower()
+        if low_tier == "off":
+            return ("We found the Audible entry for this book and it matched, but "
+                    "auto-convert is off - every conversion waits for your OK.",
+                    "Cover and title below look right? Press Convert anyway. Want it "
+                    "locked in? Paste the ASIN and press Use this ASIN.")
         return (note or ("We found the Audible entry for this book, but the match is only "
                          "Medium confidence - the folder name and the listing don't line up "
-                         "exactly. Auto-convert is set to High, so anything less than a sure "
-                         "match waits for your OK."),
+                         "exactly. Auto-convert is set to {}, so anything less than a sure "
+                         "match waits for your OK.".format(low_tier.capitalize())),
                 "Cover and title below look right? Press Convert anyway. Want it locked in? "
                 "Paste the ASIN and press Use this ASIN.")
 

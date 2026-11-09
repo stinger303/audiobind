@@ -1267,6 +1267,7 @@ def _tier_class(confidence: str) -> str:
 
 
 def _render_shelf(problem_units: list) -> str:
+    tier = str(effective_val("auto_convert") or "high")
     if not problem_units:
         return (
             '<section class="ab-shelf" id="ab-shelf" aria-label="Needs attention">'
@@ -1289,7 +1290,7 @@ def _render_shelf(problem_units: list) -> str:
     cards = []
     for unit in visible:
         why, _todo = explain(unit.status, unit.confidence or "", unit.note,
-                             json.loads(unit.detail or "{}"))
+                             json.loads(unit.detail or "{}"), tier=tier)
         reason_class = ("held" if unit.status == "held"
                         else ("failed" if unit.status == "failed" else ""))
 
@@ -1415,15 +1416,16 @@ def render_settings(state) -> str:
         region_custom, region_env,
         hint="Applies to future catalog lookups."))
 
+    rc = rail_counts(state, counts)
     return SETTINGS_PAGE.format(
         styles=STYLES,
         version=__version__,
         lib_active="",
         set_active=" ab-active",
         rail_total=total,
-        rail_review_count=counts.get("review", 0),
-        rail_held_count=counts.get("held", 0),
-        rail_failed_count=counts.get("failed", 0),
+        rail_review_count=rc["review"],
+        rail_held_count=rc["held"],
+        rail_failed_count=rc["failed"],
         library=CONFIG.host_library or str(CONFIG.library_root),
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
         output=CONFIG.host_output or str(CONFIG.output_root),
@@ -1491,6 +1493,20 @@ def render(state, status: str = "", query: str = "") -> str:
     units = state.all(wanted or None)
     total = sum(counts.values())
 
+    # books with a manual conversion request are waiting on the one-at-a-time
+    # encoder: they leave every list (the queue strip shows them instead) and
+    # the visible counts stay honest
+    queued = set(CONTROL.queue_snapshot()["units"])
+    queued_by_status: dict[str, int] = {}
+    all_units = state.all(None)
+    if queued:
+        for u in all_units:
+            if u.path in queued:
+                queued_by_status[u.status] = queued_by_status.get(u.status, 0) + 1
+        units = [u for u in units if u.path not in queued]
+        total -= queued_by_status.get(wanted, 0) if wanted else len(queued)
+    queued_count = sum(queued_by_status.values())
+
     sort_column, sort_dir = read_sort(state)
     units = sort_units(units, sort_column, sort_dir)
     if query:
@@ -1500,17 +1516,20 @@ def render(state, status: str = "", query: str = "") -> str:
     chips = ['<a class="chip{on}" href="/">All <span class="n">{n}</span></a>'.format(
         on=" on" if not wanted else "", n=total)]
     for name in STATUS_ORDER:
-        if not counts.get(name):
+        visible = counts.get(name, 0) - queued_by_status.get(name, 0)
+        if not visible:
             continue
         chips.append(
             '<a class="chip{on}" href="/?status={st}">{st} <span class="n">{n}</span></a>'.format(
-                on=" on" if wanted == name else "", st=name, n=counts[name])
+                on=" on" if wanted == name else "", st=name, n=visible)
         )
     chips_html = "".join(chips)
+    rc = rail_counts(state, counts)
 
     # problem units for shelf
     shelf_order = {"failed": 0, "held": 1, "review": 2}
-    problem_units = [u for u in state.all(None) if u.status in ("held", "review", "failed")]
+    problem_units = [u for u in all_units if u.status in ("held", "review", "failed")
+                     and u.path not in queued]
     problem_units.sort(key=lambda u: (shelf_order.get(u.status, 99), unit_title_key(u)))
 
     # table
@@ -1582,7 +1601,8 @@ def render(state, status: str = "", query: str = "") -> str:
         if unit.note:
             decision.append(_html(unit.note))
 
-        why, todo = explain(unit.status, unit.confidence or "", unit.note, data)
+        tier = str(effective_val("auto_convert") or "high")
+        why, todo = explain(unit.status, unit.confidence or "", unit.note, data, tier=tier)
 
         # status-specific plain-English section titles
         why_headers = {
@@ -1754,6 +1774,7 @@ def render(state, status: str = "", query: str = "") -> str:
                  tc=TOTAL_COLUMNS, ro=reopen_attr)
 
     def row(unit) -> str:
+        tier = str(effective_val("auto_convert") or "high")
         haystack = " ".join(filter(None, [unit.title, unit.author, unit.path]))
         data = " ".join(
             'data-sort-{k}="{v}"'.format(k=key, v=_attr(str(sort_value(unit, key))))
@@ -1777,7 +1798,7 @@ def render(state, status: str = "", query: str = "") -> str:
             except ValueError:
                 detail_data = {}
             why, _todo = explain(unit.status, unit.confidence or "", unit.note,
-                                 detail_data)
+                                 detail_data, tier=tier)
             rc = " failed" if unit.status == "failed" else ""
             reason_html = '<span class="ab-breason{rc}">{wh}</span>'.format(
                 rc=rc, wh=_html(why))
@@ -1805,6 +1826,16 @@ def render(state, status: str = "", query: str = "") -> str:
             ac=act_html)
 
     rows = "".join(row(u) + detail_panel(u) for u in units)
+
+    # a re-opened panel shows its banner once; the flag is consumed so the next
+    # page load starts collapsed again
+    for u in units:
+        try:
+            flagged = bool(json.loads(u.detail or "{}").get("reopen"))
+        except ValueError:
+            flagged = False
+        if flagged and u.status in ("review", "held", "failed"):
+            state.clear_reopen(u.path)
     if not units:
         rows = ('<tr class="ab-empty"><td colspan="{tc}">'
                 'no books match this filter</td></tr>').format(tc=TOTAL_COLUMNS)
@@ -1870,6 +1901,7 @@ def render(state, status: str = "", query: str = "") -> str:
 
     # encode strip
     queue_strip = ""
+    qsnap = CONTROL.queue_snapshot()
     if CONTROL.running:
         prog = CONTROL.progress or {}
         percent = float(prog.get("percent") or 0)
@@ -1882,6 +1914,8 @@ def render(state, status: str = "", query: str = "") -> str:
             meta_parts.append("{} elapsed".format(_fmt_duration(prog["elapsed"])))
         if not prog:
             meta_parts.append("analysing - the bar appears once encoding starts")
+        if qsnap["count"]:
+            meta_parts.append("<b>{}</b> waiting in queue".format(qsnap["count"]))
 
         title_html = _html(CONTROL.current_unit)
         queue_strip = (
@@ -1898,6 +1932,16 @@ def render(state, status: str = "", query: str = "") -> str:
             '<span class="ab-qpct" id="ab-qpct">{pc:.1f}%</span>'
             '</div></section>'
         ).format(ti=title_html, mp=" &middot; ".join(meta_parts), pc=percent)
+    elif qsnap["count"]:
+        nxt = state.get(qsnap["units"][0])
+        queue_strip = (
+            '<section class="ab-queue" aria-label="Conversion queue">'
+            '<div class="ab-label"><span class="ab-pulse"></span> Waiting to convert</div>'
+            '<div class="ab-qtitle">{ti}</div>'
+            '<div class="ab-qmeta"><b>{n}</b> in queue</div>'
+            '</section>'
+        ).format(ti=_html(nxt.title if nxt and nxt.title else qsnap["units"][0]),
+                 n=qsnap["count"])
 
     # health
     set_effective(state)
@@ -1925,9 +1969,9 @@ def render(state, status: str = "", query: str = "") -> str:
         health_text=health_text,
         health_scan=_fmt_age(heartbeat_age),
         rail_total=total,
-        rail_review_count=counts.get("review", 0),
-        rail_held_count=counts.get("held", 0),
-        rail_failed_count=counts.get("failed", 0),
+        rail_review_count=rc["review"],
+        rail_held_count=rc["held"],
+        rail_failed_count=rc["failed"],
         scan_button=scan_button,
         recheck_button=recheck_button,
         pause_button=pause_button,
@@ -1968,6 +2012,17 @@ def library_stats(state) -> dict:
         "total": total,
         "progress": progress,
     }
+
+
+def rail_counts(state, counts: dict) -> dict:
+    """DB counts minus books currently waiting in the manual-conversion queue."""
+    adjusted = {k: counts.get(k, 0) for k in ("review", "held", "failed")}
+    queued = set(CONTROL.queue_snapshot()["units"])
+    if queued:
+        for u in state.all(None):
+            if u.path in queued and u.status in adjusted:
+                adjusted[u.status] -= 1
+    return adjusted
 
 
 def snapshot(state) -> dict:
@@ -2190,6 +2245,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
+        CONTROL.enqueue(rel)
         threading.Thread(target=process_unit,
                          kwargs={"state": self.state, "unit": unit, "log": _log,
                                  "force": action == "force", "manual": True},

@@ -59,6 +59,16 @@ class TestExplain(unittest.TestCase):
         self.assertIn("several books", why)
         self.assertIn("Split", todo)
 
+    def test_medium_fallback_names_the_actual_tier(self):
+        why, todo = explain("review", "MEDIUM", "", {}, tier="high")
+        self.assertIn("Auto-convert is set to High", why)
+        self.assertIn("Convert anyway", todo)
+
+    def test_medium_fallback_respects_the_off_tier(self):
+        why, todo = explain("review", "MEDIUM", "", {}, tier="off")
+        self.assertIn("auto-convert is off", why)
+        self.assertNotIn("set to High", why)
+
     def test_a_dead_pinned_asin_is_explained(self):
         detail = {"match": {"asin": "B00LZZQBIY", "title": "Get Up!",
                             "hours": 7.52, "confidence": "LOW",

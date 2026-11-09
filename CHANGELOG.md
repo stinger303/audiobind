@@ -3,6 +3,48 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-11-08
+
+### Added
+- **The conversion queue is visible.** Every Convert anyway / Retry now /
+  Use this ASIN click joins a real queue. Queued books leave the Review/Held/
+  Failed lists and the sidebar counts (they were sitting there doing nothing),
+  and a "Waiting to convert" strip shows what's next plus how many are in
+  line; the Now-encoding strip adds "N waiting in queue". If the container
+  restarts, the queue empties and the books reappear in their lists.
+- **A full code audit landed** (four parallel deepseek-v4-pro reviews over all
+  5,186 lines plus the test suite). The bugs below came out of it; the audit
+  also confirmed the test suite is genuine and mapped its gaps.
+
+### Fixed
+- **Books without a cover no longer produce a broken ffmpeg command.** The
+  tags/chapters input index was hardcoded to 2, but without a cover the
+  metadata file is input 1 - every no-cover book lost its tags and failed the
+  pre-publish verification. The index is now computed, and the muxer is told
+  to ignore any chapters riding on the concat input so they cannot double the
+  chapter list.
+- **The Auto-convert tier setting actually works now.** The settings page
+  saves HIGH/MEDIUM/OFF in uppercase and the tier lookup used lowercase keys,
+  so every override fell back to HIGH - setting Medium or Off in the UI did
+  nothing (and Off silently behaved as High). Regression tests cover it.
+- **A dead ASIN pin can no longer convert a different edition.** When a
+  pinned ASIN has no catalog data (or the catalog hiccups), the book now goes
+  to review instead of falling through to a fresh search that might
+  auto-convert something else.
+- **Non-English matches are capped at MEDIUM.** The language penalty applied
+  only to the ranking score; grading read the raw similarity, so a
+  foreign-language edition with an exact title/author match graded HIGH and
+  auto-converted.
+- **The MEDIUM grading path now needs a margin.** A match tied with a
+  different work (margin 0) no longer converts when the tier is Medium.
+- **The review panel's "why" text names the real tier** instead of always
+  saying "Auto-convert is set to High", including an explicit message when
+  auto-convert is off.
+- **A re-check banner shows once.** The re-open flag is consumed the first
+  time the page displays it, so the panel stops popping open on every refresh
+  afterwards.
+- **A non-numeric MAX_RUNTIME_DELTA env value no longer crashes startup.**
+
 ## [0.13.4] - 2026-11-08
 
 ### Fixed

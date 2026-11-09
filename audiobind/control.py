@@ -40,6 +40,8 @@ class Control:
         self._scan_done = 0
         self._scan_total = 0
         self._scan_force = False
+        #: manually requested conversions waiting for the one-at-a-time encoder
+        self._queue: list[str] = []
 
     # ---------------------------------------------------------------- pause
     @property
@@ -84,6 +86,23 @@ class Control:
         self.current_unit = name
         self.progress = {}
         self._stop.clear()
+        self.dequeue(name)
+
+    # ---------------------------------------------------------------- queue
+    def enqueue(self, rel: str) -> None:
+        """Mark a manually requested conversion as waiting for the encoder."""
+        with self._lock:
+            if rel not in self._queue:
+                self._queue.append(rel)
+
+    def dequeue(self, rel: str) -> None:
+        with self._lock:
+            if rel in self._queue:
+                self._queue.remove(rel)
+
+    def queue_snapshot(self) -> dict:
+        with self._lock:
+            return {"units": list(self._queue), "count": len(self._queue)}
 
     def end_unit(self) -> None:
         self.current_unit = ""
@@ -181,6 +200,7 @@ class Control:
             "current_unit": self.current_unit,
             "progress": self.progress,
             "scan": self.scan_progress(),
+            "queue": self.queue_snapshot(),
         }
 
 

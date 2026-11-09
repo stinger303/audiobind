@@ -19,6 +19,8 @@ class Match:
     author_known: bool = False
     author_from_series: bool = False
     asin_override: bool = False
+    #: catalog language of the matched product (grading caps non-English at MEDIUM)
+    language: str = "english"
     #: set when a user-pinned ASIN had no catalog data and the search was used instead
     asin_pin_failed: str = ""
     confidence: str = "NONE"
@@ -71,7 +73,7 @@ def match_from_asin(asin: str) -> Match:
         image=book.get("image") or "",
     )
     match = Match(product=product, score=1.0, margin=1.0, title_sim=1.0, author_sim=1.0,
-                  author_known=True, asin_override=True)
+                  author_known=True, asin_override=True, language=product.language)
     match.confidence = "HIGH"
     return match
 
@@ -81,6 +83,9 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
         forced = match_from_asin(asin_override)
         if forced.product:
             return forced
+        # a dead pin (or a catalog hiccup) must never fall through to a search
+        # that could auto-convert a different edition - review instead
+        return Match(asin_pin_failed=asin_override)
     author, title = unit.author_guess, unit.title_guess
     author_from_series = False
     if not author and unit.series_guess:
@@ -131,6 +136,7 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
         product=best["product"], score=best["score"], margin=margin,
         title_sim=best["title_sim"], author_sim=best["author_sim"],
         author_known=bool(author), author_from_series=author_from_series,
+        language=best["product"].language,
     )
     match.confidence = grade(match)
     match.asin_pin_failed = asin_override
@@ -148,11 +154,14 @@ def grade(match: Match) -> str:
     """HIGH needs title *and* author corroborated plus a clear win over other works."""
     if not match.product:
         return "NONE"
+    if not (match.language or "english").lower().startswith("english"):
+        # a foreign-language hit must never auto-convert at HIGH confidence
+        return "MEDIUM"
     title, author = match.title_sim, match.author_sim
     if match.author_known:
         if title >= 0.88 and author >= 0.85 and match.margin >= 0.05:
             return "HIGH"
-        if title >= 0.85 and author >= 0.60:
+        if title >= 0.85 and author >= 0.60 and match.margin > 0:
             return "MEDIUM"
         return "LOW"
     # title-only: an exact title with a decisive margin, author taken from the catalog

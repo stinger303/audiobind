@@ -205,6 +205,19 @@ def write_ffmetadata(path: Path, book: dict, match, chapters: list[dict]) -> dic
     return tags
 
 
+def _metadata_map_args(has_cover: bool) -> list:
+    """Point tags and chapters at the ffmetadata file, whichever input it landed on.
+
+    Input 0 is the concat list; the cover (when there is one) is input 1 and the
+    metadata file comes last. Without the cover the metadata file IS input 1, so a
+    hardcoded index of 2 pointed at nothing and every no-cover book lost its tags.
+    ``-map_chapters -1`` first stops the muxer from also carrying the concat
+    input's embedded chapters, which would double the list.
+    """
+    idx = 2 if has_cover else 1
+    return ["-map_metadata", str(idx), "-map_chapters", "-1", "-map_chapters", str(idx)]
+
+
 def clean_description(html: str) -> str:
     import re
     if not html:
@@ -249,7 +262,7 @@ def encode(unit: BookUnit, match, book: dict, work_dir: Path, out_path: Path,
     command += ["-i", str(metadata_file), "-map", "0:a:0"]
     if has_cover:
         command += ["-map", "1:v:0", "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
-    command += ["-map_metadata", "2", "-map_chapters", "2"]
+    command += _metadata_map_args(has_cover)
     if copy_audio:
         # already AAC in an MP4 container: keep the samples, only rewrite the wrapper
         log("  audio: copied (source is already AAC) - no re-encode, no quality loss")

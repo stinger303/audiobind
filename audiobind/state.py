@@ -140,6 +140,24 @@ class State:
                 "SELECT MAX(updated_at), COUNT(*) FROM units").fetchone()
         return "{:.6f}|{}".format(row[0] or 0.0, row[1])
 
+    def clear_reopen(self, path: str) -> None:
+        """The status page has shown this book's re-check banner - stop re-opening it."""
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT detail FROM units WHERE path=?", (path,)).fetchone()
+        if not row or not row["detail"]:
+            return
+        try:
+            d = json.loads(row["detail"])
+        except ValueError:
+            return
+        if not d.get("reopen"):
+            return
+        d["reopen"] = False
+        with self._lock:
+            self.connection.execute(
+                "UPDATE units SET detail=? WHERE path=?", (json.dumps(d), path))
+
     def detail_for_asin(self, asin: str) -> str:
         """The newest detail blob recorded for an ASIN (the cover proxy reads the image URL)."""
         if not asin:
