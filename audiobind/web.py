@@ -513,10 +513,8 @@ function abOpenDeleteModal(path, title, trigger) {
   abDeleteTrigger = trigger;
   document.getElementById('ab-modal-title').textContent = 'Delete this book?';
   document.getElementById('ab-modal-warning').textContent =
-    'This permanently deletes ' + title + "'s published files from your output library " +
-    'and removes the book from Audiobind. Your source library is read-only, so the source ' +
-    'folder stays on disk and the book will reappear on the next scan unless you remove ' +
-    "the folder from the share. This cannot be undone."
+    'This permanently deletes ' + title + "'s source folder and its published files. " +
+    "This cannot be undone."
   document.getElementById('ab-modal').hidden = false;
   document.getElementById('ab-modal-cancel').focus();
 }

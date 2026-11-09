@@ -114,7 +114,7 @@ Point Audiobind at a folder of audiobooks and a folder to write to. On a timer i
 Suitable for Audiobookshelf, Plex, Emby, Jellyfin, Apple Books and anything else that reads standard m4b chapters and tags.
   </Description>
 
-  <Config Name="Library path" Target="/library" Default="/mnt/user/data/media/audiobooks" Mode="ro" Description="Folder holding the audiobooks to fix. Read-only." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media/audiobooks</Config>
+  <Config Name="Library path" Target="/library" Default="/mnt/user/data/media/audiobooks" Mode="rw" Description="Folder holding the audiobooks to fix. Writable so Delete can fully remove a book; mount read-only for a guarantee the app never touches your sources." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media/audiobooks</Config>
   <Config Name="Output path" Target="/output" Default="/mnt/user/data/media/audiobooks-fixed" Mode="rw" Description="Where finished m4b files are written. Never the same as the library path." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media/audiobooks-fixed</Config>
   <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/audiobind" Mode="rw" Description="Database, audit report and work files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/audiobind</Config>
   <Config Name="WebUI port" Target="8080" Default="8080" Mode="tcp" Description="Status page and JSON API." Type="Port" Display="always" Required="true" Mask="false">8080</Config>

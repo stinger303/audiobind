@@ -17,7 +17,7 @@ services:
       - NICE=10
       - DRY_RUN=false
     volumes:
-      - /mnt/user/data/media/audiobooks:/library:ro
+      - /mnt/user/data/media/audiobooks:/library:rw
       - /mnt/user/data/media/audiobooks-fixed:/output
       - /mnt/user/appdata/audiobind:/config
     ports:

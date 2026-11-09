@@ -25,10 +25,11 @@ Audiobind is a **beta**: a solo project with a single front-end developer, and t
 code is written with heavy AI assistance (designed, reviewed and tested by a human,
 but not hand-written line by line). It reads real audiobook libraries and writes to
 a separate output library, and software like that can fail badly — **you may
-experience data loss**. The source library is only ever *read* — converted books go
-to a separate output folder — and the hard delete asks for typed confirmation, but there
-is no undo button. Keep backups, run it against a copy first, and pin a tagged
-release instead of `latest` if reproducible behavior matters to you.
+experience data loss**. Audiobind reads your source library and writes converted books
+to a separate output folder; the only thing that ever *deletes* source files is the
+explicit Delete button (typed confirmation, no undo). Keep backups, run it against a
+copy first, and pin a tagged release instead of `latest` if reproducible behavior
+matters to you.
 
 ## How it works
 
@@ -56,11 +57,12 @@ release instead of `latest` if reproducible behavior matters to you.
 | `COLLECTION` | several books in one folder | left for review |
 | held | runtime disagrees with the catalog by >25% - usually the wrong edition | not converted |
 
-Your source library is only ever read. Converted books are written to the separate
-output library, and the source folder stays in place so you can verify the result
-and clean up at your own pace. The web UI's **Delete** is the one destructive path —
-it removes the source folder *and* the published output permanently, and requires
-typing `DELETE` to confirm.
+Converted books are written to the separate output library. The web UI's **Delete**
+is the one destructive path — it permanently removes the source folder *and* the
+published output, and requires typed confirmation. If you mount the library
+read-only instead, Delete adapts: it removes the published output and forgets the
+book, keeps the source folder untouched, and tells you so (the folder will
+reappear on the next scan unless you remove it from the share).
 
 ## Installation
 
@@ -91,7 +93,7 @@ docker run -d \
   -e SCAN_INTERVAL_MIN=30 \
   -e REGION=us \
   -e DRY_RUN=false \
-  -v /path/to/audiobooks:/library:ro \
+  -v /path/to/audiobooks:/library:rw \
   -v /path/to/audiobooks-fixed:/output \
   -v /path/to/appdata/audiobind:/config \
   -p 8080:8080 \
@@ -114,7 +116,7 @@ services:
       - REGION=us
       - DRY_RUN=false
     volumes:
-      - /path/to/audiobooks:/library:ro
+      - /path/to/audiobooks:/library:rw
       - /path/to/audiobooks-fixed:/output
       - /path/to/appdata/audiobind:/config
     ports:
@@ -159,7 +161,7 @@ docker exec audiobind audiobind health             # exit 0 while the daemon is 
 
 | Variable | Default | Description |
 |---|---|---|
-| `LIBRARY_ROOT` | `/library` | Source library (mount read-only) |
+| `LIBRARY_ROOT` | `/library` | Source library (writable so Delete can fully remove a book) |
 | `OUTPUT_ROOT` | `/output` | Where finished books go |
 | `STATE_DIR` | `/config` | SQLite manifest + `audit.csv` |
 | `AUTO_CONVERT` | `high` | `high`, `medium` or `off` |

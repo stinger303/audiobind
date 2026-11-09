@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] - 2026-11-08
+
+### Changed
+- **Delete means permanently deleted.** The owner's call: the library mounts
+  read-write again (README, docker-compose, CA template), so Delete removes
+  the source folder *and* the published output, exactly as the dialog says.
+  The read-only graceful mode stays: mount the library :ro and Delete adapts
+  - it removes the published output, keeps the source folder, and says so in
+  the dialog and toast. Both behaviors are covered by tests.
+- The code audit found and fixed the bugs in 0.14.0/0.14.1 first; the only
+  writes to the source library remain the explicit Delete path.
+
 ## [0.14.1] - 2026-11-08
 
 ### Fixed
