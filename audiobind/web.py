@@ -1760,8 +1760,10 @@ def render(state, status: str = "", query: str = "") -> str:
                 f'placeholder="{placeholder}" spellcheck="false"{width_hint}></div>'
             )
 
+        # f-strings only: user text must never sit inside a str.format() template,
+        # or one brace in a folder name or override takes the whole page down
         editor = (
-            '<div class="ab-edit" data-path="{dp}"><h4>Metadata</h4>'
+            f'<div class="ab-edit" data-path="{_attr(unit.path)}"><h4>Metadata</h4>'
             '<p class="ab-hint">Overrides win over the catalog when this book is '
             "converted - tags, metadata.json and the author/title layout. "
             "Leave a box empty to use the catalog value; "
@@ -1779,7 +1781,7 @@ def render(state, status: str = "", query: str = "") -> str:
             + '</div><div class="ab-editbar">'
             '<button class="ab-save" onclick="abSaveMeta(this)">Save metadata</button>'
             '<span class="ab-fb"></span></div></div>'
-        ).format(dp=_attr(unit.path))
+        )
 
         # other editions the catalog search also scored highly, with one-click pins
         editions_html = ""
@@ -1843,10 +1845,10 @@ def render(state, status: str = "", query: str = "") -> str:
         )
         delete_act = (
             '<div class="acts">'
-            + '<button class="btn danger" title="Permanently delete this book\'s source folder '
+            '<button class="btn danger" title="Permanently delete this book\'s source folder '
             'and its published files. Cannot be undone." onclick="unitDelete(this)" '
-            'data-path="{dp}" data-title="{ti}" '
-            'style="margin-left:auto">Delete</button>' + "</div>"
+            f'data-path="{_attr(unit.path)}" data-title="{_attr(unit.title or unit.path)}" '
+            'style="margin-left:auto">Delete</button></div>'
         )
         reopen_attr = (
             ' data-reopen="1"' if data.get("reopen") and unit.status in ("review", "held", "failed") else ""
@@ -1862,9 +1864,9 @@ def render(state, status: str = "", query: str = "") -> str:
             + "</div>"
         )
         return (
-            '<tr class="drow" data-path="{dp}"{ro} hidden>'
-            '<td colspan="{tc}">'
-            '<div class="dd" data-path="{dp}">'
+            f'<tr class="drow" data-path="{_attr(unit.path)}"{reopen_attr} hidden>'
+            f'<td colspan="{TOTAL_COLUMNS}">'
+            f'<div class="dd" data-path="{_attr(unit.path)}">'
             + banner
             + toprow
             + block("Your source files", before)
@@ -1874,7 +1876,7 @@ def render(state, status: str = "", query: str = "") -> str:
             + editor
             + delete_act
             + "</div></td></tr>"
-        ).format(dp=_attr(unit.path), ti=_attr(unit.title or unit.path), tc=TOTAL_COLUMNS, ro=reopen_attr)
+        )
 
     def row(unit) -> str:
         tier = str(effective_val("auto_convert") or "high")
