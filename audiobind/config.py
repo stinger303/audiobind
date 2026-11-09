@@ -145,14 +145,55 @@ SETTING_TYPES: dict[str, type] = {
     "region": str,
 }
 
-SETTING_ENV_DEFAULTS: dict[str, object] = {
-    "auto_convert": "high",
-    "audio_bitrate": "128k",
-    "runtime_delta": 25,
-    "scan_interval": 30,
-    "nice": 10,
-    "region": "us",
+#: the values the settings page offers; an environment value outside these is added to the
+#: choices (and accepted on save) so the page can always show and keep what is really running
+SETTING_CHOICES: dict[str, tuple[str, ...]] = {
+    "auto_convert": ("HIGH", "MEDIUM", "OFF"),
+    "audio_bitrate": ("64k", "128k", "192k", "256k"),
+    "region": ("us", "uk", "ca", "au", "de"),
 }
+
+#: (min, max) for the numeric settings, widened to include the environment value
+SETTING_BOUNDS: dict[str, tuple[int, int]] = {
+    "runtime_delta": (5, 50),
+    "scan_interval": (1, 1440),
+    "nice": (0, 19),
+}
+
+
+def setting_env_defaults() -> dict[str, object]:
+    """What each setting is when nothing is saved in the UI - read live from CONFIG.
+
+    Shaped like the settings page fields: the tier upper-case to match the select's
+    options, the runtime tolerance as a whole percentage.
+    """
+    return {
+        "auto_convert": str(CONFIG.auto_convert or "high").upper(),
+        "audio_bitrate": str(CONFIG.audio_bitrate).lower(),
+        "runtime_delta": int(round(CONFIG.max_runtime_delta * 100)),
+        "scan_interval": int(CONFIG.scan_interval_min),
+        "nice": int(CONFIG.nice),
+        "region": str(CONFIG.region).lower(),
+    }
+
+
+def setting_choices(key: str) -> list[str]:
+    """The select options for a setting, including the environment value if it is unusual."""
+    options = list(SETTING_CHOICES.get(key, ()))
+    env = str(setting_env(key))
+    if options and env and env.upper() not in {o.upper() for o in options}:
+        options.append(env)
+    return options
+
+
+def setting_bounds(key: str) -> tuple[int, int]:
+    """(min, max) for a numeric setting, widened so the environment value always fits."""
+    lo, hi = SETTING_BOUNDS[key]
+    try:
+        env = int(setting_env(key))  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return lo, hi
+    return min(lo, env), max(hi, env)
 
 
 def set_effective(state) -> None:
@@ -186,12 +227,12 @@ def setting_effective(key: str):
     """Return the effective value for a setting key (e.g. ``runtime_delta``)."""
     if key in _EFFECTIVE:
         return _EFFECTIVE[key]
-    return SETTING_ENV_DEFAULTS.get(key)
+    return setting_env(key)
 
 
 def setting_env(key: str):
-    """Return the env default for a setting key."""
-    return SETTING_ENV_DEFAULTS.get(key)
+    """Return the env default for a setting key (live from CONFIG, never a hardcoded copy)."""
+    return setting_env_defaults().get(key)
 
 
 def _config_to_setting(name: str) -> str | None:

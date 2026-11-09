@@ -19,11 +19,15 @@ from .advice import explain
 from .config import (
     CONFIG,
     SETTING_KEYS,
+    SETTING_MAP,
     effective_val,
     is_custom,
     set_effective,
+    setting_bounds,
+    setting_choices,
     setting_effective,
     setting_env,
+    setting_env_defaults,
 )
 from .control import CONTROL
 from .covers import resolve as resolve_cover
@@ -1039,18 +1043,33 @@ function abRangeShow(el) {
   if (val) val.textContent = el.value;
 }
 
+// each [data-setting] is a wrapper div; the value lives on the select/input inside it
+function abSettingControl(wrap) {
+  return wrap.querySelector('select, input');
+}
+
+function abSettingValue(el) {
+  if (el.tagName === 'SELECT') return el.value;
+  if (el.type === 'range' || el.type === 'number') return parseInt(el.value, 10);
+  return el.value;
+}
+
 function abSaveSettings() {
   const fb = document.getElementById('ab-settings-fb');
   const settings = {};
-  document.querySelectorAll('[data-setting]').forEach(el => {
-    const key = el.dataset.setting;
-    let val;
-    if (el.tagName === 'SELECT') val = el.value;
-    else if (el.type === 'range') val = parseInt(el.value, 10);
-    else if (el.type === 'number') val = parseInt(el.value, 10);
-    else val = el.value;
-    settings[key] = val;
+  // only what you changed: an untouched field keeps following the environment
+  document.querySelectorAll('[data-setting]').forEach(wrap => {
+    const el = abSettingControl(wrap);
+    if (!el) return;
+    if (String(el.value) === String(el.dataset.initial)) return;
+    settings[wrap.dataset.setting] = abSettingValue(el);
   });
+  if (Object.keys(settings).length === 0) {
+    fb.className = 'ab-fb';
+    fb.textContent = 'nothing changed';
+    setTimeout(() => { fb.textContent = ''; }, 4000);
+    return;
+  }
   fb.className = 'ab-fb';
   fb.textContent = 'saving...';
   fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
@@ -1064,6 +1083,12 @@ function abSaveSettings() {
       }
       fb.className = 'ab-fb ab-good';
       fb.textContent = 'saved';
+      document.querySelectorAll('[data-setting]').forEach(wrap => {
+        const el = abSettingControl(wrap);
+        if (el && Object.prototype.hasOwnProperty.call(settings, wrap.dataset.setting)) {
+          el.dataset.initial = el.value;
+        }
+      });
       document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {
         const key = mark.dataset.field;
         mark.hidden = res.body.custom.indexOf(key) === -1;
@@ -1085,13 +1110,13 @@ function abResetSettings() {
     .then(r => r.json())
     .then(body => {
       if (body.ok) {
-        document.querySelectorAll('[data-setting]').forEach(el => {
-          const key = el.dataset.setting;
-          const env = body.env_defaults[key];
-          if (env === undefined) return;
-          if (el.tagName === 'SELECT') el.value = String(env);
-          else if (el.type === 'range') { el.value = env; abRangeShow(el); }
-          else if (el.type === 'number') el.value = env;
+        document.querySelectorAll('[data-setting]').forEach(wrap => {
+          const el = abSettingControl(wrap);
+          const env = body.env_defaults[wrap.dataset.setting];
+          if (!el || env === undefined) return;
+          el.value = String(env);
+          if (el.type === 'range') abRangeShow(el);
+          el.dataset.initial = el.value;
         });
         document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {
           mark.hidden = true;
@@ -1385,18 +1410,19 @@ def render_settings(state) -> str:
         "</select></div>"
     )
 
-    # 1. Auto-convert tier
-    tier = effective_val("auto_convert")
-    tier_custom = is_custom("auto_convert")
-    tier_env = setting_env("auto_convert")
+    # 1-6: every value shown is the effective one (UI override, else the live environment),
+    # and every control carries data-initial so Save posts only what you changed
+    def custom(key: str) -> bool:
+        return is_custom(SETTING_MAP[key])
+
     controls_parts.append(
         _setting_select(
             "auto_convert",
             "Auto-convert tier",
-            tier,
-            ["HIGH", "MEDIUM", "OFF"],
-            tier_custom,
-            tier_env,
+            setting_effective("auto_convert"),
+            setting_choices("auto_convert"),
+            custom("auto_convert"),
+            setting_env("auto_convert"),
             hint="What converts without you touching a row. "
             "HIGH: title and author match Audible strongly with a clear margin - safe to "
             "convert automatically. MEDIUM: a good match with weaker evidence (e.g. the "
@@ -1406,81 +1432,66 @@ def render_settings(state) -> str:
             "in the catalog matched - these are never auto-converted.",
         )
     )
-
-    # 2. Bitrate floor
-    bitrate = effective_val("audio_bitrate")
-    bitrate_custom = is_custom("audio_bitrate")
-    bitrate_env = setting_env("audio_bitrate")
     controls_parts.append(
         _setting_select(
             "audio_bitrate",
             "Output quality floor",
-            bitrate,
-            ["64k", "128k", "192k", "256k"],
-            bitrate_custom,
-            bitrate_env,
+            setting_effective("audio_bitrate"),
+            setting_choices("audio_bitrate"),
+            custom("audio_bitrate"),
+            setting_env("audio_bitrate"),
             hint="A floor, not a target: a richer source keeps its own bitrate (capped at 320k). Applies to future conversions only.",
         )
     )
-
-    # 3. Runtime delta
-    delta = setting_effective("runtime_delta")
-    delta_custom = is_custom("max_runtime_delta")
-    delta_env = setting_env("runtime_delta")
+    lo, hi = setting_bounds("runtime_delta")
     controls_parts.append(
         _setting_range(
             "runtime_delta",
             "Wrong-edition tolerance",
-            delta,
-            5,
-            50,
+            setting_effective("runtime_delta"),
+            lo,
+            hi,
             "%",
-            delta_custom,
-            delta_env,
+            custom("runtime_delta"),
+            setting_env("runtime_delta"),
             hint="How far the file runtime may differ from the Audible runtime before a book is HELD for review. Applies to future scans.",
         )
     )
-
-    # 4. Scan interval
-    interval = effective_val("scan_interval_min")
-    interval_custom = is_custom("scan_interval_min")
-    interval_env = setting_env("scan_interval")
+    lo, hi = setting_bounds("scan_interval")
     controls_parts.append(
         _setting_number(
-            "scan_interval", "Scan interval", interval, 5, 1440, "min", interval_custom, interval_env
+            "scan_interval",
+            "Scan interval",
+            setting_effective("scan_interval"),
+            lo,
+            hi,
+            "min",
+            custom("scan_interval"),
+            setting_env("scan_interval"),
         )
     )
-
-    # 5. CPU priority
-    nice = effective_val("nice")
-    nice_custom = is_custom("nice")
-    nice_env = setting_env("nice")
+    lo, hi = setting_bounds("nice")
     controls_parts.append(
         _setting_range(
             "nice",
             "CPU priority (nice)",
-            nice,
-            0,
-            19,
+            setting_effective("nice"),
+            lo,
+            hi,
             "",
-            nice_custom,
-            nice_env,
+            custom("nice"),
+            setting_env("nice"),
             hint="higher = kinder to the system; ffmpeg runs at this priority",
         )
     )
-
-    # 6. Region
-    region = effective_val("region")
-    region_custom = is_custom("region")
-    region_env = setting_env("region")
     controls_parts.append(
         _setting_select(
             "region",
             "Catalog region",
-            region,
-            ["us", "uk", "ca", "au", "de"],
-            region_custom,
-            region_env,
+            setting_effective("region"),
+            setting_choices("region"),
+            custom("region"),
+            setting_env("region"),
             hint="Applies to future catalog lookups.",
         )
     )
@@ -1504,24 +1515,25 @@ def render_settings(state) -> str:
     )
 
 
+def _custom_mark(key: str, custom: bool, env_val) -> str:
+    hidden = "" if custom else " hidden"
+    return f'<span class="ab-custom" data-field="{key}"{hidden}>custom (was {_html(str(env_val))} from env)</span>'
+
+
 def _setting_select(
     key: str, label: str, value: str, options: list[str], custom: bool, env_val, hint: str = ""
 ) -> str:
-    mark = '<span class="ab-custom" data-field="{k}"{h}>custom (was {ev} from env)</span>'.format(
-        k=key, h="" if custom else " hidden", ev=_html(str(env_val))
-    )
+    mark = _custom_mark(key, custom, env_val)
+    selected = next((o for o in options if str(o).upper() == str(value).upper()), options[0])
     opt_html = "".join(
-        '<option value="{v}"{s}>{v}</option>'.format(
-            v=o, s=" selected" if str(o).upper() == str(value).upper() else ""
-        )
-        for o in options
+        f'<option value="{_attr(o)}"{" selected" if o == selected else ""}>{_html(o)}</option>' for o in options
     )
     hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
     return (
         f'<div class="ab-setting" data-setting="{key}">'
         f'<span class="ab-setting-label">{_html(label)}{mark}</span>'
         f"{hint_html}"
-        f'<select class="ab-in">{opt_html}</select>'
+        f'<select class="ab-in" data-initial="{_attr(selected)}">{opt_html}</select>'
         "</div>"
     )
 
@@ -1529,9 +1541,7 @@ def _setting_select(
 def _setting_range(
     key: str, label: str, value: int, vmin: int, vmax: int, suffix: str, custom: bool, env_val, hint: str = ""
 ) -> str:
-    mark = '<span class="ab-custom" data-field="{k}"{h}>custom (was {ev} from env)</span>'.format(
-        k=key, h="" if custom else " hidden", ev=_html(str(env_val))
-    )
+    mark = _custom_mark(key, custom, env_val)
     hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
     return (
         f'<div class="ab-setting" data-setting="{key}">'
@@ -1539,7 +1549,7 @@ def _setting_range(
         f"{hint_html}"
         '<div class="ab-range-wrap">'
         f'<input type="range" min="{vmin}" max="{vmax}" value="{value}" step="1" '
-        'oninput="abRangeShow(this)">'
+        f'data-initial="{value}" oninput="abRangeShow(this)">'
         f'<span class="ab-range-val">{value}{suffix}</span>'
         "</div></div>"
     )
@@ -1548,14 +1558,13 @@ def _setting_range(
 def _setting_number(
     key: str, label: str, value: int, vmin: int, vmax: int, suffix: str, custom: bool, env_val
 ) -> str:
-    mark = '<span class="ab-custom" data-field="{k}"{h}>custom (was {ev} from env)</span>'.format(
-        k=key, h="" if custom else " hidden", ev=_html(str(env_val))
-    )
+    mark = _custom_mark(key, custom, env_val)
     return (
         f'<div class="ab-setting" data-setting="{key}">'
         f'<span class="ab-setting-label">{_html(label)}{mark}</span>'
         '<div class="ab-range-wrap">'
-        f'<input type="number" class="ab-in" min="{vmin}" max="{vmax}" value="{value}" step="1">'
+        f'<input type="number" class="ab-in" min="{vmin}" max="{vmax}" value="{value}" step="1" '
+        f'data-initial="{value}">'
         f"<span>{suffix}</span>"
         "</div></div>"
     )
@@ -2495,16 +2504,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, b'{"error":"bad request"}', "application/json")
             return
 
-        # Reset: clear all six setting keys
+        # Reset: clear all six setting keys and hand back the live environment values
         if payload.get("reset"):
-            from .config import SETTING_KEYS
-
             for key in SETTING_KEYS:
                 self.state.set_meta(f"setting_{key}", None)
             set_effective(self.state)
-            from .config import SETTING_ENV_DEFAULTS as defaults
-
-            self._send(200, json.dumps({"ok": True, "env_defaults": defaults}).encode(), "application/json")
+            self._send(
+                200,
+                json.dumps({"ok": True, "env_defaults": setting_env_defaults()}).encode(),
+                "application/json",
+            )
             return
 
         settings = payload.get("settings") or {}
@@ -2515,74 +2524,42 @@ class Handler(BaseHTTPRequestHandler):
         errors = []
         validated = {}
 
-        # auto_convert
-        if "auto_convert" in settings:
-            v = str(settings["auto_convert"]).upper()
-            if v not in ("HIGH", "MEDIUM", "OFF"):
-                errors.append("auto_convert: must be HIGH, MEDIUM or OFF")
+        # selects: one of the offered choices (which include an unusual env value)
+        for key, fold in (("auto_convert", str.upper), ("audio_bitrate", str.lower), ("region", str.lower)):
+            if key not in settings:
+                continue
+            choices = setting_choices(key)
+            v = fold(str(settings[key]))
+            match = next((c for c in choices if fold(c) == v), None)
+            if match is None:
+                errors.append(f"{key}: must be one of {', '.join(choices)}")
             else:
-                validated["auto_convert"] = v
+                validated[key] = fold(match)
 
-        # audio_bitrate
-        if "audio_bitrate" in settings:
-            v = str(settings["audio_bitrate"])
-            if v not in ("64k", "128k", "192k", "256k"):
-                errors.append("audio_bitrate: must be 64k, 128k, 192k or 256k")
-            else:
-                validated["audio_bitrate"] = v
-
-        # runtime_delta
-        if "runtime_delta" in settings:
+        # numbers: whole numbers inside the bounds (widened to fit the env value)
+        for key in ("runtime_delta", "scan_interval", "nice"):
+            if key not in settings:
+                continue
+            lo, hi = setting_bounds(key)
             try:
-                v = int(settings["runtime_delta"])
-                if v < 5 or v > 50:
+                v = int(settings[key])
+                if v < lo or v > hi:
                     raise ValueError
-                validated["runtime_delta"] = v
+                validated[key] = v
             except (ValueError, TypeError):
-                errors.append("runtime_delta: integer 5-50")
-
-        # scan_interval
-        if "scan_interval" in settings:
-            try:
-                v = int(settings["scan_interval"])
-                if v < 5 or v > 1440:
-                    raise ValueError
-                validated["scan_interval"] = v
-            except (ValueError, TypeError):
-                errors.append("scan_interval: integer 5-1440")
-
-        # nice
-        if "nice" in settings:
-            try:
-                v = int(settings["nice"])
-                if v < 0 or v > 19:
-                    raise ValueError
-                validated["nice"] = v
-            except (ValueError, TypeError):
-                errors.append("nice: integer 0-19")
-
-        # region
-        if "region" in settings:
-            v = str(settings["region"]).lower()
-            if v not in ("us", "uk", "ca", "au", "de"):
-                errors.append("region: must be us, uk, ca, au or de")
-            else:
-                validated["region"] = v
+                errors.append(f"{key}: whole number {lo}-{hi}")
 
         if errors:
             self._send(400, json.dumps({"error": "; ".join(errors)}).encode(), "application/json")
             return
 
-        from .config import SETTING_KEYS as all_keys
-
-        for key in all_keys:
-            if key in validated:
-                self.state.set_meta(f"setting_{key}", validated[key])
-            elif key in (settings or {}):
-                pass  # invalid but already reported above
+        for key, value in validated.items():
+            self.state.set_meta(f"setting_{key}", value)
 
         set_effective(self.state)
-        custom = sorted(validated)
+        # every setting with a saved override, not just the ones in this request: the page
+        # posts only the fields you changed
+        custom = [key for key in SETTING_KEYS if is_custom(SETTING_MAP[key])]
         self._send(200, json.dumps({"ok": True, "custom": custom}).encode(), "application/json")
 
     def _post_refusal(self) -> tuple[int, str] | None:
