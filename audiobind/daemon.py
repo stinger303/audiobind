@@ -22,29 +22,34 @@ def scan_once(state: State, force: bool = False) -> dict:
     state.heartbeat()          # "last scan" should read fresh the moment a pass begins
     units = discover_units(CONFIG.library_root, CONFIG.ignore_globs)
     log.info("scan: %d unit(s) on disk", len(units))
-
-    seen = converted = held = failed = 0
-    for index, unit in enumerate(units):
-        if CONTROL.paused:
-            log.info("paused - stopping before the next book")
-            break
-        previous = state.get(unit.rel_path)
-        if previous and previous.status in ("converted", "held", "failed", "review") and not force:
-            continue
-        seen += 1
-        log.info("[%s]", unit.rel_path)
-        before = previous.status if previous else ""
-        # look the next book up while this one encodes; failure here changes nothing
-        PREFETCH.schedule(state, next_eligible(state, units, index, force))
-        process_unit(state, unit, log=log.info)
-        current = state.get(unit.rel_path)
-        status = current.status if current else ""
-        if status in ("converted", "ready") and before != status:
-            converted += 1
-        elif status == "held":
-            held += 1
-        elif status == "failed":
-            failed += 1
+    CONTROL.begin_scan(len(units))
+    try:
+        seen = converted = held = failed = 0
+        for index, unit in enumerate(units):
+            if CONTROL.paused:
+                log.info("paused - stopping before the next book")
+                break
+            previous = state.get(unit.rel_path)
+            if previous and previous.status in ("converted", "held", "failed", "review") and not force:
+                CONTROL.scan_tick(index + 1)
+                continue
+            seen += 1
+            log.info("[%s]", unit.rel_path)
+            before = previous.status if previous else ""
+            # look the next book up while this one encodes; failure here changes nothing
+            PREFETCH.schedule(state, next_eligible(state, units, index, force))
+            process_unit(state, unit, log=log.info)
+            CONTROL.scan_tick(index + 1)
+            current = state.get(unit.rel_path)
+            status = current.status if current else ""
+            if status in ("converted", "ready") and before != status:
+                converted += 1
+            elif status == "held":
+                held += 1
+            elif status == "failed":
+                failed += 1
+    finally:
+        CONTROL.end_scan()
 
     state.finish_run(run_id, seen, converted, held, failed)
     state.heartbeat()

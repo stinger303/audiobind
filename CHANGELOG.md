@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-11-08
+
+### Added
+- **Scan progress is visible.** Pressing Scan now shows a spinning
+  "Scanning n/m…" indicator in the controls row, and the Scan button disables
+  and relabels itself for the duration. The page stops auto-refreshing while a
+  scan pass runs (it used to reload on every change, fighting the scan), then
+  refreshes once when the pass ends so the fresh results appear. A page loaded
+  mid-scan shows the indicator immediately.
+
+### Changed
+- **Removed the "auto: high" tag** from next to the version badge. The tier
+  belongs in Settings, where it is explained; the header just showed a code
+  fragment nobody asked for.
+
 ## [0.13.0] - 2026-11-08
 
 Four ideas from the Chaptarr / Listenarr comparison landed. The fifth

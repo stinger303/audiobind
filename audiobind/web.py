@@ -114,6 +114,12 @@ body{
 .ab-controls{flex:none;display:flex;align-items:center;gap:8px;padding:12px 24px 4px;}
 .ab-controls .ab-spacer{flex:1}
 .ab-controls .ab-note{font-size:11.5px;color:var(--ab-text4)}
+.ab-spin{width:12px;height:12px;flex:none;border:2px solid rgba(255,255,255,.25);
+  border-top-color:var(--ab-amber);border-radius:50%;display:inline-block;
+  animation:ab-rot .8s linear infinite;}
+@keyframes ab-rot{to{transform:rotate(360deg)}}
+#ab-scanlive{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ab-amber);}
+#ab-scanlive[hidden]{display:none;}
 
 button, .btn{display:inline-flex;align-items:center;gap:6px;position:relative;
   height:30px;padding:0 12px;background:rgba(255,255,255,.02);
@@ -771,9 +777,26 @@ function abBusy() {
   if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return true;
   return false;
 }
+function abScanUI(scan) {
+  const live = document.getElementById('ab-scanlive');
+  const btn = document.getElementById('ab-scanbtn');
+  if (!live) return;
+  live.hidden = false;
+  const text = document.getElementById('ab-scanlive-text');
+  if (text) text.textContent = 'Scanning ' + (scan.done || 0) + '/' + (scan.total || 0) + '\u2026';
+  if (btn) { btn.disabled = true; btn.textContent = 'Scanning\u2026'; }
+}
+function abScanIdle() {
+  const live = document.getElementById('ab-scanlive');
+  const btn = document.getElementById('ab-scanbtn');
+  if (live) live.hidden = true;
+  if (btn && btn.disabled) { btn.disabled = false; btn.textContent = 'Scan now'; }
+}
 function tick() {
   fetch('/api/state').then(r => r.json()).then(d => {
     const bar = document.getElementById('ab-qfill');
+    if (d.scan && d.scan.scanning) { abScanUI(d.scan); return; }
+    abScanIdle();
     if (!bar) return;
     if (!d.running) { if (!abBusy()) location.reload(); return; }
     const p = (d.progress && d.progress.percent) || 0;
@@ -788,9 +811,9 @@ function watch() {
   fetch('/api/state').then(r => r.json()).then(d => {
     // rev moves even when a re-check ends in the same status, so a manual
     // Retry now / Use this ASIN always gets its fresh detail rendered
-    const sig = JSON.stringify(d.counts) + '|' + d.running + '|' + (d.rev || '');
+    const sig = JSON.stringify(d.counts) + '|' + d.running + '|' + (d.rev || '') + '|' + (d.scan && d.scan.scanning ? 'S' : '');
     if (lastCounts === null) { lastCounts = sig; return; }
-    if (sig !== lastCounts && !abBusy()) { location.reload(); }
+    if (sig !== lastCounts && !abBusy() && !(d.scan && d.scan.scanning)) { location.reload(); }
   }).catch(() => {});
 }
 setInterval(watch, 5000);
@@ -839,7 +862,7 @@ PAGE = """<!doctype html>
     <h1><a href="/" title="Back to the library" style="color:inherit;text-decoration:none">Audiobind</a></h1>
     <span class="ab-status{health_stale}"><span class="ab-dot"></span>{health_text}<small> &middot; last scan {health_scan}</small></span>
     <span class="ab-version">v{version}</span>
-    {auto_text}{dry_text}
+    {dry_text}
   </header>
 
 {queue_strip}
@@ -851,6 +874,7 @@ PAGE = """<!doctype html>
     {pause_button}
     {stop_button}
     {dry_button}
+    <span id="ab-scanlive" hidden><span class="ab-spin"></span><span id="ab-scanlive-text">Scanning&hellip;</span></span>
     <span class="ab-spacer"></span>
     {dry_note}
   </section>
@@ -1781,10 +1805,14 @@ def render(state, status: str = "", query: str = "") -> str:
 
     # controls
     paused = CONTROL.paused
+    scanning = CONTROL.scanning
+    prog = CONTROL.scan_progress()
     scan_button = ('<button class="btn primary" title="Re-check every book in the library now and '
                    'convert the ones that pass the automatic rules." '
-                   'onclick="act(\'scan\')"{di}>Scan now</button>').format(
-        di="" if not paused else " disabled")
+                   'onclick="act(\'scan\')" id="ab-scanbtn"{di}>{lbl}</button>').format(
+        di=" disabled" if (paused or scanning) else "",
+        lbl=("Scanning {} / {}&hellip;".format(prog["done"], prog["total"])
+             if scanning else "Scan now"))
     pause_button = (
         '<button class="btn" title="Finish the book that is encoding, then stop converting '
         'until you press Resume." onclick="act(\'resume\')">Resume</button>' if paused
@@ -1855,10 +1883,6 @@ def render(state, status: str = "", query: str = "") -> str:
     health_text = "Healthy" if healthy else "Stale"
 
     # header indicators
-    eff_auto = effective_val("auto_convert")
-    auto_text = (
-        '<span style="font-family:var(--ab-mono);font-size:11px;color:var(--ab-text4)">'
-        'auto: {ac}</span>').format(ac=eff_auto) if eff_auto else ""
     dry_header = (
         '<span style="font-family:var(--ab-mono);font-size:11px;color:var(--ab-amber)">'
         'dry run</span>') if CONTROL.dry_run else ""
@@ -1871,7 +1895,6 @@ def render(state, status: str = "", query: str = "") -> str:
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
         output=CONFIG.host_output or str(CONFIG.output_root),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
-        auto_text=auto_text,
         dry_text=dry_header,
         health_stale=health_stale,
         health_text=health_text,

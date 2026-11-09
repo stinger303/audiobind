@@ -98,5 +98,31 @@ class TestControl(unittest.TestCase):
         self.assertTrue(self.c.describe()["dry_run"])
 
 
+class TestScanProgress(unittest.TestCase):
+    """The status page's busy indicator reads this - it must appear and vanish."""
+
+    def setUp(self):
+        self.c = Control()
+
+    def test_describe_reports_not_scanning_by_default(self):
+        self.assertEqual(self.c.describe()["scan"],
+                         {"scanning": False, "done": 0, "total": 0})
+
+    def test_begin_tick_end_roundtrip(self):
+        self.c.begin_scan(98)
+        self.c.scan_tick(37)
+        self.assertTrue(self.c.scanning)
+        self.assertEqual(self.c.describe()["scan"],
+                         {"scanning": True, "done": 37, "total": 98})
+        self.c.end_scan()
+        self.assertFalse(self.c.scanning)
+        self.assertEqual(self.c.describe()["scan"]["done"], 0)
+
+    def test_end_scan_clears_even_without_ticks(self):
+        self.c.begin_scan(3)
+        self.c.end_scan()
+        self.assertFalse(self.c.describe()["scan"]["scanning"])
+
+
 if __name__ == "__main__":
     unittest.main()

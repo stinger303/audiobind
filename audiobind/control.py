@@ -35,6 +35,10 @@ class Control:
         self.current_unit: str = ""
         #: live encode progress: {"percent", "elapsed", "eta", "speed"}
         self.progress: dict = {}
+        #: live scan progress for the status page's busy indicator
+        self._scanning = False
+        self._scan_done = 0
+        self._scan_total = 0
 
     # ---------------------------------------------------------------- pause
     @property
@@ -113,6 +117,33 @@ class Control:
     def dry_run_source(self) -> str:
         return "default" if self._dry_run is None else "set in UI"
 
+    # ---------------------------------------------------------------- scan progress
+    def begin_scan(self, total: int) -> None:
+        with self._lock:
+            self._scanning = True
+            self._scan_done = 0
+            self._scan_total = int(total)
+
+    def scan_tick(self, done: int) -> None:
+        with self._lock:
+            self._scan_done = int(done)
+
+    def end_scan(self) -> None:
+        with self._lock:
+            self._scanning = False
+            self._scan_done = 0
+            self._scan_total = 0
+
+    @property
+    def scanning(self) -> bool:
+        with self._lock:
+            return self._scanning
+
+    def scan_progress(self) -> dict:
+        with self._lock:
+            return {"scanning": self._scanning,
+                    "done": self._scan_done, "total": self._scan_total}
+
     # ---------------------------------------------------------------- scan
     def request_scan(self) -> None:
         self._scan.set()
@@ -137,6 +168,7 @@ class Control:
             "running": self.running,
             "current_unit": self.current_unit,
             "progress": self.progress,
+            "scan": self.scan_progress(),
         }
 
 
