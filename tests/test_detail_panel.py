@@ -70,6 +70,13 @@ class TestDetailPanelCopy(unittest.TestCase):
         self.assertNotIn("planned action:", page)
         self.assertNotIn("Why it is review", page)
 
+    def test_the_match_block_names_the_book_author_and_links_the_asin(self):
+        page = self.page()
+        self.assertIn("Audible match: <b>Heir of Novron</b>", page)
+        self.assertIn("Author: <b>Michael J. Sullivan</b>", page)
+        self.assertIn("Match confidence: <b>MEDIUM</b>", page)
+        self.assertIn("audible.com/pd?asin=B008UCYCSQ", page)
+
     def test_the_match_block_names_the_book_and_links_the_asin(self):
         page = self.page()
         self.assertIn("Audible match: <b>Heir of Novron</b>", page)

@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.3] - 2026-11-08
+
+### Changed
+- **The Audible match block shows the author.** "Author: Michael J. Sullivan"
+  sits right under the matched title, next to the narrator line that 0.13
+  added.
+
 ## [0.14.2] - 2026-11-08
 
 ### Changed

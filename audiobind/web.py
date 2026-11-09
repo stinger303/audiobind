@@ -1671,6 +1671,9 @@ def render(state, status: str = "", query: str = "") -> str:
         match_data = data.get("match") or {}
         mtitle = match_data.get("title") or unit.title
         decision = [f"Audible match: <b>{_html(mtitle)}</b>"]
+        authors = match_data.get("authors") or []
+        if authors:
+            decision.append("Author: <b>{a}</b>".format(a=_html("; ".join(authors))))
         narrators = match_data.get("narrators") or []
         if narrators:
             decision.append("Narrated by <b>{n}</b>".format(n=_html("; ".join(narrators))))
