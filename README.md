@@ -64,6 +64,12 @@ read-only instead, Delete adapts: it removes the published output and forgets th
 book, keeps the source folder untouched, and tells you so (the folder will
 reappear on the next scan unless you remove it from the share).
 
+Delete only removes what belongs to that one book. When two books' part folders share a
+parent folder (`Author/Foo Part 1`, `Author/Bar Part 1`, ...), each book shows up on its own
+row (`Author#foo`, `Author#bar`), and Delete removes only that book's part folders, never
+the shared `Author` folder. If the folder you're deleting also holds another book's audio,
+Delete refuses and nothing is removed.
+
 ## Installation
 
 ### Unraid (Community Applications)
