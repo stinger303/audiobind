@@ -11,7 +11,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, unquote
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from . import __version__
 from . import overrides as overrides_mod
@@ -2585,7 +2585,40 @@ class Handler(BaseHTTPRequestHandler):
         custom = sorted(validated)
         self._send(200, json.dumps({"ok": True, "custom": custom}).encode(), "application/json")
 
+    def _post_refusal(self) -> tuple[int, str] | None:
+        """Cross-site request guard for every POST: (status, error) to refuse, else None.
+
+        * The body must be declared ``application/json``. A browser can only send that
+          cross-origin after a CORS preflight, which this server never answers, so a page
+          on another site cannot fire a no-cors ``text/plain`` POST at the API.
+        * When the browser says where the request came from (Origin, else Referer), that
+          host must be this server's own Host (or X-Forwarded-Host behind a proxy).
+          Requests with neither header - curl, scripts - stay allowed.
+        """
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if ctype != "application/json":
+            return 415, "requests must be sent as application/json"
+        source = self.headers.get("Origin")
+        if source is None:
+            source = self.headers.get("Referer")
+        if source is None:
+            return None
+        claimed = urlsplit(source.strip()).netloc.lower() if source.strip() not in ("", "null") else ""
+        allowed = {
+            h.strip().lower()
+            for h in (self.headers.get("Host") or "", *(self.headers.get("X-Forwarded-Host") or "").split(","))
+            if h.strip()
+        }
+        if not claimed or claimed not in allowed:
+            return 403, "cross-site request refused"
+        return None
+
     def do_POST(self):  # noqa: N802
+        refusal = self._post_refusal()
+        if refusal is not None:
+            code, message = refusal
+            self._send(code, json.dumps({"error": message}).encode(), "application/json")
+            return
         if self.path.startswith("/api/unit"):
             self._handle_unit()
             return

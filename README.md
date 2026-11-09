@@ -147,6 +147,13 @@ curl -X POST -H 'Content-Type: application/json' -d '{"action":"scan"}'     loca
 curl -X POST -H 'Content-Type: application/json' -d '{"action":"dry_run","value":false}' localhost:8080/api/control
 ```
 
+Every POST must be sent as `Content-Type: application/json` (anything else gets a 415).
+If the request carries an `Origin` or `Referer` header, it has to name this server's own
+host, or `X-Forwarded-Host` when you're behind a reverse proxy. Anything else gets a 403. That
+stops another website you visit from pressing these buttons for you. Scripts that send
+neither header, like the `curl` lines above, keep working. There is no login, so keep the
+port on your LAN.
+
 ### CLI
 
 ```bash
