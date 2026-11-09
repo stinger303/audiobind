@@ -9,7 +9,7 @@ from . import web
 from .config import CONFIG, effective_val, set_effective
 from .control import CONTROL
 from .pipeline import process_unit
-from .prefetch import PREFETCH, next_eligible
+from .prefetch import PREFETCH, already_decided, next_eligible
 from .state import State
 from .units import discover_units
 
@@ -31,7 +31,7 @@ def scan_once(state: State, force: bool = False) -> dict:
                 log.info("paused - stopping before the next book")
                 break
             previous = state.get(unit.rel_path)
-            if previous and previous.status in ("converted", "held", "failed", "review") and not force:
+            if previous and not force and already_decided(previous):
                 CONTROL.scan_tick(index + 1)
                 continue
             seen += 1

@@ -39,6 +39,9 @@ class Audit:
     overrides: dict = field(default_factory=dict)
     #: each source file's probed length, reused by the chapter plan (no second ffprobe)
     durations: dict = field(default_factory=dict)
+    #: where convert_unit would file the book, and whether it was already there
+    out_path: str = ""
+    already_published: bool = False
 
     @property
     def runtime_matches(self) -> bool:
@@ -127,7 +130,9 @@ def convert_unit(audit: Audit, log=print):
     title = book.get("title") or match.product.title
 
     out_path = library.m4b_path(series, authors, title, sequence)
+    audit.out_path = str(out_path)
     if out_path.exists():
+        audit.already_published = True
         log(f"  already published: {out_path}")
         return None
     if CONTROL.dry_run:
@@ -135,23 +140,30 @@ def convert_unit(audit: Audit, log=print):
         return None  # nothing was written, so it is not "converted"
 
     work_dir = CONFIG.work_dir / f"{abs(hash(unit.rel_path)) % 10**8:08x}"
-    CONVERT_LOCK.acquire()
-    CONTROL.begin_unit(unit.rel_path)
-    try:
-        # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
-        plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None)
-        result = encode.encode(
-            unit, match, book, work_dir, out_path, log=log, copy_audio=(audit.action == "remux"), plan=plan
-        )
-        encode.write_abs_metadata(out_path.parent / "metadata.json", book, match, plan.chapters, result.duration)
-        log(f"  published {out_path} ({result.size / 1e6:.0f} MB, {result.chapters} chapters)")
-        return result
-    finally:
-        # a stopped encode leaves only the work directory, which is deleted here, so the
-        # library never sees a partial file and the book is simply retried next scan
-        shutil.rmtree(work_dir, ignore_errors=True)
-        CONTROL.end_unit()
-        CONVERT_LOCK.release()
+    with CONVERT_LOCK:
+        # checked again under the lock: a manual action and the daemon can both reach
+        # this point for the same book, and only the first may encode it
+        if out_path.exists():
+            audit.already_published = True
+            log(f"  already published (while waiting for the encoder): {out_path}")
+            return None
+        CONTROL.begin_unit(unit.rel_path)
+        try:
+            # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
+            plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None)
+            result = encode.encode(
+                unit, match, book, work_dir, out_path, log=log, copy_audio=(audit.action == "remux"), plan=plan
+            )
+            encode.write_abs_metadata(
+                out_path.parent / "metadata.json", book, match, plan.chapters, result.duration
+            )
+            log(f"  published {out_path} ({result.size / 1e6:.0f} MB, {result.chapters} chapters)")
+            return result
+        finally:
+            # a stopped encode leaves only the work directory, which is deleted here, so the
+            # library never sees a partial file and the book is simply retried next scan
+            shutil.rmtree(work_dir, ignore_errors=True)
+            CONTROL.end_unit()
 
 
 def record(
@@ -182,7 +194,7 @@ def record(
                 "confidence": audit.confidence,
                 # kept so the status page can show cover art without a second catalog call
                 "image": audit.match.product.image if audit.match.product else "",
-                # a user-pinned ASIN that had no catalog data; the search result was used
+                # a user-pinned ASIN that had no catalog data; nothing was matched
                 "asin_pin_failed": audit.match.asin_pin_failed,
             },
             "overrides": overrides_mod.normalise(audit.overrides),
@@ -254,6 +266,23 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
     def rec(status: str, **kw) -> None:
         record(state, audit, status, reopen=manual and status in ("review", "held", "failed"), **kw)
 
+    def nothing_written() -> None:
+        """convert_unit returned None: the book was already filed, or this is a dry run.
+
+        Shared by the forced and the automatic branch, so a Convert anyway in dry run
+        says "dry run" rather than claiming the output already exists.
+        """
+        if audit.already_published:
+            prev = state.get(unit.rel_path)
+            if prev and prev.output:
+                # a re-check of an already-converted book must not downgrade it
+                log("  already published - row unchanged")
+            else:
+                # the output path is kept so the next scan can skip this book while it exists
+                rec("ready", output=audit.out_path, note="already published - the output file exists")
+        else:
+            rec("ready", note="dry run - nothing written")
+
     started = time.time()
     audit = audit_unit(unit, state.get_asin_override(unit.rel_path))
     audit.overrides = state.get_overrides(unit.rel_path)
@@ -271,12 +300,8 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
         log("  forced by operator - converting regardless of tier/hold")
         try:
             result = convert_unit(audit, log=log)
-            if result is None:
-                prev = state.get(unit.rel_path)
-                if prev and prev.output:
-                    log("  already published - converted row unchanged")
-                else:
-                    rec("ready", note="already published - the output file exists")
+            if result is None:  # dry run, or already published
+                nothing_written()
             else:
                 rec("converted", output=str(result.path), result=result)
         except Stopped:
@@ -290,15 +315,7 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
         try:
             result = convert_unit(audit, log=log)
             if result is None:  # dry run, or already published
-                if CONTROL.dry_run:
-                    rec("ready", note="dry run - nothing written")
-                else:
-                    prev = state.get(unit.rel_path)
-                    if prev and prev.output:
-                        # a re-check of an already-converted book must not downgrade it
-                        log("  already published - converted row unchanged")
-                    else:
-                        rec("ready", note="already published - the output file exists")
+                nothing_written()
             else:
                 rec("converted", output=str(result.path), result=result)
         except Stopped:

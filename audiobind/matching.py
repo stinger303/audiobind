@@ -22,7 +22,7 @@ class Match:
     asin_override: bool = False
     #: catalog language of the matched product (grading caps non-English at MEDIUM)
     language: str = "english"
-    #: set when a user-pinned ASIN had no catalog data and the search was used instead
+    #: set when a user-pinned ASIN had no catalog data; nothing is matched then (no search)
     asin_pin_failed: str = ""
     confidence: str = "NONE"
     #: other candidates the search scored highly (other editions of the same work);
@@ -135,9 +135,7 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
             break
 
     if not scored:
-        fallback = Match(author_from_series=author_from_series)
-        fallback.asin_pin_failed = asin_override
-        return fallback
+        return Match(author_from_series=author_from_series)
 
     ranked = sorted(scored.values(), key=lambda s: s["score"], reverse=True)
     best = ranked[0]
@@ -156,7 +154,6 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
         language=best["product"].language,
     )
     match.confidence = grade(match)
-    match.asin_pin_failed = asin_override
     # keep the runners-up (other editions of the same work, near misses) so the
     # detail panel can offer one-click "use this edition" ASIN pins
     match.alternates = [

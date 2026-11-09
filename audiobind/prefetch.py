@@ -19,14 +19,30 @@ from __future__ import annotations
 
 import logging
 import threading
+from pathlib import Path
 
 from . import catalog, matching
+from .control import CONTROL
 from .units import BookUnit
 
 log = logging.getLogger("audiobind")
 
 #: statuses that mean "already decided" - the daemon skips these, so prefetching them is waste
 DECIDED = ("converted", "held", "failed", "review")
+
+
+def already_decided(previous) -> bool:
+    """True when a normal (non-forced) scan has nothing new to do for this row.
+
+    A "ready" row whose output file already exists was published before - re-matching it
+    against the catalog every scan only costs lookups. A dry-run "ready" row (no output)
+    is not skipped: it must convert once dry run is switched off.
+    """
+    if previous.status in DECIDED:
+        return True
+    if previous.status == "ready" and previous.output and not CONTROL.dry_run:
+        return Path(previous.output).exists()
+    return False
 
 
 def next_eligible(state, units: list[BookUnit], after_index: int, force: bool = False):
@@ -38,7 +54,7 @@ def next_eligible(state, units: list[BookUnit], after_index: int, force: bool = 
             previous = state.get(unit.rel_path)
         except Exception:  # noqa: BLE001 - never break the caller
             return None
-        if previous and previous.status in DECIDED:
+        if previous and already_decided(previous):
             continue
         return unit
     return None

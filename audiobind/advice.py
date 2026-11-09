@@ -29,7 +29,7 @@ def explain(
     if pin:
         why = (
             f"Your pinned ASIN {pin} is not in Audible's catalog - nothing is published "
-            f"under it - so the best search result was used instead. {why}"
+            f"under it - so nothing was matched. {why}"
         )
         what = what + " The pin stays saved until you replace it with a live ASIN."
     return why, what
