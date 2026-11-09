@@ -180,6 +180,16 @@ class State:
             d["reopen"] = False
             self.connection.execute("UPDATE units SET detail=? WHERE path=?", (json.dumps(d), path))
 
+    def has_asin(self, asin: str) -> bool:
+        """True when some book in the library is matched or pinned to this ASIN."""
+        if not asin:
+            return False
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT 1 FROM units WHERE asin = ? OR asin_override = ? LIMIT 1", (asin, asin)
+            ).fetchone()
+        return row is not None
+
     def detail_for_asin(self, asin: str) -> str:
         """The newest detail blob recorded for an ASIN (the cover proxy reads the image URL)."""
         if not asin:

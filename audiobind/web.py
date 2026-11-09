@@ -31,6 +31,7 @@ from .config import (
 )
 from .control import CONTROL
 from .covers import resolve as resolve_cover
+from .covers import valid_asin
 from .pipeline import process_unit
 from .units import files_under, find_unit, foreign_audio, owned_paths
 
@@ -2476,8 +2477,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if action == "set_asin":
             asin = str(payload.get("asin", "")).strip().upper()
-            if len(asin) < 8:
-                self._send(400, b'{"error":"that is not an ASIN"}', "application/json")
+            if not valid_asin(asin):
+                self._send(
+                    400,
+                    b'{"error":"that is not an ASIN - it is 8-14 letters and digits, like B005EHN61O"}',
+                    "application/json",
+                )
                 return
             self.state.set_asin_override(rel, asin)
             action = "retry"

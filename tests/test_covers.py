@@ -43,6 +43,11 @@ class CoverBase(unittest.TestCase):
 
         catalog.download = _download
 
+    def known(self, asin):
+        """Covers are only fetched for ASINs the library actually has (v0.14.4)."""
+        detail = json.dumps({"match": {"asin": asin, "image": "https://m.media-amazon.com/images/I/x.jpg"}})
+        self.state.save(UnitState(path=f"known/{asin}", status="review", asin=asin, detail=detail))
+
 
 class TestCoverCache(CoverBase):
     def test_asin_is_validated_before_touching_the_filesystem(self):
@@ -55,6 +60,7 @@ class TestCoverCache(CoverBase):
         self.assertEqual(self.downloads, [])
 
     def test_fetches_once_then_serves_from_disk(self):
+        self.known("B005EHN61O")
         self.fake_download()
         first = covers.fetch_by_asin(self.state, "B005EHN61O")
         self.assertIsNotNone(first)
@@ -74,12 +80,14 @@ class TestCoverCache(CoverBase):
         self.assertEqual(covers.fetch_by_asin(self.state, "B005EHN61O").read_bytes(), JPEG)
 
     def test_a_failed_fetch_is_remembered_and_not_retried(self):
+        self.known("B00FAILFAIL")
         self.fake_download(ok=False)
         self.assertIsNone(covers.fetch_by_asin(self.state, "B00FAILFAIL"))
         self.assertIsNone(covers.fetch_by_asin(self.state, "B00FAILFAIL"))
         self.assertEqual(len(self.downloads), 1, "a dead cover was re-requested")
 
     def test_a_stale_miss_marker_allows_a_retry(self):
+        self.known("B00FAILFAIL")
         self.fake_download(ok=False)
         covers.fetch_by_asin(self.state, "B00FAILFAIL")
         marker = covers.cache_dir() / "B00FAILFAIL.miss"
@@ -91,6 +99,7 @@ class TestCoverCache(CoverBase):
         self.assertIsNotNone(covers.fetch_by_asin(self.state, "B00FAILFAIL"))
 
     def test_no_partial_file_is_left_behind_on_failure(self):
+        self.known("B00FAILFAIL")
         self.fake_download(ok=False)
         covers.fetch_by_asin(self.state, "B00FAILFAIL")
         self.assertEqual(list(covers.cache_dir().glob("*.part")), [])

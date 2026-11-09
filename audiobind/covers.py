@@ -109,6 +109,10 @@ def fetch_by_asin(state: State, asin: str) -> Path | None:
     path = cached_path(asin)
     if path.is_file():
         return path  # served from disk forever after
+    if not state.has_asin(asin):
+        # only books in the library get covers fetched: /cover?asin=<anything> must not
+        # trigger outbound requests or leave a .miss file per made-up value
+        return None
     if _miss_is_fresh(asin):
         return None
     try:

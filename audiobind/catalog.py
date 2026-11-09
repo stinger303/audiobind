@@ -158,14 +158,19 @@ def search(title: str | None = None, author: str | None = None, limit: int = 10)
     return [Product.from_audible(p) for p in (data.get("products") or [])]
 
 
+def _q(value: str) -> str:
+    """One URL path segment or query value: '/', '?', '#' and '..' can't escape it."""
+    return urllib.parse.quote(str(value or ""), safe="")
+
+
 def book(asin: str) -> dict:
     eff_region = effective_val("region")
-    return _get_json(f"{AUDNEX}/books/{asin}?region={eff_region}") or {}
+    return _get_json(f"{AUDNEX}/books/{_q(asin)}?region={_q(eff_region)}") or {}
 
 
 def chapters(asin: str) -> list[dict]:
     eff_region = effective_val("region")
-    data = _get_json(f"{AUDNEX}/books/{asin}/chapters?region={eff_region}") or {}
+    data = _get_json(f"{AUDNEX}/books/{_q(asin)}/chapters?region={_q(eff_region)}") or {}
     return data.get("chapters") or []
 
 
@@ -174,12 +179,40 @@ def chapter_ms(chapter: dict) -> int:
     return chapter.get("lengthMs") or chapter.get("length_ms") or 0
 
 
+#: cover art only ever comes from Amazon's / Audible's image hosts, over https
+IMAGE_HOST_SUFFIXES = ("media-amazon.com", "images-amazon.com", "ssl-images-amazon.com", "audible.com")
+
+
+def allowed_image_url(url: str) -> bool:
+    """https on an Amazon/Audible host - never file://, ftp:// or an arbitrary host."""
+    try:
+        parts = urllib.parse.urlsplit(str(url or "").strip())
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower().rstrip(".")
+    if parts.scheme != "https" or not host:
+        return False
+    return any(host == s or host.endswith("." + s) for s in IMAGE_HOST_SUFFIXES)
+
+
+class _AllowlistRedirects(urllib.request.HTTPRedirectHandler):
+    """A redirect must land on an allowed image URL too."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not allowed_image_url(newurl):
+            raise urllib.error.HTTPError(newurl, code, "redirect to a disallowed host", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_image_opener = urllib.request.build_opener(_AllowlistRedirects)
+
+
 def download(url: str, destination: str) -> bool:
-    if not url:
+    if not url or not allowed_image_url(url):
         return False
     try:
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with _image_opener.open(request, timeout=30) as response:
             data = response.read()
         if len(data) < 2000:
             return False
@@ -198,7 +231,7 @@ def product_images(asin: str) -> dict:
     catalog for ``product_images`` is the reliable source, and ``_get_json``'s memoisation
     makes the repeat lookups free.
     """
-    data = _get_json(f"{AUDIBLE}/{asin}?response_groups=media&image_sizes=500,1000") or {}
+    data = _get_json(f"{AUDIBLE}/{_q(asin)}?response_groups=media&image_sizes=500,1000") or {}
     product = data.get("product") or {}
     return product.get("product_images") or {}
 
@@ -211,4 +244,4 @@ def cover_url(product: dict, asin: str) -> str:
     for size in ("1000", "500"):
         if images.get(size):
             return images[size]
-    return f"https://m.media-amazon.com/images/P/{asin}.01._SCLZZZZZZZ_.jpg"
+    return f"https://m.media-amazon.com/images/P/{_q(asin)}.01._SCLZZZZZZZ_.jpg"
