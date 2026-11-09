@@ -37,6 +37,8 @@ class Audit:
     src_mb: float = 0.0
     #: operator metadata corrections for this unit, from the state DB
     overrides: dict = field(default_factory=dict)
+    #: each source file's probed length, reused by the chapter plan (no second ffprobe)
+    durations: dict = field(default_factory=dict)
 
     @property
     def runtime_matches(self) -> bool:
@@ -51,6 +53,7 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
     total = 0.0
     for path in unit.files:
         info = probe(path)
+        audit.durations[path] = info.duration
         total += info.duration
         if info.codec:
             audit.codecs.add(info.codec)
@@ -135,12 +138,12 @@ def convert_unit(audit: Audit, log=print):
     CONVERT_LOCK.acquire()
     CONTROL.begin_unit(unit.rel_path)
     try:
-        duration = sum(probe(f).duration for f in unit.files)
-        chapters, _source = encode.build_chapters(catalog.chapters(match.asin), duration, unit)
+        # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
+        plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None)
         result = encode.encode(
-            unit, match, book, work_dir, out_path, log=log, copy_audio=(audit.action == "remux")
+            unit, match, book, work_dir, out_path, log=log, copy_audio=(audit.action == "remux"), plan=plan
         )
-        encode.write_abs_metadata(out_path.parent / "metadata.json", book, match, chapters, result.duration)
+        encode.write_abs_metadata(out_path.parent / "metadata.json", book, match, plan.chapters, result.duration)
         log(f"  published {out_path} ({result.size / 1e6:.0f} MB, {result.chapters} chapters)")
         return result
     finally:

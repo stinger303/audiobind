@@ -57,7 +57,42 @@ def _nice_prefix() -> list[str]:
 _CHAPTERED_EXTS = (".m4b", ".m4a", ".mp3")
 
 
-def _source_chapters(unit: BookUnit) -> list[dict]:
+@dataclass
+class ChapterPlan:
+    """Chapters for one conversion, worked out once and shared by the encoder and metadata.json.
+
+    ``durations`` holds every source file's probed length, so the encoder does not run
+    ffprobe over the same files a second time.
+    """
+
+    chapters: list[dict]
+    source: str
+    durations: dict[str, float]
+
+    @property
+    def total(self) -> float:
+        return sum(self.durations.values())
+
+
+def _durations(unit: BookUnit, durations: dict[str, float] | None) -> dict[str, float]:
+    if durations is not None:
+        return durations
+    return {path: probe(path).duration for path in unit.files}
+
+
+def plan_chapters(unit: BookUnit, asin: str, durations: dict[str, float] | None = None) -> ChapterPlan:
+    """Build the chapter plan for ``encode()``, probing each source file at most once.
+
+    Pass ``durations`` when the files were already probed (the audit does), and nothing
+    is probed again.
+    """
+    if durations is None or set(durations) != set(unit.files):
+        durations = _durations(unit, None)
+    chapters, source = build_chapters(catalog.chapters(asin), sum(durations.values()), unit, durations)
+    return ChapterPlan(chapters=chapters, source=source, durations=durations)
+
+
+def _source_chapters(unit: BookUnit, durations: dict[str, float] | None = None) -> list[dict]:
     """Chapter markers embedded in the source files themselves.
 
     Offset-accumulated across parts so a multi-disc rip becomes one continuous
@@ -66,58 +101,87 @@ def _source_chapters(unit: BookUnit) -> list[dict]:
     or a file whose duration cannot be probed, since then the offsets
     cannot be trusted).
     """
+    durations = _durations(unit, durations)
     chapters: list[dict] = []
     cursor = 0.0
-    for part in unit.parts:
-        for path in sorted(part.files, key=lambda p: os.path.basename(p).lower()):
-            length = probe(path).duration
-            if length <= 0:
-                return []  # cannot place chapters on a timeline we cannot measure
-            for item in probe_chapters(path):
-                try:
-                    start = float(item.get("start_time") or 0)
-                    end = float(item.get("end_time") or 0)
-                except (TypeError, ValueError):
-                    continue
-                if end <= start:
-                    continue
-                title = ((item.get("tags") or {}).get("title") or f"Chapter {len(chapters) + 1}").strip()
-                chapters.append(
-                    {
-                        "start": round(cursor + min(start, length), 3),
-                        "end": round(cursor + min(end, length), 3),
-                        "title": title,
-                    }
-                )
-            cursor += length
+    # unit.files is the concat order (natural sort: Track 2 before Track 10); the
+    # timeline must walk the files in exactly the order the audio is joined
+    for path in unit.files:
+        length = durations.get(path, 0.0)
+        if length <= 0:
+            return []  # cannot place chapters on a timeline we cannot measure
+        for item in probe_chapters(path):
+            try:
+                start = float(item.get("start_time") or 0)
+                end = float(item.get("end_time") or 0)
+            except (TypeError, ValueError):
+                continue
+            if end <= start:
+                continue
+            title = ((item.get("tags") or {}).get("title") or f"Chapter {len(chapters) + 1}").strip()
+            chapters.append(
+                {
+                    "start": round(cursor + min(start, length), 3),
+                    "end": round(cursor + min(end, length), 3),
+                    "title": title,
+                }
+            )
+        cursor += length
     return chapters if len(chapters) >= 2 else []
 
 
+def _start_ms(chapter: dict) -> int | None:
+    """Audnex ``startOffsetMs`` (older payloads: ``start_offset_ms``), or None when absent."""
+    for key in ("startOffsetMs", "start_offset_ms"):
+        value = chapter.get(key)
+        if value is not None:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
 def _audnex_chapters(audnex_chapters: list[dict], duration: float) -> list[dict] | None:
-    """Audnex timings mapped onto the merged timeline, or None when they disagree."""
+    """Audnex timings mapped onto the merged timeline, or None when they disagree.
+
+    Each chapter starts at its own ``startOffsetMs`` when Audnex gives one, so a gap or a
+    brand intro before a chapter does not shift every chapter after it. Only when the
+    offsets are missing (or out of order) do the starts fall back to a running sum of
+    ``lengthMs``. Either way the timeline is scaled onto the measured runtime.
+    """
     if not audnex_chapters:
         return None
-    total = sum(catalog.chapter_ms(c) for c in audnex_chapters) / 1000.0
+    lengths = [catalog.chapter_ms(c) / 1000.0 for c in audnex_chapters]
+    raw_offsets = [_start_ms(c) for c in audnex_chapters]
+    offsets = [o / 1000.0 for o in raw_offsets if o is not None]
+    use_offsets = len(offsets) == len(lengths) and all(b >= a for a, b in zip(offsets, offsets[1:]))
+    total = offsets[-1] + lengths[-1] if use_offsets else sum(lengths)
     if total <= 0 or not 0.85 <= duration / total <= 1.20:
         return None
     scale = duration / total
     chapters, cursor = [], 0.0
-    for item in audnex_chapters:
-        length = catalog.chapter_ms(item) / 1000.0 * scale
+    for index, item in enumerate(audnex_chapters):
+        start = offsets[index] * scale if use_offsets else cursor
+        length = lengths[index] * scale
         chapters.append(
             {
-                "start": round(cursor, 3),
-                "end": round(cursor + length, 3),
+                "start": round(start, 3),
+                "end": round(start + length, 3),
                 "title": (item.get("title") or f"Chapter {len(chapters) + 1}").strip(),
             }
         )
-        cursor += length
+        cursor = start + length
+    for current, following in zip(chapters, chapters[1:]):
+        current["end"] = following["start"]  # a gap belongs to the chapter before it
     if chapters:
         chapters[-1]["end"] = round(duration, 3)
     return chapters
 
 
-def build_chapters(audnex_chapters: list[dict], duration: float, unit: BookUnit) -> tuple[list[dict], str]:
+def build_chapters(
+    audnex_chapters: list[dict], duration: float, unit: BookUnit, durations: dict[str, float] | None = None
+) -> tuple[list[dict], str]:
     """Chapter plan for the merged m4b, using the best evidence available.
 
     Three tiers, in priority order:
@@ -136,7 +200,8 @@ def build_chapters(audnex_chapters: list[dict], duration: float, unit: BookUnit)
     Returns (chapters, source-label); the label names the winning tier so the
     "chapters: N from X" log line records which evidence was used.
     """
-    src_chapters = _source_chapters(unit)
+    durations = _durations(unit, durations)
+    src_chapters = _source_chapters(unit, durations)
     audnex_plan = _audnex_chapters(audnex_chapters, duration)
 
     if src_chapters and audnex_plan:
@@ -152,17 +217,16 @@ def build_chapters(audnex_chapters: list[dict], duration: float, unit: BookUnit)
         return audnex_plan, f"audnex ({len(audnex_plan)} chapters, scaled)"
 
     chapters, cursor = [], 0.0
-    for part in unit.parts:
-        for path in sorted(part.files, key=lambda p: os.path.basename(p).lower()):
-            length = probe(path).duration
-            chapters.append(
-                {
-                    "start": round(cursor, 3),
-                    "end": round(cursor + length, 3),
-                    "title": os.path.splitext(os.path.basename(path))[0][:90],
-                }
-            )
-            cursor += length
+    for path in unit.files:  # concat order - see _source_chapters
+        length = durations.get(path, 0.0)
+        chapters.append(
+            {
+                "start": round(cursor, 3),
+                "end": round(cursor + length, 3),
+                "title": os.path.splitext(os.path.basename(path))[0][:90],
+            }
+        )
+        cursor += length
     return chapters, f"per-file ({len(chapters)} chapters)"
 
 
@@ -250,13 +314,25 @@ def clean_description(html: str) -> str:
 
 
 def encode(
-    unit: BookUnit, match, book: dict, work_dir: Path, out_path: Path, log=print, copy_audio: bool = False
+    unit: BookUnit,
+    match,
+    book: dict,
+    work_dir: Path,
+    out_path: Path,
+    log=print,
+    copy_audio: bool = False,
+    plan: ChapterPlan | None = None,
 ) -> EncodeResult:
-    """Run ffmpeg. Raises RuntimeError when the result fails verification."""
-    work_dir.mkdir(parents=True, exist_ok=True)
-    total_duration = sum(probe(f).duration for f in unit.files)
+    """Run ffmpeg. Raises RuntimeError when the result fails verification.
 
-    chapters, source = build_chapters(catalog.chapters(match.asin), total_duration, unit)
+    ``plan`` is the chapter plan the caller already built (``plan_chapters``); it is only
+    worked out here when the caller did not pass one.
+    """
+    work_dir.mkdir(parents=True, exist_ok=True)
+    if plan is None:
+        plan = plan_chapters(unit, match.asin)
+    total_duration = plan.total
+    chapters, source = plan.chapters, plan.source
     log(f"  chapters: {len(chapters)} from {source}")
 
     concat_file = work_dir / "concat.txt"
@@ -333,7 +409,8 @@ def encode(
         if proc.stderr is not None:
             errors.append(proc.stderr.read() or "")
 
-    threading.Thread(target=drain_stderr, daemon=True, name="ffmpeg-stderr").start()
+    drain = threading.Thread(target=drain_stderr, daemon=True, name="ffmpeg-stderr")
+    drain.start()
 
     started = time.time()
     speed = 0.0
@@ -363,6 +440,9 @@ def encode(
     finally:
         CONTROL.detach_process()
         CONTROL.clear_progress()
+        # errors[] is only complete once the drain thread has read stderr to EOF;
+        # reading it earlier left "ffmpeg failed:" with an empty reason
+        drain.join(timeout=5)
 
     if CONTROL.stop_requested:
         raise Stopped("stopped by operator")
