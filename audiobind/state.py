@@ -60,7 +60,9 @@ class UnitState:
     out_mb: float = 0.0
     chapters: int = 0
     detail: str = ""
-    overrides: str = ""
+    # no ``overrides`` field on purpose: operator metadata corrections are owned by
+    # set_overrides()/get_overrides(). save() never writes that column, so a field here
+    # would only be a stale copy that a re-save could be mistaken for
     alternates: str = ""
 
 
@@ -160,19 +162,22 @@ class State:
         return f"{row[0] or 0.0:.6f}|{row[1]}"
 
     def clear_reopen(self, path: str) -> None:
-        """The status page has shown this book's re-check banner - stop re-opening it."""
+        """The status page has shown this book's re-check banner - stop re-opening it.
+
+        Read and write happen under one lock hold: a record() from a manual re-check that
+        lands in between must not be overwritten with the stale detail read here.
+        """
         with self._lock:
             row = self.connection.execute("SELECT detail FROM units WHERE path=?", (path,)).fetchone()
-        if not row or not row["detail"]:
-            return
-        try:
-            d = json.loads(row["detail"])
-        except ValueError:
-            return
-        if not d.get("reopen"):
-            return
-        d["reopen"] = False
-        with self._lock:
+            if not row or not row["detail"]:
+                return
+            try:
+                d = json.loads(row["detail"])
+            except ValueError:
+                return
+            if not isinstance(d, dict) or not d.get("reopen"):
+                return
+            d["reopen"] = False
             self.connection.execute("UPDATE units SET detail=? WHERE path=?", (json.dumps(d), path))
 
     def detail_for_asin(self, asin: str) -> str:
