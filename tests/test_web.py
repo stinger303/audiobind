@@ -15,8 +15,17 @@ class TestRender(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
         for i, status in enumerate(["converted", "ready", "ready", "review", "held", "failed"]):
-            self.state.save(UnitState(path=f"Author/Book {i}", status=status, confidence="HIGH",
-                                      title=f"Book {i}", hours=2.5, files=3, src_mb=120))
+            self.state.save(
+                UnitState(
+                    path=f"Author/Book {i}",
+                    status=status,
+                    confidence="HIGH",
+                    title=f"Book {i}",
+                    hours=2.5,
+                    files=3,
+                    src_mb=120,
+                )
+            )
 
     def tearDown(self):
         self.state.close()
@@ -32,7 +41,7 @@ class TestRender(unittest.TestCase):
         # Table rows show only ready books, but problem units may still be in the shelf
         self.assertIn("Book 1", page)
         self.assertIn("Book 2", page)
-        self.assertNotIn("Book 0", page)      # converted
+        self.assertNotIn("Book 0", page)  # converted
         # Book 3 (review) appears in the shelf, so check it's not in table rows
         body_content = page.split('<tbody id="ab-body">')[1].split("</tbody>")[0]
         self.assertNotIn("Book 3", body_content)
@@ -49,13 +58,14 @@ class TestRender(unittest.TestCase):
 
     def test_detail_panel_carries_source_and_output(self):
         page = web.render(self.state)
-        self.assertIn("Author/Book 0", page)     # source path in the panel
+        self.assertIn("Author/Book 0", page)  # source path in the panel
         self.assertIn("120 MB", page)
 
     def test_version_string_is_real(self):
         from audiobind import __version__
+
         page = web.render(self.state)
-        self.assertIn('v{}'.format(__version__), page)
+        self.assertIn(f"v{__version__}", page)
 
     def test_encoding_strip_hidden_when_idle(self):
         page = web.render(self.state)
@@ -81,8 +91,11 @@ class TestRender(unittest.TestCase):
         self.assertIn("Book 5", page)
 
     def test_shelf_empty_state_when_nothing_needs_attention(self):
+        import pathlib
+        import tempfile
+
         from audiobind.state import State
-        import pathlib, tempfile
+
         d = tempfile.TemporaryDirectory()
         s = State(pathlib.Path(d.name))
         try:
@@ -100,16 +113,42 @@ class TestReasonLine(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
-        self.state.save(UnitState(
-            path="Author/Held Book", status="held", confidence="HIGH",
-            title="Held Book", hours=5.2, files=3, src_mb=120, note=""))
-        self.state.save(UnitState(
-            path="Author/Failed Book", status="failed", confidence="MEDIUM",
-            title="Failed Book", hours=0, files=1, src_mb=0,
-            note="the encoder returned an error"))
-        self.state.save(UnitState(
-            path="Author/Review Book", status="review", confidence="LOW",
-            title="Review Book", hours=0, files=1, src_mb=0, note=""))
+        self.state.save(
+            UnitState(
+                path="Author/Held Book",
+                status="held",
+                confidence="HIGH",
+                title="Held Book",
+                hours=5.2,
+                files=3,
+                src_mb=120,
+                note="",
+            )
+        )
+        self.state.save(
+            UnitState(
+                path="Author/Failed Book",
+                status="failed",
+                confidence="MEDIUM",
+                title="Failed Book",
+                hours=0,
+                files=1,
+                src_mb=0,
+                note="the encoder returned an error",
+            )
+        )
+        self.state.save(
+            UnitState(
+                path="Author/Review Book",
+                status="review",
+                confidence="LOW",
+                title="Review Book",
+                hours=0,
+                files=1,
+                src_mb=0,
+                note="",
+            )
+        )
 
     def tearDown(self):
         self.state.close()
@@ -118,15 +157,14 @@ class TestReasonLine(unittest.TestCase):
     def test_held_rows_render_a_reason_line(self):
         page = web.render(self.state)
         self.assertIn('class="ab-breason"', page)
-        self.assertIn("5.2", page)           # hours in the reason
+        self.assertIn("5.2", page)  # hours in the reason
 
     def test_failed_rows_render_reason_with_failed_class(self):
         page = web.render(self.state)
         self.assertIn('class="ab-breason failed"', page)
 
     def test_converted_rows_do_not_render_a_reason(self):
-        self.state.save(UnitState(
-            path="Author/Done", status="converted", title="Done", hours=1, files=1))
+        self.state.save(UnitState(path="Author/Done", status="converted", title="Done", hours=1, files=1))
         page = web.render(self.state)
         # Only the Done row itself should have no ab-breason
         done_row_start = page.find('data-path="Author/Done"')
@@ -139,9 +177,9 @@ class TestCompactActions(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
-        self.state.save(UnitState(
-            path="Author/Book", status="held", confidence="LOW",
-            title="Book", hours=1, files=1))
+        self.state.save(
+            UnitState(path="Author/Book", status="held", confidence="LOW", title="Book", hours=1, files=1)
+        )
 
     def tearDown(self):
         self.state.close()
@@ -167,9 +205,9 @@ class TestDeleteUI(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
-        self.state.save(UnitState(
-            path="Author/Book", status="held", confidence="LOW",
-            title="Book", hours=1, files=1))
+        self.state.save(
+            UnitState(path="Author/Book", status="held", confidence="LOW", title="Book", hours=1, files=1)
+        )
 
     def tearDown(self):
         self.state.close()
@@ -232,8 +270,10 @@ class TestDeleteHandler(unittest.TestCase):
 
     def post(self, payload):
         req = urllib.request.Request(
-            self.base + "/api/unit", data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"})
+            self.base + "/api/unit",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
         try:
             with urllib.request.urlopen(req, timeout=10) as response:
                 return response.status, json.loads(response.read())
@@ -247,8 +287,9 @@ class TestDeleteHandler(unittest.TestCase):
         out_book = self.out / "Author" / "Book"
         out_book.mkdir(parents=True, exist_ok=True)
         (out_book / "Book.m4b").write_text("m4b")
-        self.state.save(UnitState(path="Author/Book", status="converted",
-                                  title="Book", output=str(out_book / "Book.m4b")))
+        self.state.save(
+            UnitState(path="Author/Book", status="converted", title="Book", output=str(out_book / "Book.m4b"))
+        )
         return src, out_book
 
     def test_delete_refuses_without_confirm(self):
@@ -258,8 +299,7 @@ class TestDeleteHandler(unittest.TestCase):
 
     def test_hard_delete_removes_source_output_and_row(self):
         src, out_book = self.make_book()
-        status, body = self.post({"action": "delete", "path": "Author/Book",
-                                  "confirm": True})
+        status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
         self.assertEqual(status, 200)
         self.assertTrue(body["source_removed"])
         self.assertEqual(body["output"], "removed")
@@ -272,8 +312,7 @@ class TestDeleteHandler(unittest.TestCase):
         src.mkdir(parents=True)
         (src / "01.mp3").write_text("audio")
         self.state.save(UnitState(path="Author/Book", status="review"))
-        status, body = self.post({"action": "delete", "path": "Author/Book",
-                                  "confirm": True})
+        status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
         self.assertEqual(status, 200)
         self.assertTrue(body["source_removed"])
         self.assertEqual(body["output"], "absent")
@@ -283,8 +322,7 @@ class TestDeleteHandler(unittest.TestCase):
     def test_delete_refuses_path_traversal(self):
         # the row must exist for the request to reach the traversal guard
         self.state.save(UnitState(path="../escape", status="review"))
-        status, body = self.post({"action": "delete", "path": "../escape",
-                                  "confirm": True})
+        status, body = self.post({"action": "delete", "path": "../escape", "confirm": True})
         self.assertEqual(status, 400)
         self.assertIn("escapes", body["error"])
         # and nothing outside the library root was touched
@@ -292,11 +330,11 @@ class TestDeleteHandler(unittest.TestCase):
 
     def test_delete_refuses_while_encoding(self):
         from audiobind.control import CONTROL
+
         self.make_book()
         CONTROL.begin_unit("Author/Book")
         try:
-            status, body = self.post({"action": "delete", "path": "Author/Book",
-                                      "confirm": True})
+            status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
             self.assertEqual(status, 409)
             self.assertIn("encoding", body["error"])
             self.assertTrue((self.lib / "Author" / "Book").exists())

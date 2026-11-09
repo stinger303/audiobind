@@ -12,6 +12,7 @@ Two sources, in order:
 A fetch that fails leaves a ``.miss`` marker so a broken cover is not re-requested on every
 two-second poll; the marker expires after six hours.
 """
+
 from __future__ import annotations
 
 import json
@@ -95,7 +96,7 @@ def published_cover(state: State, rel_path: str) -> Path | None:
         resolved = candidate.resolve()
     except OSError:
         return None
-    if output_root not in resolved.parents:          # stay inside the output tree
+    if output_root not in resolved.parents:  # stay inside the output tree
         return None
     return resolved if resolved.is_file() else None
 
@@ -107,7 +108,7 @@ def fetch_by_asin(state: State, asin: str) -> Path | None:
     asin = asin.strip().upper()
     path = cached_path(asin)
     if path.is_file():
-        return path                                   # served from disk forever after
+        return path  # served from disk forever after
     if _miss_is_fresh(asin):
         return None
     try:

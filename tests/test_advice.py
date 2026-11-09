@@ -2,9 +2,7 @@ import unittest
 
 from audiobind.advice import explain
 
-
-DETAIL = {"source": {"hours": 9.74}, "match": {"hours": 3.45, "asin": "B1"},
-          "output": {"chapters": 16}}
+DETAIL = {"source": {"hours": 9.74}, "match": {"hours": 3.45, "asin": "B1"}, "output": {"chapters": 16}}
 
 
 class TestExplain(unittest.TestCase):
@@ -70,10 +68,16 @@ class TestExplain(unittest.TestCase):
         self.assertNotIn("set to High", why)
 
     def test_a_dead_pinned_asin_is_explained(self):
-        detail = {"match": {"asin": "B00LZZQBIY", "title": "Get Up!",
-                            "hours": 7.52, "confidence": "LOW",
-                            "asin_pin_failed": "B013ILGDHQ"},
-                  "source": {"hours": 0.99}}
+        detail = {
+            "match": {
+                "asin": "B00LZZQBIY",
+                "title": "Get Up!",
+                "hours": 7.52,
+                "confidence": "LOW",
+                "asin_pin_failed": "B013ILGDHQ",
+            },
+            "source": {"hours": 0.99},
+        }
         why, todo = explain("review", "LOW", "", detail)
         self.assertIn("B013ILGDHQ", why)
         self.assertIn("not in Audible's catalog", why)

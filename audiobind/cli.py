@@ -1,4 +1,5 @@
 """Command line entry points."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,7 +10,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, daemon
-from .config import CONFIG, set_effective, effective_val
+from .config import CONFIG, effective_val, set_effective
 from .pipeline import audit_unit, process_unit
 from .state import State
 from .units import discover_units
@@ -28,8 +29,7 @@ def _find(units, wanted: str):
     exact = [u for u in units if u.rel_path == wanted]
     if exact:
         return exact[0]
-    partial = [u for u in units
-               if wanted.lower() in u.rel_path.lower() or wanted.lower() in u.name.lower()]
+    partial = [u for u in units if wanted.lower() in u.rel_path.lower() or wanted.lower() in u.name.lower()]
     if len(partial) == 1:
         return partial[0]
     if not partial:
@@ -45,16 +45,22 @@ def cmd_audit(args) -> int:
     for unit in units:
         audit = audit_unit(unit)
         row = {
-            "rel_path": unit.rel_path, "parts": len(unit.parts), "files": unit.n_files,
-            "hours": audit.hours, "author_guess": unit.author_guess,
-            "title_guess": unit.title_guess, "confidence": audit.confidence,
-            "score": audit.match.score, "margin": audit.match.margin,
+            "rel_path": unit.rel_path,
+            "parts": len(unit.parts),
+            "files": unit.n_files,
+            "hours": audit.hours,
+            "author_guess": unit.author_guess,
+            "title_guess": unit.title_guess,
+            "confidence": audit.confidence,
+            "score": audit.match.score,
+            "margin": audit.match.margin,
             "asin": audit.match.asin,
             "match_title": audit.match.product.title if audit.match.product else "",
             "match_authors": "; ".join(audit.match.product.authors) if audit.match.product else "",
             "match_narrators": "; ".join(audit.match.product.narrators) if audit.match.product else "",
             "match_hours": audit.match.product.hours if audit.match.product else "",
-            "chapters": audit.chapters_available, "action": audit.action,
+            "chapters": audit.chapters_available,
+            "action": audit.action,
             "notes": "; ".join(audit.notes),
         }
         rows.append(row)
@@ -115,12 +121,15 @@ def cmd_version(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="audiobind",
-                                     description="Merge, convert and correctly tag audiobooks.")
+    parser = argparse.ArgumentParser(
+        prog="audiobind", description="Merge, convert and correctly tag audiobooks."
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("audit", help="report what is on disk and how confident the match is").set_defaults(func=cmd_audit)
+    sub.add_parser("audit", help="report what is on disk and how confident the match is").set_defaults(
+        func=cmd_audit
+    )
     scan = sub.add_parser("scan", help="one pass: convert new books that are safe to convert")
     scan.add_argument("--force", action="store_true", help="reconsider units already seen")
     scan.set_defaults(func=cmd_scan)

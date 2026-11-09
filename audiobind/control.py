@@ -11,6 +11,7 @@ Three ways to intervene, and they are not the same thing:
                 so nothing corrupt reaches the library, and the book is retried on the next scan.
 * **dry run** - decide everything, write nothing.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -54,7 +55,7 @@ class Control:
     def resume(self) -> None:
         self._paused.clear()
         self._stop.clear()
-        self.request_scan()          # resuming should not wait for the next interval
+        self.request_scan()  # resuming should not wait for the next interval
 
     # ---------------------------------------------------------------- stop
     def stop(self) -> None:
@@ -117,7 +118,7 @@ class Control:
     def attach_process(self, proc: subprocess.Popen) -> None:
         with self._lock:
             self._proc = proc
-        if self._stop.is_set():            # stop arrived between the check and the spawn
+        if self._stop.is_set():  # stop arrived between the check and the spawn
             proc.terminate()
 
     def detach_process(self) -> None:
@@ -161,8 +162,7 @@ class Control:
 
     def scan_progress(self) -> dict:
         with self._lock:
-            return {"scanning": self._scanning,
-                    "done": self._scan_done, "total": self._scan_total}
+            return {"scanning": self._scanning, "done": self._scan_done, "total": self._scan_total}
 
     # ---------------------------------------------------------------- scan
     def request_scan(self, force: bool = False) -> None:

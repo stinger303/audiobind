@@ -1,4 +1,5 @@
 """One unit in, one finished book out: audit and convert."""
+
 from __future__ import annotations
 
 import json
@@ -11,7 +12,7 @@ from pathlib import Path
 
 from . import catalog, encode, library, matching
 from . import overrides as overrides_mod
-from .config import CONFIG, effective_val, effective_auto_tiers
+from .config import CONFIG, effective_auto_tiers, effective_val
 from .control import CONTROL, Stopped
 from .probe import probe
 from .state import State, UnitState
@@ -81,8 +82,7 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
     if not unit.author_guess and audit.match.product:
         audit.notes.append("author taken from catalog")
     if audit.match.product and not audit.runtime_matches:
-        audit.notes.append(
-            f"runtime {audit.hours}h vs catalog {audit.match.product.hours}h")
+        audit.notes.append(f"runtime {audit.hours}h vs catalog {audit.match.product.hours}h")
     elif unit.multi_part and audit.match.product:
         audit.notes.append("parts verified complete")
 
@@ -90,16 +90,15 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
     return audit
 
 
-def choose_action(unit: BookUnit, confidence: str, runtime_matches: bool,
-                  codecs: set[str]) -> str:
+def choose_action(unit: BookUnit, confidence: str, runtime_matches: bool, codecs: set[str]) -> str:
     """What to do with this unit. Pure function so the rules can be tested directly.
 
     A single AAC file that is already an MP4 container is remuxed, not re-encoded: chapters, tags
     and cover are rewritten while every audio sample is copied untouched.
     """
-    already_mp4 = (len(unit.files) == 1
-                   and Path(unit.files[0]).suffix.lower() in (".m4b", ".m4a")
-                   and codecs == {"aac"})
+    already_mp4 = (
+        len(unit.files) == 1 and Path(unit.files[0]).suffix.lower() in (".m4b", ".m4a") and codecs == {"aac"}
+    )
     if confidence not in ("HIGH", "MEDIUM"):
         return "review"
     if not runtime_matches:
@@ -130,7 +129,7 @@ def convert_unit(audit: Audit, log=print):
         return None
     if CONTROL.dry_run:
         log(f"  [dry-run] would write {out_path}")
-        return None                     # nothing was written, so it is not "converted"
+        return None  # nothing was written, so it is not "converted"
 
     work_dir = CONFIG.work_dir / f"{abs(hash(unit.rel_path)) % 10**8:08x}"
     CONVERT_LOCK.acquire()
@@ -138,10 +137,10 @@ def convert_unit(audit: Audit, log=print):
     try:
         duration = sum(probe(f).duration for f in unit.files)
         chapters, _source = encode.build_chapters(catalog.chapters(match.asin), duration, unit)
-        result = encode.encode(unit, match, book, work_dir, out_path, log=log,
-                               copy_audio=(audit.action == "remux"))
-        encode.write_abs_metadata(out_path.parent / "metadata.json", book, match, chapters,
-                                  result.duration)
+        result = encode.encode(
+            unit, match, book, work_dir, out_path, log=log, copy_audio=(audit.action == "remux")
+        )
+        encode.write_abs_metadata(out_path.parent / "metadata.json", book, match, chapters, result.duration)
         log(f"  published {out_path} ({result.size / 1e6:.0f} MB, {result.chapters} chapters)")
         return result
     finally:
@@ -152,73 +151,94 @@ def convert_unit(audit: Audit, log=print):
         CONVERT_LOCK.release()
 
 
-def record(state: State, audit: Audit, status: str, output: str = "", note: str = "",
-           result=None, reopen: bool = False) -> None:
+def record(
+    state: State,
+    audit: Audit,
+    status: str,
+    output: str = "",
+    note: str = "",
+    result=None,
+    reopen: bool = False,
+) -> None:
     """Record one audit outcome. ``reopen`` marks a manual re-check that still ended
     in a decision-needed state, so the web panel re-opens with the reason."""
     custom = overrides_mod.normalise(audit.overrides)
-    detail = json.dumps({
-        # a manual re-check (Retry now / Use this ASIN) that still needs a decision
-        # tells the status page to re-open this book's panel with the reason
-        "reopen": bool(reopen),
-        "action": audit.action,
-        "hours": audit.hours,
-        "match": {
-            "asin": audit.match.asin,
-            "title": audit.match.product.title if audit.match.product else "",
-            "authors": audit.match.product.authors if audit.match.product else [],
-            "narrators": audit.match.product.narrators if audit.match.product else [],
-            "hours": audit.match.product.hours if audit.match.product else 0,
-            "confidence": audit.confidence,
-            # kept so the status page can show cover art without a second catalog call
-            "image": audit.match.product.image if audit.match.product else "",
-            # a user-pinned ASIN that had no catalog data; the search result was used
-            "asin_pin_failed": audit.match.asin_pin_failed,
-        },
-        "overrides": overrides_mod.normalise(audit.overrides),
-        "source": {
-            "parts": len(audit.unit.parts),
-            "files": audit.unit.n_files,
-            "mb": audit.src_mb,
+    detail = json.dumps(
+        {
+            # a manual re-check (Retry now / Use this ASIN) that still needs a decision
+            # tells the status page to re-open this book's panel with the reason
+            "reopen": bool(reopen),
+            "action": audit.action,
             "hours": audit.hours,
-            "codecs": sorted(audit.codecs),
-            "channels": sorted(audit.channels),
-        },
-        "output": ({
-            "path": str(result.path),
-            "mb": round(result.size / 1e6, 1),
-            "hours": round(result.duration / 3600, 2),
-            "chapters": result.chapters,
-            "chapters_from": result.chapters_source,
-        } if result else None),
-    })
-    state.save(UnitState(
-        path=audit.unit.rel_path,
-        status=status,
-        confidence=audit.confidence,
-        asin=audit.match.asin,
-        title=(custom.get("title")
-               or (audit.match.product.title if audit.match.product else audit.unit.title_guess)),
-        author=(custom["authors"][0] if custom.get("authors")
-                else (audit.match.product.authors[0]
-                      if audit.match.product and audit.match.product.authors
-                      else audit.unit.author_guess)),
-        hours=audit.hours,
-        files=audit.unit.n_files,
-        output=output,
-        note=note or "; ".join(audit.notes),
-        src_mb=audit.src_mb,
-        out_mb=round(result.size / 1e6, 1) if result else 0.0,
-        chapters=result.chapters if result else 0,
-        # runners-up from the catalog search (other editions, near misses) are kept
-        # so the detail panel can offer one-click "use this edition" ASIN pins
-        alternates=json.dumps(audit.match.alternates),
-        detail=detail,
-    ))
+            "match": {
+                "asin": audit.match.asin,
+                "title": audit.match.product.title if audit.match.product else "",
+                "authors": audit.match.product.authors if audit.match.product else [],
+                "narrators": audit.match.product.narrators if audit.match.product else [],
+                "hours": audit.match.product.hours if audit.match.product else 0,
+                "confidence": audit.confidence,
+                # kept so the status page can show cover art without a second catalog call
+                "image": audit.match.product.image if audit.match.product else "",
+                # a user-pinned ASIN that had no catalog data; the search result was used
+                "asin_pin_failed": audit.match.asin_pin_failed,
+            },
+            "overrides": overrides_mod.normalise(audit.overrides),
+            "source": {
+                "parts": len(audit.unit.parts),
+                "files": audit.unit.n_files,
+                "mb": audit.src_mb,
+                "hours": audit.hours,
+                "codecs": sorted(audit.codecs),
+                "channels": sorted(audit.channels),
+            },
+            "output": (
+                {
+                    "path": str(result.path),
+                    "mb": round(result.size / 1e6, 1),
+                    "hours": round(result.duration / 3600, 2),
+                    "chapters": result.chapters,
+                    "chapters_from": result.chapters_source,
+                }
+                if result
+                else None
+            ),
+        }
+    )
+    state.save(
+        UnitState(
+            path=audit.unit.rel_path,
+            status=status,
+            confidence=audit.confidence,
+            asin=audit.match.asin,
+            title=(
+                custom.get("title")
+                or (audit.match.product.title if audit.match.product else audit.unit.title_guess)
+            ),
+            author=(
+                custom["authors"][0]
+                if custom.get("authors")
+                else (
+                    audit.match.product.authors[0]
+                    if audit.match.product and audit.match.product.authors
+                    else audit.unit.author_guess
+                )
+            ),
+            hours=audit.hours,
+            files=audit.unit.n_files,
+            output=output,
+            note=note or "; ".join(audit.notes),
+            src_mb=audit.src_mb,
+            out_mb=round(result.size / 1e6, 1) if result else 0.0,
+            chapters=result.chapters if result else 0,
+            # runners-up from the catalog search (other editions, near misses) are kept
+            # so the detail panel can offer one-click "use this edition" ASIN pins
+            alternates=json.dumps(audit.match.alternates),
+            detail=detail,
+        )
+    )
 
 
-def process_unit(state: State, unit: BookUnit, log=print, force: bool = False,
-                 manual: bool = False) -> Audit:
+def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, manual: bool = False) -> Audit:
     """Audit, then convert when the confidence tier and runtime check allow it.
 
     ``force`` is the operator saying "I looked at this, convert it anyway": the tier, the runtime
@@ -227,22 +247,23 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False,
     Use this ASIN): if it still ends in a decision-needed state, the detail is flagged so the
     panel re-opens with the reason instead of the change going unnoticed.
     """
+
     def rec(status: str, **kw) -> None:
-        record(state, audit, status,
-               reopen=manual and status in ("review", "held", "failed"), **kw)
+        record(state, audit, status, reopen=manual and status in ("review", "held", "failed"), **kw)
 
     started = time.time()
     audit = audit_unit(unit, state.get_asin_override(unit.rel_path))
     audit.overrides = state.get_overrides(unit.rel_path)
     if audit.overrides:
         audit.notes.append("operator metadata overrides applied")
-    log(f"  {audit.confidence:6} {audit.hours:>6.2f}h {unit.n_files:>3}f  "
-        f"{audit.match.product.title if audit.match.product else '-'}")
+    log(
+        f"  {audit.confidence:6} {audit.hours:>6.2f}h {unit.n_files:>3}f  "
+        f"{audit.match.product.title if audit.match.product else '-'}"
+    )
 
     if not force and audit.unreadable and audit.action in ("merge+convert", "convert", "remux"):
         log(f"  skipping: {audit.unreadable} unreadable source file(s) - fix the source first")
-        rec("review",
-            note=f"{audit.unreadable} unreadable source file(s); not converted")
+        rec("review", note=f"{audit.unreadable} unreadable source file(s); not converted")
     elif force and audit.match.product:
         log("  forced by operator - converting regardless of tier/hold")
         try:
@@ -259,14 +280,13 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False,
             log("  stopped by operator - partial file discarded, book will be retried")
             rec("interrupted", note="stopped by operator - retried next scan")
             CONTROL.pause()
-        except Exception as exc:                        # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             log(f"  FAILED: {exc}")
             rec("failed", note=str(exc)[:300])
-    elif (audit.action in ("merge+convert", "convert", "remux")
-          and audit.confidence in effective_auto_tiers()):
+    elif audit.action in ("merge+convert", "convert", "remux") and audit.confidence in effective_auto_tiers():
         try:
             result = convert_unit(audit, log=log)
-            if result is None:                       # dry run, or already published
+            if result is None:  # dry run, or already published
                 if CONTROL.dry_run:
                     rec("ready", note="dry run - nothing written")
                 else:
@@ -282,7 +302,7 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False,
             log("  stopped by operator - partial file discarded, book will be retried")
             rec("interrupted", note="stopped by operator - retried next scan")
             CONTROL.pause()
-        except Exception as exc:                        # noqa: BLE001 - one book must not stop a scan
+        except Exception as exc:  # noqa: BLE001 - one book must not stop a scan
             log(f"  FAILED: {exc}")
             rec("failed", note=str(exc)[:300])
     elif audit.action == "hold":
@@ -291,5 +311,5 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False,
     else:
         rec("review")
     log(f"  done in {time.time() - started:.0f}s")
-    state.heartbeat()          # keep "last scan" honest while a long pass is still running
+    state.heartbeat()  # keep "last scan" honest while a long pass is still running
     return audit

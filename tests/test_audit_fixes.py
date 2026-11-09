@@ -1,4 +1,5 @@
 """Regression tests for the v0.14.0 audit fixes."""
+
 import unittest
 from unittest.mock import patch
 
@@ -13,9 +14,9 @@ class TestMetadataMapArgs(unittest.TestCase):
     """The ffmetadata file's input index moves when the cover is missing."""
 
     def test_with_cover_the_metadata_file_is_input_two(self):
-        self.assertEqual(_metadata_map_args(True),
-                         ["-map_metadata", "2", "-map_chapters", "-1",
-                          "-map_chapters", "2"])
+        self.assertEqual(
+            _metadata_map_args(True), ["-map_metadata", "2", "-map_chapters", "-1", "-map_chapters", "2"]
+        )
 
     def test_without_cover_the_metadata_file_is_input_one(self):
         args = _metadata_map_args(False)
@@ -56,22 +57,32 @@ class TestEnvFloat(unittest.TestCase):
 class TestGradeGuards(unittest.TestCase):
     @staticmethod
     def product(language="english"):
-        return Product(asin="B0TEST", title="T", authors=["A"], hours=10,
-                       language=language)
+        return Product(asin="B0TEST", title="T", authors=["A"], hours=10, language=language)
 
     def test_non_english_match_is_capped_at_medium(self):
-        m = Match(product=self.product("deutsch"), title_sim=1.0, author_sim=1.0,
-                  margin=0.2, author_known=True, language="deutsch")
+        m = Match(
+            product=self.product("deutsch"),
+            title_sim=1.0,
+            author_sim=1.0,
+            margin=0.2,
+            author_known=True,
+            language="deutsch",
+        )
         self.assertEqual(grade(m), "MEDIUM")
 
     def test_english_exact_match_still_high(self):
-        m = Match(product=self.product(), title_sim=1.0, author_sim=1.0,
-                  margin=0.2, author_known=True, language="english")
+        m = Match(
+            product=self.product(),
+            title_sim=1.0,
+            author_sim=1.0,
+            margin=0.2,
+            author_known=True,
+            language="english",
+        )
         self.assertEqual(grade(m), "HIGH")
 
     def test_medium_requires_a_positive_margin(self):
-        m = Match(product=self.product(), title_sim=0.9, author_sim=0.7,
-                  margin=0.0, author_known=True)
+        m = Match(product=self.product(), title_sim=0.9, author_sim=0.7, margin=0.0, author_known=True)
         self.assertEqual(grade(m), "LOW")
 
 
@@ -79,7 +90,7 @@ class TestConversionQueue(unittest.TestCase):
     def test_enqueue_dequeue_roundtrip(self):
         c = Control()
         c.enqueue("A/B")
-        c.enqueue("A/B")            # duplicate clicks do not stack
+        c.enqueue("A/B")  # duplicate clicks do not stack
         c.enqueue("C/D")
         self.assertEqual(c.queue_snapshot()["count"], 2)
         self.assertEqual(c.queue_snapshot()["units"], ["A/B", "C/D"])

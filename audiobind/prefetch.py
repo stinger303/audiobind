@@ -14,6 +14,7 @@ Three rules this module exists to keep:
   everyone else, and writes nothing. The prefetched payload lands in the catalog's URL cache,
   which is where the pipeline already looks, so the main loop picks it up by itself.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,12 +31,12 @@ DECIDED = ("converted", "held", "failed", "review")
 
 def next_eligible(state, units: list[BookUnit], after_index: int, force: bool = False):
     """The next unit the daemon would actually work on, or None."""
-    for unit in units[after_index + 1:]:
+    for unit in units[after_index + 1 :]:
         if force:
             return unit
         try:
             previous = state.get(unit.rel_path)
-        except Exception:                               # noqa: BLE001 - never break the caller
+        except Exception:  # noqa: BLE001 - never break the caller
             return None
         if previous and previous.status in DECIDED:
             continue
@@ -80,8 +81,7 @@ class Prefetcher:
             self._running = True
             self._current = unit.rel_path
             self.started += 1
-            thread = threading.Thread(target=self._run, args=(state, unit),
-                                      name="prefetch", daemon=True)
+            thread = threading.Thread(target=self._run, args=(state, unit), name="prefetch", daemon=True)
             self._thread = thread
             # started while holding the lock: the flag and the thread must not disagree
             thread.start()
@@ -99,10 +99,9 @@ class Prefetcher:
             self._prefetch(state, unit)
             self.completed += 1
             log.debug("prefetched catalog data for %s", unit.rel_path)
-        except Exception as exc:                        # noqa: BLE001 - must never reach the encode
+        except Exception as exc:  # noqa: BLE001 - must never reach the encode
             self.failed += 1
-            log.debug("prefetch for %s failed, the normal path will retry: %s",
-                      unit.rel_path, exc)
+            log.debug("prefetch for %s failed, the normal path will retry: %s", unit.rel_path, exc)
         finally:
             with self._lock:
                 self._current = ""

@@ -1,11 +1,12 @@
 """The long-running mode: scan on a timer, convert what we are sure about."""
+
 from __future__ import annotations
 
 import logging
 import time
 
 from . import web
-from .config import CONFIG, set_effective, effective_val
+from .config import CONFIG, effective_val, set_effective
 from .control import CONTROL
 from .pipeline import process_unit
 from .prefetch import PREFETCH, next_eligible
@@ -19,7 +20,7 @@ def scan_once(state: State, force: bool = False) -> dict:
     """One pass over the library. Already-decided units are skipped unless forced."""
     set_effective(state)
     run_id = state.start_run()
-    state.heartbeat()          # "last scan" should read fresh the moment a pass begins
+    state.heartbeat()  # "last scan" should read fresh the moment a pass begins
     units = discover_units(CONFIG.library_root, CONFIG.ignore_globs)
     log.info("scan: %d unit(s) on disk", len(units))
     CONTROL.begin_scan(len(units))
@@ -62,11 +63,15 @@ def run() -> None:
     state = State(CONFIG.state_dir)
     CONFIG.ensure_dirs()
     if state.get_meta("paused", False):
-        CONTROL.pause()                     # a paused container stays paused across restarts
+        CONTROL.pause()  # a paused container stays paused across restarts
     if state.get_meta("dry_run") is not None:
         CONTROL.set_dry_run(bool(state.get_meta("dry_run")))
-    log.info("audiobind daemon: %s -> %s every %d min",
-             CONFIG.library_root, CONFIG.output_root, CONFIG.scan_interval_min)
+    log.info(
+        "audiobind daemon: %s -> %s every %d min",
+        CONFIG.library_root,
+        CONFIG.output_root,
+        CONFIG.scan_interval_min,
+    )
     if CONFIG.web_enabled:
         web.serve(state)
         log.info("status page on http://0.0.0.0:%d", CONFIG.web_port)
@@ -74,16 +79,16 @@ def run() -> None:
     set_effective(state)
     while True:
         if CONTROL.paused:
-            CONTROL.clear_scan()            # a click while paused must not busy-loop
+            CONTROL.clear_scan()  # a click while paused must not busy-loop
             CONTROL.wait(60)
             set_effective(state)
             continue
 
-        force = CONTROL.scan_force          # a Re-check all click re-audits decided books
-        CONTROL.clear_scan()                # anything clicked during a scan triggers another
+        force = CONTROL.scan_force  # a Re-check all click re-audits decided books
+        CONTROL.clear_scan()  # anything clicked during a scan triggers another
         try:
             scan_once(state, force=force)
-        except Exception:                   # noqa: BLE001 - never let the loop die
+        except Exception:  # noqa: BLE001 - never let the loop die
             log.exception("scan failed")
 
         # Sleep in 15-second chunks so a lowered interval takes effect within ~15s.

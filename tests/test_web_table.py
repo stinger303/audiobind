@@ -1,4 +1,5 @@
 """Search filtering and column sorting - the rules the page mirrors in JS."""
+
 import pathlib
 import re
 import tempfile
@@ -77,9 +78,11 @@ class TestSortComparator(unittest.TestCase):
         self.assertEqual([u.hours for u in web.sort_units(units, "runtime", "desc")], [9, 3])
 
     def test_ties_break_on_title_ascending(self):
-        units = [unit(path="c", title="Mango", hours=5),
-                 unit(path="a", title="Apple", hours=5),
-                 unit(path="b", title="Zuch", hours=5)]
+        units = [
+            unit(path="c", title="Mango", hours=5),
+            unit(path="a", title="Apple", hours=5),
+            unit(path="b", title="Zuch", hours=5),
+        ]
         ordered = web.sort_units(units, "runtime", "desc")
         self.assertEqual([u.title for u in ordered], ["Apple", "Mango", "Zuch"])
 
@@ -93,12 +96,26 @@ class TestRenderedSearchAndSort(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
-        self.state.save(UnitState(path="Connelly/Burning Room", status="ready",
-                                  title="The Burning Room", author="Michael Connelly",
-                                  confidence="HIGH", hours=12.0))
-        self.state.save(UnitState(path="Child/61 Hours", status="review",
-                                  title="61 Hours", author="Lee Child",
-                                  confidence="LOW", hours=14.0))
+        self.state.save(
+            UnitState(
+                path="Connelly/Burning Room",
+                status="ready",
+                title="The Burning Room",
+                author="Michael Connelly",
+                confidence="HIGH",
+                hours=12.0,
+            )
+        )
+        self.state.save(
+            UnitState(
+                path="Child/61 Hours",
+                status="review",
+                title="61 Hours",
+                author="Lee Child",
+                confidence="LOW",
+                hours=14.0,
+            )
+        )
 
     def tearDown(self):
         self.state.close()
@@ -113,9 +130,9 @@ class TestRenderedSearchAndSort(unittest.TestCase):
 
     def test_rows_carry_search_and_sort_data(self):
         page = web.render(self.state)
-        self.assertIn("Michael Connelly", page)          # in the data-search haystack
+        self.assertIn("Michael Connelly", page)  # in the data-search haystack
         self.assertIn('data-sort-runtime="12.0"', page)
-        self.assertIn('data-sort-tier="0"', page)        # HIGH
+        self.assertIn('data-sort-tier="0"', page)  # HIGH
 
     def test_server_side_query_narrows_the_table(self):
         page = web.render(self.state, "", "connelly")
@@ -136,8 +153,7 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         self.assertEqual(web.read_sort(self.state), ("scan", "desc"))
 
     def test_quotes_in_titles_do_not_break_attributes(self):
-        self.state.save(UnitState(path='Odd/Book "Quoted"', status="ready",
-                                  title='A "Quoted" Title'))
+        self.state.save(UnitState(path='Odd/Book "Quoted"', status="ready", title='A "Quoted" Title'))
         page = web.render(self.state)
         self.assertNotIn('data-search="A "Quoted"', page)
         self.assertIn("&quot;Quoted&quot;", page)
@@ -227,11 +243,48 @@ class TestRenderedSearchAndSort(unittest.TestCase):
 
     def test_new_classes_do_not_collide_with_existing_ones(self):
         """Every class added in 0.10.0 is ab- prefixed (the .bar collision bug)."""
-        existing = {"sub", "toolbar", "working", "wline", "pct", "ptrack", "wmeta", "pill",
-                    "grid", "card", "ok", "warn", "err", "dim", "urow", "drow", "dd",
-                    "explain", "todo", "acts", "chips", "chip", "primary", "armed", "danger",
-                    "run", "paused", "on", "held", "active", "encoding", "interrupted",
-                    "converted", "ready", "review", "failed", "dry", "btn", "n", "pdot"}
+        existing = {
+            "sub",
+            "toolbar",
+            "working",
+            "wline",
+            "pct",
+            "ptrack",
+            "wmeta",
+            "pill",
+            "grid",
+            "card",
+            "ok",
+            "warn",
+            "err",
+            "dim",
+            "urow",
+            "drow",
+            "dd",
+            "explain",
+            "todo",
+            "acts",
+            "chips",
+            "chip",
+            "primary",
+            "armed",
+            "danger",
+            "run",
+            "paused",
+            "on",
+            "held",
+            "active",
+            "encoding",
+            "interrupted",
+            "converted",
+            "ready",
+            "review",
+            "failed",
+            "dry",
+            "btn",
+            "n",
+            "pdot",
+        }
         declared = set(re.findall(r"\.([a-zA-Z][\w-]*)\s*\{", web.STYLES))
         for name in declared - existing:
             self.assertTrue(name.startswith("ab-"), f"{name} is neither pre-existing nor ab-")
@@ -248,11 +301,17 @@ class TestSortAttributes(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
-        self.state.save(UnitState(path="A/One", status="converted",
-                                  confidence="HIGH", hours=6, files=1))
-        self.state.save(UnitState(path="A/Two", status="review",
-                                  confidence="LOW", hours=1, files=1,
-                                  note="runtime 1.0h vs catalog 9.0h"))
+        self.state.save(UnitState(path="A/One", status="converted", confidence="HIGH", hours=6, files=1))
+        self.state.save(
+            UnitState(
+                path="A/Two",
+                status="review",
+                confidence="LOW",
+                hours=1,
+                files=1,
+                note="runtime 1.0h vs catalog 9.0h",
+            )
+        )
 
     def tearDown(self):
         self.state.close()
@@ -267,8 +326,11 @@ class TestSortAttributes(unittest.TestCase):
     def test_sort_attributes_survive_the_reason_line(self):
         """The reason block used to shadow the sort-attribute string."""
         page = web.render(self.state)
-        row = [seg for seg in page.split('<tr class="urow"')
-               if 'data-path="A/Two"' in seg.split(">")[0] or 'data-path="A/Two"' in seg[:120]]
+        row = [
+            seg
+            for seg in page.split('<tr class="urow"')
+            if 'data-path="A/Two"' in seg.split(">")[0] or 'data-path="A/Two"' in seg[:120]
+        ]
         self.assertTrue(row, "review row not found")
         review_row = row[-1].split("</tr>")[0]
         self.assertIn("data-sort-status=", review_row)

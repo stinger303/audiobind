@@ -1,4 +1,5 @@
 """SQLite manifest: what has been seen, matched and converted. Survives restarts."""
+
 from __future__ import annotations
 
 import json
@@ -70,8 +71,9 @@ class State:
         # autocommit + a lock: several threads share this connection, and SQLite cannot nest
         # transactions on one of them ("cannot start a transaction within a transaction")
         self._lock = threading.RLock()
-        self.connection = sqlite3.connect(self.path, check_same_thread=False, timeout=30,
-                                          isolation_level=None)
+        self.connection = sqlite3.connect(
+            self.path, check_same_thread=False, timeout=30, isolation_level=None
+        )
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(SCHEMA)
         self._migrate()
@@ -80,11 +82,15 @@ class State:
     def _migrate(self) -> None:
         """Add columns introduced after a database already exists."""
         existing = {row[1] for row in self.connection.execute("PRAGMA table_info(units)")}
-        for name, ddl in (("src_mb", "REAL DEFAULT 0"), ("out_mb", "REAL DEFAULT 0"),
-                          ("chapters", "INTEGER DEFAULT 0"), ("detail", "TEXT DEFAULT ''"),
-                          ("asin_override", "TEXT DEFAULT ''"),
-                          ("overrides", "TEXT DEFAULT ''"),
-                          ("alternates", "TEXT DEFAULT ''")):
+        for name, ddl in (
+            ("src_mb", "REAL DEFAULT 0"),
+            ("out_mb", "REAL DEFAULT 0"),
+            ("chapters", "INTEGER DEFAULT 0"),
+            ("detail", "TEXT DEFAULT ''"),
+            ("asin_override", "TEXT DEFAULT ''"),
+            ("overrides", "TEXT DEFAULT ''"),
+            ("alternates", "TEXT DEFAULT ''"),
+        ):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE units ADD COLUMN {name} {ddl}")
 
@@ -111,9 +117,24 @@ class State:
                  updated_at=excluded.updated_at, src_mb=excluded.src_mb, out_mb=excluded.out_mb,
                  chapters=excluded.chapters, detail=excluded.detail,
                  alternates=excluded.alternates""",
-            (state.path, state.status, state.confidence, state.asin, state.title,
-             state.author, state.hours, state.files, state.output, state.note, time.time(),
-             state.src_mb, state.out_mb, state.chapters, state.detail, state.alternates),
+            (
+                state.path,
+                state.status,
+                state.confidence,
+                state.asin,
+                state.title,
+                state.author,
+                state.hours,
+                state.files,
+                state.output,
+                state.note,
+                time.time(),
+                state.src_mb,
+                state.out_mb,
+                state.chapters,
+                state.detail,
+                state.alternates,
+            ),
         )
         self.connection.commit()
 
@@ -125,8 +146,7 @@ class State:
 
     def counts(self) -> dict[str, int]:
         with self._lock:
-            rows = self.connection.execute(
-                "SELECT status, COUNT(*) n FROM units GROUP BY status").fetchall()
+            rows = self.connection.execute("SELECT status, COUNT(*) n FROM units GROUP BY status").fetchall()
         return {r["status"]: r["n"] for r in rows}
 
     def rev(self) -> str:
@@ -136,15 +156,13 @@ class State:
         the web page can notice a manual Retry / ASIN re-check that changed nothing
         but the detail blob."""
         with self._lock:
-            row = self.connection.execute(
-                "SELECT MAX(updated_at), COUNT(*) FROM units").fetchone()
-        return "{:.6f}|{}".format(row[0] or 0.0, row[1])
+            row = self.connection.execute("SELECT MAX(updated_at), COUNT(*) FROM units").fetchone()
+        return f"{row[0] or 0.0:.6f}|{row[1]}"
 
     def clear_reopen(self, path: str) -> None:
         """The status page has shown this book's re-check banner - stop re-opening it."""
         with self._lock:
-            row = self.connection.execute(
-                "SELECT detail FROM units WHERE path=?", (path,)).fetchone()
+            row = self.connection.execute("SELECT detail FROM units WHERE path=?", (path,)).fetchone()
         if not row or not row["detail"]:
             return
         try:
@@ -155,8 +173,7 @@ class State:
             return
         d["reopen"] = False
         with self._lock:
-            self.connection.execute(
-                "UPDATE units SET detail=? WHERE path=?", (json.dumps(d), path))
+            self.connection.execute("UPDATE units SET detail=? WHERE path=?", (json.dumps(d), path))
 
     def detail_for_asin(self, asin: str) -> str:
         """The newest detail blob recorded for an ASIN (the cover proxy reads the image URL)."""
@@ -164,27 +181,27 @@ class State:
             return ""
         with self._lock:
             row = self.connection.execute(
-                "SELECT detail FROM units WHERE asin = ? AND detail != '' "
-                "ORDER BY updated_at DESC LIMIT 1", (asin,)).fetchone()
+                "SELECT detail FROM units WHERE asin = ? AND detail != '' ORDER BY updated_at DESC LIMIT 1",
+                (asin,),
+            ).fetchone()
         return (row["detail"] if row else "") or ""
 
     # ---------------------------------------------------------------- runs
     def start_run(self) -> int:
         with self._lock:
-            cursor = self.connection.execute("INSERT INTO runs (started_at) VALUES (?)",
-                                             (time.time(),))
+            cursor = self.connection.execute("INSERT INTO runs (started_at) VALUES (?)", (time.time(),))
             return int(cursor.lastrowid)
 
     def finish_run(self, run_id: int, seen: int, converted: int, held: int, failed: int) -> None:
         with self._lock:
             self.connection.execute(
                 "UPDATE runs SET finished_at=?, seen=?, converted=?, held=?, failed=? WHERE id=?",
-                (time.time(), seen, converted, held, failed, run_id))
+                (time.time(), seen, converted, held, failed, run_id),
+            )
 
     def last_run(self) -> dict | None:
-        with self._lock:                 # a background prefetch may be reading at the same time
-            row = self.connection.execute(
-                "SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+        with self._lock:  # a background prefetch may be reading at the same time
+            row = self.connection.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
         return dict(row) if row else None
 
     # ---------------------------------------------------------------- meta
@@ -193,7 +210,8 @@ class State:
             self.connection.execute(
                 "INSERT INTO meta (key, value) VALUES (?,?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (key, json.dumps(value)))
+                (key, json.dumps(value)),
+            )
 
     def get_meta(self, key: str, default=None):
         with self._lock:
@@ -205,13 +223,15 @@ class State:
             self.connection.execute(
                 "INSERT INTO units (path, status, asin_override, updated_at) VALUES (?,?,?,?) "
                 "ON CONFLICT(path) DO UPDATE SET asin_override = excluded.asin_override",
-                (path, "review", asin, time.time()))
+                (path, "review", asin, time.time()),
+            )
 
     def get_asin_override(self, path: str) -> str:
         with self._lock:
-            row = self.connection.execute("SELECT asin_override FROM units WHERE path = ?",
-                                          (path,)).fetchone()
-        return (row["asin_override"] if row and row["asin_override"] else "")
+            row = self.connection.execute(
+                "SELECT asin_override FROM units WHERE path = ?", (path,)
+            ).fetchone()
+        return row["asin_override"] if row and row["asin_override"] else ""
 
     # ------------------------------------------------- metadata overrides
     def set_overrides(self, path: str, data: dict) -> None:
@@ -220,12 +240,12 @@ class State:
             self.connection.execute(
                 "INSERT INTO units (path, status, overrides, updated_at) VALUES (?,?,?,?) "
                 "ON CONFLICT(path) DO UPDATE SET overrides = excluded.overrides",
-                (path, "review", json.dumps(data), time.time()))
+                (path, "review", json.dumps(data), time.time()),
+            )
 
     def get_overrides(self, path: str) -> dict:
         with self._lock:
-            row = self.connection.execute("SELECT overrides FROM units WHERE path = ?",
-                                          (path,)).fetchone()
+            row = self.connection.execute("SELECT overrides FROM units WHERE path = ?", (path,)).fetchone()
         if not row or not row["overrides"]:
             return {}
         try:
@@ -241,12 +261,12 @@ class State:
             self.connection.execute(
                 "INSERT INTO units (path, status, alternates, updated_at) VALUES (?,?,?,?) "
                 "ON CONFLICT(path) DO UPDATE SET alternates = excluded.alternates",
-                (path, "review", json.dumps(data or []), time.time()))
+                (path, "review", json.dumps(data or []), time.time()),
+            )
 
     def get_alternates(self, path: str) -> list[dict]:
         with self._lock:
-            row = self.connection.execute("SELECT alternates FROM units WHERE path = ?",
-                                          (path,)).fetchone()
+            row = self.connection.execute("SELECT alternates FROM units WHERE path = ?", (path,)).fetchone()
         if not row or not row["alternates"]:
             return []
         try:

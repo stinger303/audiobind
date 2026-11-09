@@ -1,4 +1,5 @@
 """Target layout: where a finished book belongs in the library."""
+
 from __future__ import annotations
 
 from pathlib import Path

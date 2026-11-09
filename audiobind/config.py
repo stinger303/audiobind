@@ -1,4 +1,5 @@
 """Runtime configuration, entirely from environment variables."""
+
 from __future__ import annotations
 
 import os
@@ -60,10 +61,12 @@ class Config:
     host_library: str = ""
     host_output: str = ""
 
-    ignore_globs: list[str] = field(default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"])
+    ignore_globs: list[str] = field(
+        default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
+    )
 
     @classmethod
-    def from_env(cls) -> "Config":
+    def from_env(cls) -> Config:
         return cls(
             library_root=Path(_env("LIBRARY_ROOT", "/library")),
             output_root=Path(_env("OUTPUT_ROOT", "/output")),
@@ -91,8 +94,8 @@ class Config:
                 path.mkdir(parents=True, exist_ok=True)
             except PermissionError as exc:
                 raise RuntimeError(
-                    f"cannot write to {path} - check that PUID/PGID own this path "
-                    f"({exc})") from exc
+                    f"cannot write to {path} - check that PUID/PGID own this path ({exc})"
+                ) from exc
 
     def preflight(self) -> None:
         """Fail early and loudly instead of halfway through a conversion."""
@@ -136,7 +139,7 @@ SETTING_MAP: dict[str, str] = {
 SETTING_TYPES: dict[str, type] = {
     "auto_convert": str,
     "audio_bitrate": str,
-    "runtime_delta": int,           # percentage (5-50), divided by 100 at use
+    "runtime_delta": int,  # percentage (5-50), divided by 100 at use
     "scan_interval": int,
     "nice": int,
     "region": str,
@@ -168,7 +171,7 @@ def effective_val(name: str):
     if setting_key and setting_key in _EFFECTIVE:
         raw = _EFFECTIVE[setting_key]
         if setting_key == "runtime_delta":
-            return raw / 100.0          # percentage -> float tolerance
+            return raw / 100.0  # percentage -> float tolerance
         return raw
     return getattr(CONFIG, name)
 

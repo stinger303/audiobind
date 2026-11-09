@@ -37,12 +37,14 @@ class TestControl(unittest.TestCase):
 
     def test_dry_run_follows_the_env_by_default(self):
         from audiobind.config import CONFIG
+
         fresh = Control()
         self.assertEqual(fresh.dry_run, CONFIG.dry_run)
         self.assertEqual(fresh.dry_run_source, "default")
 
     def test_dry_run_can_be_overridden_at_runtime(self):
         from audiobind.config import CONFIG
+
         self.c.set_dry_run(not CONFIG.dry_run)
         self.assertNotEqual(self.c.dry_run, CONFIG.dry_run)
         self.assertEqual(self.c.dry_run_source, "set in UI")
@@ -105,15 +107,13 @@ class TestScanProgress(unittest.TestCase):
         self.c = Control()
 
     def test_describe_reports_not_scanning_by_default(self):
-        self.assertEqual(self.c.describe()["scan"],
-                         {"scanning": False, "done": 0, "total": 0})
+        self.assertEqual(self.c.describe()["scan"], {"scanning": False, "done": 0, "total": 0})
 
     def test_begin_tick_end_roundtrip(self):
         self.c.begin_scan(98)
         self.c.scan_tick(37)
         self.assertTrue(self.c.scanning)
-        self.assertEqual(self.c.describe()["scan"],
-                         {"scanning": True, "done": 37, "total": 98})
+        self.assertEqual(self.c.describe()["scan"], {"scanning": True, "done": 37, "total": 98})
         self.c.end_scan()
         self.assertFalse(self.c.scanning)
         self.assertEqual(self.c.describe()["scan"]["done"], 0)
@@ -126,8 +126,8 @@ class TestScanProgress(unittest.TestCase):
     def test_scan_force_is_one_shot(self):
         self.c.request_scan(force=True)
         self.assertTrue(self.c.scan_force)
-        self.assertFalse(self.c.scan_force)   # consumed by the first read
-        self.c.request_scan()                 # a plain Scan now never sets it
+        self.assertFalse(self.c.scan_force)  # consumed by the first read
+        self.c.request_scan()  # a plain Scan now never sets it
         self.assertFalse(self.c.scan_force)
 
 

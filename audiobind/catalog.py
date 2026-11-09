@@ -1,4 +1,5 @@
 """Audible catalog search and Audnex metadata - both free, no key required."""
+
 from __future__ import annotations
 
 import json
@@ -9,7 +10,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
-from .config import CONFIG, effective_val
+from .config import effective_val
 
 USER_AGENT = "audiobind/0.1 (+https://github.com/stinger303/audiobind)"
 AUDIBLE = "https://api.audible.com/1.0/catalog/products"
@@ -46,7 +47,7 @@ def cache_get(url: str):
 def cache_put(url: str, payload: dict) -> None:
     with _cache_lock:
         if len(_cache) >= CACHE_MAX_ENTRIES:
-            oldest = sorted(_cache.items(), key=lambda item: item[1][0])[:len(_cache) // 4 or 1]
+            oldest = sorted(_cache.items(), key=lambda item: item[1][0])[: len(_cache) // 4 or 1]
             for key, _value in oldest:
                 _cache.pop(key, None)
         _cache[url] = (time.time(), payload)
@@ -70,7 +71,7 @@ class Product:
     image: str = ""
 
     @staticmethod
-    def from_audible(raw: dict) -> "Product":
+    def from_audible(raw: dict) -> Product:
         series = raw.get("series") or []
         summary = re_strip(raw.get("merchandising_summary") or "")
         return Product(
@@ -97,7 +98,7 @@ def product_image(raw: dict) -> str:
         url = images.get(str(size))
         if url:
             return str(url)
-    for value in images.values():                # whatever size the API did send
+    for value in images.values():  # whatever size the API did send
         if value:
             return str(value)
     return ""
@@ -105,6 +106,7 @@ def product_image(raw: dict) -> str:
 
 def re_strip(html: str) -> str:
     import re
+
     return re.sub(r"<[^>]+>", " ", html or "").strip()
 
 
@@ -124,8 +126,9 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
                 time.sleep(wait)
             _last_call = time.time()
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT,
-                                                           "Accept": "application/json"})
+            request = urllib.request.Request(
+                url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
+            )
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 payload = json.loads(response.read().decode("utf-8", "replace"))
             if isinstance(payload, dict):

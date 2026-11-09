@@ -1,4 +1,5 @@
 """ffprobe wrappers - duration, codec and channel layout of a media file."""
+
 from __future__ import annotations
 
 import json
@@ -23,10 +24,19 @@ class Probe:
 def probe(path: str | Path, timeout: int = 60) -> Probe:
     try:
         result = subprocess.run(
-            ["ffprobe", "-v", "error",
-             "-show_entries", "format=duration,bit_rate:stream=codec_name,sample_rate,channels",
-             "-of", "json", str(path)],
-            capture_output=True, text=True, timeout=timeout,
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration,bit_rate:stream=codec_name,sample_rate,channels",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
         data = json.loads(result.stdout or "{}")
         fmt = data.get("format", {})
@@ -45,7 +55,8 @@ def probe(path: str | Path, timeout: int = 60) -> Probe:
 def probe_chapters(path: str | Path) -> list[dict]:
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-show_chapters", "-of", "json", str(path)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     try:
         return json.loads(result.stdout or "{}").get("chapters", []) or []
@@ -55,10 +66,18 @@ def probe_chapters(path: str | Path) -> list[dict]:
 
 def probe_streams(path: str | Path) -> list[dict]:
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries",
-         "stream=index,codec_type,codec_name,channels,bit_rate:stream_disposition=attached_pic",
-         "-of", "json", str(path)],
-        capture_output=True, text=True,
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=index,codec_type,codec_name,channels,bit_rate:stream_disposition=attached_pic",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
     )
     try:
         return json.loads(result.stdout or "{}").get("streams", []) or []

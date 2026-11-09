@@ -3,15 +3,15 @@
 A unit is either one directory holding audio, a loose audio file, or several sibling
 part/disc folders that together make up a single title (``Book/Part 1``, ``Book/Disc 2``).
 """
+
 from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-from .util import (COLLECTION_RE, NOISE_RE, PART_RE, SEQ_RE, SERIES_DIR_RE, STOPWORDS,
-                   clean, natkey, norm)
+from .util import COLLECTION_RE, NOISE_RE, PART_RE, SEQ_RE, SERIES_DIR_RE, STOPWORDS, clean, natkey, norm
 
 AUDIO_EXT = {".mp3", ".m4b", ".m4a", ".mp4", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma"}
 
@@ -54,8 +54,9 @@ class BookUnit:
 def audio_files(directory: str) -> list[str]:
     try:
         with os.scandir(directory) as entries:
-            found = [e.path for e in entries
-                     if e.is_file() and os.path.splitext(e.name)[1].lower() in AUDIO_EXT]
+            found = [
+                e.path for e in entries if e.is_file() and os.path.splitext(e.name)[1].lower() in AUDIO_EXT
+            ]
     except OSError:
         return []
     return sorted(found, key=lambda p: natkey(os.path.basename(p)))
@@ -93,11 +94,24 @@ def discover(root: str | Path, ignore: list[str]) -> list[dict]:
         if os.path.abspath(dirpath) == os.path.abspath(root):
             loose.extend(files)
         else:
-            leaves.append({"path": dirpath, "name": os.path.basename(dirpath),
-                           "parent": os.path.dirname(dirpath), "files": files})
+            leaves.append(
+                {
+                    "path": dirpath,
+                    "name": os.path.basename(dirpath),
+                    "parent": os.path.dirname(dirpath),
+                    "files": files,
+                }
+            )
     for path in loose:
-        leaves.append({"path": path, "name": os.path.splitext(os.path.basename(path))[0],
-                       "parent": root, "files": [path], "loose": True})
+        leaves.append(
+            {
+                "path": path,
+                "name": os.path.splitext(os.path.basename(path))[0],
+                "parent": root,
+                "files": [path],
+                "loose": True,
+            }
+        )
     return leaves
 
 
@@ -128,7 +142,7 @@ def discover_units(root: str | Path, ignore: list[str]) -> list[BookUnit]:
     units = group(discover(root, ignore))
     for unit in units:
         unit.rel_path = os.path.relpath(unit.path, root)
-        if unit.rel_path == os.curdir:          # the library root is itself one book
+        if unit.rel_path == os.curdir:  # the library root is itself one book
             unit.rel_path = os.path.basename(os.path.abspath(unit.path))
         _guess(unit)
     return units
@@ -148,10 +162,10 @@ def author_like(text: str | None) -> float:
     if any(t.lower().strip(".") in STOPWORDS for t in tokens):
         return 0.1
     if re.search(r"\b[A-Za-z]\.[A-Za-z]\.?[A-Za-z]?\.?\b", text):
-        return 0.15                      # "L.A", "U.S.A" - abbreviations, not people
+        return 0.15  # "L.A", "U.S.A" - abbreviations, not people
     score = {1: 0.35, 2: 0.85, 3: 0.8, 4: 0.6, 5: 0.4}.get(len(tokens), 0.1)
     if "," in text and len(tokens) >= 3:
-        score = max(score, 0.9)          # "Author One, Author Two"
+        score = max(score, 0.9)  # "Author One, Author Two"
     capitals = sum(1 for t in tokens if t[:1].isupper())
     if capitals < len(tokens) * 0.6:
         score *= 0.5

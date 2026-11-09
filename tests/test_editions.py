@@ -1,4 +1,5 @@
 """Detail panel: narrator shown as a book fact, other editions with one-click pins."""
+
 import json
 import pathlib
 import tempfile
@@ -16,22 +17,40 @@ def review_unit(**kw):
         "reopen": False,
         "action": "review",
         "hours": 10.43,
-        "match": {"asin": "B00BEST", "title": "Moneyball",
-                  "authors": ["Michael Lewis"], "narrators": ["Scott Brick"],
-                  "hours": 10.4, "confidence": "MEDIUM", "image": "",
-                  "asin_pin_failed": ""},
-        "source": {"parts": 1, "files": 3, "mb": 300, "hours": 10.43,
-                   "codecs": [], "channels": []},
+        "match": {
+            "asin": "B00BEST",
+            "title": "Moneyball",
+            "authors": ["Michael Lewis"],
+            "narrators": ["Scott Brick"],
+            "hours": 10.4,
+            "confidence": "MEDIUM",
+            "image": "",
+            "asin_pin_failed": "",
+        },
+        "source": {"parts": 1, "files": 3, "mb": 300, "hours": 10.43, "codecs": [], "channels": []},
         "output": None,
     }
     kw.setdefault("detail", json.dumps(detail))
     kw.setdefault("asin", "B00BEST")
-    kw.setdefault("alternates", json.dumps([
-        {"asin": "B00ALT1", "title": "Moneyball (Unabridged)",
-         "authors": ["Michael Lewis"], "score": 0.91},
-        {"asin": "B00ALT2", "title": "Moneyball (Abridged)",
-         "authors": ["Michael Lewis"], "score": 0.88},
-    ]))
+    kw.setdefault(
+        "alternates",
+        json.dumps(
+            [
+                {
+                    "asin": "B00ALT1",
+                    "title": "Moneyball (Unabridged)",
+                    "authors": ["Michael Lewis"],
+                    "score": 0.91,
+                },
+                {
+                    "asin": "B00ALT2",
+                    "title": "Moneyball (Abridged)",
+                    "authors": ["Michael Lewis"],
+                    "score": 0.88,
+                },
+            ]
+        ),
+    )
     return UnitState(**kw)
 
 
@@ -106,28 +125,27 @@ class TestSettingsPageProfiles(unittest.TestCase):
         page = self.page()
         self.assertIn("abApplyProfile", page)
         self.assertIn("abSyncProfile", page)
-        self.assertIn("audio_bitrate: '64k'", page)      # source-match floor
-        self.assertIn("audio_bitrate: '128k'", page)     # balanced floor
-        self.assertIn("audio_bitrate: '256k'", page)     # high floor
+        self.assertIn("audio_bitrate: '64k'", page)  # source-match floor
+        self.assertIn("audio_bitrate: '128k'", page)  # balanced floor
+        self.assertIn("audio_bitrate: '256k'", page)  # high floor
 
     def test_settings_script_is_valid_javascript(self):
         import re
         import shutil
         import subprocess
+
         page = self.page()
         scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
         self.assertEqual(len(scripts), 1)
         if shutil.which("node"):
             js = pathlib.Path(self.dir.name) / "settings.js"
             js.write_text(scripts[0], encoding="utf-8")
-            proc = subprocess.run(["node", "--check", str(js)],
-                                  capture_output=True, text=True)
+            proc = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr[:400])
 
     def test_existing_six_settings_unchanged(self):
         page = self.page()
-        for key in ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval",
-                    "nice", "region"):
+        for key in ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region"):
             self.assertIn(f'data-setting="{key}"', page)
 
 

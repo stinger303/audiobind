@@ -1,11 +1,12 @@
 """Pick the right catalog entry for a unit, and say how sure we are."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 from . import catalog
 from .catalog import Product
-from .units import BookUnit, author_like, split_author_title
+from .units import BookUnit
 from .util import norm, sim
 
 
@@ -72,8 +73,16 @@ def match_from_asin(asin: str) -> Match:
         publisher=book.get("publisherName") or "",
         image=book.get("image") or "",
     )
-    match = Match(product=product, score=1.0, margin=1.0, title_sim=1.0, author_sim=1.0,
-                  author_known=True, asin_override=True, language=product.language)
+    match = Match(
+        product=product,
+        score=1.0,
+        margin=1.0,
+        title_sim=1.0,
+        author_sim=1.0,
+        author_known=True,
+        asin_override=True,
+        language=product.language,
+    )
     match.confidence = "HIGH"
     return match
 
@@ -108,16 +117,20 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
         for product in catalog.search(limit=10, **query):
             if product.asin in scored:
                 continue
-            title_sim = max(sim(title, product.title),
-                            sim(title, f"{product.title} {product.subtitle}".strip()))
+            title_sim = max(
+                sim(title, product.title), sim(title, f"{product.title} {product.subtitle}".strip())
+            )
             author_sim = max([sim(author, a) for a in product.authors] or [0.0]) if author else 0.0
             # without a known author the title is the only evidence we have
             total = 0.60 * title_sim + 0.40 * author_sim if author else title_sim
             if not product.language.lower().startswith("english"):
                 total *= 0.85
-            scored[product.asin] = {"product": product, "score": round(total, 3),
-                                    "title_sim": round(title_sim, 3),
-                                    "author_sim": round(author_sim, 3)}
+            scored[product.asin] = {
+                "product": product,
+                "score": round(total, 3),
+                "title_sim": round(title_sim, 3),
+                "author_sim": round(author_sim, 3),
+            }
         if scored and max(s["score"] for s in scored.values()) >= 0.95 and len(scored) >= 3:
             break
 
@@ -133,9 +146,13 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
     margin = round(best["score"] - (max(rivals) if rivals else 0.0), 3)
 
     match = Match(
-        product=best["product"], score=best["score"], margin=margin,
-        title_sim=best["title_sim"], author_sim=best["author_sim"],
-        author_known=bool(author), author_from_series=author_from_series,
+        product=best["product"],
+        score=best["score"],
+        margin=margin,
+        title_sim=best["title_sim"],
+        author_sim=best["author_sim"],
+        author_known=bool(author),
+        author_from_series=author_from_series,
         language=best["product"].language,
     )
     match.confidence = grade(match)
@@ -143,9 +160,14 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
     # keep the runners-up (other editions of the same work, near misses) so the
     # detail panel can offer one-click "use this edition" ASIN pins
     match.alternates = [
-        {"asin": s["product"].asin, "title": s["product"].title,
-         "authors": list(s["product"].authors or []), "score": s["score"]}
-        for s in ranked[1:5] if s["product"].asin != best["product"].asin
+        {
+            "asin": s["product"].asin,
+            "title": s["product"].title,
+            "authors": list(s["product"].authors or []),
+            "score": s["score"],
+        }
+        for s in ranked[1:5]
+        if s["product"].asin != best["product"].asin
     ]
     return match
 

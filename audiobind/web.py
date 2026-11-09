@@ -1,4 +1,5 @@
 """Status page and controls: watch the daemon, pause it, make it scan now."""
+
 from __future__ import annotations
 
 import json
@@ -6,18 +7,25 @@ import logging
 import shutil
 import threading
 import time
-from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote
 
 from . import __version__
+from . import overrides as overrides_mod
 from .advice import explain
-from .config import CONFIG, set_effective, effective_val, is_custom, setting_effective, setting_env, SETTING_KEYS, effective_auto_tiers
+from .config import (
+    CONFIG,
+    SETTING_KEYS,
+    effective_val,
+    is_custom,
+    set_effective,
+    setting_effective,
+    setting_env,
+)
 from .control import CONTROL
 from .covers import resolve as resolve_cover
-from . import overrides as overrides_mod
 from .pipeline import process_unit
-from .state import State
 from .units import discover_units
 
 _log = logging.getLogger("audiobind").info
@@ -1152,20 +1160,20 @@ def _attr(text: str) -> str:
 def _fmt_duration(seconds: float) -> str:
     seconds = int(max(0, seconds))
     if seconds < 60:
-        return "{}s".format(seconds)
+        return f"{seconds}s"
     if seconds < 3600:
-        return "{}m".format(seconds // 60)
-    return "{}h {:02d}m".format(seconds // 3600, (seconds % 3600) // 60)
+        return f"{seconds // 60}m"
+    return f"{seconds // 3600}h {(seconds % 3600) // 60:02d}m"
 
 
 def _fmt_age(seconds: float) -> str:
     if seconds == float("inf"):
         return "never"
     if seconds < 90:
-        return "{:.0f}s ago".format(seconds)
+        return f"{seconds:.0f}s ago"
     if seconds < 5400:
-        return "{:.0f}m ago".format(seconds / 60)
-    return "{:.1f}h ago".format(seconds / 3600)
+        return f"{seconds / 60:.0f}m ago"
+    return f"{seconds / 3600:.1f}h ago"
 
 
 STATUS_ORDER = ("converted", "ready", "review", "held", "failed", "interrupted")
@@ -1240,11 +1248,12 @@ def cover_html(unit, big: bool = False) -> str:
     classes = "ab-covbigwrap" if big else "ab-covwrap"
     src = cover_src(unit)
     if not src:
-        return '<div class="{}"></div>'.format(classes)
-    alt = _attr("cover of {}".format(unit.title or unit.path))
-    return ('<div class="{c}"><img class="ab-thumb" src="{s}" alt="{a}" '
-            'loading="lazy" onerror="abCoverFail(this)"></div>').format(
-                c=classes, s=src, a=alt)
+        return f'<div class="{classes}"></div>'
+    alt = _attr(f"cover of {unit.title or unit.path}")
+    return (
+        f'<div class="{classes}"><img class="ab-thumb" src="{src}" alt="{alt}" '
+        'loading="lazy" onerror="abCoverFail(this)"></div>'
+    )
 
 
 def read_sort(state) -> tuple:
@@ -1273,15 +1282,15 @@ def _render_shelf(problem_units: list) -> str:
             '<section class="ab-shelf" id="ab-shelf" aria-label="Needs attention">'
             '<div class="ab-shelf-head" id="ab-shelf-head" role="button" tabindex="0" '
             'aria-expanded="false" aria-controls="ab-shelf-body">'
-            '<h2>Needs attention</h2>'
+            "<h2>Needs attention</h2>"
             '<span class="ab-scount" id="ab-shelf-count">0</span>'
             '<span class="ab-shint">nothing needs attention</span>'
             '<span class="ab-caret" aria-hidden="true">&#9660;</span>'
-            '</div>'
+            "</div>"
             '<div class="ab-shelf-body" id="ab-shelf-body" hidden></div>'
             '<div class="ab-shelf-empty" id="ab-shelf-empty" style="display:flex">'
             '<span class="ab-sdot"></span> nothing needs attention</div>'
-            '</section>'
+            "</section>"
         )
 
     visible = problem_units[:MAX_SHELF_CARDS]
@@ -1289,51 +1298,58 @@ def _render_shelf(problem_units: list) -> str:
 
     cards = []
     for unit in visible:
-        why, _todo = explain(unit.status, unit.confidence or "", unit.note,
-                             json.loads(unit.detail or "{}"), tier=tier)
-        reason_class = ("held" if unit.status == "held"
-                        else ("failed" if unit.status == "failed" else ""))
+        why, _todo = explain(
+            unit.status, unit.confidence or "", unit.note, json.loads(unit.detail or "{}"), tier=tier
+        )
+        reason_class = "held" if unit.status == "held" else ("failed" if unit.status == "failed" else "")
 
         btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="rowAction(this,\'retry\')">Retry now</button>'
         force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="rowAction(this,\'force\')">Convert anyway</button>'
         asin_btn = '<button class="btn" title="Open this book\'s details and lock an Audible entry." onclick="abEditAsin(this)">Edit ASIN</button>'
 
         cards.append(
-            ('<div class="ab-problem" data-path="{dp}">'
-             '<div class="ab-problem-head">{cov}'
-             '<div class="ab-pbook">'
-             '<span class="ab-ptitle">{ti}</span>'
-             '<span class="ab-pauthor">{au}</span></div>'
-             '<span class="pill {st}"><span class="pdot"></span>{st}</span></div>'
-             '<div class="ab-preason {rc}">{wh}</div>'
-             '<div class="ab-pactions">{btns}</div></div>'
-             ).format(
-                dp=_attr(unit.path), cov=cover_html(unit),
+            (
+                '<div class="ab-problem" data-path="{dp}">'
+                '<div class="ab-problem-head">{cov}'
+                '<div class="ab-pbook">'
+                '<span class="ab-ptitle">{ti}</span>'
+                '<span class="ab-pauthor">{au}</span></div>'
+                '<span class="pill {st}"><span class="pdot"></span>{st}</span></div>'
+                '<div class="ab-preason {rc}">{wh}</div>'
+                '<div class="ab-pactions">{btns}</div></div>'
+            ).format(
+                dp=_attr(unit.path),
+                cov=cover_html(unit),
                 ti=_html(unit.title or unit.path),
                 au=_html(unit.author or ""),
-                st=unit.status, rc=reason_class, wh=_html(why),
-                btns=btn + force + asin_btn))
+                st=unit.status,
+                rc=reason_class,
+                wh=_html(why),
+                btns=btn + force + asin_btn,
+            )
+        )
     cards_html = "\n".join(cards)
     if more:
         cards_html += (
             '\n<div class="ab-problem" style="display:flex;align-items:center;'
             'justify-content:center;color:var(--ab-text3);font-size:12.5px">'
-            '+{} more &mdash; filter in the table below</div>').format(more)
+            f"+{more} more &mdash; filter in the table below</div>"
+        )
 
     count = len(problem_units)
     return (
         '<section class="ab-shelf" id="ab-shelf" aria-label="Needs attention">'
         '<div class="ab-shelf-head" id="ab-shelf-head" role="button" tabindex="0" '
         'aria-expanded="true" aria-controls="ab-shelf-body">'
-        '<h2>Needs attention</h2>'
+        "<h2>Needs attention</h2>"
         '<span class="ab-scount" id="ab-shelf-count">{c}</span>'
         '<span class="ab-shint">action needed on {c} book{suf}</span>'
         '<span class="ab-caret" aria-hidden="true">&#9660;</span>'
-        '</div>'
+        "</div>"
         '<div class="ab-shelf-body" id="ab-shelf-body">{cards}</div>'
         '<div class="ab-shelf-empty" id="ab-shelf-empty">'
         '<span class="ab-sdot"></span> nothing needs attention</div>'
-        '</section>'
+        "</section>"
     ).format(c=count, suf="" if count == 1 else "s", cards=cards_html)
 
 
@@ -1350,71 +1366,116 @@ def render_settings(state) -> str:
         '<div class="ab-setting" data-profile>'
         '<span class="ab-setting-label">Quality profile</span>'
         '<div class="ab-setting-hint">Named presets for the two conversion settings '
-        'below. Picking one fills them in; edit either field afterwards and the '
-        'profile switches to Custom so you can see it is no longer a preset.</div>'
+        "below. Picking one fills them in; edit either field afterwards and the "
+        "profile switches to Custom so you can see it is no longer a preset.</div>"
         '<select class="ab-in" id="ab-profile" onchange="abApplyProfile(this.value)">'
         '<option value="balanced">Balanced - HIGH tier, 128k floor</option>'
         '<option value="high">High - HIGH tier, 256k floor</option>'
         '<option value="source-match">Source-match - HIGH tier, 64k floor (keeps '
-        'the source bitrate)</option>'
+        "the source bitrate)</option>"
         '<option value="custom">Custom</option>'
-        '</select></div>')
+        "</select></div>"
+    )
 
     # 1. Auto-convert tier
     tier = effective_val("auto_convert")
     tier_custom = is_custom("auto_convert")
     tier_env = setting_env("auto_convert")
-    controls_parts.append(_setting_select("auto_convert", "Auto-convert tier",
-        tier, ["HIGH", "MEDIUM", "OFF"],
-        tier_custom, tier_env,
-        hint="What converts without you touching a row. "
-             "HIGH: title and author match Audible strongly with a clear margin - safe to "
-             "convert automatically. MEDIUM: a good match with weaker evidence (e.g. the "
-             "author came from the catalog) - converts when this tier is MEDIUM. LOW: weak "
-             "match - always held for review; fix it with Edit ASIN on the book row. "
-             "COLLECTION/NONE: the folder looks like several books mixed together, or nothing "
-             "in the catalog matched - these are never auto-converted."))
+    controls_parts.append(
+        _setting_select(
+            "auto_convert",
+            "Auto-convert tier",
+            tier,
+            ["HIGH", "MEDIUM", "OFF"],
+            tier_custom,
+            tier_env,
+            hint="What converts without you touching a row. "
+            "HIGH: title and author match Audible strongly with a clear margin - safe to "
+            "convert automatically. MEDIUM: a good match with weaker evidence (e.g. the "
+            "author came from the catalog) - converts when this tier is MEDIUM. LOW: weak "
+            "match - always held for review; fix it with Edit ASIN on the book row. "
+            "COLLECTION/NONE: the folder looks like several books mixed together, or nothing "
+            "in the catalog matched - these are never auto-converted.",
+        )
+    )
 
     # 2. Bitrate floor
     bitrate = effective_val("audio_bitrate")
     bitrate_custom = is_custom("audio_bitrate")
     bitrate_env = setting_env("audio_bitrate")
-    controls_parts.append(_setting_select("audio_bitrate", "Output quality floor",
-        bitrate, ["64k", "128k", "192k", "256k"],
-        bitrate_custom, bitrate_env,
-        hint="A floor, not a target: a richer source keeps its own bitrate (capped at 320k). Applies to future conversions only."))
+    controls_parts.append(
+        _setting_select(
+            "audio_bitrate",
+            "Output quality floor",
+            bitrate,
+            ["64k", "128k", "192k", "256k"],
+            bitrate_custom,
+            bitrate_env,
+            hint="A floor, not a target: a richer source keeps its own bitrate (capped at 320k). Applies to future conversions only.",
+        )
+    )
 
     # 3. Runtime delta
     delta = setting_effective("runtime_delta")
     delta_custom = is_custom("max_runtime_delta")
     delta_env = setting_env("runtime_delta")
-    controls_parts.append(_setting_range("runtime_delta", "Wrong-edition tolerance",
-        delta, 5, 50, "%", delta_custom, delta_env,
-        hint="How far the file runtime may differ from the Audible runtime before a book is HELD for review. Applies to future scans."))
+    controls_parts.append(
+        _setting_range(
+            "runtime_delta",
+            "Wrong-edition tolerance",
+            delta,
+            5,
+            50,
+            "%",
+            delta_custom,
+            delta_env,
+            hint="How far the file runtime may differ from the Audible runtime before a book is HELD for review. Applies to future scans.",
+        )
+    )
 
     # 4. Scan interval
     interval = effective_val("scan_interval_min")
     interval_custom = is_custom("scan_interval_min")
     interval_env = setting_env("scan_interval")
-    controls_parts.append(_setting_number("scan_interval", "Scan interval",
-        interval, 5, 1440, "min", interval_custom, interval_env))
+    controls_parts.append(
+        _setting_number(
+            "scan_interval", "Scan interval", interval, 5, 1440, "min", interval_custom, interval_env
+        )
+    )
 
     # 5. CPU priority
     nice = effective_val("nice")
     nice_custom = is_custom("nice")
     nice_env = setting_env("nice")
-    controls_parts.append(_setting_range("nice", "CPU priority (nice)",
-        nice, 0, 19, "", nice_custom, nice_env,
-        hint="higher = kinder to the system; ffmpeg runs at this priority"))
+    controls_parts.append(
+        _setting_range(
+            "nice",
+            "CPU priority (nice)",
+            nice,
+            0,
+            19,
+            "",
+            nice_custom,
+            nice_env,
+            hint="higher = kinder to the system; ffmpeg runs at this priority",
+        )
+    )
 
     # 6. Region
     region = effective_val("region")
     region_custom = is_custom("region")
     region_env = setting_env("region")
-    controls_parts.append(_setting_select("region", "Catalog region",
-        region, ["us", "uk", "ca", "au", "de"],
-        region_custom, region_env,
-        hint="Applies to future catalog lookups."))
+    controls_parts.append(
+        _setting_select(
+            "region",
+            "Catalog region",
+            region,
+            ["us", "uk", "ca", "au", "de"],
+            region_custom,
+            region_env,
+            hint="Applies to future catalog lookups.",
+        )
+    )
 
     rc = rail_counts(state, counts)
     return SETTINGS_PAGE.format(
@@ -1435,55 +1496,61 @@ def render_settings(state) -> str:
     )
 
 
-def _setting_select(key: str, label: str, value: str, options: list[str],
-                    custom: bool, env_val, hint: str = "") -> str:
+def _setting_select(
+    key: str, label: str, value: str, options: list[str], custom: bool, env_val, hint: str = ""
+) -> str:
     mark = '<span class="ab-custom" data-field="{k}"{h}>custom (was {ev} from env)</span>'.format(
-        k=key, h="" if custom else " hidden", ev=_html(str(env_val)))
+        k=key, h="" if custom else " hidden", ev=_html(str(env_val))
+    )
     opt_html = "".join(
         '<option value="{v}"{s}>{v}</option>'.format(
-            v=o, s=" selected" if str(o).upper() == str(value).upper() else "")
+            v=o, s=" selected" if str(o).upper() == str(value).upper() else ""
+        )
         for o in options
     )
-    hint_html = '<div class="ab-setting-hint">{h}</div>'.format(h=_html(hint)) if hint else ""
+    hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
     return (
-        '<div class="ab-setting" data-setting="{k}">'
-        '<span class="ab-setting-label">{lb}{mk}</span>'
-        '{hn}'
-        '<select class="ab-in">{op}</select>'
-        '</div>'
-    ).format(k=key, lb=_html(label), mk=mark, hn=hint_html, op=opt_html)
+        f'<div class="ab-setting" data-setting="{key}">'
+        f'<span class="ab-setting-label">{_html(label)}{mark}</span>'
+        f"{hint_html}"
+        f'<select class="ab-in">{opt_html}</select>'
+        "</div>"
+    )
 
 
-def _setting_range(key: str, label: str, value: int, vmin: int, vmax: int,
-                   suffix: str, custom: bool, env_val, hint: str = "") -> str:
+def _setting_range(
+    key: str, label: str, value: int, vmin: int, vmax: int, suffix: str, custom: bool, env_val, hint: str = ""
+) -> str:
     mark = '<span class="ab-custom" data-field="{k}"{h}>custom (was {ev} from env)</span>'.format(
-        k=key, h="" if custom else " hidden", ev=_html(str(env_val)))
-    hint_html = '<div class="ab-setting-hint">{h}</div>'.format(h=_html(hint)) if hint else ""
+        k=key, h="" if custom else " hidden", ev=_html(str(env_val))
+    )
+    hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
     return (
-        '<div class="ab-setting" data-setting="{k}">'
-        '<span class="ab-setting-label">{lb}{mk}</span>'
-        '{hn}'
+        f'<div class="ab-setting" data-setting="{key}">'
+        f'<span class="ab-setting-label">{_html(label)}{mark}</span>'
+        f"{hint_html}"
         '<div class="ab-range-wrap">'
-        '<input type="range" min="{mn}" max="{mx}" value="{v}" step="1" '
+        f'<input type="range" min="{vmin}" max="{vmax}" value="{value}" step="1" '
         'oninput="abRangeShow(this)">'
-        '<span class="ab-range-val">{v}{sf}</span>'
-        '</div></div>'
-    ).format(k=key, lb=_html(label), mk=mark, hn=hint_html,
-             mn=vmin, mx=vmax, v=value, sf=suffix)
+        f'<span class="ab-range-val">{value}{suffix}</span>'
+        "</div></div>"
+    )
 
 
-def _setting_number(key: str, label: str, value: int, vmin: int, vmax: int,
-                    suffix: str, custom: bool, env_val) -> str:
+def _setting_number(
+    key: str, label: str, value: int, vmin: int, vmax: int, suffix: str, custom: bool, env_val
+) -> str:
     mark = '<span class="ab-custom" data-field="{k}"{h}>custom (was {ev} from env)</span>'.format(
-        k=key, h="" if custom else " hidden", ev=_html(str(env_val)))
+        k=key, h="" if custom else " hidden", ev=_html(str(env_val))
+    )
     return (
-        '<div class="ab-setting" data-setting="{k}">'
-        '<span class="ab-setting-label">{lb}{mk}</span>'
+        f'<div class="ab-setting" data-setting="{key}">'
+        f'<span class="ab-setting-label">{_html(label)}{mark}</span>'
         '<div class="ab-range-wrap">'
-        '<input type="number" class="ab-in" min="{mn}" max="{mx}" value="{v}" step="1">'
-        '<span>{sf}</span>'
-        '</div></div>'
-    ).format(k=key, lb=_html(label), mk=mark, mn=vmin, mx=vmax, v=value, sf=suffix)
+        f'<input type="number" class="ab-in" min="{vmin}" max="{vmax}" value="{value}" step="1">'
+        f"<span>{suffix}</span>"
+        "</div></div>"
+    )
 
 
 def render(state, status: str = "", query: str = "") -> str:
@@ -1513,32 +1580,41 @@ def render(state, status: str = "", query: str = "") -> str:
         units = [u for u in units if search_matches(u, query)]
 
     # chips
-    chips = ['<a class="chip{on}" href="/">All <span class="n">{n}</span></a>'.format(
-        on=" on" if not wanted else "", n=total)]
+    chips = [
+        '<a class="chip{on}" href="/">All <span class="n">{n}</span></a>'.format(
+            on=" on" if not wanted else "", n=total
+        )
+    ]
     for name in STATUS_ORDER:
         visible = counts.get(name, 0) - queued_by_status.get(name, 0)
         if not visible:
             continue
         chips.append(
             '<a class="chip{on}" href="/?status={st}">{st} <span class="n">{n}</span></a>'.format(
-                on=" on" if wanted == name else "", st=name, n=visible)
+                on=" on" if wanted == name else "", st=name, n=visible
+            )
         )
     chips_html = "".join(chips)
     rc = rail_counts(state, counts)
 
     # problem units for shelf
     shelf_order = {"failed": 0, "held": 1, "review": 2}
-    problem_units = [u for u in all_units if u.status in ("held", "review", "failed")
-                     and u.path not in queued]
+    problem_units = [
+        u for u in all_units if u.status in ("held", "review", "failed") and u.path not in queued
+    ]
     problem_units.sort(key=lambda u: (shelf_order.get(u.status, 99), unit_title_key(u)))
 
     # table
     shown = len(units)
     units = units[:MAX_ROWS]
     overflow = (
-        '<div class="ab-overflow">showing the first {max} of {sh} - '
-        'filter by status or use <code>/api/units?status=</code></div>'
-    ).format(max=MAX_ROWS, sh=shown) if shown > MAX_ROWS else ""
+        (
+            f'<div class="ab-overflow">showing the first {MAX_ROWS} of {shown} - '
+            "filter by status or use <code>/api/units?status=</code></div>"
+        )
+        if shown > MAX_ROWS
+        else ""
+    )
 
     def detail_panel(unit) -> str:
         try:
@@ -1548,54 +1624,56 @@ def render(state, status: str = "", query: str = "") -> str:
         src = data.get("source") or {}
         out = data.get("output") or {}
         if not out and unit.output:
-            out = {"path": unit.output, "mb": unit.out_mb, "hours": unit.hours,
-                   "chapters": unit.chapters, "chapters_from": ""}
+            out = {
+                "path": unit.output,
+                "mb": unit.out_mb,
+                "hours": unit.hours,
+                "chapters": unit.chapters,
+                "chapters_from": "",
+            }
 
         mb = src.get("mb") or unit.src_mb
-        size = "{:.0f} MB &middot; ".format(mb) if mb else ""
+        size = f"{mb:.0f} MB &middot; " if mb else ""
         codecs = " + ".join(src.get("codecs") or [])
         n_parts = src.get("parts", 1)
         n_files = src.get("files") or unit.files
         before = [
             "{nf} audio file{fs} in {np} part{ps}".format(
-                nf=n_files, fs="" if n_files == 1 else "s",
-                np=n_parts, ps="" if n_parts == 1 else "s"),
-            "{sz}{hr:.2f} hours of audio".format(
-                sz=size, hr=src.get("hours") or unit.hours),
-            ("Audio format: " + codecs if codecs
-             else "Audio format not detected in the files")
-            + (" &middot; {} ch".format(", ".join(src.get("channels") or []))
-               if src.get("channels") else ""),
-            '<span class="dim"><code>{pa}</code></span>'.format(pa=_html(unit.path)),
+                nf=n_files, fs="" if n_files == 1 else "s", np=n_parts, ps="" if n_parts == 1 else "s"
+            ),
+            "{sz}{hr:.2f} hours of audio".format(sz=size, hr=src.get("hours") or unit.hours),
+            ("Audio format: " + codecs if codecs else "Audio format not detected in the files")
+            + (" &middot; {} ch".format(", ".join(src.get("channels") or [])) if src.get("channels") else ""),
+            f'<span class="dim"><code>{_html(unit.path)}</code></span>',
         ]
         if out:
             after = [
                 "<code>{nm}</code>".format(nm=_html(Path(out.get("path", "")).name)),
-                "{mb:.0f} MB &middot; {hr:.2f} h".format(
-                    mb=out.get("mb") or 0, hr=out.get("hours") or 0),
+                "{mb:.0f} MB &middot; {hr:.2f} h".format(mb=out.get("mb") or 0, hr=out.get("hours") or 0),
                 "{ch} chapters ({cf})".format(
-                    ch=out.get("chapters", 0),
-                    cf=_html(str(out.get("chapters_from") or ""))),
-                '<span class="dim">{op}</span>'.format(
-                    op=_html(str(out.get("path") or ""))),
+                    ch=out.get("chapters", 0), cf=_html(str(out.get("chapters_from") or ""))
+                ),
+                '<span class="dim">{op}</span>'.format(op=_html(str(out.get("path") or ""))),
             ]
         else:
-            after = ["Nothing converted yet &mdash; still in your source folder.",
-                     "Once it converts: <b>one M4B</b> with chapters, cover and "
-                     "tags, filed into your library."]
+            after = [
+                "Nothing converted yet &mdash; still in your source folder.",
+                "Once it converts: <b>one M4B</b> with chapters, cover and tags, filed into your library.",
+            ]
 
         match_data = data.get("match") or {}
         mtitle = match_data.get("title") or unit.title
-        decision = ["Audible match: <b>{t}</b>".format(t=_html(mtitle))]
+        decision = [f"Audible match: <b>{_html(mtitle)}</b>"]
         narrators = match_data.get("narrators") or []
         if narrators:
             decision.append("Narrated by <b>{n}</b>".format(n=_html("; ".join(narrators))))
         if unit.confidence:
-            decision.append("Match confidence: <b>{co}</b>".format(co=unit.confidence))
+            decision.append(f"Match confidence: <b>{unit.confidence}</b>")
         if unit.asin:
             decision.append(
-                'ASIN <a class="ab-alink" href="https://www.audible.com/pd?asin={a}" '
-                'target="_blank" rel="noopener">{a}</a>'.format(a=_attr(unit.asin)))
+                f'ASIN <a class="ab-alink" href="https://www.audible.com/pd?asin={_attr(unit.asin)}" '
+                f'target="_blank" rel="noopener">{_attr(unit.asin)}</a>'
+            )
         else:
             decision.append("ASIN &mdash;")
         if unit.note:
@@ -1619,11 +1697,15 @@ def render(state, status: str = "", query: str = "") -> str:
         if unit.confidence in ("LOW", "MEDIUM", "HIGH"):
             cells = "".join(
                 '<span class="{cls}">{t}</span>'.format(
-                    cls="ab-on" if t == unit.confidence else "ab-off", t=t)
-                for t in ("LOW", "MEDIUM", "HIGH"))
-            meter = ('<div class="ab-meter">{c}</div>'
-                     '<div class="ab-meterhint">How sure we are this is the '
-                     'right book</div>').format(c=cells)
+                    cls="ab-on" if t == unit.confidence else "ab-off", t=t
+                )
+                for t in ("LOW", "MEDIUM", "HIGH")
+            )
+            meter = (
+                f'<div class="ab-meter">{cells}</div>'
+                '<div class="ab-meterhint">How sure we are this is the '
+                "right book</div>"
+            )
 
         # a manual re-check (Retry now / Use this ASIN) that still ended in a
         # decision-needed state says so up top
@@ -1632,51 +1714,55 @@ def render(state, status: str = "", query: str = "") -> str:
             tier = str(effective_val("auto_convert") or "high").lower()
             if unit.status == "review":
                 if tier == "off":
-                    btxt = ("<b>Re-checked &mdash; still needs your decision.</b> "
-                            "Auto-convert is off, so every book waits for your OK.")
+                    btxt = (
+                        "<b>Re-checked &mdash; still needs your decision.</b> "
+                        "Auto-convert is off, so every book waits for your OK."
+                    )
                 else:
-                    btxt = ("<b>Re-checked &mdash; still not confident enough.</b> "
-                            "ASIN {a} matches at <b>{c}</b>, below your {t} "
-                            "auto-convert setting.").format(
-                                a=_html(unit.asin or "the pinned one"),
-                                c=unit.confidence or "?", t=tier)
+                    btxt = (
+                        "<b>Re-checked &mdash; still not confident enough.</b> "
+                        "ASIN {a} matches at <b>{c}</b>, below your {t} "
+                        "auto-convert setting."
+                    ).format(a=_html(unit.asin or "the pinned one"), c=unit.confidence or "?", t=tier)
             elif unit.status == "held":
-                btxt = ("<b>Re-checked &mdash; still not a runtime match.</b> "
-                        "This edition still disagrees with the catalog runtime.")
+                btxt = (
+                    "<b>Re-checked &mdash; still not a runtime match.</b> "
+                    "This edition still disagrees with the catalog runtime."
+                )
             else:
                 btxt = "<b>Re-checked &mdash; the conversion failed again.</b>"
-            banner = '<div class="ab-rebanner">{t}</div>'.format(t=btxt)
+            banner = f'<div class="ab-rebanner">{btxt}</div>'
 
         def block(title, items):
-            return ("<div><h4>{t}</h4><ul>".format(t=title)
-                    + "".join("<li>{i}</li>".format(i=i) for i in items)
-                    + "</ul></div>")
+            return f"<div><h4>{title}</h4><ul>" + "".join(f"<li>{i}</li>" for i in items) + "</ul></div>"
 
         custom = overrides_mod.describe(state.get_overrides(unit.path))
         marked = overrides_mod.custom_fields(state.get_overrides(unit.path))
 
         def field(key, label_str, catalog_value, width_hint=""):
             mark = ('<span class="ab-custom" data-field="{k}"{h}>custom</span>').format(
-                k=key, h="" if key in marked else " hidden")
+                k=key, h="" if key in marked else " hidden"
+            )
             placeholder = _attr(catalog_value or "catalog value")
             return (
-                '<div class="ab-field"><span class="ab-lab">{lb}{mk}</span>'
-                '<input class="ab-in" data-field="{k}" value="{cv}" '
-                'placeholder="{ph}" spellcheck="false"{wh}></div>'
-            ).format(lb=label_str, mk=mark, k=key, cv=_attr(custom[key]),
-                     ph=placeholder, wh=width_hint)
+                f'<div class="ab-field"><span class="ab-lab">{label_str}{mark}</span>'
+                f'<input class="ab-in" data-field="{key}" value="{_attr(custom[key])}" '
+                f'placeholder="{placeholder}" spellcheck="false"{width_hint}></div>'
+            )
 
         editor = (
             '<div class="ab-edit" data-path="{dp}"><h4>Metadata</h4>'
             '<p class="ab-hint">Overrides win over the catalog when this book is '
-            'converted - tags, metadata.json and the author/title layout. '
-            'Leave a box empty to use the catalog value; '
-            'separate several names with a semicolon.</p>'
+            "converted - tags, metadata.json and the author/title layout. "
+            "Leave a box empty to use the catalog value; "
+            "separate several names with a semicolon.</p>"
             '<div class="ab-grid">'
             + field("title", "title", match_data.get("title") or unit.title)
-            + field("authors", "author(s)",
-                    "; ".join(match_data.get("authors") or
-                              ([unit.author] if unit.author else [])))
+            + field(
+                "authors",
+                "author(s)",
+                "; ".join(match_data.get("authors") or ([unit.author] if unit.author else [])),
+            )
             + field("narrator", "narrator(s)", "; ".join(match_data.get("narrators") or []))
             + field("series", "series", "")
             + field("series_index", "series index", "")
@@ -1695,24 +1781,29 @@ def render(state, status: str = "", query: str = "") -> str:
         if others:
             edition_rows = []
             for alt in others:
-                edition_rows.append((
-                    '<div class="ab-edition">'
-                    '<span class="ab-edmain"><b>{ti}</b>'
-                    '<span class="ab-edsub">{au} &middot; '
-                    '<a class="ab-alink" href="https://www.audible.com/pd?asin={a}" '
-                    'target="_blank" rel="noopener">{a}</a></span></span>'
-                    '<button title="Lock this book to this Audible entry, then re-check '
-                    'against it." onclick="abUseEdition(this)" data-asin="{a}">'
-                    'Use this edition</button></div>').format(
+                edition_rows.append(
+                    (
+                        '<div class="ab-edition">'
+                        '<span class="ab-edmain"><b>{ti}</b>'
+                        '<span class="ab-edsub">{au} &middot; '
+                        '<a class="ab-alink" href="https://www.audible.com/pd?asin={a}" '
+                        'target="_blank" rel="noopener">{a}</a></span></span>'
+                        '<button title="Lock this book to this Audible entry, then re-check '
+                        'against it." onclick="abUseEdition(this)" data-asin="{a}">'
+                        "Use this edition</button></div>"
+                    ).format(
                         ti=_html(str(alt.get("title") or "")),
                         au=_html("; ".join(alt.get("authors") or [])),
-                        a=_attr(str(alt.get("asin")))))
+                        a=_attr(str(alt.get("asin"))),
+                    )
+                )
             editions_html = (
                 '<div class="ab-editions"><h4>Other editions seen</h4>'
                 + "".join(edition_rows)
                 + '<p class="ab-hint">Audible entries the search also scored highly for '
-                  'this book - different narrations or editions of the same title. '
-                  'Pinning one locks the match permanently.</p></div>')
+                "this book - different narrations or editions of the same title. "
+                "Pinning one locks the match permanently.</p></div>"
+            )
 
         btn = '<button title="Re-check this book against the catalog and convert it if it passes the rules." onclick="unitAction(this,\'retry\')">Retry now</button>'
         force = '<button class="warn" title="Convert this book even though the automatic checks flagged it." onclick="unitAction(this,\'force\')">Convert anyway</button>'
@@ -1720,41 +1811,44 @@ def render(state, status: str = "", query: str = "") -> str:
 
         explain_html = (
             '<div class="explain">'
-            + '<div><h4>{wh}</h4><p>{w}</p>{m}</div>'.format(
-                wh=why_header, w=_html(why), m=meter)
-            + '<div class="todo"><h4>Your options</h4><p>{td}</p></div>'.format(
-                td=_html(todo))
+            + f"<div><h4>{why_header}</h4><p>{_html(why)}</p>{meter}</div>"
+            + f'<div class="todo"><h4>Your options</h4><p>{_html(todo)}</p></div>'
             + "</div>"
         )
         actions = (
-            '<div class="ab-actrow">' + force + btn + "</div>"
+            '<div class="ab-actrow">'
+            + force
+            + btn
+            + "</div>"
             + '<div class="ab-pinrow">'
             + '<span class="ab-pinlab">Lock this book to one exact Audible entry:</span>'
             + '<input data-asin value="{av}" placeholder="ASIN, e.g. B005EHN61O">'.format(
-                av=_attr(unit.asin or ""))
+                av=_attr(unit.asin or "")
+            )
             + asin_btn
             + '<span class="ab-pinhint">Locks the match permanently - every future '
-              'scan checks this book against this exact entry instead of guessing. '
-              'Passes your confidence setting &rarr; converts automatically. Still '
-              'too unsure &rarr; this panel re-opens with the reason.</span>'
-            + "</div>"
+            "scan checks this book against this exact entry instead of guessing. "
+            "Passes your confidence setting &rarr; converts automatically. Still "
+            "too unsure &rarr; this panel re-opens with the reason.</span>" + "</div>"
         )
         delete_act = (
             '<div class="acts">'
             + '<button class="btn danger" title="Permanently delete this book\'s source folder '
-              'and its published files. Cannot be undone." onclick="unitDelete(this)" '
-              'data-path="{dp}" data-title="{ti}" '
-              'style="margin-left:auto">Delete</button>'
-            + "</div>"
+            'and its published files. Cannot be undone." onclick="unitDelete(this)" '
+            'data-path="{dp}" data-title="{ti}" '
+            'style="margin-left:auto">Delete</button>' + "</div>"
         )
-        reopen_attr = (' data-reopen="1"'
-                       if data.get("reopen")
-                       and unit.status in ("review", "held", "failed") else "")
+        reopen_attr = (
+            ' data-reopen="1"' if data.get("reopen") and unit.status in ("review", "held", "failed") else ""
+        )
         after_title = "What you got" if out else "What you'll get"
         toprow = (
             '<div class="ab-toprow">'
-            + '<div class="ab-topcov">{cov}</div>'.format(cov=cover_html(unit, big=True))
-            + '<div class="ab-topmain">' + explain_html + actions + "</div>"
+            + f'<div class="ab-topcov">{cover_html(unit, big=True)}</div>'
+            + '<div class="ab-topmain">'
+            + explain_html
+            + actions
+            + "</div>"
             + "</div>"
         )
         return (
@@ -1770,26 +1864,21 @@ def render(state, status: str = "", query: str = "") -> str:
             + editor
             + delete_act
             + "</div></td></tr>"
-        ).format(dp=_attr(unit.path), ti=_attr(unit.title or unit.path),
-                 tc=TOTAL_COLUMNS, ro=reopen_attr)
+        ).format(dp=_attr(unit.path), ti=_attr(unit.title or unit.path), tc=TOTAL_COLUMNS, ro=reopen_attr)
 
     def row(unit) -> str:
         tier = str(effective_val("auto_convert") or "high")
         haystack = " ".join(filter(None, [unit.title, unit.author, unit.path]))
-        data = " ".join(
-            'data-sort-{k}="{v}"'.format(k=key, v=_attr(str(sort_value(unit, key))))
-            for key in SORT_COLUMNS
-        )
+        data = " ".join(f'data-sort-{key}="{_attr(str(sort_value(unit, key)))}"' for key in SORT_COLUMNS)
         has_custom = bool(state.get_overrides(unit.path))
-        badge = '<span class="ab-custom"{h}>custom</span>'.format(
-            h="" if has_custom else " hidden")
+        badge = '<span class="ab-custom"{h}>custom</span>'.format(h="" if has_custom else " hidden")
 
         act_html = ""
         if unit.status in ("held", "review", "failed"):
             btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="event.stopPropagation();rowAction(this,\'retry\')">Retry now</button>'
             force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="event.stopPropagation();rowAction(this,\'force\')">Convert anyway</button>'
             asin_btn = '<button class="btn" title="Open this book\'s details and lock an Audible entry." onclick="event.stopPropagation();abEditAsin(this)">Edit ASIN</button>'
-            act_html = '<div class="ab-rowact">' + btn + force + asin_btn + '</div>'
+            act_html = '<div class="ab-rowact">' + btn + force + asin_btn + "</div>"
 
         reason_html = ""
         if unit.status in ("held", "review", "failed"):
@@ -1797,11 +1886,9 @@ def render(state, status: str = "", query: str = "") -> str:
                 detail_data = json.loads(unit.detail or "{}")
             except ValueError:
                 detail_data = {}
-            why, _todo = explain(unit.status, unit.confidence or "", unit.note,
-                                 detail_data, tier=tier)
+            why, _todo = explain(unit.status, unit.confidence or "", unit.note, detail_data, tier=tier)
             rc = " failed" if unit.status == "failed" else ""
-            reason_html = '<span class="ab-breason{rc}">{wh}</span>'.format(
-                rc=rc, wh=_html(why))
+            reason_html = f'<span class="ab-breason{rc}">{_html(why)}</span>'
 
         return (
             '<tr class="urow" onclick="toggleRow(this)" data-path="{dp}" '
@@ -1815,15 +1902,21 @@ def render(state, status: str = "", query: str = "") -> str:
             '<td class="ab-hidemd ab-scan">{ag}</td>'
             '<td class="ab-actcol">{ac}</td></tr>'
         ).format(
-            dp=_attr(unit.path), hs=_attr(haystack), da=data,
+            dp=_attr(unit.path),
+            hs=_attr(haystack),
+            da=data,
             cov=cover_html(unit),
-            ti=_html(unit.title or unit.path), bd=badge,
-            au=_html(unit.author or ""), rs=reason_html,
+            ti=_html(unit.title or unit.path),
+            bd=badge,
+            au=_html(unit.author or ""),
+            rs=reason_html,
             st=unit.status,
-            tc=_tier_class(unit.confidence), co=unit.confidence or "-",
+            tc=_tier_class(unit.confidence),
+            co=unit.confidence or "-",
             hr=unit.hours or 0,
             ag=_fmt_age(time.time() - (unit.updated_at or 0)),
-            ac=act_html)
+            ac=act_html,
+        )
 
     rows = "".join(row(u) + detail_panel(u) for u in units)
 
@@ -1837,44 +1930,47 @@ def render(state, status: str = "", query: str = "") -> str:
         if flagged and u.status in ("review", "held", "failed"):
             state.clear_reopen(u.path)
     if not units:
-        rows = ('<tr class="ab-empty"><td colspan="{tc}">'
-                'no books match this filter</td></tr>').format(tc=TOTAL_COLUMNS)
+        rows = f'<tr class="ab-empty"><td colspan="{TOTAL_COLUMNS}">no books match this filter</td></tr>'
 
     headers = '<th class="ab-covhead"></th>' + "".join(
-        '<th class="ab-sort{on} {kl}" data-column="{k}">'
-        '{lb}<span class="ab-arrow">{ar}</span></th>'.format(
-            on=" ab-on" if key == sort_column else "", kl=klass, k=key,
+        '<th class="ab-sort{on} {kl}" data-column="{k}">{lb}<span class="ab-arrow">{ar}</span></th>'.format(
+            on=" ab-on" if key == sort_column else "",
+            kl=klass,
+            k=key,
             lb=label,
-            ar="&#9660;" if (key == sort_column and sort_dir == "desc") else "&#9650;")
+            ar="&#9660;" if (key == sort_column and sort_dir == "desc") else "&#9650;",
+        )
         for key, label, _width, klass in COLUMNS
     )
-    colgroup = ('<col style="width:{cw}">'.format(cw=COVER_WIDTH)) + "".join(
-        ('<col style="width:{w}">'.format(w=width)) if width else "<col>"
-        for _k, _l, width, _c in COLUMNS
+    colgroup = (f'<col style="width:{COVER_WIDTH}">') + "".join(
+        (f'<col style="width:{width}">') if width else "<col>" for _k, _l, width, _c in COLUMNS
     )
 
     # controls
     paused = CONTROL.paused
     scanning = CONTROL.scanning
     prog = CONTROL.scan_progress()
-    scan_button = ('<button class="btn primary" title="Re-check every book in the library now and '
-                   'convert the ones that pass the automatic rules." '
-                   'onclick="act(\'scan\')" id="ab-scanbtn"{di}>{lbl}</button>').format(
+    scan_button = (
+        '<button class="btn primary" title="Re-check every book in the library now and '
+        'convert the ones that pass the automatic rules." '
+        'onclick="act(\'scan\')" id="ab-scanbtn"{di}>{lbl}</button>'
+    ).format(
         di=" disabled" if (paused or scanning) else "",
-        lbl=("Scanning {} / {}&hellip;".format(prog["done"], prog["total"])
-             if scanning else "Scan now"))
+        lbl=("Scanning {} / {}&hellip;".format(prog["done"], prog["total"]) if scanning else "Scan now"),
+    )
     recheck_button = (
         '<button class="btn" id="ab-recheckbtn" title="Re-check every book against '
-        'Audible, including ones already decided - refreshes the match, the Other '
+        "Audible, including ones already decided - refreshes the match, the Other "
         'editions list and the chapters. Books still follow the auto-convert rules." '
-        'onclick="act(\'recheck\')"{di2}>Re-check all</button>').format(
-        di2=" disabled" if (paused or scanning) else "")
+        "onclick=\"act('recheck')\"{di2}>Re-check all</button>"
+    ).format(di2=" disabled" if (paused or scanning) else "")
     pause_button = (
         '<button class="btn" title="Finish the book that is encoding, then stop converting '
-        'until you press Resume." onclick="act(\'resume\')">Resume</button>' if paused
+        'until you press Resume." onclick="act(\'resume\')">Resume</button>'
+        if paused
         else '<button class="btn warn" title="Finish the book that is encoding, then stop '
-             'converting until you press Resume." onclick="act(\'pause\')">Pause after this '
-             'book</button>'
+        'converting until you press Resume." onclick="act(\'pause\')">Pause after this '
+        "book</button>"
     )
     dry_button = (
         '<button class="btn dry on" title="Preview mode: reports what it would do but writes '
@@ -1882,21 +1978,23 @@ def render(state, status: str = "", query: str = "") -> str:
         'Dry run <span class="ab-switch"></span></button>'
         if CONTROL.dry_run
         else '<button class="btn dry" title="Preview mode: reports what it would do but writes '
-             'nothing to the output library. Click to turn it on." onclick="dry(true)">'
-             'Dry run <span class="ab-switch"></span></button>'
+        'nothing to the output library. Click to turn it on." onclick="dry(true)">'
+        'Dry run <span class="ab-switch"></span></button>'
     )
     dry_note = (
         '<span class="ab-note">Dry run is on &mdash; no files will be written</span>'
-        if CONTROL.dry_run else "")
+        if CONTROL.dry_run
+        else ""
+    )
     stop_button = (
         '<button class="btn danger" title="Abort the current conversion immediately: the '
         'partial file is discarded and the book is retried on the next scan." '
         'onclick="stop_now()">Stop now</button>'
         if CONTROL.running
         else '<button class="btn danger" disabled title="Abort the current conversion '
-             'immediately: the partial file is discarded and the book is retried on the '
-             'next scan. Nothing is encoding right now.">'
-             'Stop now</button>'
+        "immediately: the partial file is discarded and the book is retried on the "
+        'next scan. Nothing is encoding right now.">'
+        "Stop now</button>"
     )
 
     # encode strip
@@ -1925,12 +2023,12 @@ def render(state, status: str = "", query: str = "") -> str:
             '<div class="ab-qact">'
             '<button class="btn" onclick="act(\'pause\')">Pause</button>'
             '<button class="btn danger" onclick="stop_now()">Stop</button>'
-            '</div>'
+            "</div>"
             '<div class="ab-qmeta">{mp}</div>'
             '<div class="ab-qbarwrap">'
             '<div class="ab-qbar"><i id="ab-qfill" style="width:{pc:.1f}%"></i></div>'
             '<span class="ab-qpct" id="ab-qpct">{pc:.1f}%</span>'
-            '</div></section>'
+            "</div></section>"
         ).format(ti=title_html, mp=" &middot; ".join(meta_parts), pc=percent)
     elif qsnap["count"]:
         nxt = state.get(qsnap["units"][0])
@@ -1939,9 +2037,8 @@ def render(state, status: str = "", query: str = "") -> str:
             '<div class="ab-label"><span class="ab-pulse"></span> Waiting to convert</div>'
             '<div class="ab-qtitle">{ti}</div>'
             '<div class="ab-qmeta"><b>{n}</b> in queue</div>'
-            '</section>'
-        ).format(ti=_html(nxt.title if nxt and nxt.title else qsnap["units"][0]),
-                 n=qsnap["count"])
+            "</section>"
+        ).format(ti=_html(nxt.title if nxt and nxt.title else qsnap["units"][0]), n=qsnap["count"])
 
     # health
     set_effective(state)
@@ -1953,8 +2050,10 @@ def render(state, status: str = "", query: str = "") -> str:
 
     # header indicators
     dry_header = (
-        '<span style="font-family:var(--ab-mono);font-size:11px;color:var(--ab-amber)">'
-        'dry run</span>') if CONTROL.dry_run else ""
+        ('<span style="font-family:var(--ab-mono);font-size:11px;color:var(--ab-amber)">dry run</span>')
+        if CONTROL.dry_run
+        else ""
+    )
 
     return PAGE.format(
         styles=STYLES,
@@ -2047,7 +2146,7 @@ def snapshot(state) -> dict:
 
 class Handler(BaseHTTPRequestHandler):
     state = None
-    server_version = "audiobind/{}".format(__version__)
+    server_version = f"audiobind/{__version__}"
 
     def _send(self, code: int, body: bytes, content_type: str) -> None:
         self.send_response(code)
@@ -2056,7 +2155,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self):                       # noqa: N802
+    def do_GET(self):  # noqa: N802
         path, _, query = self.path.partition("?")
         params = {k: v[0] for k, v in parse_qs(query, keep_blank_values=True).items()}
         status = params.get("status", "")
@@ -2072,15 +2171,27 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/units"):
             units = self.state.all(status or None)
-            payload = [{"path": u.path, "title": u.title, "author": u.author,
-                        "status": u.status, "confidence": u.confidence,
-                        "asin": u.asin, "hours": u.hours, "files": u.files,
-                        "note": u.note, "output": u.output,
-                        "src_mb": u.src_mb, "out_mb": u.out_mb,
-                        "chapters": u.chapters}
-                       for u in units]
-            self._send(200, json.dumps({"count": len(payload), "units": payload}).encode(),
-                       "application/json")
+            payload = [
+                {
+                    "path": u.path,
+                    "title": u.title,
+                    "author": u.author,
+                    "status": u.status,
+                    "confidence": u.confidence,
+                    "asin": u.asin,
+                    "hours": u.hours,
+                    "files": u.files,
+                    "note": u.note,
+                    "output": u.output,
+                    "src_mb": u.src_mb,
+                    "out_mb": u.out_mb,
+                    "chapters": u.chapters,
+                }
+                for u in units
+            ]
+            self._send(
+                200, json.dumps({"count": len(payload), "units": payload}).encode(), "application/json"
+            )
             return
         if path.startswith("/api/state"):
             self._send(200, json.dumps(snapshot(self.state)).encode(), "application/json")
@@ -2101,7 +2212,7 @@ class Handler(BaseHTTPRequestHandler):
     def _send_cover(self, asin: str, rel_path: str) -> None:
         try:
             found = resolve_cover(self.state, asin=asin, rel_path=rel_path)
-        except Exception:                   # noqa: BLE001
+        except Exception:  # noqa: BLE001
             found = None
         if found is None:
             self._send(404, b"no cover", "text/plain")
@@ -2137,12 +2248,20 @@ class Handler(BaseHTTPRequestHandler):
             clean = overrides_mod.normalise(payload.get("fields") or {})
             self.state.set_overrides(rel, clean)
             logging.getLogger("audiobind").info(
-                "metadata overrides saved for %s: %s", rel, sorted(clean) or "none")
-            self._send(200, json.dumps({
-                "ok": True, "unit": rel,
-                "custom": sorted(overrides_mod.custom_fields(clean)),
-                "overrides": overrides_mod.describe(clean),
-            }).encode(), "application/json")
+                "metadata overrides saved for %s: %s", rel, sorted(clean) or "none"
+            )
+            self._send(
+                200,
+                json.dumps(
+                    {
+                        "ok": True,
+                        "unit": rel,
+                        "custom": sorted(overrides_mod.custom_fields(clean)),
+                        "overrides": overrides_mod.describe(clean),
+                    }
+                ).encode(),
+                "application/json",
+            )
             return
 
         if action == "delete":
@@ -2152,8 +2271,9 @@ class Handler(BaseHTTPRequestHandler):
 
             # Refuse while encoding
             if CONTROL.running and CONTROL.current_unit == rel:
-                self._send(409, b'{"error":"cannot delete a book that is currently encoding"}',
-                           "application/json")
+                self._send(
+                    409, b'{"error":"cannot delete a book that is currently encoding"}', "application/json"
+                )
                 return
 
             # Validate unit exists in state
@@ -2168,8 +2288,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 src_path.relative_to(lib_root)
             except ValueError:
-                self._send(400, b'{"error":"source path escapes library root"}',
-                           "application/json")
+                self._send(400, b'{"error":"source path escapes library root"}', "application/json")
                 return
 
             # Path traversal guard: resolve output inside OUTPUT_ROOT
@@ -2180,8 +2299,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     out_path.relative_to(out_root)
                 except ValueError:
-                    self._send(400, b'{"error":"output path escapes output root"}',
-                               "application/json")
+                    self._send(400, b'{"error":"output path escapes output root"}', "application/json")
                     return
                 out_parent = out_path.parent
                 if out_parent != out_root:
@@ -2197,9 +2315,9 @@ class Handler(BaseHTTPRequestHandler):
                     shutil.rmtree(str(src_path))
                 except OSError as exc:
                     log.error("HARD DELETE %s; source removal failed: %s", rel, exc)
-                    self._send(500,
-                               ('{"error":"source removal failed: %s"}' % exc).encode(),
-                               "application/json")
+                    self._send(
+                        500, ('{"error":"source removal failed: %s"}' % exc).encode(), "application/json"
+                    )
                     return
                 source_removed = True
                 log.info("HARD DELETE %s; source removed: %s", rel, src_path)
@@ -2214,21 +2332,24 @@ class Handler(BaseHTTPRequestHandler):
                     log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
                 except OSError as exc:
                     output_removed = f"failed: {exc}"
-                    log.error("HARD DELETE %s; could not remove output %s: %s",
-                              rel, out_trash, exc)
+                    log.error("HARD DELETE %s; could not remove output %s: %s", rel, out_trash, exc)
             else:
                 log.info("HARD DELETE %s; output -> none", rel)
 
             # Remove from state
             self.state.delete(rel)
-            self._send(200, json.dumps({"ok": True, "deleted": rel,
-                                         "source_removed": source_removed,
-                                         "output": output_removed}).encode(),
-                       "application/json")
+            self._send(
+                200,
+                json.dumps(
+                    {"ok": True, "deleted": rel, "source_removed": source_removed, "output": output_removed}
+                ).encode(),
+                "application/json",
+            )
             return
 
-        unit = next((u for u in discover_units(CONFIG.library_root, CONFIG.ignore_globs)
-                     if u.rel_path == rel), None)
+        unit = next(
+            (u for u in discover_units(CONFIG.library_root, CONFIG.ignore_globs) if u.rel_path == rel), None
+        )
         if unit is None:
             self._send(404, b'{"error":"no such unit"}', "application/json")
             return
@@ -2246,12 +2367,18 @@ class Handler(BaseHTTPRequestHandler):
 
         logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
         CONTROL.enqueue(rel)
-        threading.Thread(target=process_unit,
-                         kwargs={"state": self.state, "unit": unit, "log": _log,
-                                 "force": action == "force", "manual": True},
-                         daemon=True).start()
-        self._send(200, json.dumps({"ok": True, "action": action, "unit": rel}).encode(),
-                   "application/json")
+        threading.Thread(
+            target=process_unit,
+            kwargs={
+                "state": self.state,
+                "unit": unit,
+                "log": _log,
+                "force": action == "force",
+                "manual": True,
+            },
+            daemon=True,
+        ).start()
+        self._send(200, json.dumps({"ok": True, "action": action, "unit": rel}).encode(), "application/json")
 
     def _handle_settings(self) -> None:
         try:
@@ -2264,12 +2391,13 @@ class Handler(BaseHTTPRequestHandler):
         # Reset: clear all six setting keys
         if payload.get("reset"):
             from .config import SETTING_KEYS
+
             for key in SETTING_KEYS:
                 self.state.set_meta(f"setting_{key}", None)
             set_effective(self.state)
             from .config import SETTING_ENV_DEFAULTS as defaults
-            self._send(200, json.dumps({"ok": True, "env_defaults": defaults}).encode(),
-                       "application/json")
+
+            self._send(200, json.dumps({"ok": True, "env_defaults": defaults}).encode(), "application/json")
             return
 
         settings = payload.get("settings") or {}
@@ -2335,11 +2463,11 @@ class Handler(BaseHTTPRequestHandler):
                 validated["region"] = v
 
         if errors:
-            self._send(400, json.dumps({"error": "; ".join(errors)}).encode(),
-                       "application/json")
+            self._send(400, json.dumps({"error": "; ".join(errors)}).encode(), "application/json")
             return
 
         from .config import SETTING_KEYS as all_keys
+
         for key in all_keys:
             if key in validated:
                 self.state.set_meta(f"setting_{key}", validated[key])
@@ -2348,10 +2476,9 @@ class Handler(BaseHTTPRequestHandler):
 
         set_effective(self.state)
         custom = sorted(validated)
-        self._send(200, json.dumps({"ok": True, "custom": custom}).encode(),
-                   "application/json")
+        self._send(200, json.dumps({"ok": True, "custom": custom}).encode(), "application/json")
 
-    def do_POST(self):                      # noqa: N802
+    def do_POST(self):  # noqa: N802
         if self.path.startswith("/api/unit"):
             self._handle_unit()
             return
@@ -2397,8 +2524,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(400, b'{"error":"unknown action"}', "application/json")
             return
-        self._send(200, json.dumps({"ok": True, **CONTROL.describe()}).encode(),
-                   "application/json")
+        self._send(200, json.dumps({"ok": True, **CONTROL.describe()}).encode(), "application/json")
 
     def log_message(self, *args):
         return

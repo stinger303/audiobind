@@ -2,8 +2,7 @@ import os
 import tempfile
 import unittest
 
-from audiobind.units import (author_like, discover_units, group_key, looks_like_collection,
-                             split_author_title)
+from audiobind.units import author_like, discover_units, group_key, split_author_title
 
 
 class TestGroupKey(unittest.TestCase):
@@ -24,8 +23,10 @@ class TestSplitAuthorTitle(unittest.TestCase):
 
     def test_title_then_author_is_corrected(self):
         self.assertEqual(split_author_title("Influx - Daniel Suarez"), ("Daniel Suarez", "Influx"))
-        self.assertEqual(split_author_title("The Easy Way To Stop Smoking - Allen Carr"),
-                         ("Allen Carr", "The Easy Way To Stop Smoking"))
+        self.assertEqual(
+            split_author_title("The Easy Way To Stop Smoking - Allen Carr"),
+            ("Allen Carr", "The Easy Way To Stop Smoking"),
+        )
 
     def test_by_construction(self):
         self.assertEqual(split_author_title("The Martian by Andy Weir"), ("Andy Weir", "The Martian"))
@@ -85,37 +86,49 @@ class TestDiscovery(unittest.TestCase):
 class TestActionChoice(unittest.TestCase):
     def _unit(self, files, parts=1):
         from audiobind.units import BookUnit, Part
-        return BookUnit(path="/lib/x", name="x", parent="/lib",
-                        parts=[Part(name=f"p{i}", files=fs) for i, fs in enumerate(files)],
-                        rel_path="x")
+
+        return BookUnit(
+            path="/lib/x",
+            name="x",
+            parent="/lib",
+            parts=[Part(name=f"p{i}", files=fs) for i, fs in enumerate(files)],
+            rel_path="x",
+        )
 
     def test_multi_part_is_merged(self):
         from audiobind.pipeline import choose_action
+
         unit = self._unit([["/a.mp3"], ["/b.mp3"]], parts=2)
         self.assertEqual(choose_action(unit, "HIGH", True, {"mp3"}), "merge+convert")
 
     def test_single_mp3_is_converted(self):
         from audiobind.pipeline import choose_action
+
         self.assertEqual(choose_action(self._unit([["/a.mp3"]]), "HIGH", True, {"mp3"}), "convert")
 
     def test_single_m4b_is_remuxed_not_re_encoded(self):
         from audiobind.pipeline import choose_action
+
         self.assertEqual(choose_action(self._unit([["/a.m4b"]]), "HIGH", True, {"aac"}), "remux")
 
     def test_m4a_with_aac_is_also_remuxed(self):
         from audiobind.pipeline import choose_action
+
         self.assertEqual(choose_action(self._unit([["/a.m4a"]]), "HIGH", True, {"aac"}), "remux")
 
     def test_m4b_that_is_not_aac_is_re_encoded(self):
         from audiobind.pipeline import choose_action
+
         self.assertEqual(choose_action(self._unit([["/a.m4b"]]), "HIGH", True, {"alac"}), "convert")
 
     def test_low_confidence_is_reviewed(self):
         from audiobind.pipeline import choose_action
+
         self.assertEqual(choose_action(self._unit([["/a.m4b"]]), "LOW", True, {"aac"}), "review")
 
     def test_runtime_mismatch_is_held(self):
         from audiobind.pipeline import choose_action
+
         self.assertEqual(choose_action(self._unit([["/a.mp3"]]), "HIGH", False, {"mp3"}), "hold")
 
 

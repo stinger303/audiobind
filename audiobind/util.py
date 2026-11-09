@@ -1,4 +1,5 @@
 """Text normalisation, similarity and filesystem helpers."""
+
 from __future__ import annotations
 
 import re
@@ -17,10 +18,49 @@ SEQ_RE = re.compile(r"^\s*(?:book\s*)?\d{1,3}(?:\.\d)?\s*[-–—.)]*\s*(?=[A-Za
 PART_RE = re.compile(r"(?i)(part|pt|disc|disk|cd|vol|volume)\s*\.?\s*\d*")
 
 STOPWORDS = {
-    "the", "a", "an", "of", "to", "in", "on", "for", "and", "or", "with", "my", "your",
-    "how", "why", "what", "when", "who", "it", "that", "this", "from", "at", "by", "is",
-    "are", "no", "not", "up", "out", "if", "into", "about", "volume", "vol", "book",
-    "series", "collection", "novels", "complete", "saga", "chronicle", "trilogy",
+    "the",
+    "a",
+    "an",
+    "of",
+    "to",
+    "in",
+    "on",
+    "for",
+    "and",
+    "or",
+    "with",
+    "my",
+    "your",
+    "how",
+    "why",
+    "what",
+    "when",
+    "who",
+    "it",
+    "that",
+    "this",
+    "from",
+    "at",
+    "by",
+    "is",
+    "are",
+    "no",
+    "not",
+    "up",
+    "out",
+    "if",
+    "into",
+    "about",
+    "volume",
+    "vol",
+    "book",
+    "series",
+    "collection",
+    "novels",
+    "complete",
+    "saga",
+    "chronicle",
+    "trilogy",
 }
 
 SERIES_DIR_RE = re.compile(r"\b(series|saga|chronicle|novels|collection|omnibus)\b", re.I)

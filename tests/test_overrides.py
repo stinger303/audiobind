@@ -1,4 +1,5 @@
 """Operator metadata overrides: stored, applied to tags and metadata.json, shown as custom."""
+
 import json
 import pathlib
 import tempfile
@@ -7,9 +8,9 @@ import urllib.error
 import urllib.request
 
 from audiobind import encode, overrides, web
+from audiobind.catalog import Product
 from audiobind.config import CONFIG
 from audiobind.matching import Match
-from audiobind.catalog import Product
 from audiobind.state import State, UnitState
 
 BOOK = {
@@ -70,9 +71,16 @@ class TestApply(unittest.TestCase):
         self.assertEqual(BOOK["title"], "Moneyball")
 
     def test_title_author_narrator_series_are_replaced(self):
-        merged = overrides.apply(BOOK, {
-            "title": "Moneyball: Revised", "authors": "M. Lewis; Co Author",
-            "narrator": "New Narrator", "series": "Sabermetrics", "series_index": "7"})
+        merged = overrides.apply(
+            BOOK,
+            {
+                "title": "Moneyball: Revised",
+                "authors": "M. Lewis; Co Author",
+                "narrator": "New Narrator",
+                "series": "Sabermetrics",
+                "series_index": "7",
+            },
+        )
         self.assertEqual(merged["title"], "Moneyball: Revised")
         self.assertEqual([a["name"] for a in merged["authors"]], ["M. Lewis", "Co Author"])
         self.assertEqual([n["name"] for n in merged["narrators"]], ["New Narrator"])
@@ -98,11 +106,18 @@ class TestOverridesReachTheWrittenFiles(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.tmp = pathlib.Path(self.dir.name)
-        self.match = Match(product=Product(asin="B005EHN61O", title="Moneyball",
-                                           authors=["Michael Lewis"], narrators=["Scott Brick"]))
-        self.custom = {"title": "Moneyball (Corrected)", "authors": "Fixed Author",
-                       "narrator": "Fixed Narrator", "series": "Fixed Series",
-                       "series_index": "4"}
+        self.match = Match(
+            product=Product(
+                asin="B005EHN61O", title="Moneyball", authors=["Michael Lewis"], narrators=["Scott Brick"]
+            )
+        )
+        self.custom = {
+            "title": "Moneyball (Corrected)",
+            "authors": "Fixed Author",
+            "narrator": "Fixed Narrator",
+            "series": "Fixed Series",
+            "series_index": "4",
+        }
 
     def tearDown(self):
         self.dir.cleanup()
@@ -167,8 +182,7 @@ class TestStateStorage(unittest.TestCase):
     def test_corrupt_json_is_not_fatal(self):
         self.state.save(UnitState(path="A/B", status="ready"))
         with self.state._lock:
-            self.state.connection.execute("UPDATE units SET overrides = '{bad' WHERE path = ?",
-                                          ("A/B",))
+            self.state.connection.execute("UPDATE units SET overrides = '{bad' WHERE path = ?", ("A/B",))
         self.assertEqual(self.state.get_overrides("A/B"), {})
 
 
@@ -176,10 +190,16 @@ class TestEditorUI(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
-        self.state.save(UnitState(path="Lewis/Moneyball", status="converted", title="Moneyball",
-                                  author="Michael Lewis", asin="B005EHN61O",
-                                  detail=json.dumps({"match": {"title": "Moneyball",
-                                                               "authors": ["Michael Lewis"]}})))
+        self.state.save(
+            UnitState(
+                path="Lewis/Moneyball",
+                status="converted",
+                title="Moneyball",
+                author="Michael Lewis",
+                asin="B005EHN61O",
+                detail=json.dumps({"match": {"title": "Moneyball", "authors": ["Michael Lewis"]}}),
+            )
+        )
 
     def tearDown(self):
         self.state.close()
@@ -204,30 +224,40 @@ class TestEditorUI(unittest.TestCase):
         page = web.render(self.state)
         self.assertIn('<span class="ab-custom" data-field="title">custom</span>', page)
         self.assertIn('data-field="title" value="Corrected"', page)
-        self.assertIn('<span class="ab-custom">custom</span>', page)      # badge on the row
+        self.assertIn('<span class="ab-custom">custom</span>', page)  # badge on the row
 
     def test_endpoint_saves_and_clears_overrides(self):
-        CONFIG.web_port = 0                   # kernel picks a free port: no contention
+        CONFIG.web_port = 0  # kernel picks a free port: no contention
         web.Handler.state = self.state
         server = web.serve(self.state)
         try:
+
             def post(body):
                 request = urllib.request.Request(
-                    f"http://127.0.0.1:{CONFIG.web_port}/api/unit", method="POST",
+                    f"http://127.0.0.1:{CONFIG.web_port}/api/unit",
+                    method="POST",
                     data=json.dumps(body).encode(),
-                    headers={"Content-Type": "application/json"})
+                    headers={"Content-Type": "application/json"},
+                )
                 with urllib.request.urlopen(request, timeout=10) as response:
                     return json.loads(response.read())
 
-            result = post({"action": "set_meta", "path": "Lewis/Moneyball",
-                           "fields": {"title": "Corrected", "series_index": "3"}})
+            result = post(
+                {
+                    "action": "set_meta",
+                    "path": "Lewis/Moneyball",
+                    "fields": {"title": "Corrected", "series_index": "3"},
+                }
+            )
             self.assertTrue(result["ok"])
             self.assertEqual(result["custom"], ["series_index", "title"])
-            self.assertEqual(self.state.get_overrides("Lewis/Moneyball"),
-                             {"title": "Corrected", "series_index": "3"})
+            self.assertEqual(
+                self.state.get_overrides("Lewis/Moneyball"), {"title": "Corrected", "series_index": "3"}
+            )
 
-            result = post({"action": "set_meta", "path": "Lewis/Moneyball",
-                           "fields": {"title": "", "series_index": ""}})
+            result = post(
+                {"action": "set_meta", "path": "Lewis/Moneyball", "fields": {"title": "", "series_index": ""}}
+            )
             self.assertEqual(result["custom"], [])
             self.assertEqual(self.state.get_overrides("Lewis/Moneyball"), {})
 

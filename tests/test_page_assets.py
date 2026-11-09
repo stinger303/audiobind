@@ -1,4 +1,5 @@
 """The page ships its own CSS/JS: check they are syntactically sound and self-contained."""
+
 import re
 import shutil
 import subprocess

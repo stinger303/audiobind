@@ -1,4 +1,5 @@
 """The v0.12.3 review detail panel: plain-English copy, meter, re-open banner."""
+
 import json
 import pathlib
 import tempfile
@@ -16,11 +17,16 @@ def review_unit(**kw):
         "reopen": kw.pop("reopen", False),
         "action": "review",
         "hours": 31.79,
-        "match": {"asin": "B008UCYCSQ", "title": "Heir of Novron",
-                  "authors": ["Michael J. Sullivan"], "hours": 31.5,
-                  "confidence": "MEDIUM", "image": "", "asin_pin_failed": ""},
-        "source": {"parts": 1, "files": 32, "mb": 900, "hours": 31.79,
-                   "codecs": [], "channels": []},
+        "match": {
+            "asin": "B008UCYCSQ",
+            "title": "Heir of Novron",
+            "authors": ["Michael J. Sullivan"],
+            "hours": 31.5,
+            "confidence": "MEDIUM",
+            "image": "",
+            "asin_pin_failed": "",
+        },
+        "source": {"parts": 1, "files": 32, "mb": 900, "hours": 31.79, "codecs": [], "channels": []},
         "output": None,
     }
     kw.setdefault("detail", json.dumps(detail))
@@ -43,9 +49,13 @@ class TestDetailPanelCopy(unittest.TestCase):
 
     def test_section_headers_are_plain_english(self):
         page = self.page()
-        for header in ("Why it's waiting for you", "Your options",
-                       "Your source files", "What you'll get",
-                       "The Audible match"):
+        for header in (
+            "Why it's waiting for you",
+            "Your options",
+            "Your source files",
+            "What you'll get",
+            "The Audible match",
+        ):
             self.assertIn(header, page)
 
     def test_source_files_read_like_sentences(self):

@@ -1,11 +1,12 @@
 """Catalog lookahead: one unit, thread-safe against State, and harmless when it fails."""
+
 import pathlib
 import tempfile
 import threading
 import time
 import unittest
 
-from audiobind import catalog, matching, prefetch
+from audiobind import catalog, matching
 from audiobind.catalog import Product
 from audiobind.prefetch import Prefetcher, next_eligible
 from audiobind.state import State, UnitState
@@ -13,8 +14,9 @@ from audiobind.units import BookUnit
 
 
 def unit(rel="Author/Book"):
-    return BookUnit(path=f"/library/{rel}", name=rel.split("/")[-1],
-                    parent=rel.split("/")[0], parts=[], rel_path=rel)
+    return BookUnit(
+        path=f"/library/{rel}", name=rel.split("/")[-1], parent=rel.split("/")[0], parts=[], rel_path=rel
+    )
 
 
 class PrefetchBase(unittest.TestCase):
@@ -40,9 +42,9 @@ class PrefetchBase(unittest.TestCase):
                 time.sleep(delay)
             if explode:
                 raise RuntimeError("audible is down")
-            match = matching.Match(product=Product(asin="B00TEST0001", title="T"),
-                                   confidence=confidence)
+            match = matching.Match(product=Product(asin="B00TEST0001", title="T"), confidence=confidence)
             return match
+
         matching.match_unit = _match
         catalog.chapters = lambda asin: self.calls.append(("chapters", asin)) or []
         catalog.book = lambda asin: self.calls.append(("book", asin)) or {}
@@ -70,6 +72,7 @@ class TestNextEligible(PrefetchBase):
         class Broken:
             def get(self, path):
                 raise RuntimeError("db gone")
+
         self.assertIsNone(next_eligible(Broken(), [unit("a"), unit("b")], 0))
 
 
@@ -136,8 +139,9 @@ class TestPrefetcher(PrefetchBase):
         fetcher.schedule(self.state, unit("a"))
         fetcher.join(5)
         after = self.state.get("a")
-        self.assertEqual((before.status, before.title, before.updated_at),
-                         (after.status, after.title, after.updated_at))
+        self.assertEqual(
+            (before.status, before.title, before.updated_at), (after.status, after.title, after.updated_at)
+        )
 
 
 class TestPrefetchThreadSafety(PrefetchBase):
@@ -152,18 +156,19 @@ class TestPrefetchThreadSafety(PrefetchBase):
                 for i in range(15):
                     fetcher.schedule(self.state, unit(f"look/{i}"))
                     fetcher.join(5)
-            except Exception as exc:                    # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
 
         def writer(n):
             try:
                 for i in range(40):
-                    self.state.save(UnitState(path=f"w{n}/book{i}", status="ready",
-                                              title=f"book{i}", hours=1.5))
+                    self.state.save(
+                        UnitState(path=f"w{n}/book{i}", status="ready", title=f"book{i}", hours=1.5)
+                    )
                     self.state.counts()
                     self.state.set_meta("paused", False)
                     self.state.get_overrides(f"w{n}/book{i}")
-            except Exception as exc:                    # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
 
         def reader():
@@ -173,14 +178,16 @@ class TestPrefetchThreadSafety(PrefetchBase):
                     self.state.last_run()
                     self.state.heartbeat_age()
                     self.state.get_asin_override("w0/book0")
-            except Exception as exc:                    # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
 
         # the prefetch reads State from its own thread the whole time
         self.stub_catalog(delay=0.002)
-        threads = ([threading.Thread(target=writer, args=(n,)) for n in range(4)]
-                   + [threading.Thread(target=reader) for _ in range(2)]
-                   + [threading.Thread(target=prefetch_worker)])
+        threads = (
+            [threading.Thread(target=writer, args=(n,)) for n in range(4)]
+            + [threading.Thread(target=reader) for _ in range(2)]
+            + [threading.Thread(target=prefetch_worker)]
+        )
         for t in threads:
             t.start()
         for t in threads:
@@ -202,8 +209,8 @@ class TestPrefetchThreadSafety(PrefetchBase):
             time.sleep(0.05)
             with guard:
                 inside.remove(u.rel_path)
-            return matching.Match(product=Product(asin="B00TEST0001", title="T"),
-                                  confidence="LOW")
+            return matching.Match(product=Product(asin="B00TEST0001", title="T"), confidence="LOW")
+
         matching.match_unit = _match
 
         fetcher = Prefetcher()
@@ -259,7 +266,7 @@ class TestCatalogCache(unittest.TestCase):
                 for i in range(100):
                     catalog.cache_put(f"http://x/{n}/{i}", {"i": i})
                     catalog.cache_get(f"http://x/{n}/{i}")
-            except Exception as exc:                    # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
 
         threads = [threading.Thread(target=worker, args=(n,)) for n in range(6)]
@@ -279,11 +286,12 @@ class TestCatalogCache(unittest.TestCase):
             payload = {"asin": "B00TEST0001", "title": "T"}
             catalog.cache_put(url, payload)
             return payload
+
         try:
             catalog._get_json = counting_get
-            first = catalog.book("B00TEST0001")          # the prefetch thread
-            catalog._get_json = original                 # the network is now "gone"
-            second = catalog.book("B00TEST0001")         # the main loop
+            first = catalog.book("B00TEST0001")  # the prefetch thread
+            catalog._get_json = original  # the network is now "gone"
+            second = catalog.book("B00TEST0001")  # the main loop
             self.assertEqual(first, second)
             self.assertEqual(len(requests), 1)
         finally:
@@ -301,10 +309,12 @@ class TestDaemonSchedulesALookahead(PrefetchBase):
         units = [unit("one"), unit("two")]
         try:
             daemon.discover_units = lambda root, globs: units
+
             def fake_process(state, unit, log=print, force=False):
                 processed.append(unit.rel_path)
-                daemon.PREFETCH.join(5)                  # the lookahead runs during "the encode"
+                daemon.PREFETCH.join(5)  # the lookahead runs during "the encode"
                 state.save(UnitState(path=unit.rel_path, status="converted"))
+
             daemon.process_unit = fake_process
             daemon.scan_once(self.state)
         finally:

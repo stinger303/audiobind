@@ -23,11 +23,12 @@ class TestConcurrentAccess(unittest.TestCase):
         def writer(n):
             try:
                 for i in range(25):
-                    self.state.save(UnitState(path=f"w{n}/book{i}", status="ready",
-                                              title=f"book{i}", hours=1.5))
+                    self.state.save(
+                        UnitState(path=f"w{n}/book{i}", status="ready", title=f"book{i}", hours=1.5)
+                    )
                     self.state.counts()
                     self.state.set_meta("paused", False)
-            except Exception as exc:                      # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
 
         threads = [threading.Thread(target=writer, args=(n,)) for n in range(4)]
@@ -46,7 +47,7 @@ class TestConcurrentAccess(unittest.TestCase):
             try:
                 for i in range(50):
                     self.state.save(UnitState(path=f"x/{i}", status="converted"))
-            except Exception as exc:                      # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
 
         def reader():
@@ -54,7 +55,7 @@ class TestConcurrentAccess(unittest.TestCase):
                 for _ in range(50):
                     self.state.counts()
                     len(self.state.all())
-            except Exception as exc:                      # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
 
         threads = [threading.Thread(target=writer), threading.Thread(target=reader)]
