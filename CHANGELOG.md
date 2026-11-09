@@ -3,6 +3,91 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.4] - 2026-11-09
+
+Every finding from the v0.14.3 code audit is fixed: 4 high, 3 medium, 11 low and
+the 3 style notes.
+
+### Security
+- **Cross-site requests are refused.** Every POST must be `Content-Type:
+  application/json` (415 otherwise). When the browser sends an `Origin` or
+  `Referer`, it must name this server's own host (or `X-Forwarded-Host`
+  behind a proxy), or the request gets a 403. Another website can no longer
+  press Delete, Stop or Save settings for you. curl and scripts that send
+  neither header keep working.
+- **The series index can't steer output outside `OUTPUT_ROOT`.** The sequence
+  goes through `safe_name` like every other path component, and `m4b_path`
+  checks that the resolved path stays inside the output root.
+- **ASINs are validated and quoted.** Use this ASIN accepts only real ASIN
+  shapes (8-14 letters and digits). Every ASIN placed in an Audnex, Audible or
+  Amazon URL is percent-quoted.
+- **Cover downloads are allow-listed.** Only https URLs on Amazon/Audible image
+  hosts are fetched, including after redirects, so `file://` and arbitrary
+  hosts are refused. `/cover?asin=` only fetches, and only leaves `.miss`
+  markers, for ASINs that a book in your library is matched or pinned to.
+
+### Fixed
+- **One brace no longer blanks the library page.** The detail panel ran
+  `str.format()` over text that already held user data, so a folder named
+  `Dune {Unabridged}`, a title override like `Book {1}` or an ffmpeg error
+  with braces crashed the whole page. It's now built with f-strings.
+- **Books sharing a parent folder no longer collide, and Delete can't take
+  their siblings.** Part sets that share a parent (`Author/Foo Part 1..2`,
+  `Author/Bar Part 1..2`) used to both be keyed `Author`, overwriting each
+  other's row, ASIN pin and overrides. Delete then removed the entire
+  `Author` folder. Each now gets its own key (`Author#foo`) and guesses its
+  title from its own name. Delete removes only what the book owns: its folder,
+  or its part folders. It refuses if another book's audio would go with them,
+  and never touches a folder it can't match to the book (for example a
+  pre-0.14.4 `Author` row).
+- **Manual actions always leave the queue.** Retry now, Use this ASIN and
+  Convert anyway used to stay "Waiting to convert", hidden from every list
+  until a restart, whenever the result wasn't an encode: still in review,
+  held, dry run, already published or an error. The queue is now cleared
+  however the action ends.
+- **Chapters follow the play order.** Chapter timelines walked the files sorted
+  by name (`Track 1, 10, 2`) while the audio was joined in natural order
+  (`1, 2, 10`), so titles and boundaries were wrong. Both now use the concat
+  order.
+- **The settings page shows your real environment.** The defaults are read
+  from the live config, not a hardcoded copy, so `MAX_RUNTIME_DELTA=0.40`
+  shows 40%. Reset returns the tier in the select's casing, so the select is
+  never left blank. `SCAN_INTERVAL_MIN` can be any value from 1 up, and an
+  unusual env bitrate, region or tolerance is offered as a choice. Save had
+  also been posting nothing at all, because it read the value off each
+  setting's wrapper `<div>`. It now reads the real control and posts only the
+  fields you changed.
+- Audnex chapters start at `startOffsetMs` when Audnex provides it, so an
+  intro or a gap no longer shifts every chapter after it.
+- A dead ASIN pin says "so nothing was matched" (no search runs any more).
+- Delete errors are always valid JSON. A permission error is reported
+  separately from a read-only mount, and a source that was only partly deleted
+  is reported as such: the row and the output are kept instead of claiming the
+  source was kept.
+- The re-check banner's flag is cleared atomically, so a re-check that lands
+  at the same moment is no longer overwritten.
+- Convert anyway in dry run records a dry run, not "already published".
+- The output is re-checked after taking the encoder lock, so a manual action
+  and the daemon can't both encode the same book. An already-published
+  "ready" book keeps its output path and isn't re-matched on every scan.
+- `?q=` searches and `/cover?path=` are decoded once, not twice, so paths
+  and searches containing `%` work.
+- Edit ASIN on a shelf card works when the book isn't in the table (another
+  status filter, past the row limit, or hidden by the search box): the page
+  reloads on a view that has the book, with its panel open.
+- "ffmpeg failed:" always carries ffmpeg's error text, because the stderr
+  reader is joined before its text is read.
+
+### Changed
+- `unitAction` and `rowAction` are merged into one `abUnitAction(btn,
+  action)`. A refused action now shows its error instead of reloading
+  silently.
+- Each conversion builds its chapter plan once, from the durations the audit
+  already probed, and hands it to `encode()`. Source files are no longer
+  ffprobed again for a second plan.
+- `UnitState.overrides` is gone. Operator overrides are owned by
+  `set_overrides()`/`get_overrides()`, and `save()` never writes that column.
+
 ## [0.14.3] - 2026-11-08
 
 ### Changed
