@@ -2157,6 +2157,21 @@ def snapshot(state) -> dict:
     }
 
 
+def run_manual(state, unit, force: bool = False) -> None:
+    """A Retry / Use this ASIN / Convert anyway request, run off the request thread.
+
+    The book leaves the queue however it ends - converted, still in review, held, a dry
+    run, already published or an exception - or it would vanish from every list until a
+    restart (render() hides queued books and shows them in the queue strip instead).
+    """
+    try:
+        process_unit(state=state, unit=unit, log=_log, force=force, manual=True)
+    except Exception:  # noqa: BLE001 - a background thread has nobody to raise to
+        logging.getLogger("audiobind").exception("manual action for %s failed", unit.rel_path)
+    finally:
+        CONTROL.dequeue(unit.rel_path)
+
+
 class Handler(BaseHTTPRequestHandler):
     state = None
     server_version = f"audiobind/{__version__}"
@@ -2464,15 +2479,11 @@ class Handler(BaseHTTPRequestHandler):
         logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
         CONTROL.enqueue(rel)
         threading.Thread(
-            target=process_unit,
-            kwargs={
-                "state": self.state,
-                "unit": unit,
-                "log": _log,
-                "force": action == "force",
-                "manual": True,
-            },
+            target=run_manual,
+            args=(self.state, unit),
+            kwargs={"force": action == "force"},
             daemon=True,
+            name="manual-" + action,
         ).start()
         self._send(200, json.dumps({"ok": True, "action": action, "unit": rel}).encode(), "application/json")
 
