@@ -11,7 +11,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from . import __version__
 from . import overrides as overrides_mod
@@ -462,52 +462,42 @@ function dry(on) {
     .then(() => setTimeout(() => location.reload(), 250))
     .catch(() => location.reload());
 }
-function unitAction(btn, action) {
-  const panel = btn.closest('.dd');
-  const path = panel.dataset.path;
-  const body = {action: action, path: path};
-  let note = 'queued - re-checking\u2026';
-  if (action === 'set_asin') {
-    const input = panel.querySelector('input[data-asin]');
-    body.asin = (input && input.value || '').trim();
-    if (!body.asin) { input.focus(); return; }
-    note = 'pinning ' + body.asin + ' - re-checking\u2026';
-  } else if (action === 'force') {
-    note = 'queued - converting\u2026';
-  }
-  const label = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'working\u2026';
-  abToast(note);
-  fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
-                     body: JSON.stringify(body)})
-    .then(r => r.json())
-    .then(() => setTimeout(() => location.reload(), 700))
-    .catch(() => { btn.disabled = false; btn.textContent = label; });
-}
-function rowAction(btn, action) {
+// Retry now / Convert anyway / Use this ASIN, from a detail panel, a table row or a
+// shelf card: each of those carries data-path, so the nearest one names the book
+function abUnitAction(btn, action) {
   const el = btn.closest('[data-path]');
   if (!el) return;
-  const path = el.dataset.path;
-  const body = {action: action, path: path};
-  let note = 'queued - re-checking\u2026';
+  const body = {action: action, path: el.dataset.path};
+  let note = 'queued - re-checking…';
   if (action === 'set_asin') {
     const input = el.querySelector('input[data-asin]');
     body.asin = (input && input.value || '').trim();
-    if (!body.asin) { input.focus(); return; }
-    note = 'pinning ' + body.asin + ' - re-checking\u2026';
+    if (!body.asin) { if (input) input.focus(); return; }
+    note = 'pinning ' + body.asin + ' - re-checking…';
   } else if (action === 'force') {
-    note = 'queued - converting\u2026';
+    note = 'queued - converting…';
   }
   const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'working\u2026';
+  btn.textContent = 'working…';
   abToast(note);
   fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
                      body: JSON.stringify(body)})
-    .then(r => r.json())
-    .then(() => setTimeout(() => location.reload(), 700))
-    .catch(() => { btn.disabled = false; btn.textContent = label; });
+    .then(r => r.json().then(res => ({ok: r.ok, res: res})))
+    .then(out => {
+      if (!out.ok) {
+        abToast(out.res.error || 'that did not work');
+        btn.disabled = false;
+        btn.textContent = label;
+        return;
+      }
+      setTimeout(() => location.reload(), 700);
+    })
+    .catch(() => {
+      abToast('could not reach the daemon');
+      btn.disabled = false;
+      btn.textContent = label;
+    });
 }
 function unitDelete(btn) {
   const path = btn.dataset.path;
@@ -591,24 +581,39 @@ function abUseEdition(btn) {
     .then(() => setTimeout(() => location.reload(), 700))
     .catch(() => { btn.disabled = false; btn.textContent = label; });
 }
-function abEditAsin(btn) {
-  const el = btn.closest('[data-path]');
-  if (!el) return;
-  const path = el.dataset.path;
-  const row = document.querySelector('tr.urow[data-path=\"' + CSS.escape(path) + '\"]');
-  if (!row) return;
+function abFocusAsin(row) {
   const panel = row.nextElementSibling;
-  if (!panel || !panel.classList.contains('drow')) return;
+  if (!panel || !panel.classList.contains('drow')) return false;
   panel.hidden = false;
   row.classList.add('ab-sel');
-  const set = openSet();
-  set.add(path);
-  saveOpen(set);
   const input = panel.querySelector('input[data-asin]');
   if (input) {
     input.scrollIntoView({block: 'center', behavior: 'smooth'});
     input.focus();
   }
+  return true;
+}
+function abFindRow(path) {
+  return [...document.querySelectorAll('tr.urow')].find(r => r.dataset.path === path) || null;
+}
+function abEditAsin(btn) {
+  const el = btn.closest('[data-path]');
+  if (!el) return;
+  const path = el.dataset.path;
+  const row = abFindRow(path);
+  if (row && row.hidden) {
+    // hidden by the search box: clear the filter so the panel can show
+    const box = abSearchBox();
+    if (box) box.value = '';
+    try { sessionStorage.setItem(SEARCH_KEY, ''); } catch (e) {}
+    abApplyView();
+  }
+  if (row && abFocusAsin(row)) return;
+  // the shelf lists every problem book, but the table may not have this one (another
+  // status filter, past the row limit): reload on a view that does, panel open
+  try { sessionStorage.setItem(SEARCH_KEY, ''); } catch (e) {}
+  location.href = '/?status=' + encodeURIComponent(el.dataset.status || '') +
+    '&q=' + encodeURIComponent(path) + '&open=' + encodeURIComponent(path);
 }
 function abCoverFail(img) {
   img.classList.add('ab-gone');
@@ -766,7 +771,9 @@ function abClearSearch() {
 document.addEventListener('DOMContentLoaded', () => {
   const box = abSearchBox();
   if (box) {
-    try { box.value = sessionStorage.getItem(SEARCH_KEY) || ''; } catch (e) {}
+    if (!box.value) {
+      try { box.value = sessionStorage.getItem(SEARCH_KEY) || ''; } catch (e) {}
+    }
     box.addEventListener('input', abSearchChanged);
   }
   document.querySelectorAll('th.ab-sort').forEach(th => {
@@ -844,6 +851,13 @@ function tick() {
     if (label) label.textContent = p.toFixed(1) + '%';
   }).catch(() => {});
 }
+document.addEventListener('DOMContentLoaded', () => {
+  let want = '';
+  try { want = new URLSearchParams(location.search).get('open') || ''; } catch (e) {}
+  if (!want) return;
+  const row = abFindRow(want);
+  if (row) abFocusAsin(row);
+});
 setInterval(tick, 2000);
 let lastCounts = null;
 function watch() {
@@ -1337,13 +1351,13 @@ def _render_shelf(problem_units: list) -> str:
         )
         reason_class = "held" if unit.status == "held" else ("failed" if unit.status == "failed" else "")
 
-        btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="rowAction(this,\'retry\')">Retry now</button>'
-        force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="rowAction(this,\'force\')">Convert anyway</button>'
+        btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="abUnitAction(this,\'retry\')">Retry now</button>'
+        force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="abUnitAction(this,\'force\')">Convert anyway</button>'
         asin_btn = '<button class="btn" title="Open this book\'s details and lock an Audible entry." onclick="abEditAsin(this)">Edit ASIN</button>'
 
         cards.append(
             (
-                '<div class="ab-problem" data-path="{dp}">'
+                '<div class="ab-problem" data-path="{dp}" data-status="{st}">'
                 '<div class="ab-problem-head">{cov}'
                 '<div class="ab-pbook">'
                 '<span class="ab-ptitle">{ti}</span>'
@@ -1828,9 +1842,9 @@ def render(state, status: str = "", query: str = "") -> str:
                 "Pinning one locks the match permanently.</p></div>"
             )
 
-        btn = '<button title="Re-check this book against the catalog and convert it if it passes the rules." onclick="unitAction(this,\'retry\')">Retry now</button>'
-        force = '<button class="warn" title="Convert this book even though the automatic checks flagged it." onclick="unitAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button title="Lock this catalog entry to the book, then re-check against it." onclick="unitAction(this,\'set_asin\')">Use this ASIN</button>'
+        btn = '<button title="Re-check this book against the catalog and convert it if it passes the rules." onclick="abUnitAction(this,\'retry\')">Retry now</button>'
+        force = '<button class="warn" title="Convert this book even though the automatic checks flagged it." onclick="abUnitAction(this,\'force\')">Convert anyway</button>'
+        asin_btn = '<button title="Lock this catalog entry to the book, then re-check against it." onclick="abUnitAction(this,\'set_asin\')">Use this ASIN</button>'
 
         explain_html = (
             '<div class="explain">'
@@ -1898,8 +1912,8 @@ def render(state, status: str = "", query: str = "") -> str:
 
         act_html = ""
         if unit.status in ("held", "review", "failed"):
-            btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="event.stopPropagation();rowAction(this,\'retry\')">Retry now</button>'
-            force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="event.stopPropagation();rowAction(this,\'force\')">Convert anyway</button>'
+            btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="event.stopPropagation();abUnitAction(this,\'retry\')">Retry now</button>'
+            force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="event.stopPropagation();abUnitAction(this,\'force\')">Convert anyway</button>'
             asin_btn = '<button class="btn" title="Open this book\'s details and lock an Audible entry." onclick="event.stopPropagation();abEditAsin(this)">Edit ASIN</button>'
             act_html = '<div class="ab-rowact">' + btn + force + asin_btn + "</div>"
 
@@ -2205,7 +2219,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, b"no icon", "text/plain")
             return
         if path.startswith("/cover"):
-            self._send_cover(params.get("asin", ""), unquote(params.get("path", "")))
+            self._send_cover(params.get("asin", ""), params.get("path", ""))
             return
         if path.startswith("/api/units"):
             units = self.state.all(status or None)
@@ -2244,7 +2258,7 @@ class Handler(BaseHTTPRequestHandler):
             body = render_settings(self.state)
             self._send(200, body.encode(), "text/html; charset=utf-8")
             return
-        body = render(self.state, status, unquote(params.get("q", "")))
+        body = render(self.state, status, params.get("q", ""))
         self._send(200, body.encode(), "text/html; charset=utf-8")
 
     def _send_cover(self, asin: str, rel_path: str) -> None:
