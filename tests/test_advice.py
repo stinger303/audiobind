@@ -79,9 +79,14 @@ class TestExplain(unittest.TestCase):
             "source": {"hours": 0.99},
         }
         why, todo = explain("review", "LOW", "", detail)
-        self.assertIn("B013ILGDHQ", why)
-        self.assertIn("not in Audible's catalog", why)
-        self.assertIn("pin stays saved", todo)
+        self.assertIn("The ASIN you set (B013ILGDHQ) is not in Audible's catalog - nothing is published", why)
+        self.assertIn("The ASIN you set stays saved", todo)
+        self.assertNotIn("pin", (why + todo).lower())
+
+    def test_collection_advice_says_set_not_pin(self):
+        _why, todo = explain("review", "COLLECTION", "", {})
+        self.assertIn("or set it to one exact Audible entry", todo)
+        self.assertNotIn("pin", todo.lower())
 
 
 if __name__ == "__main__":

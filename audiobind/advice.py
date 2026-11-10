@@ -28,17 +28,17 @@ def explain(
     pin = str(match.get("asin_pin_failed") or "").strip()
     if pin:
         why = (
-            f"Your pinned ASIN {pin} is not in Audible's catalog - nothing is published "
+            f"The ASIN you set ({pin}) is not in Audible's catalog - nothing is published "
             f"under it - so nothing was matched. {why}"
         )
-        what = what + " The pin stays saved until you replace it with a live ASIN."
+        what = what + " The ASIN you set stays saved until you replace it with a live one."
     return why, what
 
 
 def _explain_base(
     status: str, confidence: str, note: str = "", detail: dict | None = None, tier: str = "high"
 ) -> tuple[str, str]:
-    """The status-specific explanation, without the pinned-ASIN annotation."""
+    """The status-specific explanation, without the hand-set-ASIN annotation."""
     detail = detail or {}
     match = detail.get("match") or {}
     src = detail.get("source") or {}
@@ -115,8 +115,8 @@ def _explain_base(
         if confidence == "COLLECTION":
             return (
                 "This folder looks like several books bundled together, not one title.",
-                "Split it into one folder per book and press Scan now - or pin it to one "
-                "book with its ASIN and Convert anyway.",
+                "Split it into one folder per book and press Scan now - or set it to one "
+                "exact Audible entry with its ASIN and Convert anyway.",
             )
         if confidence == "LOW":
             return (
@@ -136,7 +136,7 @@ def _explain_base(
             note
             or (
                 "We found the Audible entry for this book, but the match is only "
-                "Medium confidence - the folder name and the listing don't line up "
+                "Medium Confidence - the folder name and the listing don't line up "
                 f"exactly. Auto-convert is set to {low_tier.capitalize()}, so anything less than a sure "
                 "match waits for your OK."
             ),

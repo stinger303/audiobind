@@ -236,11 +236,13 @@ class TestCompactActions(unittest.TestCase):
         self.state.close()
         self.dir.cleanup()
 
-    def test_actions_live_inside_a_fixed_width_actcol(self):
+    def test_row_actions_are_a_visible_kebab_not_hover_buttons(self):
         page = web.render(self.state)
-        self.assertIn(".ab-rowact", page)
-
-        self.assertIn("display:inline-flex", web.STYLES)
+        self.assertNotIn("ab-rowact", page)  # the hover-only button strip is gone
+        self.assertNotIn("tr:hover .ab-", web.STYLES)  # hover is orientation only
+        self.assertIn(".ab-tbl tbody tr:hover{background", web.STYLES)
+        row = page.split('<tr class="urow"')[1].split("</tr>")[0]
+        self.assertIn('class="ab-kebab"', row)
 
     def test_actions_still_render_for_problem_rows(self):
         page = web.render(self.state)

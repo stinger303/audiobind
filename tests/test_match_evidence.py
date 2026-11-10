@@ -381,7 +381,11 @@ class TestEvidencePanel(unittest.TestCase):
     def test_pinned_match_is_not_presented_as_scored(self):
         self.save(detail=evidence_detail(pinned=True), alternates=[])
         panel = self.panel()
-        self.assertIn("pinned by you", panel)
+        self.assertIn('<div class="ab-evl">you picked this edition</div>', panel)
+        self.assertIn("Title match <em>you picked this edition</em>", panel)
+        self.assertIn("Author match <em>you picked this edition</em>", panel)
+        self.assertNotIn("pinned", panel)
+        self.assertNotIn("locked", panel.lower())  # "locked" belongs to metadata locks only
         self.assertNotIn("match score", panel)
         self.assertNotIn("why they lost", panel)
 

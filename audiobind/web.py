@@ -34,6 +34,7 @@ from .control import CONTROL
 from .covers import resolve as resolve_cover
 from .covers import valid_asin
 from .pipeline import process_unit
+from .state import LOCKABLE_FIELDS
 from .units import files_under, find_unit, foreign_audio, owned_paths
 
 _log = logging.getLogger("audiobind").info
@@ -265,6 +266,11 @@ button.dry.on .ab-switch::after{left:12px}
   color:var(--ab-text4);padding:6px 10px;border-bottom:1px solid var(--ab-border);}
 .ab-tbl thead th:hover{color:var(--ab-text2)}
 .ab-tbl thead th.ab-on{color:var(--ab-text2)}
+.ab-tbl thead th button.ab-sortbtn{height:auto;padding:0;border:none;background:none;border-radius:3px;
+  font:inherit;font-size:inherit;font-weight:inherit;text-transform:inherit;letter-spacing:inherit;
+  color:inherit;gap:4px;cursor:pointer;}
+.ab-tbl thead th button.ab-sortbtn:hover{background:none;color:var(--ab-text2)}
+.ab-sortbtn .ab-arrow{color:var(--ab-accent-bright)}
 .ab-tbl tbody td{padding:0 10px;border-bottom:1px solid var(--ab-border-subtle);vertical-align:middle;white-space:nowrap;}
 .ab-tbl tbody tr{height:auto;min-height:44px;transition:background .1s}
 .ab-tbl tbody tr:hover{background:rgba(255,255,255,.025)}
@@ -302,22 +308,49 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:
 
 .ok{color:#7fd99a}.warn{color:var(--ab-amber)}.err{color:var(--ab-red)}.dim{color:var(--ab-text3)}
 
-.ab-tier{font-family:var(--ab-mono);font-size:11px;font-weight:500}
-.ab-tier.ab-high{color:var(--ab-green)}
-.ab-tier.ab-medium{color:var(--ab-text3)}
-.ab-tier.ab-low{color:var(--ab-text4)}
+.ab-num{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text2);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ab-scan{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text4);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ab-dash{color:var(--ab-text4)}
 
-.ab-num{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text2)}
-.ab-scan{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text4)}
+/* one labeled status dot per row: color + word (+ age); only a moving state pulses */
+.ab-st{display:inline-flex;align-items:center;max-width:100%;overflow:hidden;
+  color:var(--ab-text2);font-size:12px;white-space:nowrap}
+.ab-st-dot{width:8px;height:8px;border-radius:50%;flex:none;margin-right:7px;background:var(--ab-text4)}
+.ab-st-ok .ab-st-dot{background:var(--ab-green)}
+.ab-st-hold .ab-st-dot{background:var(--ab-blue)}
+.ab-st-rev .ab-st-dot{background:var(--ab-amber)}
+.ab-st-err .ab-st-dot{background:var(--ab-red)}
+.ab-st-enc .ab-st-dot{background:var(--ab-accent-bright)}
+.ab-st-moving .ab-st-dot{animation:ab-st-pulse 1.6s ease-in-out infinite}
+@keyframes ab-st-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.ab-st-age{color:var(--ab-text4);font-size:10.5px;margin-left:5px;font-variant-numeric:tabular-nums;
+  overflow:hidden;text-overflow:ellipsis}
+.ab-match{font-size:12px;color:var(--ab-text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab-match-cur{color:var(--ab-blue)}
+.ab-conf-high{color:var(--ab-green)}
+.ab-conf-medium{color:var(--ab-text2)}
+.ab-conf-low{color:var(--ab-amber)}
+.ab-conf-none{color:var(--ab-text4)}
 
-.ab-rowact{display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;max-width:100%;
-  background:var(--ab-bg);padding:4px 8px;border-radius:6px;
-  box-shadow:-12px 0 18px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .1s}
-tr:hover .ab-rowact, tr:focus-within .ab-rowact{opacity:1;pointer-events:auto}
-.ab-rowact button{height:26px;padding:0 7px;font-size:11px;border-radius:5px;white-space:nowrap}
-.ab-rowact button.warn{color:var(--ab-amber)}
-.ab-rowact button.warn:hover{background:var(--ab-amber-soft);border-color:rgba(242,163,60,.3)}
-.ab-actcol{padding:0!important;width:auto;position:relative;overflow:hidden;text-align:right}
+.ab-actcol{padding:0 8px 0 0!important;width:auto;position:relative;overflow:visible;text-align:right}
+.ab-kebabwrap{position:relative;display:inline-block;vertical-align:middle}
+button.ab-kebab{width:28px;height:28px;padding:0;justify-content:center;border-radius:6px;
+  border:1px solid var(--ab-border);background:var(--ab-surface);color:var(--ab-text3);
+  font-size:14px;line-height:1}
+button.ab-kebab:hover, button.ab-kebab[aria-expanded="true"]{color:var(--ab-text);
+  border-color:rgba(255,255,255,.2);background:var(--ab-surface)}
+.ab-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:30;width:200px;padding:6px;
+  background:var(--ab-surface2);border:1px solid var(--ab-border);border-radius:8px;
+  box-shadow:0 8px 24px rgba(0,0,0,.5);text-align:left;display:flex;flex-direction:column;gap:1px}
+.ab-menu[hidden]{display:none}
+.ab-menu button{display:flex;width:100%;height:auto;padding:6px 8px;border:none;border-radius:5px;
+  background:none;color:var(--ab-text2);font-size:12.5px;font-weight:400;text-align:left}
+.ab-menu button:hover, .ab-menu button:focus-visible{background:rgba(255,255,255,.05);color:var(--ab-text);
+  outline:none}
+.ab-menu button.ab-menu-danger{color:var(--ab-red)}
+.ab-menu button.ab-menu-danger:hover, .ab-menu button.ab-menu-danger:focus-visible{background:var(--ab-red-soft)}
 
 tr.drow td{background:#11151d;padding:0;border-bottom:1px solid var(--ab-border);white-space:normal}
 tr.drow[hidden] td{padding:0}
@@ -426,6 +459,15 @@ tr.drow[hidden] td{padding:0}
   color:#12a89b;background:#10302c;border:1px solid #1b4a44;border-radius:999px;
   padding:1px 7px;margin-left:8px;vertical-align:1px;}
 .ab-custom[hidden]{display:none;}
+button.ab-lock{margin-left:auto;height:auto;flex:none;display:inline-flex;align-items:center;gap:6px;
+  font:600 10.5px var(--ab-sans);letter-spacing:.4px;text-transform:none;
+  padding:3px 9px;border-radius:10px;border:none;cursor:pointer;}
+button.ab-lock.ab-lock-on{color:var(--ab-green);background:var(--ab-green-soft)}
+button.ab-lock.ab-lock-on:hover{color:var(--ab-green);background:rgba(39,166,68,.22)}
+button.ab-lock.ab-lock-off{color:var(--ab-text4);background:rgba(255,255,255,.04)}
+button.ab-lock.ab-lock-off:hover{color:var(--ab-text3);background:rgba(255,255,255,.07)}
+.ab-pinrow button.ab-lock{margin-left:0}
+.ab-field.ab-locked .ab-in{border-color:rgba(39,166,68,.35)}
 .ab-hint{color:var(--ab-text3);font-size:11.5px;margin:2px 0 10px;}
 .ab-modal:not([hidden]){display:flex;position:fixed;inset:0;z-index:100;
   align-items:center;justify-content:center;}
@@ -575,9 +617,11 @@ function abUnitAction(btn, action) {
     const input = el.querySelector('input[data-asin]');
     body.asin = (input && input.value || '').trim();
     if (!body.asin) { if (input) input.focus(); return; }
-    note = 'pinning ' + body.asin + ' - re-checking…';
+    note = 'setting ASIN ' + body.asin + ' - re-checking…';
   } else if (action === 'force') {
     note = 'queued - converting…';
+  } else if (action === 'recheck') {
+    note = 're-checking against Audible…';
   }
   const label = btn.textContent;
   btn.disabled = true;
@@ -675,8 +719,8 @@ function abUseEdition(btn) {
   if (!path || !asin) return;
   const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'pinning\\u2026';
-  abToast('pinning ' + asin + ' - re-checking\\u2026');
+  btn.textContent = 'setting\\u2026';
+  abToast('setting ASIN ' + asin + ' - re-checking\\u2026');
   fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
                      body: JSON.stringify({action:'set_asin', path: path, asin: asin})})
     .then(r => r.json())
@@ -743,9 +787,9 @@ function abSaveMeta(btn) {
       }
       feedback.className = 'ab-fb ab-good';
       feedback.textContent = res.body.custom.length
-        ? 'saved - applied on the next conversion'
+        ? 'saved and locked - applied on the next conversion'
         : 'saved - all fields back to the catalog';
-      abMarkCustom(panel, res.body.custom);
+      abMarkLocks(panel.closest('.dd') || panel, res.body.locked || res.body.custom);
       setTimeout(() => { feedback.textContent = ''; feedback.className = 'ab-fb'; }, 6000);
     })
     .catch(() => {
@@ -754,15 +798,138 @@ function abSaveMeta(btn) {
       feedback.textContent = 'could not reach the daemon';
     });
 }
-function abMarkCustom(panel, custom) {
-  panel.querySelectorAll('.ab-lab .ab-custom').forEach(mark => {
-    mark.hidden = custom.indexOf(mark.dataset.field) === -1;
-  });
-  const row = [...document.querySelectorAll('tr.urow')]
-    .find(r => r.dataset.path === panel.dataset.path);
-  const badge = row && row.querySelector('.ab-custom');
-  if (badge) badge.hidden = custom.length === 0;
+// the lock chips (editor fields and the ASIN row) and the row's lock badge follow the server
+function abSetLockChip(chip, on) {
+  chip.classList.toggle('ab-lock-on', on);
+  chip.classList.toggle('ab-lock-off', !on);
+  chip.textContent = on ? '\\ud83d\\udd12 Locked by you' : '\\ud83d\\udd13 Unlocked';
+  const asin = chip.dataset.field === 'asin';
+  chip.title = on
+    ? 'A rescan, re-check or re-rip will never overwrite this. ' +
+      (asin ? 'Click to unlock: the next re-check matches this book on its own.'
+            : 'Click to unlock and hand it back to the catalog.')
+    : (asin ? 'Matched automatically. Use this ASIN to lock one exact entry.'
+            : 'Follows the catalog. Edit and save it to lock it.');
+  const field = chip.closest('.ab-field');
+  if (field) field.classList.toggle('ab-locked', on);
 }
+function abMarkLocks(scope, locked) {
+  scope.querySelectorAll('button.ab-lock').forEach(chip => {
+    abSetLockChip(chip, locked.indexOf(chip.dataset.field) !== -1);
+  });
+  const path = scope.dataset.path;
+  const row = abFindRow(path);
+  const badge = row && row.querySelector('.ab-custom');
+  if (badge) badge.hidden = locked.length === 0;
+}
+function abLockChip(chip) {
+  const scope = chip.closest('.dd');
+  if (!scope) return;
+  const field = chip.dataset.field;
+  if (!chip.classList.contains('ab-lock-on')) {
+    // unlocked: editing is how a field gets locked, so take the operator to the box
+    const input = field === 'asin'
+      ? scope.querySelector('input[data-asin]')
+      : scope.querySelector('input.ab-in[data-field="' + field + '"]');
+    if (input) input.focus();
+    return;
+  }
+  chip.disabled = true;
+  fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
+                     body: JSON.stringify({action:'unlock', path: scope.dataset.path, field: field})})
+    .then(r => r.json().then(body => ({ok: r.ok, body: body})))
+    .then(res => {
+      chip.disabled = false;
+      if (!res.ok) { abToast(res.body.error || 'could not unlock'); return; }
+      if (field !== 'asin') {
+        const input = scope.querySelector('input.ab-in[data-field="' + field + '"]');
+        if (input) input.value = '';
+      }
+      abMarkLocks(scope, res.body.locked || []);
+      abToast(field === 'asin'
+        ? 'Unlocked - Re-check against Audible to match this book on its own again'
+        : 'Unlocked - this field follows the catalog again');
+    })
+    .catch(() => { chip.disabled = false; abToast('could not reach the daemon'); });
+}
+// the row's visible kebab menu: Open details / Edit ASIN / Re-check against Audible / Delete...
+function abMenuOpen() { return document.querySelector('.ab-menu:not([hidden])'); }
+function abMenuClose(restoreFocus) {
+  const menu = abMenuOpen();
+  if (!menu) return;
+  menu.hidden = true;
+  const kebab = menu.parentElement.querySelector('.ab-kebab');
+  if (kebab) {
+    kebab.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) kebab.focus();
+  }
+}
+function abMenuToggle(kebab) {
+  const menu = kebab.parentElement.querySelector('.ab-menu');
+  if (!menu) return;
+  const wasOpen = !menu.hidden;
+  abMenuClose(false);
+  if (wasOpen) return;
+  menu.hidden = false;
+  kebab.setAttribute('aria-expanded', 'true');
+  const first = menu.querySelector('[role="menuitem"]');
+  if (first) first.focus();
+}
+function abMenuPick(item) {
+  const wrap = item.closest('.ab-kebabwrap');
+  const kebab = wrap && wrap.querySelector('.ab-kebab');
+  const row = item.closest('tr.urow');
+  const act = item.dataset.act;
+  abMenuClose(false);
+  if (!row || !kebab) return;
+  if (act === 'open') {
+    const panel = row.nextElementSibling;
+    if (!panel || !panel.classList.contains('drow')) return;
+    panel.hidden = false;
+    row.classList.add('ab-sel');
+    panel.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  } else if (act === 'asin') {
+    abEditAsin(row);
+  } else if (act === 'recheck') {
+    abUnitAction(item, 'recheck');
+  } else if (act === 'delete') {
+    // the kebab is the trigger: Cancel returns focus to something that is still visible
+    abOpenDeleteModal(kebab.dataset.path, kebab.dataset.title || kebab.dataset.path, kebab);
+  }
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest || !e.target.closest('.ab-kebabwrap')) abMenuClose(false);
+});
+document.addEventListener('keydown', function(e) {
+  const menu = abMenuOpen();
+  if (!menu) {
+    if (e.key === 'ArrowDown' && e.target.classList && e.target.classList.contains('ab-kebab')) {
+      e.preventDefault();
+      abMenuToggle(e.target);
+    }
+    return;
+  }
+  const items = [...menu.querySelectorAll('[role="menuitem"]')];
+  const at = items.indexOf(document.activeElement);
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    abMenuClose(true);
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    items[(at + 1) % items.length].focus();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    items[(at - 1 + items.length) % items.length].focus();
+  } else if (e.key === 'Home') {
+    e.preventDefault();
+    items[0].focus();
+  } else if (e.key === 'End') {
+    e.preventDefault();
+    items[items.length - 1].focus();
+  } else if (e.key === 'Tab') {
+    abMenuClose(false);
+  }
+});
 // Panels start closed on every page load - an open panel only exists because
 // the operator opened it this visit, or a re-check asked for it to re-open.
 function openSet() {
@@ -844,8 +1011,10 @@ function abApplyView() {
   document.querySelectorAll('th.ab-sort').forEach(th => {
     const on = th.dataset.column === abSort.column;
     th.classList.toggle('ab-on', on);
+    th.setAttribute('aria-sort', on ? (abSort.dir === 'desc' ? 'descending' : 'ascending') : 'none');
+    // the arrow marks the active sort only
     const arrow = th.querySelector('.ab-arrow');
-    if (arrow) arrow.textContent = (on && abSort.dir === 'desc') ? '\\u25bc' : '\\u25b2';
+    if (arrow) arrow.textContent = on ? (abSort.dir === 'desc' ? '\\u25bc' : '\\u25b2') : '';
   });
 }
 function abSortBy(column) {
@@ -878,6 +1047,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     box.addEventListener('input', abSearchChanged);
   }
+  // each sortable header holds a real <button>: mouse, Enter and Space all land here
   document.querySelectorAll('th.ab-sort').forEach(th => {
     th.addEventListener('click', () => abSortBy(th.dataset.column));
   });
@@ -903,6 +1073,7 @@ function abBusy() {
   const box = abSearchBox();
   if (box && (document.activeElement === box || box.value.trim() !== '')) return true;
   if (document.querySelector('tr.drow:not([hidden])')) return true;
+  if (abMenuOpen()) return true;
   const el = document.activeElement;
   if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return true;
   return false;
@@ -1484,15 +1655,197 @@ def _fmt_age(seconds: float) -> str:
     return f"{seconds / 3600:.1f}h ago"
 
 
-STATUS_ORDER = ("converted", "ready", "review", "held", "failed", "interrupted")
+# --- table semantics kit (queue hygiene, 0.15.0-dev3) -------------------------------------
+# Numbers that align, empty cells that admit it, ages that read like a person wrote them.
+
+#: an unknown or empty value is an explicit em-dash - never blank, "N/A" or "null"
+DASH = '<span class="ab-dash">&mdash;</span>'
+#: ages read relative ("5h ago") up to this many days old, then as the date itself
+AGE_CUTOFF_DAYS = 7
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def rel_age(timestamp, now: float | None = None, waiting: bool = False) -> str:
+    """"2d ago" / "5h ago" / "waiting 3h" within the 7-day cutoff; the date after it.
+
+    Plain text (no HTML). Empty when the time is unknown - the caller renders the dash.
+    """
+    try:
+        ts = float(timestamp or 0)
+    except (TypeError, ValueError):
+        return ""
+    if ts <= 0:
+        return ""
+    now = time.time() if now is None else float(now)
+    seconds = max(0.0, now - ts)
+    if seconds > AGE_CUTOFF_DAYS * 86400:
+        then = time.localtime(ts)
+        date = f"{_MONTHS[then.tm_mon - 1]} {then.tm_mday}"
+        if then.tm_year != time.localtime(now).tm_year:
+            date += f", {then.tm_year}"
+        return f"waiting since {date}" if waiting else date
+    if seconds < 60:
+        return "waiting <1m" if waiting else "just now"
+    if seconds < 3600:
+        span = f"{int(seconds // 60)}m"
+    elif seconds < 86400:
+        span = f"{int(seconds // 3600)}h"
+    else:
+        span = f"{int(seconds // 86400)}d"
+    return f"waiting {span}" if waiting else f"{span} ago"
+
+
+def fmt_hours(hours) -> str:
+    """"13.18 h" (HTML); the dash when the length is unknown."""
+    value = _num(hours)
+    return f"{value:.2f} h" if value > 0 else DASH
+
+
+def fmt_mb(mb) -> str:
+    """"1,856 MB" (HTML); the dash when the size is unknown."""
+    value = _num(mb)
+    return f"{value:,.0f} MB" if value > 0 else DASH
+
+
+#: status -> (word, dot family, pulses). The word is always printed beside the dot (color is
+#: never the only signal); only a state that is still moving pulses, settled ones hold steady.
+STATUS_DOTS = {
+    "converted": ("Converted", "ok", False),
+    "held": ("Held", "hold", False),
+    "review": ("Review", "rev", True),
+    "failed": ("Failed", "err", False),
+    "ready": ("Ready", "enc", False),
+    "interrupted": ("Interrupted", "rev", False),
+}
+#: states that wait on the operator read "waiting 3h" instead of "3h ago"
+WAITING_STATUSES = {"review"}
+
+
+def status_dot(status: str, updated_at=0.0, now: float | None = None) -> str:
+    """One labeled dot: color + word + age. Replaces the old per-row status pill."""
+    name = (status or "").lower()
+    label, family, moving = STATUS_DOTS.get(name, (name.capitalize() or "Unknown", "idle", False))
+    age = rel_age(updated_at, now, waiting=name in WAITING_STATUSES)
+    classes = f"ab-st ab-st-{family}" + (" ab-st-moving" if moving else "")
+    title = label + (f" · {age}" if age else "")
+    age_html = f'<span class="ab-st-age">{_html(age)}</span>' if age else ""
+    return (
+        f'<span class="{classes}" title="{_attr(title)}">'
+        f'<span class="ab-st-dot" aria-hidden="true"></span>{_html(label)}{age_html}</span>'
+    )
+
+
+#: confidence is always spelled out, capital C - never a bare LOW/MEDIUM/HIGH in the table
+CONFIDENCE_WORDS = {
+    "HIGH": ("High Confidence", "ab-conf-high"),
+    "MEDIUM": ("Medium Confidence", "ab-conf-medium"),
+    "LOW": ("Low Confidence", "ab-conf-low"),
+}
+
+
+def series_label(detail: dict, overrides: dict) -> str:
+    """"Jack Reacher #14" - the operator's series wins over the catalog's. Plain text."""
+    match = (detail or {}).get("match") or {}
+    overrides = overrides or {}
+    name = str(overrides.get("series") or match.get("series") or "").strip()
+    if not name:
+        return ""
+    seq = str(overrides.get("series_index") or match.get("sequence") or "").strip()
+    return f"{name} #{seq}" if seq else name
+
+
+def match_cell(unit, detail: dict, overrides: dict, asin_override: str = "") -> tuple[str, str]:
+    """(HTML, plain-text title) for the Match column.
+
+    A hand-set ASIN reads "Current ASIN · <n> Confidence"; an automatic match reads
+    "<series #n> · <n> Confidence". No match at all is the dash.
+    """
+    conf = (unit.confidence or "").upper()
+    match = (detail or {}).get("match") or {}
+    conf_html = conf_text = ""
+    if conf in CONFIDENCE_WORDS:
+        conf_text, cls = CONFIDENCE_WORDS[conf]
+        conf_html = f'<span class="{cls}">{conf_text}</span>'
+    elif conf == "COLLECTION":
+        conf_text = "Looks like a collection"
+        conf_html = f'<span class="ab-conf-none">{conf_text}</span>'
+    elif asin_override and match.get("asin_pin_failed"):
+        conf_text = "Not in Audible's catalog"
+        conf_html = f'<span class="ab-conf-low">{_html(conf_text)}</span>'
+
+    if asin_override:
+        lead_html = '<span class="ab-match-cur">Current ASIN</span>'
+        lead_text = f"Current ASIN {asin_override} (you set it)"
+    else:
+        lead_text = series_label(detail, overrides) if conf_html else ""
+        lead_html = _html(lead_text)
+
+    parts_html = [p for p in (lead_html, conf_html) if p]
+    if not parts_html:
+        return DASH, ""
+    return " &middot; ".join(parts_html), " · ".join(p for p in (lead_text, conf_text) if p)
+
+
+LOCK_ON_TEXT = "\U0001f512 Locked by you"
+LOCK_OFF_TEXT = "\U0001f513 Unlocked"
+
+
+def lock_chip(field: str, locked: bool) -> str:
+    """The per-field chip: green "Locked by you" (click to unlock) or muted "Unlocked"."""
+    if locked:
+        cls, text = "ab-lock-on", LOCK_ON_TEXT
+        title = "A rescan, re-check or re-rip will never overwrite this. " + (
+            "Click to unlock: the next re-check matches this book on its own."
+            if field == "asin"
+            else "Click to unlock and hand it back to the catalog."
+        )
+    else:
+        cls, text = "ab-lock-off", LOCK_OFF_TEXT
+        title = (
+            "Matched automatically. Use this ASIN to lock one exact entry."
+            if field == "asin"
+            else "Follows the catalog. Edit and save it to lock it."
+        )
+    return (
+        f'<button type="button" class="ab-lock {cls}" data-field="{_attr(field)}" '
+        f'title="{title}" onclick="abLockChip(this)">{text}</button>'
+    )
+
+
+def kebab_menu(unit) -> str:
+    """The visible row menu that replaced the hover-only buttons."""
+    path = _attr(unit.path)
+    title = _attr(unit.title or unit.path)
+    return (
+        '<div class="ab-kebabwrap" onclick="event.stopPropagation()">'
+        f'<button type="button" class="ab-kebab" aria-haspopup="menu" aria-expanded="false" '
+        f'aria-label="Actions for {title}" title="Actions" data-path="{path}" data-title="{title}" '
+        'onclick="abMenuToggle(this)">&#8942;</button>'
+        '<div class="ab-menu" role="menu" hidden>'
+        '<button type="button" role="menuitem" data-act="open" onclick="abMenuPick(this)">Open details</button>'
+        '<button type="button" role="menuitem" data-act="asin" onclick="abMenuPick(this)" '
+        'title="Open this book\'s details and set its exact Audible entry.">Edit ASIN</button>'
+        '<button type="button" role="menuitem" data-act="recheck" onclick="abMenuPick(this)" '
+        'title="Ask Audible about this one book again: refreshes the match, the other editions and '
+        "the confidence. An ASIN you set is kept. It still follows your auto-convert rules.\">"
+        "Re-check against Audible</button>"
+        '<button type="button" role="menuitem" class="ab-menu-danger" data-act="delete" '
+        'onclick="abMenuPick(this)">Delete&hellip;</button>'
+        "</div></div>"
+    )
+
+
+STATUS_ORDER =("converted", "ready", "review", "held", "failed", "interrupted")
 MAX_ROWS = 400
 MAX_SHELF_CARDS = 12
 
 COLUMNS = (
     ("title", "Book", "min(560px,30vw)", ""),
-    ("status", "Status", "110px", ""),
-    ("tier", "Tier", "90px", "ab-hidemd"),
-    ("runtime", "Runtime", "90px", ""),
+    # widths grew only as far as the new texture needs: "Converted 2d ago" and
+    # "Jack Reacher #14 · High Confidence" each stay on one line
+    ("status", "Status", "150px", ""),
+    ("tier", "Match", "230px", "ab-hidemd"),
+    ("runtime", "Length", "90px", ""),
     ("scan", "Last scan", "110px", "ab-hidemd"),
 )
 COVER_WIDTH = "50px"
@@ -1700,7 +2053,7 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
         f'target="_blank" rel="noopener">{asin}</a>'
     )
     if pinned:
-        score_html = '<div class="ab-evv">&mdash;</div><div class="ab-evl">pinned by you</div>'
+        score_html = '<div class="ab-evv">&mdash;</div><div class="ab-evl">you picked this edition</div>'
     else:
         mid = "" if score >= 0.85 else " ab-mid"
         score_html = f'<div class="ab-evv{mid}">{score:.2f}</div><div class="ab-evl">match score</div>'
@@ -1718,9 +2071,9 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
 
     bars = []
     if pinned:
-        pin_note = "You locked this book to this ASIN, so titles and authors weren't scored"
-        bars.append(_ev_bar("Title match", "pinned", 100, "ab-acc", pin_note))
-        bars.append(_ev_bar("Author match", "pinned", 100, "ab-acc", pin_note))
+        pin_note = "You set this ASIN yourself, so titles and authors weren't scored"
+        bars.append(_ev_bar("Title match", "you picked this edition", 100, "ab-acc", pin_note))
+        bars.append(_ev_bar("Author match", "you picked this edition", 100, "ab-acc", pin_note))
     else:
         q_title = str(match.get("query_title") or "")
         cat_title = str(match.get("title") or "")
@@ -1788,7 +2141,7 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
     else:
         bars.append(_ev_bar("Language", lang_label, 100, "", "No language penalty applied"))
 
-    # the runners-up, each with the reason it lost and a one-click pin
+    # the runners-up, each with the reason it lost and a one-click "Use this edition"
     others = [
         a for a in alternates if isinstance(a, dict) and a.get("asin") and a.get("asin") != unit.asin
     ][:4]
@@ -1805,14 +2158,14 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
                 f'<b class="ab-evrt">{_html(str(alt.get("title") or ""))}</b>'
                 f'<div class="ab-evwhy">{reason}</div></div>'
                 f'<span class="ab-evsc">{_num(alt.get("score")):.2f}</span>'
-                '<button title="Lock this book to this Audible entry, then re-check against it." '
+                '<button title="Set this Audible entry as the book\'s ASIN (locks it), then re-check against it." '
                 f'onclick="abUseEdition(this)" data-asin="{alt_asin}">Use this edition</button></div>'
             )
         rivals_html = (
             '<h4 class="ab-evh2">The other candidates &mdash; and why they lost</h4>'
             + "".join(rows)
             + '<p class="ab-hint">Think a runner-up is the right book? Use this edition '
-            "locks the match to it permanently and re-checks.</p>"
+            "sets it as this book's ASIN, locks it, and re-checks.</p>"
         )
 
     note = f'<p class="ab-hint">{_html(unit.note)}</p>' if unit.note else ""
@@ -1836,15 +2189,6 @@ def read_sort(state) -> tuple:
     if direction not in ("asc", "desc"):
         direction = "desc"
     return column, direction
-
-
-def _tier_class(confidence: str) -> str:
-    t = (confidence or "").upper()
-    if t == "HIGH":
-        return "ab-high"
-    if t == "MEDIUM":
-        return "ab-medium"
-    return "ab-low"
 
 
 def _render_shelf(problem_units: list) -> str:
@@ -1877,7 +2221,7 @@ def _render_shelf(problem_units: list) -> str:
 
         btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="abUnitAction(this,\'retry\')">Retry now</button>'
         force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="abUnitAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button class="btn" title="Open this book\'s details and lock an Audible entry." onclick="abEditAsin(this)">Edit ASIN</button>'
+        asin_btn = '<button class="btn" title="Open this book\'s details and set its exact Audible entry." onclick="abEditAsin(this)">Edit ASIN</button>'
 
         cards.append(
             (
@@ -2232,7 +2576,7 @@ def render_settings(state) -> str:
             "HIGH: title and author match Audible strongly with a clear margin - safe to "
             "convert automatically. MEDIUM: a good match with weaker evidence (e.g. the "
             "author came from the catalog) - converts when this tier is MEDIUM. LOW: weak "
-            "match - always held for review; fix it with Edit ASIN on the book row. "
+            "match - always held for review; fix it with Edit ASIN in the book's ⋮ menu. "
             "COLLECTION/NONE: the folder looks like several books mixed together, or nothing "
             "in the catalog matched - these are never auto-converted.",
         )
@@ -2450,6 +2794,11 @@ def render(state, status: str = "", query: str = "") -> str:
         else ""
     )
 
+    now = time.time()
+    # one query each for the whole table, not one per row
+    locks = state.all_locks()
+    asin_pins = state.all_asin_overrides()
+
     def detail_panel(unit) -> str:
         try:
             data = json.loads(unit.detail or "{}")
@@ -2560,7 +2909,7 @@ def render(state, status: str = "", query: str = "") -> str:
                         "<b>Re-checked &mdash; still not confident enough.</b> "
                         "ASIN {a} matches at <b>{c}</b>, below your {t} "
                         "auto-convert setting."
-                    ).format(a=_html(unit.asin or "the pinned one"), c=unit.confidence or "?", t=tier)
+                    ).format(a=_html(unit.asin or "the one you set"), c=unit.confidence or "?", t=tier)
             elif unit.status == "held":
                 btxt = (
                     "<b>Re-checked &mdash; still not a runtime match.</b> "
@@ -2574,15 +2923,13 @@ def render(state, status: str = "", query: str = "") -> str:
             return f"<div><h4>{title}</h4><ul>" + "".join(f"<li>{i}</li>" for i in items) + "</ul></div>"
 
         custom = overrides_mod.describe(state.get_overrides(unit.path))
-        marked = overrides_mod.custom_fields(state.get_overrides(unit.path))
+        locked = locks.get(unit.path, set())
 
         def field(key, label_str, catalog_value, width_hint=""):
-            mark = ('<span class="ab-custom" data-field="{k}"{h}>custom</span>').format(
-                k=key, h="" if key in marked else " hidden"
-            )
             placeholder = _attr(catalog_value or "catalog value")
+            on = " ab-locked" if key in locked else ""
             return (
-                f'<div class="ab-field"><span class="ab-lab">{label_str}{mark}</span>'
+                f'<div class="ab-field{on}"><span class="ab-lab">{label_str}{lock_chip(key, key in locked)}</span>'
                 f'<input class="ab-in" data-field="{key}" value="{_attr(custom[key])}" '
                 f'placeholder="{placeholder}" spellcheck="false"{width_hint}></div>'
             )
@@ -2591,10 +2938,12 @@ def render(state, status: str = "", query: str = "") -> str:
         # or one brace in a folder name or override takes the whole page down
         editor = (
             f'<div class="ab-edit" data-path="{_attr(unit.path)}"><h4>Metadata</h4>'
-            '<p class="ab-hint">Overrides win over the catalog when this book is '
-            "converted - tags, metadata.json and the author/title layout. "
-            "Leave a box empty to use the catalog value; "
-            "separate several names with a semicolon.</p>"
+            '<p class="ab-hint">Editing a field locks it automatically &mdash; a rescan, '
+            "re-check or re-rip will never overwrite it again. One click unlocks. The lock "
+            "lives with the book, so it survives restarts and rescans. What you set wins over "
+            "the catalog when this book is converted - tags, metadata.json and the author/title "
+            "layout. Leave a box empty to use the catalog value; separate several names with a "
+            "semicolon.</p>"
             '<div class="ab-grid">'
             + field("title", "title", match_data.get("title") or unit.title)
             + field(
@@ -2610,7 +2959,7 @@ def render(state, status: str = "", query: str = "") -> str:
             '<span class="ab-fb"></span></div></div>'
         )
 
-        # other editions the catalog search also scored highly, with one-click pins
+        # other editions the catalog search also scored highly, each one click to use
         editions_html = ""
         try:
             alternates = json.loads(unit.alternates) if getattr(unit, "alternates", "") else []
@@ -2636,8 +2985,8 @@ def render(state, status: str = "", query: str = "") -> str:
                         '<span class="ab-edsub">{au} &middot; '
                         '<a class="ab-alink" href="https://www.audible.com/pd?asin={a}" '
                         'target="_blank" rel="noopener">{a}</a></span></span>'
-                        '<button title="Lock this book to this Audible entry, then re-check '
-                        'against it." onclick="abUseEdition(this)" data-asin="{a}">'
+                        '<button title="Set this Audible entry as the book\'s ASIN (locks it), then '
+                        're-check against it." onclick="abUseEdition(this)" data-asin="{a}">'
                         "Use this edition</button></div>"
                     ).format(
                         ti=_html(str(alt.get("title") or "")),
@@ -2650,12 +2999,12 @@ def render(state, status: str = "", query: str = "") -> str:
                 + "".join(edition_rows)
                 + '<p class="ab-hint">Audible entries the search also scored highly for '
                 "this book - different narrations or editions of the same title. "
-                "Pinning one locks the match permanently.</p></div>"
+                "Using one sets it as this book's ASIN and locks it.</p></div>"
             )
 
         btn = '<button title="Re-check this book against the catalog and convert it if it passes the rules." onclick="abUnitAction(this,\'retry\')">Retry now</button>'
         force = '<button class="warn" title="Convert this book even though the automatic checks flagged it." onclick="abUnitAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button title="Lock this catalog entry to the book, then re-check against it." onclick="abUnitAction(this,\'set_asin\')">Use this ASIN</button>'
+        asin_btn = '<button title="Set this exact Audible entry for the book (locks it), then re-check against it." onclick="abUnitAction(this,\'set_asin\')">Use this ASIN</button>'
 
         explain_html = (
             '<div class="explain">'
@@ -2669,12 +3018,13 @@ def render(state, status: str = "", query: str = "") -> str:
             + btn
             + "</div>"
             + '<div class="ab-pinrow">'
-            + '<span class="ab-pinlab">Lock this book to one exact Audible entry:</span>'
+            + '<span class="ab-pinlab">Set the exact Audible entry for this book:</span>'
             + '<input data-asin value="{av}" placeholder="ASIN, e.g. B005EHN61O">'.format(
                 av=_attr(unit.asin or "")
             )
             + asin_btn
-            + '<span class="ab-pinhint">Locks the match permanently - every future '
+            + lock_chip("asin", "asin" in locked)
+            + '<span class="ab-pinhint">Setting it locks the match - every future '
             "scan checks this book against this exact entry instead of guessing. "
             "Passes your confidence setting &rarr; converts automatically. Still "
             "too unsure &rarr; this panel re-opens with the reason.</span>" + "</div>"
@@ -2719,52 +3069,38 @@ def render(state, status: str = "", query: str = "") -> str:
         tier = str(effective_val("auto_convert") or "high")
         haystack = " ".join(filter(None, [unit.title, unit.author, unit.path]))
         data = " ".join(f'data-sort-{key}="{_attr(str(sort_value(unit, key)))}"' for key in SORT_COLUMNS)
-        has_custom = bool(state.get_overrides(unit.path))
-        badge = '<span class="ab-custom"{h}>custom</span>'.format(h="" if has_custom else " hidden")
-
-        act_html = ""
-        if unit.status in ("held", "review", "failed"):
-            btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="event.stopPropagation();abUnitAction(this,\'retry\')">Retry now</button>'
-            force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="event.stopPropagation();abUnitAction(this,\'force\')">Convert anyway</button>'
-            asin_btn = '<button class="btn" title="Open this book\'s details and lock an Audible entry." onclick="event.stopPropagation();abEditAsin(this)">Edit ASIN</button>'
-            act_html = '<div class="ab-rowact">' + btn + force + asin_btn + "</div>"
+        hidden = "" if locks.get(unit.path) else " hidden"
+        badge = f'<span class="ab-custom" title="Some of this book\'s metadata is locked by you"{hidden}>locked</span>'
+        try:
+            detail_data = json.loads(unit.detail or "{}")
+        except ValueError:
+            detail_data = {}
+        if not isinstance(detail_data, dict):
+            detail_data = {}
 
         reason_html = ""
         if unit.status in ("held", "review", "failed"):
-            try:
-                detail_data = json.loads(unit.detail or "{}")
-            except ValueError:
-                detail_data = {}
             why, _todo = explain(unit.status, unit.confidence or "", unit.note, detail_data, tier=tier)
             rc = " failed" if unit.status == "failed" else ""
             reason_html = f'<span class="ab-breason{rc}">{_html(why)}</span>'
 
+        match_html, match_title = match_cell(
+            unit, detail_data, state.get_overrides(unit.path), asin_pins.get(unit.path, "")
+        )
+        match_attr = f' title="{_attr(match_title)}"' if match_title else ""
+        age = rel_age(unit.updated_at, now)
+        # f-strings only: titles and paths come from folder names and the catalog
         return (
-            '<tr class="urow" onclick="toggleRow(this)" data-path="{dp}" '
-            'data-search="{hs}" {da}>'
-            '<td class="ab-covcell">{cov}</td>'
-            '<td class="ab-bookcell"><span class="ab-btitle">{ti}{bd}</span>'
-            '<span class="ab-bauthor">{au}</span>{rs}</td>'
-            '<td><span class="pill {st}"><span class="pdot"></span>{st}</span></td>'
-            '<td class="ab-hidemd"><span class="ab-tier {tc}">{co}</span></td>'
-            '<td class="ab-num">{hr:.1f}h</td>'
-            '<td class="ab-hidemd ab-scan">{ag}</td>'
-            '<td class="ab-actcol">{ac}</td></tr>'
-        ).format(
-            dp=_attr(unit.path),
-            hs=_attr(haystack),
-            da=data,
-            cov=cover_html(unit),
-            ti=_html(unit.title or unit.path),
-            bd=badge,
-            au=_html(unit.author or ""),
-            rs=reason_html,
-            st=unit.status,
-            tc=_tier_class(unit.confidence),
-            co=unit.confidence or "-",
-            hr=unit.hours or 0,
-            ag=_fmt_age(time.time() - (unit.updated_at or 0)),
-            ac=act_html,
+            f'<tr class="urow" onclick="toggleRow(this)" data-path="{_attr(unit.path)}" '
+            f'data-search="{_attr(haystack)}" {data}>'
+            f'<td class="ab-covcell">{cover_html(unit)}</td>'
+            f'<td class="ab-bookcell"><span class="ab-btitle">{_html(unit.title or unit.path)}{badge}</span>'
+            f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span>{reason_html}</td>'
+            f"<td>{status_dot(unit.status, unit.updated_at, now)}</td>"
+            f'<td class="ab-hidemd ab-match"{match_attr}>{match_html}</td>'
+            f'<td class="ab-num">{fmt_hours(unit.hours)}</td>'
+            f'<td class="ab-hidemd ab-scan">{_html(age) or DASH}</td>'
+            f'<td class="ab-actcol">{kebab_menu(unit)}</td></tr>'
         )
 
     rows = "".join(row(u) + detail_panel(u) for u in units)
@@ -2781,15 +3117,17 @@ def render(state, status: str = "", query: str = "") -> str:
     if not units:
         rows = f'<tr class="ab-empty"><td colspan="{TOTAL_COLUMNS}">no books match this filter</td></tr>'
 
-    headers = '<th class="ab-covhead"></th>' + "".join(
-        '<th class="ab-sort{on} {kl}" data-column="{k}">{lb}<span class="ab-arrow">{ar}</span></th>'.format(
-            on=" ab-on" if key == sort_column else "",
-            kl=klass,
-            k=key,
-            lb=label,
-            ar="&#9660;" if (key == sort_column and sort_dir == "desc") else "&#9650;",
+    def header(key: str, label: str, klass: str) -> str:
+        on = key == sort_column
+        arrow = ("&#9660;" if sort_dir == "desc" else "&#9650;") if on else ""
+        aria = ("descending" if sort_dir == "desc" else "ascending") if on else "none"
+        return (
+            f'<th class="ab-sort{" ab-on" if on else ""} {klass}" data-column="{key}" aria-sort="{aria}">'
+            f'<button type="button" class="ab-sortbtn">{label}<span class="ab-arrow">{arrow}</span></button></th>'
         )
-        for key, label, _width, klass in COLUMNS
+
+    headers = '<th class="ab-covhead"></th>' + "".join(
+        header(key, label, klass) for key, label, _width, klass in COLUMNS
     )
     colgroup = (f'<col style="width:{COVER_WIDTH}">') + "".join(
         (f'<col style="width:{width}">') if width else "<col>" for _k, _l, width, _c in COLUMNS
@@ -3123,10 +3461,19 @@ class Handler(BaseHTTPRequestHandler):
             if self.state.get(rel) is None:
                 self._send(404, b'{"error":"no such unit"}', "application/json")
                 return
+            before = overrides_mod.custom_fields(self.state.get_overrides(rel))
             clean = overrides_mod.normalise(payload.get("fields") or {})
             self.state.set_overrides(rel, clean)
+            # a human edit locks the field; a box emptied by hand hands it back to the catalog
+            self.state.lock_fields(rel, overrides_mod.custom_fields(clean))
+            for gone in sorted(before - overrides_mod.custom_fields(clean)):
+                self.state.unlock_field(rel, gone)
+            locked = sorted(self.state.locked_fields(rel))
             logging.getLogger("audiobind").info(
-                "metadata overrides saved for %s: %s", rel, sorted(clean) or "none"
+                "metadata overrides saved for %s: %s (locked: %s)",
+                rel,
+                sorted(clean) or "none",
+                locked or "none",
             )
             self._send(
                 200,
@@ -3135,9 +3482,30 @@ class Handler(BaseHTTPRequestHandler):
                         "ok": True,
                         "unit": rel,
                         "custom": sorted(overrides_mod.custom_fields(clean)),
+                        "locked": locked,
                         "overrides": overrides_mod.describe(clean),
                     }
                 ).encode(),
+                "application/json",
+            )
+            return
+
+        if action == "unlock":
+            field = str(payload.get("field", ""))
+            if field not in LOCKABLE_FIELDS:
+                self._send(400, b'{"error":"that field cannot be locked"}', "application/json")
+                return
+            if self.state.get(rel) is None:
+                self._send(404, b'{"error":"no such unit"}', "application/json")
+                return
+            if not self.state.unlock_field(rel, field):
+                self._send(409, b'{"error":"that field is not locked"}', "application/json")
+                return
+            locked = sorted(self.state.locked_fields(rel))
+            logging.getLogger("audiobind").info("unlocked %s for %s", field, rel)
+            self._send(
+                200,
+                json.dumps({"ok": True, "unit": rel, "field": field, "locked": locked}).encode(),
                 "application/json",
             )
             return
@@ -3325,10 +3693,28 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             self.state.set_asin_override(rel, asin)
+            # setting the ASIN by hand is an edit like any other: it locks
+            self.state.lock_fields(rel, {"asin"})
             action = "retry"
-        if action not in ("retry", "force"):
+        if action not in ("retry", "force", "recheck"):
             self._send(400, b'{"error":"unknown action"}', "application/json")
             return
+        if action == "recheck":
+            # the per-book Re-check all: the same manual re-audit Retry runs (a hand-set ASIN is
+            # honoured and never fallen back from, auto-convert rules still apply) - offered on
+            # every row, so it must not stack on a book that is already in flight
+            if CONTROL.current_unit == rel:
+                self._send(
+                    409,
+                    b'{"error":"this book is encoding right now - re-check it once it finishes"}',
+                    "application/json",
+                )
+                return
+            if rel in CONTROL.queue_snapshot()["units"]:
+                self._send(
+                    409, b'{"error":"this book is already waiting to be re-checked"}', "application/json"
+                )
+                return
 
         logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
         CONTROL.enqueue(rel)
