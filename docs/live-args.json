@@ -24,6 +24,11 @@
     "JOBS=1"
   ],
   "cmd": ["daemon"],
+  "labels": {
+    "net.unraid.docker.icon": "https://raw.githubusercontent.com/stinger303/audiobind/main/images/audiobind-icon.png",
+    "net.unraid.docker.managed": "dockerman",
+    "net.unraid.docker.webui": "http://[IP]:[PORT:8080]/"
+  },
   "restart": "no",
   "ports": {"8080/tcp": [{"HostIp": "", "HostPort": "8686"}]}
 }

@@ -30,6 +30,7 @@ import json, sys, shlex
 s = json.load(open(sys.argv[1]))
 parts = ["--restart " + s["restart"]]
 parts += ["-v " + shlex.quote(b) for b in s["binds"]]
+parts += ["--label " + shlex.quote(k + "=" + v) for k, v in s.get("labels", {}).items()]
 parts += ["-e " + shlex.quote(e) for e in s["env"]]
 for k, v in s["ports"].items():
     parts += ["-p " + shlex.quote(f'{v[0]["HostPort"]}:{k.split("/")[0]}')]
