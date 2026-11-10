@@ -36,8 +36,25 @@ scope one at a time.
    cross-checks would increase false review flags, not reduce them. Revisit
    if a second provider is added.
 
-## Explicitly not pulled
+## Decisions 2026-11-09 (owner)
 
+- **Item 1 (multi-region fallback): REJECTED** — owner saw the mockup, "don't like
+  the multi-region at all". Move to explicitly-not-pulled.
+- **Item 2 ("Why this match?"): APPROVED** — owner wants it live. Mockup
+  `/opt/data/audiobind-designs/mock-2-why-this-match.html` is the acceptance bar
+  (real scores rendered from the live matcher on The Power of Habit).
+- **Item 3 (series shelf + gaps): APPROVED with revised placement** — two surfaces:
+  (a) a new rail tab directly under Library (working title "Series"), and
+  (b) a hook inside the book detail panel — a "See what you're missing" row that
+  jumps into that book's series. Gap-detection behavior as described: the shelf
+  reads the library's series/sequence data and asks Audible for the full series
+  list, then shows owned vs missing with covers, runtimes and ASINs. Placement
+  mockup pending owner approval before the build dispatches.
+
+## Explicitly not pulled (owner decisions)
+
+- **Multi-region Audible fallback search** (owner, 2026-11-09): rejected after
+  seeing the mockup — not the direction he wants. Not revisiting without a new ask.
 - **Grabber features** (indexers, download clients, monitoring): Audiobind is
   a ripper/converter, not a download manager — that's Listenarr/Chaptarr's
   job, already running alongside.
