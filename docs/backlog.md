@@ -48,8 +48,9 @@ scope one at a time.
   (b) a hook inside the book detail panel — a "See what you're missing" row that
   jumps into that book's series. Gap-detection behavior as described: the shelf
   reads the library's series/sequence data and asks Audible for the full series
-  list, then shows owned vs missing with covers, runtimes and ASINs. Placement
-  mockup pending owner approval before the build dispatches.
+  list, then shows owned vs missing with covers, runtimes and ASINs.
+  Placement mockup `/opt/data/audiobind-designs/mock-3b-series-placement.html`
+  APPROVED by owner 2026-11-09 ("looks great") — build cleared.
 
 ## Explicitly not pulled (owner decisions)
 
