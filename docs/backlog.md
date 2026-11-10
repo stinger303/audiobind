@@ -75,6 +75,29 @@ scope one at a time.
   Desktop on the owner's Windows laptop, "Add to Claude", plus a stdio MCP
   config for the container's Claude Code pointing at the desktop CLI.
 
+## UX sequence (decided 2026-11-09, owner approved)
+
+From the UX research digest (/opt/data/audiobind-designs/ux-research-2026-11.md).
+Order fixed by owner: sequence below, then re-look at the remainder. Every step:
+mockup -> owner pixel approval -> Claude Code build -> verify -> banked deploy;
+rollback = prior image tag on Tower + docs/rollback.sh (written and tested
+BEFORE the first deploy in this series); each feature one commit.
+
+1. **Release "queue hygiene":** P2 auto-lock on human-confirmed fields (S) +
+   P5/P6 table semantics kit (tabular-nums, em-dash cells, relative-time
+   cutoffs, one labeled status dot per row) + anti-pattern fixes that ride
+   along: visible kebab menu replaces hover-only row actions; minimum text
+   sizes become a verification gate. Anti-patterns are acceptance criteria, not
+   separate items.
+2. **Release 2:** P3 per-field match/apply in review (M) — designed to live in
+   the detail panel (no new modals).
+3. **Release 3:** P1 persisted filter/sort URL state + P10 saved smart filters
+   as rail items (M).
+4. **Release 4 (re-evaluate):** P4 remap rules from corrections (L) — needs
+   release 2's field-level correction records. Owner re-look happens after 3.
+Remaining research patterns (P7 frozen header, P8 LQIP covers, P9 audit log,
+P11 decimal sequencing, P12 raw-data escape hatch) revisit after release 3.
+
 ## Candidate direction: Amazon/ASIN + review UX — noted 2026-11-09
 
 Owner asked for "pick an ASIN from Amazon as well as Audible" and general
