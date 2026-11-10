@@ -217,14 +217,20 @@ class TestEditorUI(unittest.TestCase):
         self.assertIn('placeholder="Moneyball"', page)
         self.assertIn('data-field="title" value=""', page)
 
-    def test_custom_markers_appear_only_once_something_is_overridden(self):
+    def test_lock_chips_follow_the_locked_fields(self):
         page = web.render(self.state)
-        self.assertIn('<span class="ab-custom" data-field="title" hidden>', page)
+        self.assertIn('class="ab-lock ab-lock-off" data-field="title"', page)
+        self.assertIn("\U0001f513 Unlocked", page)
+        self.assertNotIn("\U0001f512 Locked by you", page)
+        self.assertIn('locked by you" hidden>locked</span>', page)  # row badge, hidden
         self.state.set_overrides("Lewis/Moneyball", {"title": "Corrected"})
+        self.state.lock_fields("Lewis/Moneyball", {"title"})
         page = web.render(self.state)
-        self.assertIn('<span class="ab-custom" data-field="title">custom</span>', page)
+        self.assertIn('class="ab-lock ab-lock-on" data-field="title"', page)
+        self.assertIn("\U0001f512 Locked by you", page)
+        self.assertIn('class="ab-lock ab-lock-off" data-field="narrator"', page)
         self.assertIn('data-field="title" value="Corrected"', page)
-        self.assertIn('<span class="ab-custom">custom</span>', page)  # badge on the row
+        self.assertIn('locked by you">locked</span>', page)  # row badge, shown
 
     def test_endpoint_saves_and_clears_overrides(self):
         CONFIG.web_port = 0  # kernel picks a free port: no contention

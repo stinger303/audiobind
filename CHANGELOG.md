@@ -50,6 +50,48 @@ All notable changes to this project are documented here. This project follows
   matched or graded has changed; the panel only shows numbers the matcher already worked
   out. Books recorded before this version keep the old panel until their next re-check
   (Retry now, or the next scan that looks at them).
+- **Metadata you edit now locks (0.15.0-dev3).** Saving a title, author, narrator, series
+  or series index in a book's Metadata box locks that field. So does setting an ASIN with
+  Use this ASIN, Edit ASIN or Use this edition. A locked field shows a green
+  "🔒 Locked by you" chip. Rescans, Re-check all, the new per-book re-check and re-rips
+  never overwrite it. One click on the chip unlocks it, and the field follows Audible's
+  catalog again. Unlocking the ASIN clears the ASIN you set, so the next re-check matches
+  the book on its own. Emptying a box and saving also unlocks that field. Locks are kept
+  in the database, so they survive restarts, rescans and upgrades. Any correction you
+  typed before this version starts out locked.
+- **Every row has a visible ⋮ menu.** It has Open details, Edit ASIN, **Re-check against
+  Audible** and Delete…. Re-check against Audible is new: it is Re-check all for a single
+  book. It asks Audible about that book again and refreshes the match, the other editions
+  and the confidence. It keeps an ASIN you set, and auto-convert rules still apply. The
+  menu opens with a click or the keyboard (Enter, Space or ↓, then the arrow keys). It
+  closes on Escape or a click anywhere else. Delete… still asks for confirmation first.
+  Edit ASIN works as before. It's also available to scripts as `POST /api/unit` with
+  `{"action": "recheck"}`.
+
+### Changed
+- **The library table says what it means (queue hygiene, 0.15.0-dev3).** Each row's
+  status is now one labeled dot, never color alone: Converted (green), Held (blue),
+  Review (amber), Failed (red). The word sits beside the dot, followed by how long ago:
+  "Converted 2d ago", "Held 5h ago", "Review waiting 3h". Only Review pulses; finished
+  states hold still. Ages read like "5h ago" for the first 7 days, then show the date
+  (for example "Oct 28").
+- The Tier column is now **Match**. It reads "Jack Reacher #14 · High Confidence", or
+  "Current ASIN · Low Confidence" for a book whose ASIN you set. Confidence is always
+  spelled out (High / Medium / Low Confidence). Runtime is now **Length** and reads
+  "13.18 h". Numbers line up in tabular figures, and no length, match or status ever wraps
+  onto a second line. The Status and Match columns are a little wider so each one fits on
+  a single line. The table has the same columns as before.
+- An unknown value (no author, no length, no match, never scanned) now shows "—" instead
+  of a blank or "-".
+- Column headers are real buttons, so you can sort with the keyboard. Only the active
+  column shows an arrow.
+- The hover-only Retry now / Convert anyway / Edit ASIN strip on table rows is gone; the
+  ⋮ menu replaces it. Retry now and Convert anyway stay on the Needs attention cards and
+  in each book's details. Hovering a row still highlights it.
+- Plainer wording, and "locked" now means only a field you locked. "Pinned by you" in the
+  match evidence is now "you picked this edition". The toast now says "setting ASIN … -
+  re-checking…". A dead ASIN now reads "The ASIN you set (…) is not in Audible's catalog".
+  Collection advice now says "set it to one exact Audible entry".
 
 ### Fixed
 

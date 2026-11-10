@@ -6,7 +6,8 @@ import json
 import sqlite3
 import threading
 import time
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 SCHEMA = """
@@ -55,7 +56,18 @@ CREATE TABLE IF NOT EXISTS owned_marks (
     asin        TEXT PRIMARY KEY,
     marked_at   REAL
 );
+CREATE TABLE IF NOT EXISTS field_locks (
+    path        TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    locked_at   REAL,
+    PRIMARY KEY (path, field)
+);
 """
+
+#: metadata fields a human edit locks: the editor's fields plus the ASIN set with Edit ASIN.
+#: A locked field is never overwritten by a rescan, re-check or re-rip; unlocking hands it
+#: back to Audible's catalog.
+LOCKABLE_FIELDS = ("title", "authors", "narrator", "series", "series_index", "asin")
 
 
 @dataclass
@@ -94,6 +106,7 @@ class State:
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(SCHEMA)
         self._migrate()
+        self._migrate_locks()
         self.connection.commit()
 
     def _migrate(self) -> None:
@@ -111,6 +124,33 @@ class State:
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE units ADD COLUMN {name} {ddl}")
 
+    def _migrate_locks(self) -> None:
+        """Once per database: every correction typed before field locks existed was a human
+        edit, so it starts out locked - exactly as if it had been saved today."""
+        if self.connection.execute("SELECT 1 FROM meta WHERE key = 'field_locks_v1'").fetchone():
+            return
+        now = time.time()
+        rows = self.connection.execute(
+            "SELECT path, overrides, asin_override FROM units "
+            "WHERE (overrides IS NOT NULL AND overrides != '') "
+            "   OR (asin_override IS NOT NULL AND asin_override != '')"
+        ).fetchall()
+        for row in rows:
+            fields = set()
+            try:
+                data = json.loads(row["overrides"] or "{}")
+            except ValueError:
+                data = {}
+            if isinstance(data, dict):
+                fields |= {f for f in LOCKABLE_FIELDS if f != "asin" and data.get(f)}
+            if row["asin_override"]:
+                fields.add("asin")
+            self.connection.executemany(
+                "INSERT OR IGNORE INTO field_locks (path, field, locked_at) VALUES (?,?,?)",
+                [(row["path"], f, now) for f in sorted(fields)],
+            )
+        self.connection.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('field_locks_v1', 'true')")
+
     # ---------------------------------------------------------------- units
     def get(self, path: str) -> UnitState | None:
         with self._lock:
@@ -122,6 +162,7 @@ class State:
             self._save_locked(state)
 
     def _save_locked(self, state: UnitState) -> None:
+        state = self._honour_locks_locked(state)
         self.connection.execute(
             """INSERT INTO units (path, status, confidence, asin, title, author, hours, files,
                                   output, note, updated_at, src_mb, out_mb, chapters, detail,
@@ -392,9 +433,142 @@ class State:
         except (ValueError, TypeError):
             return 0
 
+    # ------------------------------------------------- field locks
+    @contextmanager
+    def _txn(self):
+        """All-or-nothing for a multi-statement write; the caller holds self._lock, so no
+        other statement can interleave (and no transaction is ever nested)."""
+        self.connection.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+            self.connection.execute("ROLLBACK")
+            raise
+        self.connection.execute("COMMIT")
+
+    def locked_fields(self, path: str) -> set[str]:
+        with self._lock:
+            return self._locked_fields_locked(path)
+
+    def _locked_fields_locked(self, path: str) -> set[str]:
+        rows = self.connection.execute("SELECT field FROM field_locks WHERE path = ?", (path,)).fetchall()
+        return {r["field"] for r in rows}
+
+    def all_locks(self) -> dict[str, set[str]]:
+        """{path: {field, ...}} for every book with at least one locked field (one query)."""
+        with self._lock:
+            rows = self.connection.execute("SELECT path, field FROM field_locks").fetchall()
+        out: dict[str, set[str]] = {}
+        for r in rows:
+            out.setdefault(r["path"], set()).add(r["field"])
+        return out
+
+    def all_asin_overrides(self) -> dict[str, str]:
+        """{path: asin} for every book whose ASIN was set by hand (one query)."""
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT path, asin_override FROM units "
+                "WHERE asin_override IS NOT NULL AND asin_override != ''"
+            ).fetchall()
+        return {r["path"]: r["asin_override"] for r in rows}
+
+    def lock_fields(self, path: str, fields) -> None:
+        """A human edited these fields: lock them, and show the locked title/author at once."""
+        wanted = [f for f in fields if f in LOCKABLE_FIELDS]
+        if not wanted:
+            return
+        now = time.time()
+        with self._lock, self._txn():
+            self.connection.executemany(
+                "INSERT OR IGNORE INTO field_locks (path, field, locked_at) VALUES (?,?,?)",
+                [(path, f, now) for f in wanted],
+            )
+            row = self.connection.execute("SELECT * FROM units WHERE path = ?", (path,)).fetchone()
+            if row is not None:
+                current = UnitState(**{k: row[k] for k in row.keys() if k in UnitState.__annotations__})
+                fixed = self._honour_locks_locked(current)
+                if (fixed.title, fixed.author) != (current.title, current.author):
+                    self.connection.execute(
+                        "UPDATE units SET title = ?, author = ? WHERE path = ?",
+                        (fixed.title, fixed.author, path),
+                    )
+
+    def unlock_field(self, path: str, field: str) -> bool:
+        """One click unlocks: the field goes back to following Audible's catalog.
+
+        The stored correction for that field is dropped (otherwise it would still win at
+        conversion time), and the table's title/author fall back to the last catalog match.
+        Unlocking the ASIN clears the hand-set ASIN, so the next re-check matches on its own.
+        Returns False when the field was not locked.
+        """
+        if field not in LOCKABLE_FIELDS:
+            return False
+        with self._lock, self._txn():
+            cursor = self.connection.execute(
+                "DELETE FROM field_locks WHERE path = ? AND field = ?", (path, field)
+            )
+            if cursor.rowcount == 0:
+                return False
+            if field == "asin":
+                self.connection.execute("UPDATE units SET asin_override = '' WHERE path = ?", (path,))
+                return True
+            row = self.connection.execute(
+                "SELECT overrides, detail FROM units WHERE path = ?", (path,)
+            ).fetchone()
+            if row is None:
+                return True
+            try:
+                data = json.loads(row["overrides"] or "{}")
+            except ValueError:
+                data = {}
+            data = data if isinstance(data, dict) else {}
+            data.pop(field, None)
+            self.connection.execute(
+                "UPDATE units SET overrides = ? WHERE path = ?", (json.dumps(data) if data else "", path)
+            )
+            if field in ("title", "authors"):
+                try:
+                    match = (json.loads(row["detail"] or "{}") or {}).get("match") or {}
+                except (ValueError, AttributeError):
+                    match = {}
+                if field == "title" and match.get("title"):
+                    self.connection.execute(
+                        "UPDATE units SET title = ? WHERE path = ?", (str(match["title"]), path)
+                    )
+                if field == "authors" and match.get("authors"):
+                    self.connection.execute(
+                        "UPDATE units SET author = ? WHERE path = ?", (str(match["authors"][0]), path)
+                    )
+            return True
+
+    def _honour_locks_locked(self, state: UnitState) -> UnitState:
+        """A locked title/author is never overwritten: whatever a rescan, re-check or re-rip
+        recorded, the human value is what lands in the row. (The ASIN lock needs no guard here -
+        save() never writes asin_override - and the other fields live in the overrides column,
+        which save() never writes either.)"""
+        locked = self._locked_fields_locked(state.path) & {"title", "authors"}
+        if not locked:
+            return state
+        row = self.connection.execute("SELECT overrides FROM units WHERE path = ?", (state.path,)).fetchone()
+        try:
+            data = json.loads((row["overrides"] if row else "") or "{}")
+        except ValueError:
+            data = {}
+        if not isinstance(data, dict):
+            return state
+        title, author = state.title, state.author
+        if "title" in locked and data.get("title"):
+            title = str(data["title"])
+        if "authors" in locked and isinstance(data.get("authors"), list) and data["authors"]:
+            author = str(data["authors"][0])
+        if (title, author) == (state.title, state.author):
+            return state
+        return replace(state, title=title, author=author)
+
     def delete(self, path: str) -> bool:
         """Remove a unit row from the database. Returns True if a row was deleted."""
         with self._lock:
+            self.connection.execute("DELETE FROM field_locks WHERE path = ?", (path,))
             cursor = self.connection.execute("DELETE FROM units WHERE path = ?", (path,))
             self.connection.commit()
             return cursor.rowcount > 0
