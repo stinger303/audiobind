@@ -5,6 +5,15 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Fixed
+- The library table no longer runs past the right edge of the page: the Match column
+  now takes whatever room is left (and shortens with "..." earlier, full text on
+  hover), cell padding is tighter, and the actions column has a small fixed width, so
+  the kebab menus are never cut off, down to a 1280px-wide window.
+- On the Series page, clicking a series name now jumps to its missing list, the same
+  as "Show the N missing". The name is a real link: keyboard focusable, underlined on
+  hover.
+
 ### Added
 - **Series - see what you're missing.** A new **Series** tab sits under Library in the
   side rail. Its amber number is how many books are missing from your series. The page

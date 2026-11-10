@@ -340,3 +340,24 @@ class TestSortAttributes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Dev4LayoutTests(unittest.TestCase):
+    def test_match_column_flexes_and_widths_fit_1280(self):
+        widths = {k: w for k, _l, w, _c in web.COLUMNS}
+        self.assertEqual(widths["tier"], "")
+        fixed = sum(int(w[:-2]) for k, w in widths.items() if w.endswith("px") and k != "title")
+        # 1280px window - 212px rail - 48px padding = 1020px; title is 30vw (384px); match keeps >= 150px
+        self.assertLessEqual(50 + fixed + 48 + 384, 1020 - 150)
+        self.assertIn("width:48px", web.STYLES)
+        self.assertIn("overflow:visible!important", web.STYLES)
+
+    def test_series_name_links_to_missing_panel(self):
+        view = {"slug": "jr", "name": "Jack Reacher", "author": "", "known": True, "unnumbered": 0,
+                "between": [], "other": [], "missing": [{"n": 2}], "have": 1, "total": 3,
+                "tiles": [], "next_gap": {"n": 2, "title": "x"}}
+        html = web._series_card(view)
+        self.assertIn('<a class="ab-series-name" href="#ab-series-missing-jr"', html)
+        self.assertIn('href="#ab-series-missing-jr">Show the 1 missing', html)
+        view.update(missing=[], known=True)
+        self.assertIn('<div class="ab-series-name">', web._series_card(view))
