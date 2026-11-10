@@ -3,6 +3,10 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The book currently encoding no longer lingers in the review/held/failed lists - only the ones waiting in the queue do.
+
 ## [0.14.4] - 2026-11-09
 
 Every finding from the v0.14.3 code audit is fixed: 4 high, 3 medium, 11 low and
