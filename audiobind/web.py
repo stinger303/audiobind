@@ -1585,6 +1585,14 @@ def _setting_number(
     )
 
 
+def in_flight_units() -> set[str]:
+    """Paths of books waiting in the manual queue plus the one encoding right now."""
+    units = set(CONTROL.queue_snapshot()["units"])
+    if CONTROL.current_unit:
+        units.add(CONTROL.current_unit)
+    return units
+
+
 def render(state, status: str = "", query: str = "") -> str:
     counts = state.counts()
     stats = library_stats(state)
@@ -1595,7 +1603,8 @@ def render(state, status: str = "", query: str = "") -> str:
     # books with a manual conversion request are waiting on the one-at-a-time
     # encoder: they leave every list (the queue strip shows them instead) and
     # the visible counts stay honest
-    queued = set(CONTROL.queue_snapshot()["units"])
+    # (the book encoding right now is no longer in the queue, so it is added here)
+    queued = in_flight_units()
     queued_by_status: dict[str, int] = {}
     all_units = state.all(None)
     if queued:
@@ -1603,7 +1612,7 @@ def render(state, status: str = "", query: str = "") -> str:
             if u.path in queued:
                 queued_by_status[u.status] = queued_by_status.get(u.status, 0) + 1
         units = [u for u in units if u.path not in queued]
-        total -= queued_by_status.get(wanted, 0) if wanted else len(queued)
+        total -= queued_by_status.get(wanted, 0) if wanted else sum(queued_by_status.values())
     queued_count = sum(queued_by_status.values())
 
     sort_column, sort_dir = read_sort(state)
@@ -2153,7 +2162,7 @@ def library_stats(state) -> dict:
 def rail_counts(state, counts: dict) -> dict:
     """DB counts minus books currently waiting in the manual-conversion queue."""
     adjusted = {k: counts.get(k, 0) for k in ("review", "held", "failed")}
-    queued = set(CONTROL.queue_snapshot()["units"])
+    queued = in_flight_units()
     if queued:
         for u in state.all(None):
             if u.path in queued and u.status in adjusted:

@@ -10,6 +10,57 @@ from audiobind.config import CONFIG
 from audiobind.state import State, UnitState
 
 
+class TestEncodingBookHidden(unittest.TestCase):
+    """The book encoding right now is not in the queue, but must leave the lists too."""
+
+    def setUp(self):
+        from audiobind.control import CONTROL
+
+        self.control = CONTROL
+        self.dir = tempfile.TemporaryDirectory()
+        self.state = State(pathlib.Path(self.dir.name))
+        self.state.save(UnitState(path="A/Zorblax", status="review", title="Zorblax Saga", hours=1))
+        self.control._queue.clear()
+        self.control.end_unit()
+
+    def tearDown(self):
+        self.control.end_unit()
+        self.control._queue.clear()
+        self.state.close()
+        self.dir.cleanup()
+
+    @staticmethod
+    def sections(page):
+        table = page.split('<tbody id="ab-body">')[1].split("</tbody>")[0]
+        chips = page.split('<a class="chip')[1:]
+        return table, "".join(chips)
+
+    def test_encoding_book_leaves_table_chips_and_shelf(self):
+        self.control.begin_unit("A/Zorblax")
+        page = web.render(self.state)
+        table, chips = self.sections(page)
+        self.assertNotIn("Zorblax Saga", table)
+        self.assertNotIn("Zorblax Saga", page)  # shelf card too; banner shows the path
+        self.assertNotIn("?status=review", chips)
+        self.assertIn('id="ab-shelf-count">0<', page)
+        self.assertEqual(web.rail_counts(self.state, self.state.counts())["review"], 0)
+
+    def test_current_and_queued_together_are_not_double_counted(self):
+        self.control.enqueue("A/Zorblax")
+        self.control.current_unit = "A/Zorblax"  # both at once, as a race could leave it
+        self.assertEqual(web.rail_counts(self.state, self.state.counts())["review"], 0)
+        page = web.render(self.state)
+        self.assertIn('id="ab-shelf-count">0<', page)
+
+    def test_idle_book_still_listed(self):
+        page = web.render(self.state)
+        table, chips = self.sections(page)
+        self.assertIn("Zorblax Saga", table)
+        self.assertIn("?status=review", chips)
+        self.assertIn('id="ab-shelf-count">1<', page)
+        self.assertEqual(web.rail_counts(self.state, self.state.counts())["review"], 1)
+
+
 class TestRender(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
