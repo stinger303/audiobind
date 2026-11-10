@@ -43,3 +43,16 @@ scope one at a time.
   job, already running alongside.
 - **Discord notifications** (Listenarr): deferred by decision in v0.12.0.
 - **PostgreSQL backend** (Chaptarr): overkill at our library scale.
+
+## Candidate tooling (not a feature — decision logged)
+
+- **Paper MCP** (paper.design/docs/mcp) — noted 2026-11-09. Design canvas whose
+  files are HTML/CSS; an MCP server lets Claude Code read frames and turn them
+  into code (one-click install for Claude Code). NOT adopted for 0.15.x: the
+  existing mockup loop (self-contained HTML built from real data in
+  audiobind-designs, browser-rendered, owner approves pixels) is cheaper and
+  proven, and the real UI is Python-embedded strings in web.py, which no design
+  tool ports automatically. Reconsider for the next major UI redesign or any
+  new project with a marketing/landing page. Setup path if adopted: Paper
+  Desktop on the owner's Windows laptop, "Add to Claude", plus a stdio MCP
+  config for the container's Claude Code pointing at the desktop CLI.
