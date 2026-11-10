@@ -56,3 +56,57 @@ scope one at a time.
   new project with a marketing/landing page. Setup path if adopted: Paper
   Desktop on the owner's Windows laptop, "Add to Claude", plus a stdio MCP
   config for the container's Claude Code pointing at the desktop CLI.
+
+## Candidate direction: Amazon/ASIN + review UX — noted 2026-11-09
+
+Owner asked for "pick an ASIN from Amazon as well as Audible" and general
+improvements. Reality check first: Amazon has no free product API (PA-API
+needs an Associates account with qualifying sales; scraping breaks constantly),
+but Amazon audiobook listings usually carry the SAME ASIN as the Audible
+edition, and the catalog stack already covers the gap for free. These are the
+shaped versions of the idea:
+
+1. **Multi-region Audible fallback search** — lands candidate v0.15.x. Today
+   search and ASIN lookup use one effective region, so titles sold only in
+   other stores (UK/DE/AU/CA editions, foreign-language editions) come back
+   "no match". api.audible.com and Audnex both accept a marketplace/region
+   param: on a miss, fan out to the other stores, badge each candidate row
+   with its region, and pin across regions. Covers most of what "search
+   Amazon" would give, with zero new dependencies.
+
+2. **"Why this match?" score panel** — the owner reviews ambiguous matches
+   personally; today the review shows candidates but not WHY one won. Show
+   the score components per candidate: title similarity, author similarity,
+   runtime delta vs source duration, series/sequence agreement. Turns gut-feel
+   approval into informed approval.
+
+3. **Not-on-Audible ASIN pinning** — the literal ask, shaped honestly: allow
+   pinning an ASIN that has NO Audnex record (Amazon-only listing, withdrawn
+   title). Take title/author from folder name + the manual metadata editor,
+   reuse the existing Amazon image-URL fallback for cover, skip chapter
+   lookup with a visible "no chapter data found" state instead of failing.
+
+4. **Chapter timeline editor** — when Audnex chapters disagree with the
+   source there is only an automatic fallback. A small editor in the detail
+   panel (shift/merge/split boundaries, rename, apply-on-encode) fixes bad
+   disc breaks by hand. Largest of the batch; scope it as its own version.
+
+5. **Already-in-library guard at match time** — warn when the winning
+   candidate's ASIN (or title+author after normalization) matches a book
+   already published, before the encode wastes an hour on a duplicate rip.
+
+6. **Delete undo / trash** — Delete is real rm today. A 5-minute undo window
+   (or move-to-trash folder on the same share) would have saved the
+   sibling-delete scare fixed in 0.14.4 from ever mattering.
+
+7. **Review-queue keyboard flow** — j/k to move, 1..9 to pick a candidate,
+   enter to approve. The owner hand-reviews matches; the queue is exactly the
+   screen where keyboard speed compounds.
+
+8. **ntfy completion notifications** — self-hosted push on book published /
+   review waiting / failure. Discord was explicitly deferred by decision; ntfy
+   is a separate, self-hosted channel and needs its own owner decision.
+
+9. **Series shelf grouping** — optional shelf mode grouping published books by
+   series with sequence badges, reading the series data the matcher already
+   persists.
