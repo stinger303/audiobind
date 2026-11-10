@@ -259,11 +259,11 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-clear{font-size:12px;padding:0 10px;height:28px;}
 
 
-.ab-tablewrap{flex:1;padding:0 24px 24px}
+.ab-tablewrap{flex:1;min-width:0;padding:0 24px 24px}
 .ab-tbl{width:100%;border-collapse:collapse;table-layout:fixed}
 .ab-tbl thead th{position:sticky;top:0;background:var(--ab-bg);z-index:2;cursor:pointer;user-select:none;white-space:nowrap;
   text-align:left;font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.7px;
-  color:var(--ab-text4);padding:6px 10px;border-bottom:1px solid var(--ab-border);}
+  color:var(--ab-text4);padding:6px 8px;border-bottom:1px solid var(--ab-border);}
 .ab-tbl thead th:hover{color:var(--ab-text2)}
 .ab-tbl thead th.ab-on{color:var(--ab-text2)}
 .ab-tbl thead th button.ab-sortbtn{height:auto;padding:0;border:none;background:none;border-radius:3px;
@@ -271,7 +271,7 @@ button.dry.on .ab-switch::after{left:12px}
   color:inherit;gap:4px;cursor:pointer;}
 .ab-tbl thead th button.ab-sortbtn:hover{background:none;color:var(--ab-text2)}
 .ab-sortbtn .ab-arrow{color:var(--ab-accent-bright)}
-.ab-tbl tbody td{padding:0 10px;border-bottom:1px solid var(--ab-border-subtle);vertical-align:middle;white-space:nowrap;}
+.ab-tbl tbody td{padding:0 8px;overflow:hidden;border-bottom:1px solid var(--ab-border-subtle);vertical-align:middle;white-space:nowrap;}
 .ab-tbl tbody tr{height:auto;min-height:44px;transition:background .1s}
 .ab-tbl tbody tr:hover{background:rgba(255,255,255,.025)}
 .ab-tbl tbody tr.ab-sel{background:rgba(94,106,210,.08)}
@@ -327,14 +327,14 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:
 @keyframes ab-st-pulse{0%,100%{opacity:1}50%{opacity:.45}}
 .ab-st-age{color:var(--ab-text4);font-size:10.5px;margin-left:5px;font-variant-numeric:tabular-nums;
   overflow:hidden;text-overflow:ellipsis}
-.ab-match{font-size:12px;color:var(--ab-text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab-match{min-width:0;font-size:12px;color:var(--ab-text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ab-match-cur{color:var(--ab-blue)}
 .ab-conf-high{color:var(--ab-green)}
 .ab-conf-medium{color:var(--ab-text2)}
 .ab-conf-low{color:var(--ab-amber)}
 .ab-conf-none{color:var(--ab-text4)}
 
-.ab-actcol{padding:0 8px 0 0!important;width:auto;position:relative;overflow:visible;text-align:right}
+.ab-actcol{padding:0 8px 0 0!important;width:48px;position:relative;overflow:visible!important;text-align:right}
 .ab-kebabwrap{position:relative;display:inline-block;vertical-align:middle}
 button.ab-kebab{width:28px;height:28px;padding:0;justify-content:center;border-radius:6px;
   border:1px solid var(--ab-border);background:var(--ab-surface);color:var(--ab-text3);
@@ -517,6 +517,9 @@ input[type=number].ab-in{max-width:100px}
   padding:14px 16px;transition:border-color .3s,box-shadow .3s;scroll-margin:24px}
 .ab-series-card.ab-series-flash{border-color:var(--ab-accent-bright);box-shadow:0 0 0 3px rgba(94,106,210,.35)}
 .ab-series-name{font-size:14px;font-weight:600;letter-spacing:-.1px;color:var(--ab-text)}
+a.ab-series-name{display:block;text-decoration:none;cursor:pointer;border-radius:3px}
+a.ab-series-name:hover{color:var(--ab-accent-bright);text-decoration:underline}
+a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline-offset:2px}
 .ab-series-sub{color:var(--ab-text3);font-size:11.5px;margin-top:2px}
 .ab-series-count{display:flex;align-items:baseline;gap:8px;margin:10px 0 12px}
 .ab-series-count b{font-family:var(--ab-mono);font-size:18px;font-weight:600;color:var(--ab-text)}
@@ -1228,7 +1231,7 @@ PAGE = """<!doctype html>
 
   <div class="ab-tablewrap">
     <table class="ab-tbl">
-    <colgroup>{colgroup}<col class="ab-actcol"></colgroup>
+    <colgroup>{colgroup}<col class="ab-actcol" style="width:48px"></colgroup>
     <thead><tr>{headers}<th class="ab-actcol"></th></tr></thead>
     <tbody id="ab-body">{rows}
     <tr id="ab-empty" class="ab-empty" hidden><td colspan="{columns}">no books match this search</td></tr>
@@ -1841,12 +1844,13 @@ MAX_SHELF_CARDS = 12
 
 COLUMNS = (
     ("title", "Book", "min(560px,30vw)", ""),
-    # widths grew only as far as the new texture needs: "Converted 2d ago" and
-    # "Jack Reacher #14 · High Confidence" each stay on one line
-    ("status", "Status", "150px", ""),
-    ("tier", "Match", "230px", "ab-hidemd"),
-    ("runtime", "Length", "90px", ""),
-    ("scan", "Last scan", "110px", "ab-hidemd"),
+    # fixed widths only where the content is short and must stay on one line ("13.18 h",
+    # "Converted 2d ago"); Match has no width so it absorbs whatever room is left and
+    # ellipsizes (full text on hover) - the table must never outgrow the page
+    ("status", "Status", "140px", ""),
+    ("tier", "Match", "", "ab-hidemd"),
+    ("runtime", "Length", "84px", ""),
+    ("scan", "Last scan", "90px", "ab-hidemd"),
 )
 COVER_WIDTH = "50px"
 TOTAL_COLUMNS = len(COLUMNS) + 1 + 1
@@ -2356,9 +2360,17 @@ def _series_card(view: dict) -> str:
         count = f'<b>{view["owned"]}</b><span class="ab-series-of">owned</span>'
         strip = ""
         foot = '<span class="ab-series-dim">fetching series size&hellip;</span>'
+    if view["known"] and view["missing"]:
+        # same target as the "Show the N missing" link: one anchor, one panel, no extra state
+        name_html = (
+            f'<a class="ab-series-name" href="#ab-series-missing-{slug}" '
+            f'title="Show the {len(view["missing"])} missing">{_html(view["name"])}</a>'
+        )
+    else:
+        name_html = f'<div class="ab-series-name">{_html(view["name"])}</div>'
     return (
         f'<article class="ab-series-card" id="ab-series-{slug}" data-slug="{slug}">'
-        f'<div class="ab-series-name">{_html(view["name"])}</div>{sub}'
+        f'{name_html}{sub}'
         f'<div class="ab-series-count">{count}</div>{strip}'
         f'<div class="ab-series-foot">{foot}</div></article>'
     )
