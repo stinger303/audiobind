@@ -160,6 +160,16 @@ stops another website you visit from pressing these buttons for you. Scripts tha
 neither header, like the `curl` lines above, keep working. There is no login, so keep the
 port on your LAN.
 
+### Series
+
+The **Series** tab (`/series`) lists every series where you have two or more books.
+Each one is checked against the Audible series order and shows what you're missing. The
+amber number on the tab is the total missing across every series whose size Audible
+reported. **I have this** marks a book you own without a rip, so it stops counting as
+missing. **Copy Audible link** copies the book's Audible page address. Series lists are
+fetched in the background, at most once a day per series. `/api/series` returns the same
+data as JSON.
+
 ### CLI
 
 ```bash

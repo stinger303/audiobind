@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from . import __version__, matching
 from . import overrides as overrides_mod
+from . import series as series_mod
 from .advice import explain
 from .config import (
     CONFIG,
@@ -466,6 +467,74 @@ input[type=number].ab-in{max-width:100px}
   opacity:0;transform:translateY(6px);pointer-events:none;
   transition:opacity .15s,transform .15s;}
 #ab-toast.on{opacity:1;transform:none}
+
+.ab-series-wrap{padding:18px 24px 24px;display:flex;flex-direction:column;gap:18px}
+.ab-series-intro{font-size:12.5px;color:var(--ab-text3);max-width:1180px;line-height:1.5}
+.ab-series-shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;max-width:1180px}
+.ab-series-card{background:var(--ab-panel);border:1px solid var(--ab-border);border-radius:10px;
+  padding:14px 16px;transition:border-color .3s,box-shadow .3s;scroll-margin:24px}
+.ab-series-card.ab-series-flash{border-color:var(--ab-accent-bright);box-shadow:0 0 0 3px rgba(94,106,210,.35)}
+.ab-series-name{font-size:14px;font-weight:600;letter-spacing:-.1px;color:var(--ab-text)}
+.ab-series-sub{color:var(--ab-text3);font-size:11.5px;margin-top:2px}
+.ab-series-count{display:flex;align-items:baseline;gap:8px;margin:10px 0 12px}
+.ab-series-count b{font-family:var(--ab-mono);font-size:18px;font-weight:600;color:var(--ab-text)}
+.ab-series-of{color:var(--ab-text4);font-size:12px}
+.ab-series-missing{color:var(--ab-amber);background:var(--ab-amber-soft);font-size:10.5px;font-weight:600;
+  letter-spacing:.6px;padding:2px 8px;border-radius:4px}
+.ab-series-complete{color:var(--ab-green);background:var(--ab-green-soft);font-size:10.5px;font-weight:600;
+  letter-spacing:.6px;padding:2px 8px;border-radius:4px}
+.ab-series-strip{display:flex;flex-wrap:wrap;gap:5px}
+.ab-series-tile{width:34px;height:51px;border-radius:3px;overflow:hidden;position:relative;
+  background:var(--ab-surface2);flex:none}
+.ab-series-tile img{width:100%;height:100%;object-fit:cover;display:block}
+.ab-series-tile img.ab-gone, .ab-series-row img.ab-gone{visibility:hidden}
+.ab-series-n{position:absolute;left:0;right:0;bottom:0;font-family:var(--ab-mono);font-size:8.5px;
+  color:var(--ab-text);background:rgba(0,0,0,.55);text-align:center;padding:1px 0}
+.ab-series-tile.ab-series-gap{border:1px dashed rgba(242,163,60,.5);background:var(--ab-amber-soft);
+  display:flex;align-items:center;justify-content:center}
+.ab-series-qn{font-family:var(--ab-mono);font-size:9.5px;color:var(--ab-amber)}
+.ab-series-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px}
+.ab-series-link{color:var(--ab-accent-bright);font-size:12px;font-weight:600;text-decoration:none}
+.ab-series-link:hover{text-decoration:underline}
+.ab-series-dim{color:var(--ab-text4);font-size:11px;font-weight:600}
+.ab-series-panel{max-width:1180px;background:var(--ab-panel);border:1px solid var(--ab-border);
+  border-radius:10px;padding:16px 18px;scroll-margin:24px}
+.ab-series-panel h3{font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--ab-text3);margin:0 0 10px}
+.ab-series-row{display:flex;gap:12px;align-items:center;padding:8px 10px;border-radius:8px}
+.ab-series-row:nth-child(even){background:var(--ab-surface2)}
+.ab-series-row img{width:30px;height:45px;border-radius:3px;object-fit:cover;flex:none;background:var(--ab-surface2)}
+.ab-series-seq{font-family:var(--ab-mono);font-size:12px;color:var(--ab-text3);width:34px;flex:none;text-align:right}
+.ab-series-meta{flex:1;min-width:0}
+.ab-series-t{font-size:13px;font-weight:600;letter-spacing:-.1px;color:var(--ab-text)}
+.ab-series-m{color:var(--ab-text4);font-size:11px;font-family:var(--ab-mono);margin-top:2px}
+.ab-series-pill{font-size:10px;font-weight:600;letter-spacing:.5px;color:var(--ab-amber);
+  background:var(--ab-amber-soft);padding:2px 8px;border-radius:4px;flex:none}
+.ab-series-pill.ab-series-have{color:var(--ab-green);background:var(--ab-green-soft)}
+.ab-series-row button{height:28px;padding:0 11px;font-size:11.5px;font-weight:600;flex:none}
+.ab-series-kpi{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0 4px}
+.ab-series-kpi b{font-family:var(--ab-mono);font-size:16px;color:var(--ab-amber)}
+.ab-series-kpi span{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--ab-text4);margin-top:2px}
+.ab-series-extra{margin-top:10px}
+.ab-series-extra summary{cursor:pointer;font-size:11.5px;color:var(--ab-text4);padding:4px 0}
+.ab-series-extra summary:hover{color:var(--ab-text2)}
+.ab-series-extra .ab-series-row{opacity:.6}
+.ab-series-marks{margin-top:12px;font-size:11.5px;color:var(--ab-text4);display:flex;flex-wrap:wrap;
+  align-items:center;gap:6px 10px}
+.ab-series-marks button{height:22px;padding:0 8px;font-size:11px}
+.ab-series-empty{background:var(--ab-surface);border:1px solid var(--ab-border);border-radius:10px;
+  padding:16px 18px;font-size:12.5px;color:var(--ab-text3);max-width:1180px}
+.ab-series-hook{grid-column:1/-1;background:var(--ab-surface);border:1px solid rgba(94,106,210,.45);
+  border-radius:8px;padding:12px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.ab-series-hooktxt{flex:1;min-width:200px}
+.ab-series-hookname{font-size:13px;font-weight:600;color:var(--ab-text)}
+.ab-series-hooksub{color:var(--ab-text3);font-size:11.5px;margin-top:2px}
+.ab-series-hook .ab-series-strip{max-width:420px}
+.ab-series-hook .ab-series-tile{width:30px;height:45px}
+.ab-series-hook .ab-series-n{font-size:8px}
+.ab-series-hook .ab-series-qn{font-size:9px}
+.ab-series-hook .btn{flex:none;text-decoration:none}
 
 @media(max-width:1080px){.ab-rail{display:none}}
 @media(max-width:820px){.ab-hidemd{display:none}}
@@ -920,6 +989,7 @@ PAGE = """<!doctype html>
     <a class="ab-rail-item ab-active" href="/" aria-current="page">
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
+    {series_item}
     <a class="ab-rail-item" href="/settings">
       <span class="ab-glyph">&#9881;</span> Settings
       </a>
@@ -1031,6 +1101,7 @@ SETTINGS_PAGE = """<!doctype html>
     <a class="ab-rail-item{lib_active}" href="/">
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
+    {series_item}
     <a class="ab-rail-item{set_active}" href="/settings">
       <span class="ab-glyph">&#9881;</span> Settings
       </a>
@@ -1227,6 +1298,162 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) el.addEventListener('change', abSyncProfile);
   });
 });
+"""
+
+SERIES_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audiobind &middot; Series</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<meta name="theme-color" content="#5e6ad2">
+<style>{styles}</style></head><body>
+<aside class="ab-rail">
+  <div class="ab-rail-brand"><a href="/" title="Back to the library">Audiobind</a></div>
+  <div class="ab-rail-label">Workspace</div>
+  <nav class="ab-rail-section" aria-label="Main">
+    <a class="ab-rail-item" href="/">
+      <span class="ab-glyph">&#8962;</span> Library
+      <span class="ab-count">{rail_total}</span></a>
+    {series_item}
+    <a class="ab-rail-item" href="/settings">
+      <span class="ab-glyph">&#9881;</span> Settings
+      </a>
+  </nav>
+  <div class="ab-rail-label">Attention</div>
+  <nav class="ab-rail-section" aria-label="Attention">
+    <a class="ab-rail-item ab-alert" href="/?status=review">
+      <span class="ab-glyph">&#9873;</span> Review
+      <span class="ab-count">{rail_review_count}</span></a>
+    <a class="ab-rail-item ab-alert" href="/?status=held">
+      <span class="ab-glyph">&#x23F8;</span> Held
+      <span class="ab-count">{rail_held_count}</span></a>
+    <a class="ab-rail-item ab-alert" href="/?status=failed">
+      <span class="ab-glyph">&times;</span> Failed
+      <span class="ab-count">{rail_failed_count}</span></a>
+  </nav>
+  <div class="ab-rail-spacer"></div>
+  <div class="ab-rail-foot">
+    <b>library</b> <span title="{library_attr}">{library}</span><br>
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>
+  </div>
+</aside>
+<main class="ab-main">
+  <header class="ab-topbar">
+    <h1>Series</h1>
+    <span class="ab-version">v{version}</span>
+    <div class="ab-right"></div>
+  </header>
+  <div class="ab-series-wrap">
+{body}
+  </div>
+</main>
+<div id="ab-toast" role="status" aria-live="polite"></div>
+<script>
+{series_script}
+</script>
+</body></html>"""
+
+SERIES_SCRIPT = """
+function abToast(text) {
+  const el = document.getElementById('ab-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('on');
+  clearTimeout(abToast.t);
+  abToast.t = setTimeout(() => el.classList.remove('on'), 5000);
+}
+function abCoverFail(img) {
+  img.classList.add('ab-gone');
+}
+// Copy Audible link: the clipboard API only exists on https or localhost, and this page is
+// usually opened over plain http on the LAN - so fall back to a hidden textarea copy
+function abSeriesCopy(btn) {
+  const row = btn.closest('[data-link]');
+  if (!row) return;
+  const link = row.dataset.link;
+  const done = () => abToast('Audible link copied - paste it into your browser');
+  const fallback = () => {
+    const box = document.createElement('textarea');
+    box.value = link;
+    box.setAttribute('readonly', '');
+    box.style.position = 'fixed';
+    box.style.opacity = '0';
+    document.body.appendChild(box);
+    box.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(box);
+    if (ok) done(); else abToast('Copy this link: ' + link);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(link).then(done, fallback);
+  } else {
+    fallback();
+  }
+}
+// I have this / Undo: a per-ASIN "owned without a rip" marker kept by the server
+function abSeriesMark(btn, on) {
+  const row = btn.closest('[data-asin]');
+  if (!row) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'saving…';
+  fetch('/api/series', {method:'POST', headers:{'Content-Type':'application/json'},
+                       body: JSON.stringify({action: on ? 'mark_owned' : 'unmark_owned',
+                                             asin: row.dataset.asin})})
+    .then(r => r.json().then(res => ({ok: r.ok, res: res})))
+    .then(out => {
+      if (!out.ok) {
+        abToast(out.res.error || 'that did not work');
+        btn.disabled = false;
+        btn.textContent = label;
+        return;
+      }
+      abToast(on ? 'Marked as yours - it no longer counts as missing' : 'Back on your missing list');
+      setTimeout(() => location.reload(), 700);
+    })
+    .catch(() => {
+      abToast('could not reach the daemon');
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+}
+// /series#jack-reacher (from a book's "See what you're missing"): scroll to that card and
+// light it up for a moment; the hash is then dropped so a later refresh does not jump back
+function abSeriesFocus() {
+  let slug = '';
+  try { slug = decodeURIComponent((location.hash || '').slice(1)); } catch (e) { slug = ''; }
+  if (!slug || slug.indexOf('ab-series-') === 0) return;
+  const card = document.getElementById('ab-series-' + slug);
+  if (!card) return;
+  card.scrollIntoView({block: 'center', behavior: 'smooth'});
+  card.classList.remove('ab-series-flash');
+  void card.offsetWidth;
+  card.classList.add('ab-series-flash');
+  setTimeout(() => card.classList.remove('ab-series-flash'), 2400);
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+}
+document.addEventListener('DOMContentLoaded', abSeriesFocus);
+window.addEventListener('hashchange', abSeriesFocus);
+// reload when the server-side picture moves (a series list arrived, a book was marked,
+// a scan changed the library) - but never while you have something open or in progress
+function abSeriesBusy() {
+  if (document.querySelector('details.ab-series-extra[open]')) return true;
+  if (document.querySelector('.ab-series-row button:disabled, .ab-series-marks button:disabled')) return true;
+  const el = document.activeElement;
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return true;
+  return false;
+}
+let abSeriesSig = null;
+function abSeriesWatch() {
+  fetch('/api/state').then(r => r.json()).then(d => {
+    const sig = JSON.stringify(d.counts) + '|' + (d.rev || '');
+    if (abSeriesSig === null) { abSeriesSig = sig; return; }
+    if (sig !== abSeriesSig && !abSeriesBusy()) location.reload();
+  }).catch(() => {});
+}
+setInterval(abSeriesWatch, 5000);
 """
 
 
@@ -1698,6 +1925,272 @@ def _render_shelf(problem_units: list) -> str:
     ).format(c=count, suf="" if count == 1 else "s", cards=cards_html)
 
 
+# --- Series shelf (approved mockups 3 and 3b, 0.15.0) -------------------------------------
+# Everything here reads the stored series listings; nothing on a render path touches the
+# network (series.aggregate queues stale listings for its background refresher instead).
+# f-strings only: series and book titles come from the catalog and from folder names.
+
+AUDIBLE_PD = "https://www.audible.com/pd?asin="
+_EMPTY_SHELF = {"series": [], "by_path": {}, "missing_total": 0}
+
+
+def _series_shelf(state, refresh: bool = True) -> dict:
+    """The aggregation, or an empty shelf - a series problem must never blank a page."""
+    try:
+        return series_mod.aggregate(state, refresh=refresh)
+    except Exception:  # noqa: BLE001
+        logging.getLogger("audiobind").exception("series shelf could not be built")
+        return dict(_EMPTY_SHELF)
+
+
+def _series_rail_item(missing: int, active: bool = False) -> str:
+    """The rail's Series tab, under Library; the amber count is books missing across series."""
+    classes = "ab-rail-item" + (" ab-active" if active else "") + (" ab-alert" if missing else "")
+    current = ' aria-current="page"' if active else ""
+    count = (
+        f'<span class="ab-count" title="books missing from your series">{int(missing)}</span>'
+        if missing
+        else ""
+    )
+    return (
+        f'<a class="{classes}" href="/series"{current}>\n'
+        f'      <span class="ab-glyph">&#9878;</span> Series\n      {count}</a>'
+    )
+
+
+def _series_cover_src(tile: dict) -> str:
+    if tile.get("kind") == "owned" and tile.get("has_output") and tile.get("path"):
+        return "/cover?path=" + quote(tile["path"], safe="")
+    if tile.get("asin"):
+        return "/cover?asin=" + quote(tile["asin"], safe="")
+    return ""
+
+
+def _series_tile(tile: dict) -> str:
+    n = int(tile["n"])
+    label = f"{n:02d}"
+    if tile["kind"] == "gap":
+        title = _attr(f"Missing #{n} {tile.get('title') or ''}".strip())
+        return f'<div class="ab-series-tile ab-series-gap" title="{title}"><span class="ab-series-qn">{label}</span></div>'
+    words = f"#{n} {tile.get('title') or ''}".strip()
+    if tile["kind"] == "marked":
+        words += " (you marked this as yours)"
+    src = _series_cover_src(tile)
+    img = f'<img src="{_attr(src)}" alt="" loading="lazy" onerror="abCoverFail(this)">' if src else ""
+    return f'<div class="ab-series-tile" title="{_attr(words)}">{img}<span class="ab-series-n">{label}</span></div>'
+
+
+def _plural(n: int, one: str, many: str) -> str:
+    return one if n == 1 else many
+
+
+def _series_card(view: dict) -> str:
+    slug = _attr(view["slug"])
+    sub_bits = [_html(view["author"])] if view.get("author") else []
+    if view["known"] and (view["unnumbered"] or view["between"] or view["other"]):
+        sub_bits.append("mainline numbering")
+    sub = f'<div class="ab-series-sub">{" &middot; ".join(sub_bits)}</div>' if sub_bits else ""
+    if view["known"]:
+        missing = len(view["missing"])
+        badge = (
+            f'<span class="ab-series-missing">{missing} MISSING</span>'
+            if missing
+            else '<span class="ab-series-complete">COMPLETE</span>'
+        )
+        count = f'<b>{view["have"]}</b><span class="ab-series-of">of {view["total"]} owned</span>{badge}'
+        strip = '<div class="ab-series-strip">' + "".join(_series_tile(t) for t in view["tiles"]) + "</div>"
+        if missing:
+            nxt = view["next_gap"] or {}
+            foot = (
+                f'<a class="ab-series-link" href="#ab-series-missing-{slug}">Show the {missing} missing &darr;</a>'
+                f'<span class="ab-series-dim">next gap: #{int(nxt.get("n") or 0)} {_html(nxt.get("title") or "")}</span>'
+            )
+        else:
+            foot = '<span class="ab-series-dim">nothing to chase</span>'
+    else:
+        # never a guessed total: just what you have, until Audible answers
+        count = f'<b>{view["owned"]}</b><span class="ab-series-of">owned</span>'
+        strip = ""
+        foot = '<span class="ab-series-dim">fetching series size&hellip;</span>'
+    return (
+        f'<article class="ab-series-card" id="ab-series-{slug}" data-slug="{slug}">'
+        f'<div class="ab-series-name">{_html(view["name"])}</div>{sub}'
+        f'<div class="ab-series-count">{count}</div>{strip}'
+        f'<div class="ab-series-foot">{foot}</div></article>'
+    )
+
+
+def _series_row(entry: dict, seq_label: str, actions: bool = True) -> str:
+    asin = str(entry.get("asin") or "")
+    facts = []
+    if _num(entry.get("hours")) > 0:
+        facts.append(f"{_num(entry.get('hours')):.1f} hrs")
+    facts.append(f"ASIN {_html(asin)}")
+    facts.append("Audible.com")
+    src = "/cover?asin=" + quote(asin, safe="") if asin else ""
+    img = f'<img src="{_attr(src)}" alt="" loading="lazy" onerror="abCoverFail(this)">' if src else ""
+    if entry.get("owned"):
+        pill = '<span class="ab-series-pill ab-series-have">In your library</span>'
+        buttons = ""
+    else:
+        pill = '<span class="ab-series-pill">Not in your library</span>'
+        buttons = (
+            (
+                '<button title="You own this book without a rip - stop counting it as missing." '
+                'onclick="abSeriesMark(this,true)">I have this</button>'
+                if actions
+                else ""
+            )
+            + '<button class="btn primary" title="Copy this book\'s Audible page address." '
+            'onclick="abSeriesCopy(this)">Copy Audible link</button>'
+        )
+    return (
+        f'<div class="ab-series-row" data-asin="{_attr(asin)}" data-link="{_attr(AUDIBLE_PD + quote(asin, safe=""))}">'
+        f'<span class="ab-series-seq">{seq_label}</span>{img}'
+        f'<div class="ab-series-meta"><div class="ab-series-t">{_html(str(entry.get("title") or ""))}</div>'
+        f'<div class="ab-series-m">{" &middot; ".join(facts)}</div></div>'
+        f"{pill}{buttons}</div>"
+    )
+
+
+def _series_panel(view: dict) -> str:
+    """'Missing from Jack Reacher — 13 books', with the hidden not-numbered entries below."""
+    if not view["known"] or not (view["missing"] or view["marked"]):
+        return ""
+    slug = _attr(view["slug"])
+    name = _html(view["name"])
+    missing = len(view["missing"])
+    if missing:
+        head = f"Missing from {name} &mdash; {missing} {_plural(missing, 'book', 'books')}"
+    else:
+        head = f"Nothing missing from {name}"
+    rows = "".join(_series_row(m, str(int(m["n"]))) for m in view["missing"])
+
+    kpis = []
+    if missing:
+        avg = f" &middot; {view['avg_hours']:.1f} hrs avg" if view.get("avg_hours") else ""
+        kpis.append(f"<div><b>{missing}</b><span>missing{avg}</span></div>")
+    if view["unnumbered"]:
+        u = view["unnumbered"]
+        kpis.append(f"<div><b>{u}</b><span>{_plural(u, 'novella', 'novellas')}, unnumbered &middot; hidden</span></div>")
+    if view["between"]:
+        b = len(view["between"])
+        labels = ", ".join("#" + _html(s) for s in view["between"])
+        kpis.append(
+            f"<div><b>{b}</b><span>between-the-numbers {_plural(b, 'entry', 'entries')} "
+            f"({labels}) &middot; hidden</span></div>"
+        )
+    if view["other"]:
+        o = view["other"]
+        kpis.append(f"<div><b>{o}</b><span>{_plural(o, 'box set', 'box sets')} and collections &middot; hidden</span></div>")
+    kpi_html = f'<div class="ab-series-kpi">{"".join(kpis)}</div>' if kpis else ""
+
+    extras_html = ""
+    if view["extras"]:
+        k = len(view["extras"])
+        extra_rows = "".join(
+            _series_row(e, "#" + _html(e["sequence"]) if e.get("sequence") else "&mdash;", actions=False)
+            for e in view["extras"]
+        )
+        extras_html = (
+            f'<details class="ab-series-extra"><summary>Show the {k} not-numbered '
+            f"{_plural(k, 'entry', 'entries')}</summary>{extra_rows}</details>"
+        )
+
+    marks_html = ""
+    if view["marked"]:
+        items = "".join(
+            f'<span data-asin="{_attr(m["asin"])}">#{int(m["n"])} {_html(m.get("title") or "")} '
+            '<button title="Put this book back on your missing list." '
+            'onclick="abSeriesMark(this,false)">Undo</button></span>'
+            for m in view["marked"]
+        )
+        marks_html = f'<div class="ab-series-marks"><span>You said you have:</span>{items}</div>'
+
+    return (
+        f'<section class="ab-series-panel" id="ab-series-missing-{slug}" aria-label="Missing from {_attr(view["name"])}">'
+        f"<h3>{head}</h3>{rows}{kpi_html}{extras_html}{marks_html}</section>"
+    )
+
+
+def series_hook_html(view: dict | None) -> str:
+    """The detail panel's "See what you're missing" block (mockup 3b) for a book in a shelf series."""
+    if not view:
+        return ""
+    name = _html(view["name"])
+    missing = len(view["missing"])
+    complete = view["known"] and not missing
+    if view["known"]:
+        head = f"{name} &mdash; you're {view['have']} of {view['total']}"
+        if missing:
+            nxt = view["next_gap"] or {}
+            first = f"#{int(nxt.get('n') or 0)} {_html(nxt.get('title') or '')}"
+            sub = (
+                f"{missing} books missing from this series, starting with {first}"
+                if missing > 1
+                else f"1 book missing from this series: {first}"
+            )
+        else:
+            sub = "You have every numbered book in this series &mdash; nothing to chase"
+    else:
+        head = f"{name} &mdash; you have {view['owned']}"
+        sub = "fetching series size&hellip;"
+    owned_tiles = [t for t in view["tiles"] if t["kind"] != "gap"][:8]
+    gap_tiles = [t for t in view["tiles"] if t["kind"] == "gap"][:5]
+    tiles = owned_tiles + gap_tiles
+    strip = (
+        '<div class="ab-series-strip">' + "".join(_series_tile(t) for t in tiles) + "</div>" if tiles else ""
+    )
+    label = "See the series" if complete else "See what you're missing"
+    return (
+        '<div class="ab-series-hook">'
+        f'<div class="ab-series-hooktxt"><div class="ab-series-hookname">{head}</div>'
+        f'<div class="ab-series-hooksub">{sub}</div></div>'
+        f"{strip}"
+        f'<a class="btn primary" href="/series#{_attr(view["slug"])}">{label}</a>'
+        "</div>"
+    )
+
+
+def render_series(state) -> str:
+    """The Series page: the shelf of series cards, then what's missing from each."""
+    counts = state.counts()
+    rc = rail_counts(state, counts)
+    shelf = _series_shelf(state)
+    views = shelf["series"]
+    if views:
+        intro = (
+            '<p class="ab-series-intro">Every series with two or more of your books, checked '
+            "against the Audible series order. <b>I have this</b> marks a book you own without "
+            "a rip, so it stops counting as missing; <b>Copy Audible link</b> is for when you "
+            "want to go get it.</p>"
+        )
+        cards = "".join(_series_card(v) for v in views)
+        panels = "".join(_series_panel(v) for v in views)
+        body = f'{intro}<section class="ab-series-shelf" aria-label="Your series">{cards}</section>{panels}'
+    else:
+        body = (
+            '<div class="ab-series-empty">No series on your shelf yet. Once two or more of your '
+            "books belong to the same series, it shows up here &mdash; with what you have and "
+            "what you're missing.</div>"
+        )
+    return SERIES_PAGE.format(
+        styles=STYLES,
+        version=__version__,
+        rail_total=sum(counts.values()),
+        rail_review_count=rc["review"],
+        rail_held_count=rc["held"],
+        rail_failed_count=rc["failed"],
+        series_item=_series_rail_item(shelf["missing_total"], active=True),
+        library=_html(CONFIG.host_library or str(CONFIG.library_root)),
+        library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
+        output=_html(CONFIG.host_output or str(CONFIG.output_root)),
+        output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
+        body=body,
+        series_script=SERIES_SCRIPT,
+    )
+
+
 def render_settings(state) -> str:
     """Render the settings page with current effective values."""
     counts = state.counts()
@@ -1814,6 +2307,7 @@ def render_settings(state) -> str:
         version=__version__,
         lib_active="",
         set_active=" ab-active",
+        series_item=_series_rail_item(_series_shelf(state, refresh=False)["missing_total"]),
         rail_total=total,
         rail_review_count=rc["review"],
         rail_held_count=rc["held"],
@@ -1934,6 +2428,8 @@ def render(state, status: str = "", query: str = "") -> str:
         )
     chips_html = "".join(chips)
     rc = rail_counts(state, counts)
+    # stored series listings only; stale ones are refreshed in the background
+    series_shelf = _series_shelf(state)
 
     # problem units for shelf
     shelf_order = {"failed": 0, "held": 1, "review": 2}
@@ -2214,6 +2710,7 @@ def render(state, status: str = "", query: str = "") -> str:
             + (evidence or block("The Audible match", decision))
             + editions_html
             + editor
+            + series_hook_html(series_shelf["by_path"].get(unit.path))
             + delete_act
             + "</div></td></tr>"
         )
@@ -2420,6 +2917,7 @@ def render(state, status: str = "", query: str = "") -> str:
         health_text=health_text,
         health_scan=_fmt_age(heartbeat_age),
         rail_total=total,
+        series_item=_series_rail_item(series_shelf["missing_total"]),
         rail_review_count=rc["review"],
         rail_held_count=rc["held"],
         rail_failed_count=rc["failed"],
@@ -2482,8 +2980,9 @@ def snapshot(state) -> dict:
         "version": __version__,
         "counts": state.counts(),
         # cheap change signature: moves even when a re-check ends in the same status,
-        # so the page notices a manual Retry / ASIN re-check and reloads
-        "rev": state.rev(),
+        # so the page notices a manual Retry / ASIN re-check and reloads - and when a
+        # series listing arrives or a book is marked "I have this" (series shelf, badge)
+        "rev": f"{state.rev()}|s{state.series_rev()}",
         "stats": library_stats(state),
         "last_run": state.last_run() or {},
         "heartbeat_age_seconds": state.heartbeat_age(),
@@ -2562,6 +3061,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/state"):
             self._send(200, json.dumps(snapshot(self.state)).encode(), "application/json")
+            return
+        if path.startswith("/api/series"):
+            shelf = _series_shelf(self.state)
+            payload = {
+                "missing_total": shelf["missing_total"],
+                "refreshing": series_mod.REFRESHER.busy,
+                "series": [series_mod.public(v) for v in shelf["series"]],
+            }
+            self._send(200, json.dumps(payload).encode(), "application/json")
+            return
+        if path in ("/series", "/series/"):
+            self._send(200, render_series(self.state).encode(), "text/html; charset=utf-8")
             return
         if path.startswith("/healthz"):
             set_effective(self.state)
@@ -2896,6 +3407,40 @@ class Handler(BaseHTTPRequestHandler):
         custom = [key for key in SETTING_KEYS if is_custom(SETTING_MAP[key])]
         self._send(200, json.dumps({"ok": True, "custom": custom}).encode(), "application/json")
 
+    def _handle_series(self) -> None:
+        """I have this / Undo: the per-ASIN "owned without a rip" marker."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, TypeError):
+            self._send(400, b'{"error":"bad request"}', "application/json")
+            return
+        if not isinstance(payload, dict):
+            self._send(400, b'{"error":"bad request"}', "application/json")
+            return
+        action = str(payload.get("action", "")).lower()
+        asin = str(payload.get("asin", "")).strip().upper()
+        if action not in ("mark_owned", "unmark_owned"):
+            self._send(400, b'{"error":"unknown action"}', "application/json")
+            return
+        if not valid_asin(asin):
+            self._send(400, b'{"error":"that is not an ASIN"}', "application/json")
+            return
+        if action == "mark_owned":
+            # only books from a series listing we fetched - not any string someone posts
+            if self.state.series_image(asin) is None:
+                self._send(404, b'{"error":"that book is not in any of your series"}', "application/json")
+                return
+            self.state.set_owned_mark(asin, True)
+        else:
+            self.state.set_owned_mark(asin, False)
+        logging.getLogger("audiobind").info("series: %s %s", action, asin)
+        self._send(
+            200,
+            json.dumps({"ok": True, "asin": asin, "owned": action == "mark_owned"}).encode(),
+            "application/json",
+        )
+
     def _post_refusal(self) -> tuple[int, str] | None:
         """Cross-site request guard for every POST: (status, error) to refuse, else None.
 
@@ -2935,6 +3480,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/settings"):
             self._handle_settings()
+            return
+        if self.path.startswith("/api/series"):
+            self._handle_series()
             return
         if not self.path.startswith("/api/control"):
             self._send(404, b'{"error":"not found"}', "application/json")

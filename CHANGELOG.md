@@ -6,6 +6,38 @@ All notable changes to this project are documented here. This project follows
 ## [Unreleased]
 
 ### Added
+- **Series - see what you're missing.** A new **Series** tab sits under Library in the
+  side rail. Its amber number is how many books are missing from your series. The page
+  shows a card for every series where you have two or more books, for example "Jack
+  Reacher - Lee Child - 18 of 31 owned - 13 MISSING". Each card has a strip of your
+  covers in series order, and dashed amber tiles for the numbers you don't have. Below
+  the cards, each series lists what's missing: "Missing from Jack Reacher - 13 books",
+  with the cover, title, length and ASIN of each one. Every missing book has two
+  buttons. **I have this** is for a book you own without a rip: it stops counting as
+  missing, and you can undo it. **Copy Audible link** copies the book's Audible page so
+  you can go and get it.
+- Only numbered books count. Unnumbered novellas, "between the numbers" entries like
+  #23.6, and box sets are left out of the missing count. They're tucked behind a "Show
+  the not-numbered entries" toggle.
+- The full series list comes from Audible, at most once a day per series. It's fetched
+  in the background, so opening a page never waits on Audible. If Audible can't be
+  reached, or doesn't know the series, the card shows just how many books you have and
+  "fetching series size…". It never guesses a total.
+- **In every book's details**, a book in one of those series now gets a "See what
+  you're missing" block. It says where you are ("Jack Reacher - you're 18 of 31") and
+  what's next ("13 books missing from this series, starting with #19 Personal"), with a
+  mini cover strip. The button takes you to that series' card on the Series page and
+  briefly highlights it.
+- The series a book belongs to now comes from your metadata overrides first. After that
+  it comes from the catalog match, then from where the book was filed in your output
+  library (`Author/Series/14 - Title`), and finally from the source folder name. Books
+  recorded before this version start carrying the catalog series on their next
+  re-check. Until then, the output path and folder name fill in.
+- `/api/series` returns the same information as JSON.
+- Covers for books you don't have yet load through the app's own cover proxy, like every
+  other cover. `/cover?asin=` now also fetches an ASIN that appears in a series list
+  Audible returned. Nothing else changes: https only, Amazon/Audible image hosts only, and
+  a failed cover still isn't retried for six hours. Any other ASIN still gets nothing.
 - **"Why this match?" - see the evidence, not just the score.** A book's detail panel
   now shows why the app picked its Audible match: the match card with its score, then
   four bars - how closely the title and author agree with your folder, how far your

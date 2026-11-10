@@ -158,6 +158,35 @@ def search(title: str | None = None, author: str | None = None, limit: int = 10)
     return [Product.from_audible(p) for p in (data.get("products") or [])]
 
 
+#: the catalog's largest page; a series listing walks at most SERIES_MAX_PAGES of them
+SERIES_PAGE_SIZE = 50
+SERIES_MAX_PAGES = 4
+
+
+def series_products(keywords: str, author: str = "", page: int = 0) -> list[dict] | None:
+    """One page of raw catalog products for a series keyword search.
+
+    The raw dicts are returned (not Products) because the series shelf needs every entry of
+    each product's ``series`` array - series ASIN and sequence - not just the first one.
+    Goes through ``_get_json``, so the politeness gap and the URL memo apply. None means the
+    request failed (as opposed to an empty page).
+    """
+    params = {
+        "keywords": keywords,
+        "num_results": SERIES_PAGE_SIZE,
+        "page": int(page),
+        "products_sort_by": "Relevance",
+        "response_groups": "product_desc,media,series,contributors,product_attrs,product_extended_attrs",
+        "image_sizes": "500,1000",
+    }
+    if author:
+        params["author"] = author
+    data = _get_json(AUDIBLE + "?" + urllib.parse.urlencode(params))
+    if not isinstance(data, dict):
+        return None
+    return [p for p in (data.get("products") or []) if isinstance(p, dict)]
+
+
 def _q(value: str) -> str:
     """One URL path segment or query value: '/', '?', '#' and '..' can't escape it."""
     return urllib.parse.quote(str(value or ""), safe="")

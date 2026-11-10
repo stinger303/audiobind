@@ -40,6 +40,21 @@ CREATE TABLE IF NOT EXISTS runs (
     failed      INTEGER
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS series_cache (
+    key         TEXT PRIMARY KEY,
+    fetched_at  REAL,
+    ok          INTEGER,
+    payload     TEXT
+);
+CREATE TABLE IF NOT EXISTS series_asins (
+    asin        TEXT PRIMARY KEY,
+    series_key  TEXT,
+    image       TEXT
+);
+CREATE TABLE IF NOT EXISTS owned_marks (
+    asin        TEXT PRIMARY KEY,
+    marked_at   REAL
+);
 """
 
 
@@ -289,6 +304,93 @@ class State:
         except ValueError:
             return []
         return data if isinstance(data, list) else []
+
+    # ------------------------------------------------- series shelf
+    def series_rows(self) -> list[dict]:
+        """Every unit with the columns the series shelf reads, overrides included, in one query."""
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT path, status, asin, asin_override, title, author, output, detail, overrides "
+                "FROM units ORDER BY path"
+            ).fetchall()
+        return [{k: (r[k] or "") for k in r.keys()} for r in rows]
+
+    def series_cache_all(self) -> dict[str, dict]:
+        """{key: {"fetched_at", "ok", "payload"}} - the last Audible series list per series."""
+        with self._lock:
+            rows = self.connection.execute("SELECT key, fetched_at, ok, payload FROM series_cache").fetchall()
+        out: dict[str, dict] = {}
+        for r in rows:
+            try:
+                payload = json.loads(r["payload"] or "{}")
+            except ValueError:
+                payload = {}
+            out[r["key"]] = {
+                "fetched_at": float(r["fetched_at"] or 0),
+                "ok": bool(r["ok"]),
+                "payload": payload if isinstance(payload, dict) else {},
+            }
+        return out
+
+    def series_cache_put(self, key: str, ok: bool, payload: dict, asins: list[tuple[str, str]]) -> None:
+        """Store one series list, and replace the ASINs it allows the cover proxy to fetch."""
+        with self._lock:
+            self.connection.execute(
+                "INSERT INTO series_cache (key, fetched_at, ok, payload) VALUES (?,?,?,?) "
+                "ON CONFLICT(key) DO UPDATE SET fetched_at=excluded.fetched_at, ok=excluded.ok, "
+                "payload=excluded.payload",
+                (key, time.time(), 1 if ok else 0, json.dumps(payload or {})),
+            )
+            if ok:
+                # a failed refresh keeps the previous allowlist: the covers already shown stay valid
+                self.connection.execute("DELETE FROM series_asins WHERE series_key = ?", (key,))
+                self.connection.executemany(
+                    "INSERT INTO series_asins (asin, series_key, image) VALUES (?,?,?) "
+                    "ON CONFLICT(asin) DO UPDATE SET series_key=excluded.series_key, image=excluded.image",
+                    [(asin, key, image or "") for asin, image in asins if asin],
+                )
+            self._bump_series_rev_locked()
+
+    def series_image(self, asin: str) -> str | None:
+        """The catalog image URL for an ASIN in a fetched series list; None when it is in none."""
+        if not asin:
+            return None
+        with self._lock:
+            row = self.connection.execute("SELECT image FROM series_asins WHERE asin = ?", (asin,)).fetchone()
+        return (row["image"] or "") if row else None
+
+    def set_owned_mark(self, asin: str, on: bool = True) -> None:
+        """"I have this": the book is yours without a rip, so the shelf stops counting it missing."""
+        with self._lock:
+            if on:
+                self.connection.execute(
+                    "INSERT INTO owned_marks (asin, marked_at) VALUES (?,?) "
+                    "ON CONFLICT(asin) DO UPDATE SET marked_at=excluded.marked_at",
+                    (asin, time.time()),
+                )
+            else:
+                self.connection.execute("DELETE FROM owned_marks WHERE asin = ?", (asin,))
+            self._bump_series_rev_locked()
+
+    def owned_marks(self) -> set[str]:
+        with self._lock:
+            rows = self.connection.execute("SELECT asin FROM owned_marks").fetchall()
+        return {r["asin"] for r in rows}
+
+    def _bump_series_rev_locked(self) -> None:
+        self.connection.execute(
+            "INSERT INTO meta (key, value) VALUES ('series_rev', '1') "
+            "ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)"
+        )
+
+    def series_rev(self) -> int:
+        """Moves on every series-list store and every "I have this" change (part of /api/state rev)."""
+        with self._lock:
+            row = self.connection.execute("SELECT value FROM meta WHERE key = 'series_rev'").fetchone()
+        try:
+            return int(json.loads(row["value"])) if row else 0
+        except (ValueError, TypeError):
+            return 0
 
     def delete(self, path: str) -> bool:
         """Remove a unit row from the database. Returns True if a row was deleted."""

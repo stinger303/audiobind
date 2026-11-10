@@ -207,6 +207,9 @@ def record(
                 "runtime_delta_pct": audit.match.runtime_delta_pct,
                 "query_title": audit.match.query_title,
                 "query_author": audit.match.query_author,
+                # what the catalog says this book's series is, for the series shelf
+                "series": audit.match.product.series if audit.match.product else "",
+                "sequence": audit.match.product.sequence if audit.match.product else "",
             },
             "overrides": overrides_mod.normalise(audit.overrides),
             "source": {
