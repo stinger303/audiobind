@@ -67,7 +67,7 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
     audit.hours = round(total / 3600, 2)
     audit.src_mb = round(sum(os.path.getsize(f) for f in unit.files if os.path.exists(f)) / 1e6, 1)
 
-    audit.match = matching.match_unit(unit, asin_override)
+    audit.match = matching.match_unit(unit, asin_override, local_hours=audit.hours)
     audit.confidence = audit.match.confidence
 
     avg_hours = audit.hours / len(unit.files) if unit.files else 0
@@ -196,6 +196,17 @@ def record(
                 "image": audit.match.product.image if audit.match.product else "",
                 # a user-pinned ASIN that had no catalog data; nothing was matched
                 "asin_pin_failed": audit.match.asin_pin_failed,
+                # the evidence behind the pick, shown in the "why this match" panel
+                "score": audit.match.score,
+                "title_sim": audit.match.title_sim,
+                "author_sim": audit.match.author_sim,
+                "author_known": audit.match.author_known,
+                "pinned": audit.match.asin_override,
+                "language": audit.match.product.language if audit.match.product else "",
+                "language_penalized": audit.match.language_penalized,
+                "runtime_delta_pct": audit.match.runtime_delta_pct,
+                "query_title": audit.match.query_title,
+                "query_author": audit.match.query_author,
             },
             "overrides": overrides_mod.normalise(audit.overrides),
             "source": {

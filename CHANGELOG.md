@@ -5,6 +5,22 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+- **"Why this match?" - see the evidence, not just the score.** A book's detail panel
+  now shows why the app picked its Audible match: the match card with its score, then
+  four bars - how closely the title and author agree with your folder, how far your
+  files' runtime is from the catalog's (green-blue inside your runtime tolerance, amber
+  outside it, with both lengths and the tolerance spelled out), and the catalog language
+  (amber with the -15% penalty when it isn't English). Below that, every runner-up the
+  search scored is listed with its score and a plain reason it lost - "a different book
+  by the same author", "Right title, wrong language", "your files are 65% shorter, over
+  the 25% tolerance" - and its own Use this edition button. Nothing about how books are
+  matched or graded has changed; the panel only shows numbers the matcher already worked
+  out. Books recorded before this version keep the old panel until their next re-check
+  (Retry now, or the next scan that looks at them).
+
+### Fixed
+
 The book currently encoding no longer lingers in the review/held/failed lists - only the ones waiting in the queue do.
 
 ## [0.14.4] - 2026-11-09

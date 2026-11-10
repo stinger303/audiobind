@@ -10,6 +10,9 @@ from audiobind.state import State, UnitState
 
 
 def review_unit(**kw):
+    # deliberately the pre-0.15.0 shape (no title_sim/score/language evidence): rows recorded
+    # before the "why this match" panel must keep the old match list and "Other editions seen"
+    # until they are re-checked. The evidence shape is covered in test_match_evidence.
     kw.setdefault("path", "Michael Lewis/Moneyball")
     kw.setdefault("status", "review")
     kw.setdefault("confidence", "MEDIUM")

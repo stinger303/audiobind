@@ -25,13 +25,44 @@ class Match:
     #: set when a user-pinned ASIN had no catalog data; nothing is matched then (no search)
     asin_pin_failed: str = ""
     confidence: str = "NONE"
+    #: True when the scorer applied the non-English x0.85 penalty to this product
+    language_penalized: bool = False
+    #: (your files - catalog) / catalog as a whole percent; None when either runtime is unknown
+    runtime_delta_pct: int | None = None
+    #: what the search compared against (the folder's title/author guesses), for the evidence panel
+    query_title: str = ""
+    query_author: str = ""
     #: other candidates the search scored highly (other editions of the same work);
-    #: [{"asin", "title", "authors", "score"}], best first, chosen one excluded
+    #: [{"asin", "title", "authors", "score", "hours", "title_sim", "author_sim", "language",
+    #: "language_penalized", "runtime_delta_pct"}], best first, chosen one excluded
     alternates: list[dict] = field(default_factory=list)
 
     @property
     def asin(self) -> str:
         return self.product.asin if self.product else ""
+
+
+#: the scorer's multiplier for a product whose catalog language is not English
+LANGUAGE_PENALTY = 0.85
+
+
+def language_penalized(language: str | None) -> bool:
+    """The scorer's language rule: anything not starting with "english" (even blank) is penalized."""
+    return not (language or "").lower().startswith("english")
+
+
+def runtime_delta_pct(local_hours: float | None, catalog_hours: float | None) -> int | None:
+    """(local - catalog) / catalog as a whole percent - the same measure runtime_ok checks.
+
+    None when either side is unknown (0 or missing), so the panel never shows a made-up delta.
+    """
+    try:
+        local, cat = float(local_hours or 0), float(catalog_hours or 0)
+    except (TypeError, ValueError):
+        return None
+    if local <= 0 or cat <= 0:
+        return None
+    return int(round((local - cat) / cat * 100))
 
 
 def infer_author_from_series(series: str) -> str:
@@ -53,7 +84,7 @@ def _same_work(a: Product, b: Product) -> bool:
     return norm(a.title) == norm(b.title) and norm((a.authors or [""])[0]) == norm((b.authors or [""])[0])
 
 
-def match_from_asin(asin: str) -> Match:
+def match_from_asin(asin: str, local_hours: float = 0.0) -> Match:
     """Build a confident match from an ASIN the user supplied."""
     book = catalog.book(asin)
     if not book.get("asin"):
@@ -82,14 +113,19 @@ def match_from_asin(asin: str) -> Match:
         author_known=True,
         asin_override=True,
         language=product.language,
+        # a pin is never scored, so no penalty was applied to it
+        language_penalized=False,
+        runtime_delta_pct=runtime_delta_pct(local_hours, product.hours),
     )
     match.confidence = "HIGH"
     return match
 
 
-def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
+def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0) -> Match:
+    """``local_hours`` (the probed length of the files) only feeds the evidence panel's
+    runtime deltas; it never changes a score or the confidence grade."""
     if asin_override:
-        forced = match_from_asin(asin_override)
+        forced = match_from_asin(asin_override, local_hours)
         if forced.product:
             return forced
         # a dead pin (or a catalog hiccup) must never fall through to a search
@@ -123,19 +159,22 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
             author_sim = max([sim(author, a) for a in product.authors] or [0.0]) if author else 0.0
             # without a known author the title is the only evidence we have
             total = 0.60 * title_sim + 0.40 * author_sim if author else title_sim
-            if not product.language.lower().startswith("english"):
-                total *= 0.85
+            penalized = language_penalized(product.language)
+            if penalized:
+                total *= LANGUAGE_PENALTY
             scored[product.asin] = {
                 "product": product,
                 "score": round(total, 3),
                 "title_sim": round(title_sim, 3),
                 "author_sim": round(author_sim, 3),
+                "language_penalized": penalized,
+                "runtime_delta_pct": runtime_delta_pct(local_hours, product.hours),
             }
         if scored and max(s["score"] for s in scored.values()) >= 0.95 and len(scored) >= 3:
             break
 
     if not scored:
-        return Match(author_from_series=author_from_series)
+        return Match(author_from_series=author_from_series, query_title=title, query_author=author)
 
     ranked = sorted(scored.values(), key=lambda s: s["score"], reverse=True)
     best = ranked[0]
@@ -152,6 +191,10 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
         author_known=bool(author),
         author_from_series=author_from_series,
         language=best["product"].language,
+        language_penalized=best["language_penalized"],
+        runtime_delta_pct=best["runtime_delta_pct"],
+        query_title=title,
+        query_author=author,
     )
     match.confidence = grade(match)
     # keep the runners-up (other editions of the same work, near misses) so the
@@ -162,6 +205,13 @@ def match_unit(unit: BookUnit, asin_override: str = "") -> Match:
             "title": s["product"].title,
             "authors": list(s["product"].authors or []),
             "score": s["score"],
+            # the evidence behind the score, so the panel can say why each one lost
+            "hours": s["product"].hours,
+            "title_sim": s["title_sim"],
+            "author_sim": s["author_sim"],
+            "language": s["product"].language,
+            "language_penalized": s["language_penalized"],
+            "runtime_delta_pct": s["runtime_delta_pct"],
         }
         for s in ranked[1:5]
         if s["product"].asin != best["product"].asin

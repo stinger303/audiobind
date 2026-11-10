@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
-from . import __version__
+from . import __version__, matching
 from . import overrides as overrides_mod
 from .advice import explain
 from .config import (
@@ -374,6 +374,39 @@ tr.drow[hidden] td{padding:0}
 .ab-editions .ab-edmain b{font-size:13px;font-weight:500;color:var(--ab-text)}
 .ab-editions .ab-edsub{font-size:11.5px;color:var(--ab-text3)}
 .ab-editions button{height:28px;padding:0 12px;font-size:12px;border-radius:6px;flex:none}
+.ab-ev{grid-column:1/-1;border-top:1px solid #1c2230;padding-top:14px;max-width:860px;}
+.ab-ev h4.ab-evh2{margin-top:18px;}
+.ab-evwin{display:flex;gap:14px;align-items:center;background:var(--ab-surface);
+  border:1px solid rgba(94,106,210,.45);border-radius:8px;padding:12px 14px;}
+.ab-evwin .ab-covwrap{width:56px;height:56px;flex:none;}
+.ab-evmeta{flex:1;min-width:0;}
+.ab-evt{font-size:13.5px;font-weight:600;color:var(--ab-text);}
+.ab-eva{color:var(--ab-text2);font-size:12.5px;margin-top:2px;}
+.ab-evm{color:var(--ab-text3);font-size:11.5px;margin-top:4px;font-family:var(--ab-mono);}
+.ab-evscore{flex:none;text-align:right;}
+.ab-evv{font-family:var(--ab-mono);font-size:20px;font-weight:600;color:var(--ab-green);}
+.ab-evv.ab-mid{color:var(--ab-amber);}
+.ab-evl{font-size:10px;letter-spacing:1px;color:var(--ab-text3);text-transform:uppercase;}
+.ab-evbars{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px 22px;}
+.ab-evbar{min-width:0;}
+.ab-evlbl{display:flex;justify-content:space-between;font-size:12px;color:var(--ab-text2);margin-bottom:4px;}
+.ab-evlbl em{font-style:normal;font-family:var(--ab-mono);color:var(--ab-text3);font-size:11.5px;}
+.ab-evtrack{height:5px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden;}
+.ab-evtrack i{display:block;height:100%;border-radius:3px;background:var(--ab-green);}
+.ab-evtrack i.ab-mid{background:var(--ab-amber);}
+.ab-evtrack i.ab-bad{background:var(--ab-red);}
+.ab-evtrack i.ab-acc{background:var(--ab-accent);}
+.ab-evnote{font-size:11.5px;color:var(--ab-text4);margin-top:4px;}
+.ab-evnote b{color:var(--ab-amber);font-weight:600;}
+.ab-evrival{display:flex;gap:12px;align-items:center;background:var(--ab-surface2);
+  border:1px solid var(--ab-border-subtle);border-radius:8px;padding:10px 12px;margin-top:8px;}
+.ab-evrival .ab-evmeta b.ab-evrt{display:block;font-size:12.5px;font-weight:600;color:var(--ab-text2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ab-evwhy{color:var(--ab-text3);font-size:11.5px;margin-top:2px;}
+.ab-evwhy b{color:var(--ab-amber);font-weight:600;}
+.ab-evsc{font-family:var(--ab-mono);font-size:12px;color:var(--ab-text3);flex:none;}
+.ab-evrival button{height:28px;padding:0 12px;font-size:12px;border-radius:6px;flex:none;}
+@media (max-width:700px){.ab-evbars{grid-template-columns:1fr;}}
 .ab-edit{grid-column:1/-1;border-top:1px solid #1c2230;padding-top:14px;}
 .ab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 18px;}
 .ab-field{display:flex;flex-direction:column;gap:4px;}
@@ -1304,6 +1337,270 @@ def cover_html(unit, big: bool = False) -> str:
     )
 
 
+# --- "Why this match?" evidence panel ---------------------------------------------------
+# Display only: every number here was computed by the matcher before it decided. Copy is
+# operator-facing (approved mockup, 0.15.0) - plain, second person, no developer shorthand.
+
+#: the score multiplier the matcher applies to non-English products, as a whole percent
+PENALTY_PCT = int(round((1 - matching.LANGUAGE_PENALTY) * 100))
+
+
+def _num(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _pct(value) -> int:
+    return int(round(_num(value) * 100))
+
+
+def _signed(n: int) -> str:
+    """+13 / −22 (a real minus sign, like the approved copy)."""
+    return f"+{n}" if n >= 0 else f"−{abs(n)}"
+
+
+def _hrs(hours) -> str:
+    return f"{_num(hours):.1f}"
+
+
+def _tolerance() -> float:
+    return _num(effective_val("max_runtime_delta"), 0.25)
+
+
+def _over_tolerance(local_hours, catalog_hours, tolerance: float) -> bool:
+    """Out of tolerance by the exact rule the pipeline holds books on (not the rounded %)."""
+    local, cat = _num(local_hours), _num(catalog_hours)
+    if local <= 0 or cat <= 0:
+        return False
+    return not matching.runtime_ok(local, cat, tolerance)
+
+
+def _has_evidence(data: dict) -> bool:
+    """Rows recorded before 0.15.0 carry no evidence; they keep the old panel until re-checked."""
+    return isinstance(data, dict) and "title_sim" in data
+
+
+def rival_reason(
+    alt: dict,
+    local_hours: float,
+    tolerance: float,
+    winner_score: float = 1.0,
+    author_known: bool = True,
+) -> str:
+    """One plain-English line (HTML) saying why this candidate lost to the pick.
+
+    Holds only numbers and fixed copy - never catalog or folder text - so it needs no escaping.
+    Empty for a pre-0.15.0 row with no evidence.
+    """
+    if not _has_evidence(alt):
+        return ""
+    title, author = _num(alt.get("title_sim")), _num(alt.get("author_sim"))
+    clauses: list[str] = []
+    if author_known and author >= 0.9 and title < 0.6:
+        clauses.append(f"Title match only <b>{_pct(title)}%</b> — a different book by the same author")
+    if alt.get("language_penalized"):
+        penalty = f"<b>−{PENALTY_PCT}% penalty</b>"
+        if clauses:
+            clauses.append(f"wrong language — {penalty}")
+        elif title >= 0.6:
+            clauses.append(f"Right title, wrong language — {penalty}")
+        else:
+            clauses.append(f"Wrong language — {penalty}")
+    delta = alt.get("runtime_delta_pct")
+    if delta is not None and _over_tolerance(local_hours, alt.get("hours"), tolerance):
+        # same measure as the hold rule and the Runtime bar: your files against this edition
+        longer = "longer" if int(delta) >= 0 else "shorter"
+        runtime = (
+            f"untime {_hrs(alt.get('hours'))} hrs — your files are "
+            f"<b>{abs(int(delta))}% {longer}</b>, over the {int(round(tolerance * 100))}% tolerance"
+        )
+        clauses.append(("r" if clauses else "R") + runtime)
+    if clauses:
+        return ", ".join(clauses)
+    if _num(alt.get("score")) >= _num(winner_score):
+        return "Same score as the pick — most likely another edition of the same book"
+    if not author_known:
+        return f"Weaker title match — title <b>{_pct(title)}%</b>"
+    return f"Weaker title and author match — title <b>{_pct(title)}%</b>, author <b>{_pct(author)}%</b>"
+
+
+def _ev_bar(label: str, value: str, width: int, fill: str, note: str) -> str:
+    """One labeled bar. ``note`` is HTML the caller has already escaped."""
+    cls = f' class="{fill}"' if fill else ""
+    width = max(0, min(100, int(width)))
+    return (
+        f'<div class="ab-evbar"><div class="ab-evlbl">{label} <em>{value}</em></div>'
+        f'<div class="ab-evtrack"><i{cls} style="width:{width}%"></i></div>'
+        f'<div class="ab-evnote">{note}</div></div>'
+    )
+
+
+def _sim_fill(value: float) -> str:
+    return "" if value >= 0.85 else ("ab-mid" if value >= 0.6 else "ab-bad")
+
+
+def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
+    """The "why this match" block: winner card, four evidence bars, rivals with reasons.
+
+    Empty when the row has no match or was recorded before the evidence existed.
+    """
+    match = (data or {}).get("match") or {}
+    if not unit.asin or not match.get("asin") or not _has_evidence(match):
+        return ""
+    tolerance = _tolerance()
+    tol_pct = int(round(tolerance * 100))
+    local_hours = _num((data.get("source") or {}).get("hours")) or _num(data.get("hours"))
+    cat_hours = _num(match.get("hours"))
+    pinned = bool(match.get("pinned"))
+    author_known = bool(match.get("author_known", True))
+    score = _num(match.get("score"))
+    title_sim, author_sim = _num(match.get("title_sim")), _num(match.get("author_sim"))
+    authors = [str(a) for a in (match.get("authors") or [])]
+    narrators = [str(n) for n in (match.get("narrators") or [])]
+
+    # winner card
+    byline = _html("; ".join(authors)) if authors else "Author not listed"
+    if narrators:
+        byline += " &middot; Narrated by " + _html("; ".join(narrators))
+    facts = []
+    if cat_hours > 0:
+        facts.append(f"{_hrs(cat_hours)} hrs")
+    asin = _attr(str(match.get("asin")))
+    facts.append(
+        f'ASIN <a class="ab-alink" href="https://www.audible.com/pd?asin={asin}" '
+        f'target="_blank" rel="noopener">{asin}</a>'
+    )
+    if pinned:
+        score_html = '<div class="ab-evv">&mdash;</div><div class="ab-evl">pinned by you</div>'
+    else:
+        mid = "" if score >= 0.85 else " ab-mid"
+        score_html = f'<div class="ab-evv{mid}">{score:.2f}</div><div class="ab-evl">match score</div>'
+    win = (
+        '<div class="ab-evwin">'
+        + cover_html(unit)
+        + '<div class="ab-evmeta">'
+        + f'<div class="ab-evt">{_html(str(match.get("title") or unit.title))}</div>'
+        + f'<div class="ab-eva">{byline}</div>'
+        + f'<div class="ab-evm">{" &middot; ".join(facts)}</div>'
+        + "</div>"
+        + f'<div class="ab-evscore">{score_html}</div>'
+        + "</div>"
+    )
+
+    bars = []
+    if pinned:
+        pin_note = "You locked this book to this ASIN, so titles and authors weren't scored"
+        bars.append(_ev_bar("Title match", "pinned", 100, "ab-acc", pin_note))
+        bars.append(_ev_bar("Author match", "pinned", 100, "ab-acc", pin_note))
+    else:
+        q_title = str(match.get("query_title") or "")
+        cat_title = str(match.get("title") or "")
+        title_note = (
+            f"&ldquo;{_html(q_title)}&rdquo; vs &ldquo;{_html(cat_title)}&rdquo;"
+            if q_title
+            else "Your folder gave no title to compare"
+        )
+        bars.append(
+            _ev_bar("Title match", f"{_pct(title_sim)}%", _pct(title_sim), _sim_fill(title_sim), title_note)
+        )
+        if author_known:
+            q_author = str(match.get("query_author") or "")
+            if authors and q_author and q_author.strip().lower() != authors[0].strip().lower():
+                author_note = f"&ldquo;{_html(q_author)}&rdquo; vs &ldquo;{_html(authors[0])}&rdquo;"
+            elif authors:
+                author_note = f"&ldquo;{_html(authors[0])}&rdquo; listed as the author"
+            else:
+                author_note = "The catalog lists no author for this edition"
+            author_pct = _pct(author_sim)
+            bars.append(
+                _ev_bar("Author match", f"{author_pct}%", author_pct, _sim_fill(author_sim), author_note)
+            )
+        else:
+            bars.append(
+                _ev_bar(
+                    "Author match",
+                    "&mdash;",
+                    0,
+                    "",
+                    "Your folder names no author, so only the title was scored",
+                )
+            )
+
+    delta = match.get("runtime_delta_pct")
+    if delta is None:
+        if local_hours <= 0:
+            rt_note = "We couldn't read the length of your files, so runtime wasn't compared"
+        else:
+            rt_note = "The catalog lists no runtime for this edition, so runtime wasn't compared"
+        bars.append(_ev_bar("Runtime", "&mdash;", 0, "", rt_note))
+    else:
+        delta = int(delta)
+        over = _over_tolerance(local_hours, cat_hours, tolerance)
+        where = "outside" if over else "inside"
+        rt_note = (
+            f"Your files {_hrs(local_hours)} hrs vs catalog {_hrs(cat_hours)} hrs "
+            f"&mdash; {where} the {tol_pct}% tolerance"
+        )
+        width = 100 if over else (abs(delta) * 100 // tol_pct if tol_pct else 0)
+        bars.append(_ev_bar("Runtime", f"{_signed(delta)}%", width, "ab-mid" if over else "ab-acc", rt_note))
+
+    language = str(match.get("language") or "")
+    lang_label = _html(language.capitalize()) if language else "Not listed"
+    if match.get("language_penalized"):
+        bars.append(
+            _ev_bar(
+                "Language",
+                lang_label,
+                100,
+                "ab-mid",
+                f"Not listed as English &mdash; <b>&minus;{PENALTY_PCT}% penalty</b> on the score",
+            )
+        )
+    else:
+        bars.append(_ev_bar("Language", lang_label, 100, "", "No language penalty applied"))
+
+    # the runners-up, each with the reason it lost and a one-click pin
+    others = [
+        a for a in alternates if isinstance(a, dict) and a.get("asin") and a.get("asin") != unit.asin
+    ][:4]
+    rivals_html = ""
+    if others:
+        rows = []
+        for alt in others:
+            reason = rival_reason(alt, local_hours, tolerance, winner_score=score, author_known=author_known)
+            if not reason:
+                reason = _html("; ".join(str(a) for a in (alt.get("authors") or [])))
+            alt_asin = _attr(str(alt.get("asin")))
+            rows.append(
+                '<div class="ab-evrival"><div class="ab-evmeta">'
+                f'<b class="ab-evrt">{_html(str(alt.get("title") or ""))}</b>'
+                f'<div class="ab-evwhy">{reason}</div></div>'
+                f'<span class="ab-evsc">{_num(alt.get("score")):.2f}</span>'
+                '<button title="Lock this book to this Audible entry, then re-check against it." '
+                f'onclick="abUseEdition(this)" data-asin="{alt_asin}">Use this edition</button></div>'
+            )
+        rivals_html = (
+            '<h4 class="ab-evh2">The other candidates &mdash; and why they lost</h4>'
+            + "".join(rows)
+            + '<p class="ab-hint">Think a runner-up is the right book? Use this edition '
+            "locks the match to it permanently and re-checks.</p>"
+        )
+
+    note = f'<p class="ab-hint">{_html(unit.note)}</p>' if unit.note else ""
+    return (
+        '<div class="ab-ev"><h4>The Audible match</h4>'
+        + win
+        + '<div class="ab-evbars">'
+        + "".join(bars)
+        + "</div>"
+        + note
+        + rivals_html
+        + "</div>"
+    )
+
+
 def read_sort(state) -> tuple:
     column = state.get_meta("sort_column", "scan")
     direction = state.get_meta("sort_dir", "desc")
@@ -1823,7 +2120,16 @@ def render(state, status: str = "", query: str = "") -> str:
             alternates = json.loads(unit.alternates) if getattr(unit, "alternates", "") else []
         except ValueError:
             alternates = []
-        others = [a for a in alternates if a.get("asin") and a.get("asin") != unit.asin][:4]
+        if not isinstance(alternates, list):
+            alternates = []
+        others = [
+            a for a in alternates if isinstance(a, dict) and a.get("asin") and a.get("asin") != unit.asin
+        ][:4]
+        # rows recorded since 0.15.0 carry the matcher's evidence: show the "why this match"
+        # block in place of the plain match list and the "Other editions seen" list
+        evidence = evidence_html(unit, data, alternates)
+        if evidence:
+            others = []
         if others:
             edition_rows = []
             for alt in others:
@@ -1905,7 +2211,7 @@ def render(state, status: str = "", query: str = "") -> str:
             + toprow
             + block("Your source files", before)
             + block(after_title, after)
-            + block("The Audible match", decision)
+            + (evidence or block("The Audible match", decision))
             + editions_html
             + editor
             + delete_act
