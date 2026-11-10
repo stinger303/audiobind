@@ -1,0 +1,29 @@
+{
+  "captured_from": "Audiobind running 0.14.4 on Tower, 2026-11-09",
+  "binds": [
+    "/mnt/user/data/media/audiobooks-fixed:/output:rw",
+    "/mnt/user/appdata/audiobind:/config",
+    "/mnt/user/data/media/audiobooks:/library:rw"
+  ],
+  "env": [
+    "PUID=99",
+    "PGID=100",
+    "OUTPUT_ROOT=/output",
+    "LIBRARY_ROOT=/library",
+    "DRY_RUN=false",
+    "AUTO_CONVERT=high",
+    "AUDIO_CHANNELS=1",
+    "AUDIO_BITRATE=128k",
+    "NICE=10",
+    "WEB_PORT=8080",
+    "TZ=America/Denver",
+    "HOST_OUTPUT=/mnt/user/data/media/audiobooks-fixed",
+    "STATE_DIR=/config",
+    "HOST_LIBRARY=/mnt/user/data/media/audiobooks",
+    "SCAN_INTERVAL_MIN=30",
+    "JOBS=1"
+  ],
+  "cmd": ["daemon"],
+  "restart": "no",
+  "ports": {"8080/tcp": [{"HostIp": "", "HostPort": "8686"}]}
+}
