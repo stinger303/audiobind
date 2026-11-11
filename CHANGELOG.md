@@ -3,6 +3,8 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-11-10
+
 ## [Unreleased]
 
 ### Fixed
