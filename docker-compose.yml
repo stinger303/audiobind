@@ -18,6 +18,7 @@ services:
       - DRY_RUN=false
       # the names/IPs you browse to; anything else is refused (DNS-rebinding defence)
       - ALLOWED_HOSTS=localhost,127.0.0.1,tower,tower.local   # add your server's LAN IP
+      # - AUTH_TOKEN=change-me      # optional sign-in for the UI; scripts send "Authorization: Bearer <token>"
       # - TRUSTED_PROXY=true        # only behind your own reverse proxy (trusts X-Forwarded-Host)
     volumes:
       - /mnt/user/data/media/audiobooks:/library:rw

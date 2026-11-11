@@ -201,6 +201,7 @@ docker exec audiobind audiobind health             # exit 0 while the daemon is 
 | `WEB_PORT` | `8080` | Status page port |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host names / IPs the web UI answers to (ports are ignored). **Add the LAN IP and hostname you browse to**, e.g. `192.168.1.10,tower,tower.local`; any other `Host` gets a 403. This blocks DNS-rebinding attacks from websites you visit |
 | `TRUSTED_PROXY` | `false` | `true` only behind your own reverse proxy: `X-Forwarded-Host` is then checked against `ALLOWED_HOSTS` instead of `Host` |
+| `AUTH_TOKEN` | *(unset)* | Optional password for the web UI and API. When set, the UI shows a sign-in page (session cookie, 7 days, `HttpOnly`, `SameSite=Strict`) and scripts send `Authorization: Bearer <token>` to `/api/...`. Five wrong tokens from one IP lock it out for 10 minutes. Unset = no login, as before |
 | `NOTIFY_URL` | | Optional webhook for a per-scan summary |
 | `PUID` / `PGID` | `99` / `100` | Ownership of written files |
 

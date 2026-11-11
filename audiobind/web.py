@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from . import __version__, matching
+from . import auth as auth_mod
 from . import overrides as overrides_mod
 from . import series as series_mod
 from .advice import explain
@@ -1113,8 +1114,12 @@ function abScanIdle() {
   if (btn && btn.disabled) { btn.disabled = false; btn.textContent = 'Scan now'; }
   if (re) re.disabled = false;
 }
+function abAuthed(r) {
+  if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+  return r.json();
+}
 function tick() {
-  fetch('/api/state').then(r => r.json()).then(d => {
+  fetch('/api/state').then(abAuthed).then(d => {
     abScanFinishedToast(d);
     const bar = document.getElementById('ab-qfill');
     if (d.scan && d.scan.scanning) { abScanUI(d.scan); return; }
@@ -1137,7 +1142,7 @@ document.addEventListener('DOMContentLoaded', () => {
 setInterval(tick, 2000);
 let lastCounts = null;
 function watch() {
-  fetch('/api/state').then(r => r.json()).then(d => {
+  fetch('/api/state').then(abAuthed).then(d => {
     // rev moves even when a re-check ends in the same status, so a manual
     // Retry now / Use this ASIN always gets its fresh detail rendered
     const sig = JSON.stringify(d.counts) + '|' + d.running + '|' + (d.rev || '') + '|' + (d.scan && d.scan.scanning ? 'S' : '');
@@ -1183,7 +1188,7 @@ PAGE = """<!doctype html>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
-    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
 
@@ -1295,7 +1300,7 @@ SETTINGS_PAGE = """<!doctype html>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
-    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
 <main class="ab-main">
@@ -1320,6 +1325,48 @@ SETTINGS_PAGE = """<!doctype html>
 {settings_script}
 </script>
 </body></html>"""
+
+LOGIN_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audiobind &middot; Sign in</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#5e6ad2">
+<style>{styles}
+body{{align-items:center;justify-content:center;overflow:auto}}
+.ab-login{{width:340px;max-width:calc(100vw - 32px);background:var(--ab-panel);
+  border:1px solid var(--ab-border);border-radius:12px;padding:28px 24px}}
+.ab-login h1{{font-size:17px;font-weight:600;margin-bottom:4px}}
+.ab-login p{{color:var(--ab-text3);font-size:12.5px;margin-bottom:18px}}
+.ab-login label{{display:block;color:var(--ab-text3);font-size:11.5px;margin-bottom:6px}}
+.ab-login .ab-in{{width:100%;margin-bottom:14px}}
+.ab-login .ab-save{{width:100%;justify-content:center}}
+.ab-login .ab-err{{color:var(--ab-red);font-size:12.5px;margin:-4px 0 12px}}
+</style></head><body>
+<main class="ab-login">
+  <h1>Audiobind</h1>
+  <p>This server asks for its access token.</p>
+  <form method="post" action="/login">
+    <label for="ab-token">Access token</label>
+    <input class="ab-in" id="ab-token" name="token" type="password"
+           autocomplete="current-password" autofocus required>
+    {error}
+    <button class="ab-save" type="submit">Sign in</button>
+  </form>
+</main>
+</body></html>"""
+
+
+def render_login(error: str = "") -> str:
+    err = f'<div class="ab-err" role="alert">{_html(error)}</div>' if error else ""
+    return LOGIN_PAGE.format(styles=STYLES, error=err)
+
+
+def signout_html() -> str:
+    if not CONFIG.auth_token:
+        return ""
+    return '<br><a href="/logout" style="color:var(--ab-text3)">sign out</a>'
+
 
 SETTINGS_SCRIPT = """
 function abToastSettings(text) {
@@ -1509,7 +1556,7 @@ SERIES_PAGE = """<!doctype html>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
-    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
 <main class="ab-main">
@@ -2531,6 +2578,7 @@ def render_series(state) -> str:
             "what you're missing.</div>"
         )
     return SERIES_PAGE.format(
+        signout=signout_html(),
         styles=STYLES,
         version=__version__,
         rail_total=sum(counts.values()),
@@ -2659,6 +2707,7 @@ def render_settings(state) -> str:
 
     rc = rail_counts(state, counts)
     return SETTINGS_PAGE.format(
+        signout=signout_html(),
         styles=STYLES,
         version=__version__,
         lib_active="",
@@ -3255,6 +3304,7 @@ def render(state, status: str = "", query: str = "") -> str:
     )
 
     return PAGE.format(
+        signout=signout_html(),
         styles=STYLES,
         script=SCRIPT,
         version=__version__,
@@ -3397,10 +3447,12 @@ class Handler(BaseHTTPRequestHandler):
     state = None
     server_version = f"audiobind/{__version__}"
 
-    def _send(self, code: int, body: bytes, content_type: str) -> None:
+    def _send(self, code: int, body: bytes, content_type: str, headers: dict | None = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -3438,12 +3490,146 @@ class Handler(BaseHTTPRequestHandler):
         self._send(403, message.encode("utf-8", "replace"), "text/plain; charset=utf-8")
         return True
 
+    # ---- optional AUTH_TOKEN login -------------------------------------------------------
+
+    #: reachable without signing in: the login page itself and the icon it shows
+    AUTH_EXEMPT = ("/login", "/logout", "/favicon.svg", "/icon.svg")
+
+    def _client_ip(self) -> str:
+        """Source address for the failed-login limit (the proxy's last hop when trusted)."""
+        if CONFIG.trusted_proxy:
+            hops = [h.strip() for h in (self.headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
+            if hops:
+                return hops[-1][:64]
+        return self.client_address[0] if self.client_address else "?"
+
+    def _auth_status(self, path: str) -> int:
+        """0 when the request may proceed, else 401 (not signed in) or 429 (locked out)."""
+        if not CONFIG.auth_token or path.rstrip("/") in self.AUTH_EXEMPT:
+            return 0
+        sid = auth_mod.cookie_value(self.headers.get("Cookie"))
+        if sid and auth_mod.SESSIONS.valid(sid):
+            return 0
+        header = self.headers.get("Authorization") or ""
+        scheme, _, given = header.partition(" ")
+        if path.startswith("/api/") and scheme.lower() == "bearer" and given.strip():
+            ip = self._client_ip()
+            if auth_mod.LIMITER.blocked(ip):
+                return 429
+            if auth_mod.token_matches(given.strip(), CONFIG.auth_token):
+                return 0
+            auth_mod.LIMITER.record(ip)
+            logging.getLogger("audiobind").warning("wrong API token from %s", ip)
+        return 401
+
+    def _auth_refused(self, path: str) -> bool:
+        code = self._auth_status(path)
+        if code == 0:
+            return False
+        if code == 429:
+            wait = auth_mod.LIMITER.retry_after(self._client_ip())
+            self._send(
+                429,
+                b'{"error":"too many wrong tokens - try again later"}',
+                "application/json",
+                {"Retry-After": str(wait)},
+            )
+        elif self.command == "GET" and not path.startswith(("/api/", "/cover")):
+            self._send(303, b"", "text/plain", {"Location": "/login"})
+        else:
+            self._send(
+                401,
+                b'{"error":"authentication required"}',
+                "application/json",
+                {"WWW-Authenticate": 'Bearer realm="audiobind"'},
+            )
+        return True
+
+    def _login_body(self) -> tuple[str, bool]:
+        """(token, wants_json) from a form or JSON login POST."""
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length < 0 or length > 4096:
+            raise ValueError("bad length")
+        raw = self.rfile.read(length) if length else b""
+        if ctype == "application/json":
+            payload = json.loads(raw or b"{}")
+            if not isinstance(payload, dict):
+                raise ValueError("not an object")
+            return str(payload.get("token", "")), True
+        form = parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True)
+        return (form.get("token") or [""])[0], False
+
+    def _handle_login(self) -> None:
+        refusal = self._origin_refusal()
+        if refusal is not None:
+            code, message = refusal
+            self._send(code, json.dumps({"error": message}).encode(), "application/json")
+            return
+        try:
+            given, wants_json = self._login_body()
+        except (ValueError, UnicodeDecodeError):
+            self._send(400, b'{"error":"bad request"}', "application/json")
+            return
+        if not CONFIG.auth_token:
+            self._send(303, b"", "text/plain", {"Location": "/"})
+            return
+        ip = self._client_ip()
+
+        def reply(code: int, message: str, headers: dict | None = None) -> None:
+            if wants_json:
+                self._send(code, json.dumps({"error": message}).encode(), "application/json", headers)
+            else:
+                self._send(code, render_login(message).encode(), "text/html; charset=utf-8", headers)
+
+        if auth_mod.LIMITER.blocked(ip):
+            wait = auth_mod.LIMITER.retry_after(ip)
+            reply(
+                429,
+                f"Too many wrong tokens. Try again in {max(1, (wait + 59) // 60)} minute(s).",
+                {"Retry-After": str(wait)},
+            )
+            return
+        if not auth_mod.token_matches(given, CONFIG.auth_token):
+            auth_mod.LIMITER.record(ip)
+            logging.getLogger("audiobind").warning("failed sign-in from %s", ip)
+            reply(401, "That token is not right.")
+            return
+        auth_mod.LIMITER.reset(ip)
+        cookie = {"Set-Cookie": auth_mod.session_cookie(auth_mod.SESSIONS.create())}
+        logging.getLogger("audiobind").info("signed in from %s", ip)
+        if wants_json:
+            self._send(200, b'{"ok":true}', "application/json", cookie)
+        else:
+            self._send(303, b"", "text/plain", {**cookie, "Location": "/"})
+
+    def _handle_logout(self) -> None:
+        sid = auth_mod.cookie_value(self.headers.get("Cookie"))
+        if sid:
+            auth_mod.SESSIONS.revoke(sid)
+        target = "/login" if CONFIG.auth_token else "/"
+        self._send(303, b"", "text/plain", {"Set-Cookie": auth_mod.expired_cookie(), "Location": target})
+
     def do_GET(self):  # noqa: N802
         if self._host_refused():
             return
         path, _, query = self.path.partition("?")
+        if self._auth_refused(path):
+            return
         params = {k: v[0] for k, v in parse_qs(query, keep_blank_values=True).items()}
         status = params.get("status", "")
+        if path.rstrip("/") == "/login":
+            if not CONFIG.auth_token:
+                self._send(303, b"", "text/plain", {"Location": "/"})
+            else:
+                self._send(200, render_login().encode(), "text/html; charset=utf-8")
+            return
+        if path.rstrip("/") == "/logout":
+            self._handle_logout()
+            return
         if path in ("/favicon.svg", "/icon.svg"):
             icon = ICON_PATH
             if icon.exists():
@@ -3922,6 +4108,10 @@ class Handler(BaseHTTPRequestHandler):
         ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         if ctype != "application/json":
             return 415, "requests must be sent as application/json"
+        return self._origin_refusal()
+
+    def _origin_refusal(self) -> tuple[int, str] | None:
+        """Origin/Referer, when sent, must name this server's own host."""
         source = self.headers.get("Origin")
         if source is None:
             source = self.headers.get("Referer")
@@ -3936,6 +4126,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         if self._host_refused():
+            return
+        path = self.path.partition("?")[0].rstrip("/")
+        if path == "/login":
+            self._handle_login()
+            return
+        if path == "/logout":
+            self._handle_logout()
+            return
+        if self._auth_refused(path):
             return
         refusal = self._post_refusal()
         if refusal is not None:
