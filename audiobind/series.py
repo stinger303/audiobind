@@ -30,6 +30,7 @@ from pathlib import Path
 
 from . import catalog
 from .config import CONFIG
+from .state import INGEST_KEY_PREFIX, SOURCE_INGEST, key_source
 from .units import split_author_title
 from .util import SERIES_DIR_RE, clean, norm, sim
 
@@ -98,6 +99,9 @@ def _from_output(output: str) -> tuple[str, str]:
 
 def _from_folder(rel_path: str, author: str, title: str) -> tuple[str, str]:
     """``Lee Child - Jack Reacher/14 - 61 Hours`` -> ('Jack Reacher', '14'). Conservative."""
+    # an ingest row's key carries an "ingest:" prefix that is not part of any folder name
+    if key_source(rel_path) == SOURCE_INGEST:
+        rel_path = rel_path[len(INGEST_KEY_PREFIX):]
     segments = [s for s in Path(rel_path.split("#", 1)[0]).parts if s]
     if len(segments) < 2:
         return "", ""
