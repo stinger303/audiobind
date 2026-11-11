@@ -35,7 +35,7 @@ from .control import CONTROL
 from .covers import resolve as resolve_cover
 from .covers import valid_asin
 from .pipeline import process_unit
-from .state import LOCKABLE_FIELDS
+from .state import LOCKABLE_FIELDS, SOURCE_INGEST, key_source
 from .units import files_under, find_unit, foreign_audio, owned_paths
 
 _log = logging.getLogger("audiobind").info
@@ -460,6 +460,9 @@ tr.drow[hidden] td{padding:0}
   color:#12a89b;background:#10302c;border:1px solid #1b4a44;border-radius:999px;
   padding:1px 7px;margin-left:8px;vertical-align:1px;}
 .ab-custom[hidden]{display:none;}
+.ab-ingest-badge{font-size:10px;font-weight:700;letter-spacing:.4px;white-space:nowrap;
+  color:#b39af2;background:#231c3a;border:1px solid #3b2f63;border-radius:999px;
+  padding:1px 7px;margin-left:8px;vertical-align:1px;}
 button.ab-lock{margin-left:auto;height:auto;flex:none;display:inline-flex;align-items:center;gap:6px;
   font:600 10.5px var(--ab-sans);letter-spacing:.4px;text-transform:none;
   padding:3px 9px;border-radius:10px;border:none;cursor:pointer;}
@@ -656,6 +659,15 @@ function unitDelete(btn) {
 }
 let abDeleteTrigger = null;
 function abOpenDeleteModal(path, title, trigger) {
+  if (trigger && trigger.dataset.source === 'ingest') {
+    // a seeding torrent is never deleted: no "permanently deletes" modal, just the server's answer
+    fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
+                       body: JSON.stringify({action:'delete', path: path})})
+      .then(r => r.json())
+      .then(result => abToast(result.error || 'delete is for library sources; remove the torrent in qBittorrent'))
+      .catch(() => abToast('delete is for library sources; remove the torrent in qBittorrent'));
+    return;
+  }
   abDeleteTrigger = trigger;
   document.getElementById('ab-modal-title').textContent = 'Delete this book?';
   document.getElementById('ab-modal-warning').textContent =
@@ -1816,14 +1828,28 @@ def lock_chip(field: str, locked: bool) -> str:
     )
 
 
+def is_ingest_row(unit) -> bool:
+    """A row whose source is a torrent in INGEST_DIR (the key prefix says so even if the column lags)."""
+    return getattr(unit, "source", "") == SOURCE_INGEST or key_source(unit.path) == SOURCE_INGEST
+
+
+#: on the table row and the shelf card: an ingest book never blurs with a library one
+INGEST_BADGE = (
+    '<span class="ab-ingest-badge" title="From the ingest folder: a downloaded torrent that is '
+    'still seeding. Audiobind only reads it.">&#8675; ingest</span>'
+)
+
+
 def kebab_menu(unit) -> str:
     """The visible row menu that replaced the hover-only buttons."""
     path = _attr(unit.path)
     title = _attr(unit.title or unit.path)
+    # the delete item reads this: an ingest row's Delete asks the server, which refuses
+    source_attr = f' data-source="{SOURCE_INGEST}"' if is_ingest_row(unit) else ""
     return (
         '<div class="ab-kebabwrap" onclick="event.stopPropagation()">'
         f'<button type="button" class="ab-kebab" aria-haspopup="menu" aria-expanded="false" '
-        f'aria-label="Actions for {title}" title="Actions" data-path="{path}" data-title="{title}" '
+        f'aria-label="Actions for {title}" title="Actions" data-path="{path}" data-title="{title}"{source_attr} '
         'onclick="abMenuToggle(this)">&#8942;</button>'
         '<div class="ab-menu" role="menu" hidden>'
         '<button type="button" role="menuitem" data-act="open" onclick="abMenuPick(this)">Open details</button>'
@@ -2233,7 +2259,7 @@ def _render_shelf(problem_units: list) -> str:
                 '<div class="ab-problem" data-path="{dp}" data-status="{st}">'
                 '<div class="ab-problem-head">{cov}'
                 '<div class="ab-pbook">'
-                '<span class="ab-ptitle">{ti}</span>'
+                '<span class="ab-ptitle">{ti}{shelf_src_badge}</span>'
                 '<span class="ab-pauthor">{au}</span></div>'
                 '<span class="pill {st}"><span class="pdot"></span>{st}</span></div>'
                 '<div class="ab-preason {rc}">{wh}</div>'
@@ -2242,6 +2268,7 @@ def _render_shelf(problem_units: list) -> str:
                 dp=_attr(unit.path),
                 cov=cover_html(unit),
                 ti=_html(unit.title or unit.path),
+                shelf_src_badge=INGEST_BADGE if is_ingest_row(unit) else "",
                 au=_html(unit.author or ""),
                 st=unit.status,
                 rc=reason_class,
@@ -2813,6 +2840,7 @@ def render(state, status: str = "", query: str = "") -> str:
     asin_pins = state.all_asin_overrides()
 
     def detail_panel(unit) -> str:
+        ingest_row = is_ingest_row(unit)
         try:
             data = json.loads(unit.detail or "{}")
         except ValueError:
@@ -2840,7 +2868,13 @@ def render(state, status: str = "", query: str = "") -> str:
             "{sz}{hr:.2f} hours of audio".format(sz=size, hr=src.get("hours") or unit.hours),
             ("Audio format: " + codecs if codecs else "Audio format not detected in the files")
             + (" &middot; {} ch".format(", ".join(src.get("channels") or [])) if src.get("channels") else ""),
-            f'<span class="dim"><code>{_html(unit.path)}</code></span>',
+            (
+                # the container path of the torrent folder, which Audiobind only ever reads
+                "Ingest source (read-only, still seeding): "
+                f'<span class="dim"><code>{_html(ingest_mod.source_dir(unit.path))}</code></span>'
+                if ingest_row
+                else f'<span class="dim"><code>{_html(unit.path)}</code></span>'
+            ),
         ]
         if out:
             after = [
@@ -3042,11 +3076,16 @@ def render(state, status: str = "", query: str = "") -> str:
             "Passes your confidence setting &rarr; converts automatically. Still "
             "too unsure &rarr; this panel re-opens with the reason.</span>" + "</div>"
         )
+        delete_title = (
+            _attr(ingest_mod.DELETE_REFUSAL[:1].upper() + ingest_mod.DELETE_REFUSAL[1:] + ".")
+            if ingest_row
+            else "Permanently delete this book's source folder and its published files. Cannot be undone."
+        )
+        delete_source_attr = f' data-source="{SOURCE_INGEST}"' if ingest_row else ""
         delete_act = (
             '<div class="acts">'
-            '<button class="btn danger" title="Permanently delete this book\'s source folder '
-            'and its published files. Cannot be undone." onclick="unitDelete(this)" '
-            f'data-path="{_attr(unit.path)}" data-title="{_attr(unit.title or unit.path)}" '
+            f'<button class="btn danger" title="{delete_title}" onclick="unitDelete(this)" '
+            f'data-path="{_attr(unit.path)}" data-title="{_attr(unit.title or unit.path)}"{delete_source_attr} '
             'style="margin-left:auto">Delete</button></div>'
         )
         reopen_attr = (
@@ -3102,12 +3141,14 @@ def render(state, status: str = "", query: str = "") -> str:
         )
         match_attr = f' title="{_attr(match_title)}"' if match_title else ""
         age = rel_age(unit.updated_at, now)
+        row_src_badge = INGEST_BADGE if is_ingest_row(unit) else ""
         # f-strings only: titles and paths come from folder names and the catalog
         return (
             f'<tr class="urow" onclick="toggleRow(this)" data-path="{_attr(unit.path)}" '
             f'data-search="{_attr(haystack)}" {data}>'
             f'<td class="ab-covcell">{cover_html(unit)}</td>'
-            f'<td class="ab-bookcell"><span class="ab-btitle">{_html(unit.title or unit.path)}{badge}</span>'
+            f'<td class="ab-bookcell"><span class="ab-btitle">{_html(unit.title or unit.path)}{badge}'
+            f"{row_src_badge}</span>"
             f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span>{reason_html}</td>'
             f"<td>{status_dot(unit.status, unit.updated_at, now)}</td>"
             f'<td class="ab-hidemd ab-match"{match_attr}>{match_html}</td>'
@@ -3339,6 +3380,9 @@ def snapshot(state) -> dict:
         "heartbeat_age_seconds": state.heartbeat_age(),
         "library_root": str(CONFIG.library_root),
         "output_root": str(CONFIG.output_root),
+        # "" when INGEST_DIR is unset; ingest_enabled is False also when it was missing at start
+        "ingest_dir": ingest_mod.configured_dir(),
+        "ingest_enabled": ingest_mod.ingest_root() is not None,
         "auto_convert": effective_val("auto_convert"),
         "dry_run": CONTROL.dry_run,
         "settings": {sk: setting_effective(sk) for sk in SETTING_KEYS},
@@ -3403,6 +3447,8 @@ class Handler(BaseHTTPRequestHandler):
                     "src_mb": u.src_mb,
                     "out_mb": u.out_mb,
                     "chapters": u.chapters,
+                    # "library" or "ingest" (additive, 0.16.0)
+                    "source": u.source or key_source(u.path),
                 }
                 for u in units
             ]
@@ -3524,6 +3570,17 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if action == "delete":
+            # an ingest row's files are a torrent that is still seeding: refused before anything
+            # else, confirmed or not, so no path guard below ever sees an ingest key
+            stored = self.state.get(rel)
+            if ingest_mod.is_ingest(rel) or (stored is not None and stored.source == SOURCE_INGEST):
+                logging.getLogger("audiobind").info("delete refused for ingest row %s", rel)
+                self._send(
+                    409,
+                    json.dumps({"error": ingest_mod.DELETE_REFUSAL, "source": SOURCE_INGEST}).encode(),
+                    "application/json",
+                )
+                return
             if not payload.get("confirm"):
                 self._send(400, b'{"error":"confirmation required"}', "application/json")
                 return
