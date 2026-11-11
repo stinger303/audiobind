@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS units (
     detail      TEXT DEFAULT '',
     asin_override TEXT DEFAULT '',
     overrides   TEXT DEFAULT '',
-    alternates  TEXT DEFAULT ''
+    alternates  TEXT DEFAULT '',
+    source      TEXT DEFAULT 'library'
 );
 CREATE TABLE IF NOT EXISTS runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,6 +70,19 @@ CREATE TABLE IF NOT EXISTS field_locks (
 #: back to Audible's catalog.
 LOCKABLE_FIELDS = ("title", "authors", "narrator", "series", "series_index", "asin")
 
+#: where a unit's source files live. A library row's ``path`` is relative to LIBRARY_ROOT
+#: (unchanged since 0.1); an ingest row's is ``ingest:`` + its path relative to INGEST_DIR.
+#: The prefix keeps the two namespaces apart in the one primary key: the same folder name
+#: in the library and in the torrent folder are two different rows, never one.
+SOURCE_LIBRARY = "library"
+SOURCE_INGEST = "ingest"
+INGEST_KEY_PREFIX = "ingest:"
+
+
+def key_source(path: str) -> str:
+    """The source a state key belongs to - read from the key itself, so it can never drift."""
+    return SOURCE_INGEST if str(path).startswith(INGEST_KEY_PREFIX) else SOURCE_LIBRARY
+
 
 @dataclass
 class UnitState:
@@ -91,6 +105,9 @@ class UnitState:
     # set_overrides()/get_overrides(). save() never writes that column, so a field here
     # would only be a stale copy that a re-save could be mistaken for
     alternates: str = ""
+    #: "library" or "ingest". Informational on the way in: save() always stores the source
+    #: the key says (key_source), so a row can never claim a source its path does not have
+    source: str = SOURCE_LIBRARY
 
 
 class State:
@@ -120,6 +137,8 @@ class State:
             ("asin_override", "TEXT DEFAULT ''"),
             ("overrides", "TEXT DEFAULT ''"),
             ("alternates", "TEXT DEFAULT ''"),
+            # every row that predates ingest came from the library, which is what the default says
+            ("source", "TEXT DEFAULT 'library'"),
         ):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE units ADD COLUMN {name} {ddl}")
@@ -166,15 +185,15 @@ class State:
         self.connection.execute(
             """INSERT INTO units (path, status, confidence, asin, title, author, hours, files,
                                   output, note, updated_at, src_mb, out_mb, chapters, detail,
-                                  alternates)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                  alternates, source)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(path) DO UPDATE SET
                  status=excluded.status, confidence=excluded.confidence, asin=excluded.asin,
                  title=excluded.title, author=excluded.author, hours=excluded.hours,
                  files=excluded.files, output=excluded.output, note=excluded.note,
                  updated_at=excluded.updated_at, src_mb=excluded.src_mb, out_mb=excluded.out_mb,
                  chapters=excluded.chapters, detail=excluded.detail,
-                 alternates=excluded.alternates""",
+                 alternates=excluded.alternates, source=excluded.source""",
             (
                 state.path,
                 state.status,
@@ -192,6 +211,7 @@ class State:
                 state.chapters,
                 state.detail,
                 state.alternates,
+                key_source(state.path),
             ),
         )
         self.connection.commit()
@@ -292,9 +312,9 @@ class State:
     def set_asin_override(self, path: str, asin: str) -> None:
         with self._lock:
             self.connection.execute(
-                "INSERT INTO units (path, status, asin_override, updated_at) VALUES (?,?,?,?) "
+                "INSERT INTO units (path, status, asin_override, updated_at, source) VALUES (?,?,?,?,?) "
                 "ON CONFLICT(path) DO UPDATE SET asin_override = excluded.asin_override",
-                (path, "review", asin, time.time()),
+                (path, "review", asin, time.time(), key_source(path)),
             )
 
     def get_asin_override(self, path: str) -> str:
@@ -309,9 +329,9 @@ class State:
         """Operator-entered metadata corrections (title/author/series/...)."""
         with self._lock:
             self.connection.execute(
-                "INSERT INTO units (path, status, overrides, updated_at) VALUES (?,?,?,?) "
+                "INSERT INTO units (path, status, overrides, updated_at, source) VALUES (?,?,?,?,?) "
                 "ON CONFLICT(path) DO UPDATE SET overrides = excluded.overrides",
-                (path, "review", json.dumps(data), time.time()),
+                (path, "review", json.dumps(data), time.time(), key_source(path)),
             )
 
     def get_overrides(self, path: str) -> dict:
@@ -330,9 +350,9 @@ class State:
         """Other Audible candidates seen while matching this unit (top few editions)."""
         with self._lock:
             self.connection.execute(
-                "INSERT INTO units (path, status, alternates, updated_at) VALUES (?,?,?,?) "
+                "INSERT INTO units (path, status, alternates, updated_at, source) VALUES (?,?,?,?,?) "
                 "ON CONFLICT(path) DO UPDATE SET alternates = excluded.alternates",
-                (path, "review", json.dumps(data or []), time.time()),
+                (path, "review", json.dumps(data or []), time.time(), key_source(path)),
             )
 
     def get_alternates(self, path: str) -> list[dict]:
