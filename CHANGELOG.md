@@ -3,9 +3,149 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.16.0-dev1] - 2026-11-10
+
+### Added
+- **Ingest - convert finished torrent downloads.** A new setting, `INGEST_DIR`, points
+  Audiobind at a folder of finished downloads (mount it read-only, for example as
+  `/ingest`). Each folder directly inside it is treated as one book. It is matched,
+  converted and filed into your output library exactly like a book from your library:
+  the same confidence rules, the same runtime check, the same Review and Held decisions,
+  the same dry run. Disc and part folders inside a download are combined into one book,
+  the same as in your library. Loose files sitting in the folder itself and hidden
+  folders are ignored. Audiobind only ever reads this folder. It never writes, moves or
+  deletes anything there, so the torrent keeps seeding. Leave `INGEST_DIR` empty (the
+  default) and nothing changes.
+- Books from the ingest folder show a **⇣ ingest** badge, in the same table with the
+  same columns as your library books. Type "ingest" in the search box to see only them.
+  One that needs a decision lands on the Needs attention shelf with the usual reason and
+  buttons. Its details show the folder it came from, for example
+  `/ingest/Andy Weir - Project Hail Mary [MAM]`.
+- `/api/units` now says where each book came from (`"source": "library"` or
+  `"ingest"`). `/api/state` adds `ingest_dir` and `ingest_enabled`.
+
+### Changed
+- **Delete won't touch a download.** Delete on an ingest book is refused with "delete is
+  for library sources; remove the torrent in qBittorrent". The files belong to a torrent
+  that is still seeding. Nothing is deleted, not even the published copy. Library books
+  delete exactly as before.
+- If `INGEST_DIR` is set but the folder doesn't exist when Audiobind starts, a warning
+  is logged and ingest stays off until the next restart. Your library keeps converting.
+  The same happens if the folder is, or sits inside, your output or library folder.
+- If a download is removed between scans, its row stays as it was. If it is removed
+  while Audiobind is reading it, that one book is skipped and the rest of the scan
+  carries on.
+- The database gains a `source` column. It is added automatically the first time this
+  version starts, and every existing book is marked as a library book.
+
+### Fixed
+- Nothing in this build. With `INGEST_DIR` unset, Audiobind behaves exactly as
+  0.15.0-dev4 did.
+
 ## [0.15.0] - 2026-11-10
 
-## [Unreleased]
+### Fixed
+- The library table no longer runs past the right edge of the page: the Match column
+  now takes whatever room is left (and shortens with "..." earlier, full text on
+  hover), cell padding is tighter, and the actions column has a small fixed width, so
+  the kebab menus are never cut off, down to a 1280px-wide window.
+- On the Series page, clicking a series name now jumps to its missing list, the same
+  as "Show the N missing". The name is a real link: keyboard focusable, underlined on
+  hover.
+
+### Added
+- **Series - see what you're missing.** A new **Series** tab sits under Library in the
+  side rail. Its amber number is how many books are missing from your series. The page
+  shows a card for every series where you have two or more books, for example "Jack
+  Reacher - Lee Child - 18 of 31 owned - 13 MISSING". Each card has a strip of your
+  covers in series order, and dashed amber tiles for the numbers you don't have. Below
+  the cards, each series lists what's missing: "Missing from Jack Reacher - 13 books",
+  with the cover, title, length and ASIN of each one. Every missing book has two
+  buttons. **I have this** is for a book you own without a rip: it stops counting as
+  missing, and you can undo it. **Copy Audible link** copies the book's Audible page so
+  you can go and get it.
+- Only numbered books count. Unnumbered novellas, "between the numbers" entries like
+  #23.6, and box sets are left out of the missing count. They're tucked behind a "Show
+  the not-numbered entries" toggle.
+- The full series list comes from Audible, at most once a day per series. It's fetched
+  in the background, so opening a page never waits on Audible. If Audible can't be
+  reached, or doesn't know the series, the card shows just how many books you have and
+  "fetching series size…". It never guesses a total.
+- **In every book's details**, a book in one of those series now gets a "See what
+  you're missing" block. It says where you are ("Jack Reacher - you're 18 of 31") and
+  what's next ("13 books missing from this series, starting with #19 Personal"), with a
+  mini cover strip. The button takes you to that series' card on the Series page and
+  briefly highlights it.
+- The series a book belongs to now comes from your metadata overrides first. After that
+  it comes from the catalog match, then from where the book was filed in your output
+  library (`Author/Series/14 - Title`), and finally from the source folder name. Books
+  recorded before this version start carrying the catalog series on their next
+  re-check. Until then, the output path and folder name fill in.
+- `/api/series` returns the same information as JSON.
+- Covers for books you don't have yet load through the app's own cover proxy, like every
+  other cover. `/cover?asin=` now also fetches an ASIN that appears in a series list
+  Audible returned. Nothing else changes: https only, Amazon/Audible image hosts only, and
+  a failed cover still isn't retried for six hours. Any other ASIN still gets nothing.
+- **"Why this match?" - see the evidence, not just the score.** A book's detail panel
+  now shows why the app picked its Audible match: the match card with its score, then
+  four bars - how closely the title and author agree with your folder, how far your
+  files' runtime is from the catalog's (green-blue inside your runtime tolerance, amber
+  outside it, with both lengths and the tolerance spelled out), and the catalog language
+  (amber with the -15% penalty when it isn't English). Below that, every runner-up the
+  search scored is listed with its score and a plain reason it lost - "a different book
+  by the same author", "Right title, wrong language", "your files are 65% shorter, over
+  the 25% tolerance" - and its own Use this edition button. Nothing about how books are
+  matched or graded has changed; the panel only shows numbers the matcher already worked
+  out. Books recorded before this version keep the old panel until their next re-check
+  (Retry now, or the next scan that looks at them).
+- **Metadata you edit now locks (0.15.0-dev3).** Saving a title, author, narrator, series
+  or series index in a book's Metadata box locks that field. So does setting an ASIN with
+  Use this ASIN, Edit ASIN or Use this edition. A locked field shows a green
+  "🔒 Locked by you" chip. Rescans, Re-check all, the new per-book re-check and re-rips
+  never overwrite it. One click on the chip unlocks it, and the field follows Audible's
+  catalog again. Unlocking the ASIN clears the ASIN you set, so the next re-check matches
+  the book on its own. Emptying a box and saving also unlocks that field. Locks are kept
+  in the database, so they survive restarts, rescans and upgrades. Any correction you
+  typed before this version starts out locked.
+- **Every row has a visible ⋮ menu.** It has Open details, Edit ASIN, **Re-check against
+  Audible** and Delete…. Re-check against Audible is new: it is Re-check all for a single
+  book. It asks Audible about that book again and refreshes the match, the other editions
+  and the confidence. It keeps an ASIN you set, and auto-convert rules still apply. The
+  menu opens with a click or the keyboard (Enter, Space or ↓, then the arrow keys). It
+  closes on Escape or a click anywhere else. Delete… still asks for confirmation first.
+  Edit ASIN works as before. It's also available to scripts as `POST /api/unit` with
+  `{"action": "recheck"}`.
+
+### Changed
+- **The library table says what it means (queue hygiene, 0.15.0-dev3).** Each row's
+  status is now one labeled dot, never color alone: Converted (green), Held (blue),
+  Review (amber), Failed (red). The word sits beside the dot, followed by how long ago:
+  "Converted 2d ago", "Held 5h ago", "Review waiting 3h". Only Review pulses; finished
+  states hold still. Ages read like "5h ago" for the first 7 days, then show the date
+  (for example "Oct 28").
+- The Tier column is now **Match**. It reads "Jack Reacher #14 · High Confidence", or
+  "Current ASIN · Low Confidence" for a book whose ASIN you set. Confidence is always
+  spelled out (High / Medium / Low Confidence). Runtime is now **Length** and reads
+  "13.18 h". Numbers line up in tabular figures, and no length, match or status ever wraps
+  onto a second line. The Status and Match columns are a little wider so each one fits on
+  a single line. The table has the same columns as before.
+- An unknown value (no author, no length, no match, never scanned) now shows "—" instead
+  of a blank or "-".
+- Column headers are real buttons, so you can sort with the keyboard. Only the active
+  column shows an arrow.
+- The hover-only Retry now / Convert anyway / Edit ASIN strip on table rows is gone; the
+  ⋮ menu replaces it. Retry now and Convert anyway stay on the Needs attention cards and
+  in each book's details. Hovering a row still highlights it.
+- Plainer wording, and "locked" now means only a field you locked. "Pinned by you" in the
+  match evidence is now "you picked this edition". The toast now says "setting ASIN … -
+  re-checking…". A dead ASIN now reads "The ASIN you set (…) is not in Audible's catalog".
+  Collection advice now says "set it to one exact Audible entry".
+
+### Fixed
+
+The book currently encoding no longer lingers in the review/held/failed lists - only the ones waiting in the queue do.
 
 ### Fixed
 - The library table no longer runs past the right edge of the page: the Match column
