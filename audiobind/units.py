@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .state import INGEST_KEY_PREFIX, SOURCE_INGEST, SOURCE_LIBRARY
 from .util import COLLECTION_RE, NOISE_RE, PART_RE, SEQ_RE, SERIES_DIR_RE, STOPWORDS, clean, natkey, norm
 
 AUDIO_EXT = {".mp3", ".m4b", ".m4a", ".mp4", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma"}
@@ -40,7 +41,18 @@ class BookUnit:
     def rel(self) -> str:
         return self.rel_path
 
+    #: relative to the root this unit was discovered under: LIBRARY_ROOT for a library unit,
+    #: INGEST_DIR for an ingest unit (see ``source``)
     rel_path: str = ""
+    source: str = SOURCE_LIBRARY
+
+    @property
+    def state_key(self) -> str:
+        """This unit's row in the state DB. A library unit's key is its rel_path, exactly as
+        before ingest existed; an ingest unit's is prefixed so it never meets a library row."""
+        if self.source == SOURCE_INGEST:
+            return INGEST_KEY_PREFIX + self.rel_path
+        return self.rel_path
 
     @property
     def files(self) -> list[str]:
@@ -217,7 +229,30 @@ def foreign_audio(unit: BookUnit, paths: list[str]) -> list[str]:
 
 def discover_units(root: str | Path, ignore: list[str]) -> list[BookUnit]:
     root = Path(root)
-    units = group(discover(root, ignore))
+    return _name_units(group(discover(root, ignore)), root)
+
+
+def discover_ingest_units(root: str | Path, ignore: list[str]) -> list[BookUnit]:
+    """Book units inside the torrent folders directly under the ingest root. Read-only.
+
+    Every direct child folder holding audio (at any depth inside it) is a candidate book; the
+    library's own grouping then runs unchanged inside it, so ``Torrent/CD1`` + ``Torrent/CD2``
+    is one book, keyed on the torrent folder. Audio files sitting loose in the ingest root are
+    strays, not torrents, and are ignored, as are hidden folders and the IGNORE names. Nothing
+    here (or anywhere else) ever writes, moves or deletes under the ingest root.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        return []
+    leaves = [leaf for leaf in discover(root, ignore) if not leaf.get("loose")]
+    units = _name_units(group(leaves), root)
+    for unit in units:
+        unit.source = SOURCE_INGEST
+    return units
+
+
+def _name_units(units: list[BookUnit], root: Path) -> list[BookUnit]:
+    """Give each grouped unit its rel_path (unique under ``root``) and its name guesses."""
     seen: set[str] = set()
     for unit in units:
         rel_dir = os.path.relpath(unit.path, root)

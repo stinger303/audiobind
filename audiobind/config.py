@@ -60,6 +60,10 @@ class Config:
     #: host-side paths shown in the UI when the container paths are meaningless to the user
     host_library: str = ""
     host_output: str = ""
+    #: read-only folder of finished torrent downloads (still seeding). Each direct child folder
+    #: is a candidate book. Empty = the ingest feature is off. A plain string, never a Path:
+    #: Path("") is ".", which would quietly turn "off" into "the current directory"
+    ingest_dir: str = ""
 
     ignore_globs: list[str] = field(
         default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
@@ -86,6 +90,7 @@ class Config:
             nice=_env_int("NICE", 10),
             host_library=_env("HOST_LIBRARY", ""),
             host_output=_env("HOST_OUTPUT", ""),
+            ingest_dir=_env("INGEST_DIR", ""),
         )
 
     def ensure_dirs(self) -> None:
