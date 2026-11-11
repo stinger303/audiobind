@@ -78,6 +78,8 @@ class Config:
     allowed_hosts_set: bool = False
     #: honour X-Forwarded-Host (only behind a reverse proxy you control)
     trusted_proxy: bool = False
+    #: optional shared secret for the web UI and API; empty = no login (the old behaviour)
+    auth_token: str = ""
 
     ignore_globs: list[str] = field(
         default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
@@ -107,6 +109,7 @@ class Config:
             allowed_hosts=_env_list("ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS),
             allowed_hosts_set=bool(_env("ALLOWED_HOSTS", "")),
             trusted_proxy=_env_bool("TRUSTED_PROXY", False),
+            auth_token=_env("AUTH_TOKEN", ""),
         )
 
     def ensure_dirs(self) -> None:
