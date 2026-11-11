@@ -139,7 +139,7 @@ def convert_unit(audit: Audit, log=print):
         log(f"  [dry-run] would write {out_path}")
         return None  # nothing was written, so it is not "converted"
 
-    work_dir = CONFIG.work_dir / f"{abs(hash(unit.rel_path)) % 10**8:08x}"
+    work_dir = CONFIG.work_dir / f"{abs(hash(unit.state_key)) % 10**8:08x}"
     with CONVERT_LOCK:
         # checked again under the lock: a manual action and the daemon can both reach
         # this point for the same book, and only the first may encode it
@@ -147,7 +147,7 @@ def convert_unit(audit: Audit, log=print):
             audit.already_published = True
             log(f"  already published (while waiting for the encoder): {out_path}")
             return None
-        CONTROL.begin_unit(unit.rel_path)
+        CONTROL.begin_unit(unit.state_key)
         try:
             # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
             plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None)
@@ -235,7 +235,8 @@ def record(
     )
     state.save(
         UnitState(
-            path=audit.unit.rel_path,
+            # the state key: rel_path for a library book, "ingest:<rel_path>" for an ingest one
+            path=audit.unit.state_key,
             status=status,
             confidence=audit.confidence,
             asin=audit.match.asin,
@@ -287,7 +288,7 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
         says "dry run" rather than claiming the output already exists.
         """
         if audit.already_published:
-            prev = state.get(unit.rel_path)
+            prev = state.get(unit.state_key)
             if prev and prev.output:
                 # a re-check of an already-converted book must not downgrade it
                 log("  already published - row unchanged")
@@ -298,8 +299,8 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
             rec("ready", note="dry run - nothing written")
 
     started = time.time()
-    audit = audit_unit(unit, state.get_asin_override(unit.rel_path))
-    audit.overrides = state.get_overrides(unit.rel_path)
+    audit = audit_unit(unit, state.get_asin_override(unit.state_key))
+    audit.overrides = state.get_overrides(unit.state_key)
     if audit.overrides:
         audit.notes.append("operator metadata overrides applied")
     log(

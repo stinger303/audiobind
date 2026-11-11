@@ -51,7 +51,7 @@ def next_eligible(state, units: list[BookUnit], after_index: int, force: bool = 
         if force:
             return unit
         try:
-            previous = state.get(unit.rel_path)
+            previous = state.get(unit.state_key)
         except Exception:  # noqa: BLE001 - never break the caller
             return None
         if previous and already_decided(previous):
@@ -95,7 +95,7 @@ class Prefetcher:
                 self.skipped += 1
                 return False
             self._running = True
-            self._current = unit.rel_path
+            self._current = unit.state_key
             self.started += 1
             thread = threading.Thread(target=self._run, args=(state, unit), name="prefetch", daemon=True)
             self._thread = thread
@@ -114,10 +114,10 @@ class Prefetcher:
         try:
             self._prefetch(state, unit)
             self.completed += 1
-            log.debug("prefetched catalog data for %s", unit.rel_path)
+            log.debug("prefetched catalog data for %s", unit.state_key)
         except Exception as exc:  # noqa: BLE001 - must never reach the encode
             self.failed += 1
-            log.debug("prefetch for %s failed, the normal path will retry: %s", unit.rel_path, exc)
+            log.debug("prefetch for %s failed, the normal path will retry: %s", unit.state_key, exc)
         finally:
             with self._lock:
                 self._current = ""
@@ -126,7 +126,7 @@ class Prefetcher:
     @staticmethod
     def _prefetch(state, unit: BookUnit) -> None:
         """The actual lookups. Read-only against State; results land in the catalog cache."""
-        asin_override = state.get_asin_override(unit.rel_path)
+        asin_override = state.get_asin_override(unit.state_key)
         match = matching.match_unit(unit, asin_override)
         if not match.product:
             return

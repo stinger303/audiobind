@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from . import __version__, matching
+from . import ingest as ingest_mod
 from . import overrides as overrides_mod
 from . import series as series_mod
 from .advice import explain
@@ -3355,9 +3356,9 @@ def run_manual(state, unit, force: bool = False) -> None:
     try:
         process_unit(state=state, unit=unit, log=_log, force=force, manual=True)
     except Exception:  # noqa: BLE001 - a background thread has nobody to raise to
-        logging.getLogger("audiobind").exception("manual action for %s failed", unit.rel_path)
+        logging.getLogger("audiobind").exception("manual action for %s failed", unit.state_key)
     finally:
-        CONTROL.dequeue(unit.rel_path)
+        CONTROL.dequeue(unit.state_key)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -3690,8 +3691,16 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        unit = find_unit(CONFIG.library_root, CONFIG.ignore_globs, rel)
+        # library keys resolve under LIBRARY_ROOT exactly as before; "ingest:" keys under INGEST_DIR
+        unit = ingest_mod.find_any_unit(rel)
         if unit is None:
+            if ingest_mod.is_ingest(rel):
+                self._send(
+                    404,
+                    b'{"error":"this torrent folder is no longer in the ingest folder - nothing to re-check"}',
+                    "application/json",
+                )
+                return
             self._send(404, b'{"error":"no such unit"}', "application/json")
             return
 
