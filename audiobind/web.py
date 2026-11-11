@@ -691,7 +691,10 @@ function abModalConfirm() {
       if (result.source_kept) {
         abToast('Deleted from Audiobind and your output library. The source folder stays (' +
                 (result.source_kept_reason || 'your library is read-only') +
-                ') - it will reappear on the next scan unless you remove it from the share.');
+                ') - it will reappear on the next scan unless you remove it from the share.' +
+                (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : ''));
+      } else if (result.output === 'kept') {
+        abToast('Deleted. Output kept: ' + result.output_kept_reason + '.');
       }
       setTimeout(() => location.reload(), 500);
     })
@@ -3410,6 +3413,60 @@ def run_manual(state, unit, force: bool = False) -> None:
         CONTROL.dequeue(unit.rel_path)
 
 
+def removal_unsafe(target: Path, root: Path, kind: str) -> str:
+    """Re-check a planned delete target right before removing it ('' = go ahead).
+
+    ``target`` was built from a resolved parent plus its own name when the delete was
+    planned. If anything was swapped since - a parent folder replaced by a symlink, the
+    root re-pointed, a folder turned into a link - the path no longer means what was
+    checked, so the delete must stop.
+    """
+    try:
+        parent_now = target.parent.resolve(strict=True)
+    except OSError:
+        return "its parent folder disappeared"
+    if parent_now != target.parent:
+        return "a parent folder was replaced by a link"
+    try:
+        target.relative_to(root)
+    except ValueError:
+        return "it is no longer inside the allowed folder"
+    if target == root or target.parent == target:
+        return "it is the root folder itself"
+    if target.is_symlink() and kind != "link":
+        return "the folder was replaced by a link"
+    return ""
+
+
+def plan_target(p) -> tuple[Path, str]:
+    """(absolute path with a resolved parent, kind) - the leaf itself is never followed."""
+    raw = Path(p)
+    target = raw.parent.resolve() / raw.name
+    if target.is_symlink():
+        kind = "link"
+    elif target.is_dir():
+        kind = "dir"
+    else:
+        kind = "file"
+    return target, kind
+
+
+def output_sharers(state, rel: str, folder: Path) -> int:
+    """How many OTHER rows point their output into ``folder`` (a re-rip that reached
+    "already published" records the first book's output as its own)."""
+    count = 0
+    for other in state.all(None):
+        if other.path == rel or not other.output:
+            continue
+        try:
+            other_dir = Path(other.output).resolve().parent
+        except (OSError, RuntimeError):
+            continue
+        if other_dir == folder or folder in other_dir.parents:
+            count += 1
+    return count
+
+
 def host_name(value: str) -> str:
     """A Host header (or ALLOWED_HOSTS entry) as a bare lower-case name: no port, no brackets."""
     v = value.strip().lower()
@@ -3808,6 +3865,7 @@ class Handler(BaseHTTPRequestHandler):
             # shares with sibling books. Each target must sit strictly inside LIBRARY_ROOT.
             unit = find_unit(CONFIG.library_root, CONFIG.ignore_globs, rel)
             targets: list[Path] = []
+            kinds: dict[Path, str] = {}
             if unit is not None:
                 owned = owned_paths(unit)
                 if any(Path(p).resolve() == lib_root for p in owned):
@@ -3822,7 +3880,13 @@ class Handler(BaseHTTPRequestHandler):
                     if resolved == lib_root:
                         self._send(400, b'{"error":"refusing to delete the library root"}', "application/json")
                         return
-                    targets.append(Path(p))
+                    # remove through the resolved parent (TOCTOU: re-verified before removal)
+                    target, kind = plan_target(p)
+                    if removal_unsafe(target, lib_root, kind):
+                        self._send(400, b'{"error":"source path escapes library root"}', "application/json")
+                        return
+                    targets.append(target)
+                    kinds[target] = kind
                 foreign = foreign_audio(unit, [str(t) for t in targets])
                 if foreign:
                     self._send(
@@ -3850,6 +3914,8 @@ class Handler(BaseHTTPRequestHandler):
                 out_parent = out_path.parent
                 if out_parent != out_root:
                     out_trash = out_parent
+            # never take a published book that another row also points at
+            out_shared = output_sharers(self.state, rel, out_trash) if out_trash is not None else 0
 
             # HARD DELETE: the published output is removed permanently and the book is
             # forgotten. The source folder is removed too when the library mount allows
@@ -3863,16 +3929,40 @@ class Handler(BaseHTTPRequestHandler):
             if targets:
                 before = files_under([str(t) for t in targets])
                 error: OSError | None = None
+                changed = ""
                 for target in targets:
+                    changed = removal_unsafe(target, Path(CONFIG.library_root).resolve(), kinds[target])
+                    if not changed and Path(CONFIG.library_root).resolve() != lib_root:
+                        changed = "the library folder was re-pointed"
+                    if changed:
+                        changed = f"{target.name}: {changed}"
+                        break
                     try:
-                        if target.is_dir() and not target.is_symlink():
+                        if target.is_symlink():
+                            target.unlink()  # a link is removed, never followed
+                        elif target.is_dir():
                             shutil.rmtree(str(target))
-                        elif target.exists() or target.is_symlink():
+                        elif target.exists():
                             target.unlink()
                     except OSError as exc:
                         error = exc
                         break
                 remaining = {f for f in before if os.path.lexists(f)}
+                if changed:
+                    log.error("HARD DELETE %s; stopped, the path changed on disk: %s", rel, changed)
+                    self._send(
+                        409,
+                        json.dumps(
+                            {
+                                "error": "the book's folder changed on disk while it was being deleted "
+                                f"({changed}). Stopped - nothing more was removed and the book was kept. "
+                                "Scan again, then retry.",
+                                "source_partial": remaining != before,
+                            }
+                        ).encode(),
+                        "application/json",
+                    )
+                    return
                 if error is None:
                     source_removed = True
                     log.info("HARD DELETE %s; source removed: %s", rel, ", ".join(map(str, targets)))
@@ -3916,7 +4006,29 @@ class Handler(BaseHTTPRequestHandler):
                 log.info("HARD DELETE %s; source folder not found at %s", rel, src_path)
 
             output_removed = "absent"
-            if out_trash is not None and out_trash.exists():
+            output_kept_reason = ""
+            if out_trash is not None and out_shared:
+                output_removed = "kept"
+                output_kept_reason = f"also used by {out_shared} other book(s)"
+                log.info("HARD DELETE %s; output kept, %s: %s", rel, output_kept_reason, out_trash)
+            elif out_trash is not None and out_trash.exists():
+                changed = removal_unsafe(out_trash, out_root, "dir")
+                if not changed and Path(CONFIG.output_root).resolve() != out_root:
+                    changed = "the output folder was re-pointed"
+                if changed:
+                    log.error("HARD DELETE %s; output not removed, the path changed on disk: %s", rel, changed)
+                    self._send(
+                        409,
+                        json.dumps(
+                            {
+                                "error": f"the published folder changed on disk ({changed}). Its removal "
+                                "was stopped and the book was kept. Scan again, then retry.",
+                                "source_removed": source_removed,
+                            }
+                        ).encode(),
+                        "application/json",
+                    )
+                    return
                 try:
                     shutil.rmtree(str(out_trash))
                     output_removed = "removed"
@@ -3939,6 +4051,7 @@ class Handler(BaseHTTPRequestHandler):
                         "source_kept": bool(source_kept_reason),
                         "source_kept_reason": source_kept_reason,
                         "output": output_removed,
+                        "output_kept_reason": output_kept_reason,
                     }
                 ).encode(),
                 "application/json",
