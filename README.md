@@ -199,6 +199,8 @@ docker exec audiobind audiobind health             # exit 0 while the daemon is 
 | `DRY_RUN` | `false` | Decide and log, write nothing |
 | `WEB_ENABLED` | `true` | Status page |
 | `WEB_PORT` | `8080` | Status page port |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host names / IPs the web UI answers to (ports are ignored). **Add the LAN IP and hostname you browse to**, e.g. `192.168.1.10,tower,tower.local`; any other `Host` gets a 403. This blocks DNS-rebinding attacks from websites you visit |
+| `TRUSTED_PROXY` | `false` | `true` only behind your own reverse proxy: `X-Forwarded-Host` is then checked against `ALLOWED_HOSTS` instead of `Host` |
 | `NOTIFY_URL` | | Optional webhook for a per-scan summary |
 | `PUID` / `PGID` | `99` / `100` | Ownership of written files |
 

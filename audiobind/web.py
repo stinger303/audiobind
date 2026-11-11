@@ -3360,6 +3360,39 @@ def run_manual(state, unit, force: bool = False) -> None:
         CONTROL.dequeue(unit.rel_path)
 
 
+def host_name(value: str) -> str:
+    """A Host header (or ALLOWED_HOSTS entry) as a bare lower-case name: no port, no brackets."""
+    v = value.strip().lower()
+    if v.startswith("["):  # [v6] or [v6]:port
+        end = v.find("]")
+        return v[1:end] if end > 0 else ""
+    if v.count(":") == 1:  # name:port or v4:port; a bare v6 address has several colons
+        v = v.split(":", 1)[0]
+    return v.rstrip(".")
+
+
+def allowed_host_names() -> set[str]:
+    return {host_name(h) for h in CONFIG.allowed_hosts if host_name(h)}
+
+
+_HOSTS_WARNED = False
+_REFUSED_HOSTS: set[str] = set()
+
+
+def warn_default_hosts() -> None:
+    """One clear line at start-up when ALLOWED_HOSTS was never set."""
+    global _HOSTS_WARNED
+    if _HOSTS_WARNED or CONFIG.allowed_hosts_set:
+        return
+    _HOSTS_WARNED = True
+    logging.getLogger("audiobind").warning(
+        "ALLOWED_HOSTS is not set: the web UI only answers to %s, so it may be unreachable from "
+        "other machines until you set ALLOWED_HOSTS to the LAN IP / hostname you browse to "
+        "(for example ALLOWED_HOSTS=192.168.1.10,tower.local)",
+        ",".join(CONFIG.allowed_hosts),
+    )
+
+
 class Handler(BaseHTTPRequestHandler):
     state = None
     server_version = f"audiobind/{__version__}"
@@ -3371,7 +3404,43 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _request_host(self) -> str:
+        """The host this request was addressed to: X-Forwarded-Host behind a trusted proxy,
+        else Host. Empty when there is none (HTTP/1.0 without a Host header)."""
+        if CONFIG.trusted_proxy:
+            forwarded = (self.headers.get("X-Forwarded-Host") or "").split(",", 1)[0].strip()
+            if forwarded:
+                return forwarded
+        return (self.headers.get("Host") or "").strip()
+
+    def _host_refused(self) -> bool:
+        """DNS-rebinding guard for every request: refuse (403) a Host not in ALLOWED_HOSTS.
+
+        A hostile page can point its own domain at this server's LAN address, which makes
+        it "same-origin" to the browser - but the browser still sends that domain as Host.
+        """
+        requested = self._request_host()
+        if requested and host_name(requested) in allowed_host_names():
+            return False
+        if requested:
+            message = (
+                f"Host '{requested[:100]}' is not allowed. Add it to ALLOWED_HOSTS in the "
+                "container settings to use Audiobind at this address."
+            )
+        else:
+            message = "Requests must name a Host (HTTP/1.1)."
+        key = requested[:100].lower()
+        if key not in _REFUSED_HOSTS and len(_REFUSED_HOSTS) < 64:  # once per host: no log flood
+            _REFUSED_HOSTS.add(key)
+            logging.getLogger("audiobind").warning(
+                "refused a request for host %r (not in ALLOWED_HOSTS)", requested[:100]
+            )
+        self._send(403, message.encode("utf-8", "replace"), "text/plain; charset=utf-8")
+        return True
+
     def do_GET(self):  # noqa: N802
+        if self._host_refused():
+            return
         path, _, query = self.path.partition("?")
         params = {k: v[0] for k, v in parse_qs(query, keep_blank_values=True).items()}
         status = params.get("status", "")
@@ -3846,7 +3915,8 @@ class Handler(BaseHTTPRequestHandler):
           cross-origin after a CORS preflight, which this server never answers, so a page
           on another site cannot fire a no-cors ``text/plain`` POST at the API.
         * When the browser says where the request came from (Origin, else Referer), that
-          host must be this server's own Host (or X-Forwarded-Host behind a proxy).
+          host must be this server's own Host (or X-Forwarded-Host behind a proxy, when
+          TRUSTED_PROXY is on).
           Requests with neither header - curl, scripts - stay allowed.
         """
         ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
@@ -3858,16 +3928,15 @@ class Handler(BaseHTTPRequestHandler):
         if source is None:
             return None
         claimed = urlsplit(source.strip()).netloc.lower() if source.strip() not in ("", "null") else ""
-        allowed = {
-            h.strip().lower()
-            for h in (self.headers.get("Host") or "", *(self.headers.get("X-Forwarded-Host") or "").split(","))
-            if h.strip()
-        }
+        forwarded = (self.headers.get("X-Forwarded-Host") or "").split(",") if CONFIG.trusted_proxy else []
+        allowed = {h.strip().lower() for h in (self.headers.get("Host") or "", *forwarded) if h.strip()}
         if not claimed or claimed not in allowed:
             return 403, "cross-site request refused"
         return None
 
     def do_POST(self):  # noqa: N802
+        if self._host_refused():
+            return
         refusal = self._post_refusal()
         if refusal is not None:
             code, message = refusal
@@ -3929,6 +3998,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(state):
     Handler.state = state
+    warn_default_hosts()
     server = ThreadingHTTPServer(("0.0.0.0", CONFIG.web_port), Handler)
     if CONFIG.web_port == 0:
         CONFIG.web_port = server.server_address[1]
