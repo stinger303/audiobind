@@ -92,6 +92,13 @@ class TestPostGuard(LiveServerCase):
         self.assertEqual(status, 200)
 
     def test_reverse_proxy_forwarded_host_is_allowed(self):
+        # v0.15.1: X-Forwarded-Host is only believed with TRUSTED_PROXY on (and its host allowed)
+        from audiobind.config import CONFIG
+
+        saved = (CONFIG.trusted_proxy, CONFIG.allowed_hosts)
+        CONFIG.trusted_proxy, CONFIG.allowed_hosts = True, ["127.0.0.1", "books.example.net"]
+        self.addCleanup(setattr, CONFIG, "trusted_proxy", saved[0])
+        self.addCleanup(setattr, CONFIG, "allowed_hosts", saved[1])
         status, _ = self.request(
             "/api/control",
             json.dumps({"action": "scan"}).encode(),

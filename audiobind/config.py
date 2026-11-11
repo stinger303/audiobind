@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 TRUTHY = {"1", "true", "yes", "on"}
+DEFAULT_ALLOWED_HOSTS = "localhost,127.0.0.1"
 
 
 def _env(name: str, default: str = "") -> str:
@@ -23,6 +24,14 @@ def _env_int(name: str, default: int) -> int:
         return int(_env(name, str(default)))
     except ValueError:
         return default
+
+
+def _env_list(name: str, default: str) -> list[str]:
+    """A comma-separated variable as a list of non-empty, lower-cased items."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        raw = default
+    return [item.strip().lower() for item in raw.split(",") if item.strip()]
 
 
 def _env_float(name: str, default: float) -> float:
@@ -61,6 +70,15 @@ class Config:
     host_library: str = ""
     host_output: str = ""
 
+    #: Host names (or IPs) the web UI answers to; any other Host header gets a 403. This is
+    #: the DNS-rebinding defence: a hostile page can point its own domain at this server,
+    #: but the browser still sends that domain as Host. A port in an entry is ignored.
+    allowed_hosts: list[str] = field(default_factory=lambda: ["localhost", "127.0.0.1"])
+    #: True when ALLOWED_HOSTS was set explicitly (the default only reaches the UI locally)
+    allowed_hosts_set: bool = False
+    #: honour X-Forwarded-Host (only behind a reverse proxy you control)
+    trusted_proxy: bool = False
+
     ignore_globs: list[str] = field(
         default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
     )
@@ -86,6 +104,9 @@ class Config:
             nice=_env_int("NICE", 10),
             host_library=_env("HOST_LIBRARY", ""),
             host_output=_env("HOST_OUTPUT", ""),
+            allowed_hosts=_env_list("ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS),
+            allowed_hosts_set=bool(_env("ALLOWED_HOSTS", "")),
+            trusted_proxy=_env_bool("TRUSTED_PROXY", False),
         )
 
     def ensure_dirs(self) -> None:
