@@ -16,7 +16,7 @@ from .config import CONFIG, effective_auto_tiers, effective_val
 from .control import CONTROL, Stopped
 from .probe import probe
 from .state import State, UnitState
-from .units import BookUnit, looks_like_collection
+from .units import BookUnit, looks_like_collection, unsafe_path_reason
 
 #: the daemon and the manual "Retry / Convert anyway" buttons must not encode two books at once
 CONVERT_LOCK = threading.Lock()
@@ -298,6 +298,14 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
             rec("ready", note="dry run - nothing written")
 
     started = time.time()
+    unsafe = unsafe_path_reason(unit)
+    if unsafe:
+        # held before ffprobe/ffmpeg ever see the names - not even Convert anyway passes this
+        audit = Audit(unit=unit, action="hold")
+        log(f"  held: {unsafe}")
+        rec("held", note=unsafe)
+        state.heartbeat()
+        return audit
     audit = audit_unit(unit, state.get_asin_override(unit.rel_path))
     audit.overrides = state.get_overrides(unit.rel_path)
     if audit.overrides:

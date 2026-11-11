@@ -80,6 +80,14 @@ def _explain_base(
             "Check the source files, then press Retry now.",
         )
 
+    if status == "held" and note.startswith("unsafe file name"):
+        return (
+            f"Held: {note[len('unsafe file name: '):] or 'a file or folder name is unsafe'}. "
+            "Audiobind won't hand a name with a line break or NUL byte to ffmpeg - it could "
+            "smuggle extra instructions into the merge.",
+            "Rename the file or folder on the share (no line breaks), then press Scan now.",
+        )
+
     if status == "held":
         if catalog_hours and hours:
             delta = hours - catalog_hours

@@ -16,6 +16,22 @@ from .util import COLLECTION_RE, NOISE_RE, PART_RE, SEQ_RE, SERIES_DIR_RE, STOPW
 AUDIO_EXT = {".mp3", ".m4b", ".m4a", ".mp4", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma"}
 
 
+#: never handed to ffmpeg: a line break starts a new concat-list directive, NUL truncates
+UNSAFE_PATH_CHARS = {"\n": "a line break", "\r": "a carriage return", "\x00": "a NUL byte"}
+#: the start of the note on a book held for an unsafe name (advice.py keys off it)
+UNSAFE_NOTE = "unsafe file name"
+
+
+def unsafe_path_reason(unit: BookUnit) -> str:
+    """'' when every path of this book is safe to give ffmpeg, else the hold note."""
+    for text in (unit.path, unit.parent, unit.rel_path, *(p.name for p in unit.parts), *unit.files):
+        for char, label in UNSAFE_PATH_CHARS.items():
+            if char in (text or ""):
+                shown = (text or "").replace("\n", "\\n").replace("\r", "\\r").replace("\x00", "\\0")
+                return f"{UNSAFE_NOTE}: {os.path.basename(shown) or shown} contains {label}"
+    return ""
+
+
 @dataclass
 class Part:
     name: str

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -14,8 +15,8 @@ from pathlib import Path
 from . import catalog
 from .config import CONFIG, effective_val
 from .control import CONTROL, Stopped
-from .probe import has_embedded_cover, probe, probe_chapters, probe_streams
-from .units import BookUnit
+from .probe import PROTOCOL_WHITELIST, has_embedded_cover, probe, probe_chapters, probe_streams
+from .units import BookUnit, unsafe_path_reason
 
 FFMPEG = "ffmpeg"
 FFPROBE = "ffprobe"
@@ -230,10 +231,17 @@ def build_chapters(
     return chapters, f"per-file ({len(chapters)} chapters)"
 
 
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
 def _escape(value: str) -> str:
-    return (
-        (value or "").replace("\\", "\\\\").replace("\n", " ").replace("=", "\\=").replace(";", "\\;").strip()
-    )
+    """One ffmetadata tag value: control characters (\\n, \\r, tab, NUL...) become spaces, so
+    a value can never end its line and start a new key or [CHAPTER] section; then the
+    ffmetadata specials - backslash, '=', ';' and '#' - are backslash-escaped."""
+    text = _CONTROL_CHARS.sub(" ", value or "")
+    for special in ("\\", "=", ";", "#"):
+        text = text.replace(special, "\\" + special)
+    return text.strip()
 
 
 def write_ffmetadata(path: Path, book: dict, match, chapters: list[dict]) -> dict:
@@ -335,6 +343,9 @@ def encode(
     chapters, source = plan.chapters, plan.source
     log(f"  chapters: {len(chapters)} from {source}")
 
+    unsafe = unsafe_path_reason(unit)
+    if unsafe:  # process_unit holds these first; never let one reach the concat list
+        raise RuntimeError(unsafe)
     concat_file = work_dir / "concat.txt"
     with concat_file.open("w", encoding="utf-8") as handle:
         for path in unit.files:
@@ -357,16 +368,23 @@ def encode(
         "-progress",
         "pipe:1",
         "-nostats",
+        *PROTOCOL_WHITELIST,
         "-f",
         "concat",
+        # -safe 0 is required: concat's "safe" mode rejects every absolute path and any
+        # name with a space or other non-portable character, i.e. every real library
+        # path. Instead each path is sanitised - names with \n, \r or NUL are held
+        # (unsafe_path_reason) so they cannot start a new concat directive, ' is escaped -
+        # and the protocol whitelist (inherited by every file the list opens) keeps it to
+        # local files.
         "-safe",
         "0",
         "-i",
         str(concat_file),
     ]
     if has_cover:
-        command += ["-i", str(cover_file)]
-    command += ["-i", str(metadata_file), "-map", "0:a:0"]
+        command += [*PROTOCOL_WHITELIST, "-i", str(cover_file)]
+    command += [*PROTOCOL_WHITELIST, "-i", str(metadata_file), "-map", "0:a:0"]
     if has_cover:
         command += ["-map", "1:v:0", "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
     command += _metadata_map_args(has_cover)

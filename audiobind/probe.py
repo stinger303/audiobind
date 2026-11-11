@@ -21,11 +21,18 @@ class Probe:
         return self.duration > 0
 
 
+#: Untrusted media (torrents) is opened with only local files and pipes allowed: a crafted
+#: file (an HLS/concat playlist renamed .mp3, say) cannot make ffmpeg fetch URLs or open
+#: other protocols. An input option, so it goes before every ``-i`` / input path.
+PROTOCOL_WHITELIST = ["-protocol_whitelist", "file,pipe"]
+
+
 def probe(path: str | Path, timeout: int = 60) -> Probe:
     try:
         result = subprocess.run(
             [
                 "ffprobe",
+                *PROTOCOL_WHITELIST,
                 "-v",
                 "error",
                 "-show_entries",
@@ -54,7 +61,7 @@ def probe(path: str | Path, timeout: int = 60) -> Probe:
 
 def probe_chapters(path: str | Path) -> list[dict]:
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_chapters", "-of", "json", str(path)],
+        ["ffprobe", *PROTOCOL_WHITELIST, "-v", "error", "-show_chapters", "-of", "json", str(path)],
         capture_output=True,
         text=True,
     )
@@ -68,6 +75,7 @@ def probe_streams(path: str | Path) -> list[dict]:
     result = subprocess.run(
         [
             "ffprobe",
+            *PROTOCOL_WHITELIST,
             "-v",
             "error",
             "-show_entries",
