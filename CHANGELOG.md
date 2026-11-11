@@ -3,6 +3,81 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-11-11
+
+Every recommendation from the v0.15.0 security review is in: 1 high, 5 medium, 10 low
+and 3 info findings.
+
+### Before you upgrade - action needed
+- **Set `ALLOWED_HOSTS`, or the web UI only answers on the server itself.** Add the
+  address you type into the browser, for example
+  `ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.10,tower,tower.local` (ports don't
+  matter). Until it's set, the log says so on start-up and other machines get a short
+  "Host is not allowed" page. Unraid: the template has a new **Allowed hosts** field.
+
+### Security
+- **Websites you visit can no longer reach Audiobind through DNS rebinding.** Every
+  request, page or API, GET or POST, must be addressed to a name in `ALLOWED_HOSTS`;
+  anything else gets a 403. Before, a hostile page could point its own domain at your
+  server's LAN address, read your library and press Delete on every book.
+  `X-Forwarded-Host` is only believed with the new `TRUSTED_PROXY=true`, for a
+  reverse proxy you run yourself.
+- **Optional sign-in.** Set `AUTH_TOKEN` and the web UI asks for it once per browser
+  (the session lasts 7 days; there's a "sign out" link in the side rail). Scripts send
+  `Authorization: Bearer <token>` to `/api/...`. Five wrong tokens from one address
+  lock it out for 10 minutes. Leave it unset to keep today's open behaviour.
+- **Delete never takes another book's converted copy.** When a second rip of a book
+  ended up "already published", both rows point at the same output folder, and
+  deleting the duplicate used to remove the good book. Now the source goes as normal,
+  the output stays, and you're told "output kept: also used by 1 other book(s)".
+- **Delete re-checks every folder right before it removes it.** If a folder (or one of
+  its parents) was swapped for a link after Delete checked it, it stops, removes
+  nothing more, and keeps the book in the list.
+- **Manual actions can't be piled up.** Retry now, Convert anyway and Use this ASIN now
+  refuse a book that is already encoding or waiting, like Re-check already did. At
+  most two run at once (`MANUAL_WORKERS`); a third click gets "another action is
+  already running".
+- **ffmpeg only opens local files.** Every ffmpeg and ffprobe run is limited to files
+  and pipes, so a booby-trapped download (a playlist renamed `.mp3`, say) can't make
+  it fetch anything from the network.
+- **Odd file names are held, not merged.** A book whose file or folder name contains a
+  line break or NUL byte is now **Held** with "unsafe file name: ..." and the advice to
+  rename it. Such a name could have slipped extra instructions into the merge list.
+  Convert anyway doesn't override this one.
+- **Tags can't break out of their line.** Titles, authors and other tag values have
+  line breaks and other control characters turned into spaces, and `#` escaped, so a
+  value can no longer add tags or chapters of its own to the m4b.
+- **The container runs locked down.** The compose file, the Docker run example and the
+  Unraid template now use a read-only root filesystem (with `/tmp` in memory), drop
+  every Linux capability except the three needed to switch to `PUID`/`PGID`, and set
+  `no-new-privileges`. Your library mount is unchanged; a commented `:ro` line shows the
+  safer option and notes that it stops Delete from removing sources.
+- **The image build is pinned and patched weekly.** Every GitHub Action is pinned to an
+  exact commit, CI runs with read-only permissions except where a job publishes, the
+  base image is pinned by digest, and `:latest` is rebuilt every week from scratch so
+  ffmpeg and Debian security fixes arrive without waiting for a release.
+- **Hardening headers on every response**: the UI can't be framed by another site
+  (no clickjacking), and browsers won't guess content types.
+
+### Fixed
+- **A malformed or oversized request gets a clean error.** Bodies over 64 KB (or with a
+  negative length) get 413, and a JSON body that isn't an object gets 400, instead of a
+  traceback in the log and a dropped connection. A client that stalls is cut off after
+  15 seconds.
+- **Opening a page never calls Audible.** The Series page, the library page and
+  `/api/series` read what's stored. Stale series lists are fetched by the background
+  daemon after each scan, or when the Series page asks with a POST as it opens.
+- **Very long titles no longer fail after the encode.** Each folder and file name is
+  capped at 200 bytes, cut on a whole character, so long non-English titles fit the
+  file system's limit.
+- **Error messages don't show internal paths.** A failed delete tells you the kind of
+  error (`EACCES`, `EIO`, ...) and points to the log, which keeps the full detail.
+- A library folder literally named `ingest:...` is listed as `./ingest:...`, so it
+  can't be mistaken for an internal key.
+- `docs/retire-sources.sh` keeps its scratch files in a private temporary folder,
+  stops on errors, always resumes the daemon when it exits, and accepts
+  `AUDIOBIND_TOKEN` when sign-in is on.
+
 ## [0.15.0] - 2026-11-10
 
 ## [Unreleased]
