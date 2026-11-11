@@ -7,6 +7,7 @@ import os
 import time
 
 from . import ingest, web
+from . import series as series_mod
 from .config import CONFIG, effective_val, set_effective
 from .control import CONTROL
 from .pipeline import process_unit
@@ -90,6 +91,15 @@ def scan_once(state: State, force: bool = False) -> dict:
     return {"seen": seen, "converted": converted, "held": held, "failed": failed}
 
 
+def refresh_series(state: State) -> None:
+    """Queue stale series listings for the background refresher. Only the daemon loop (and
+    an explicit POST) does this - page and API GETs read the cache and never go outbound."""
+    try:
+        series_mod.aggregate(state, refresh=True)
+    except Exception:  # noqa: BLE001 - the shelf must never stop the loop
+        log.exception("series refresh could not be scheduled")
+
+
 def run() -> None:
     """Loop forever, honouring SCAN_INTERVAL_MIN."""
     state = State(CONFIG.state_dir)
@@ -115,6 +125,7 @@ def run() -> None:
     while True:
         if CONTROL.paused:
             CONTROL.clear_scan()  # a click while paused must not busy-loop
+            refresh_series(state)  # a no-op unless a listing is a day old
             CONTROL.wait(60)
             set_effective(state)
             continue
@@ -125,6 +136,7 @@ def run() -> None:
             scan_once(state, force=force)
         except Exception:  # noqa: BLE001 - never let the loop die
             log.exception("scan failed")
+        refresh_series(state)
 
         # Sleep in 15-second chunks so a lowered interval takes effect within ~15s.
         set_effective(state)

@@ -113,10 +113,24 @@ def natkey(text: str) -> list:
     return [int(x) if x.isdigit() else x.lower() for x in re.split(r"(\d+)", text)]
 
 
+#: a path component's UTF-8 size cap; NAME_MAX is 255 bytes, and the ".m4b" suffix and
+#: "NN - " sequence prefix need room
+MAX_COMPONENT_BYTES = 200
+
+
+def truncate_utf8(text: str, max_bytes: int = MAX_COMPONENT_BYTES) -> str:
+    """At most ``max_bytes`` of UTF-8, never splitting a character."""
+    raw = text.encode("utf-8", "replace")  # a lone surrogate counts as one byte
+    if len(raw) <= max_bytes:
+        return text
+    return raw[:max_bytes].decode("utf-8", "ignore")
+
+
 def safe_name(text: str | None, fallback: str = "Unknown") -> str:
-    """Make a string safe as a single path component."""
+    """Make a string safe as a single path component (at most 200 UTF-8 bytes)."""
     out = re.sub(r'[\\/:*?"<>|]+', "-", (text or "").strip())
     out = re.sub(r"\s+", " ", out).strip(" .-")
+    out = truncate_utf8(out).strip(" .-")
     return out or fallback
 
 

@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim
+# python:3.12-slim pinned by digest (multi-arch index, resolved 2026-11-11) for reproducible
+# builds; Dependabot proposes digest bumps, and the weekly no-cache CI rebuild runs
+# apt-get upgrade below so Debian / ffmpeg security fixes land even between bumps.
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 LABEL org.opencontainers.image.title="Audiobind" \
       org.opencontainers.image.description="Merge, convert and correctly tag audiobook libraries" \
@@ -15,6 +18,7 @@ ENV PYTHONUNBUFFERED=1 \
     WEB_PORT=8080
 
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends ffmpeg gosu ca-certificates tzdata \
  && rm -rf /var/lib/apt/lists/*
 

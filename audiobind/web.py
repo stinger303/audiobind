@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from . import __version__, matching
 from . import ingest as ingest_mod
+from . import auth as auth_mod
 from . import overrides as overrides_mod
 from . import series as series_mod
 from .advice import explain
@@ -703,7 +704,10 @@ function abModalConfirm() {
       if (result.source_kept) {
         abToast('Deleted from Audiobind and your output library. The source folder stays (' +
                 (result.source_kept_reason || 'your library is read-only') +
-                ') - it will reappear on the next scan unless you remove it from the share.');
+                ') - it will reappear on the next scan unless you remove it from the share.' +
+                (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : ''));
+      } else if (result.output === 'kept') {
+        abToast('Deleted. Output kept: ' + result.output_kept_reason + '.');
       }
       setTimeout(() => location.reload(), 500);
     })
@@ -1126,8 +1130,12 @@ function abScanIdle() {
   if (btn && btn.disabled) { btn.disabled = false; btn.textContent = 'Scan now'; }
   if (re) re.disabled = false;
 }
+function abAuthed(r) {
+  if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+  return r.json();
+}
 function tick() {
-  fetch('/api/state').then(r => r.json()).then(d => {
+  fetch('/api/state').then(abAuthed).then(d => {
     abScanFinishedToast(d);
     const bar = document.getElementById('ab-qfill');
     if (d.scan && d.scan.scanning) { abScanUI(d.scan); return; }
@@ -1150,7 +1158,7 @@ document.addEventListener('DOMContentLoaded', () => {
 setInterval(tick, 2000);
 let lastCounts = null;
 function watch() {
-  fetch('/api/state').then(r => r.json()).then(d => {
+  fetch('/api/state').then(abAuthed).then(d => {
     // rev moves even when a re-check ends in the same status, so a manual
     // Retry now / Use this ASIN always gets its fresh detail rendered
     const sig = JSON.stringify(d.counts) + '|' + d.running + '|' + (d.rev || '') + '|' + (d.scan && d.scan.scanning ? 'S' : '');
@@ -1196,7 +1204,7 @@ PAGE = """<!doctype html>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
-    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
 
@@ -1308,7 +1316,7 @@ SETTINGS_PAGE = """<!doctype html>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
-    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
 <main class="ab-main">
@@ -1333,6 +1341,48 @@ SETTINGS_PAGE = """<!doctype html>
 {settings_script}
 </script>
 </body></html>"""
+
+LOGIN_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audiobind &middot; Sign in</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#5e6ad2">
+<style>{styles}
+body{{align-items:center;justify-content:center;overflow:auto}}
+.ab-login{{width:340px;max-width:calc(100vw - 32px);background:var(--ab-panel);
+  border:1px solid var(--ab-border);border-radius:12px;padding:28px 24px}}
+.ab-login h1{{font-size:17px;font-weight:600;margin-bottom:4px}}
+.ab-login p{{color:var(--ab-text3);font-size:12.5px;margin-bottom:18px}}
+.ab-login label{{display:block;color:var(--ab-text3);font-size:11.5px;margin-bottom:6px}}
+.ab-login .ab-in{{width:100%;margin-bottom:14px}}
+.ab-login .ab-save{{width:100%;justify-content:center}}
+.ab-login .ab-err{{color:var(--ab-red);font-size:12.5px;margin:-4px 0 12px}}
+</style></head><body>
+<main class="ab-login">
+  <h1>Audiobind</h1>
+  <p>This server asks for its access token.</p>
+  <form method="post" action="/login">
+    <label for="ab-token">Access token</label>
+    <input class="ab-in" id="ab-token" name="token" type="password"
+           autocomplete="current-password" autofocus required>
+    {error}
+    <button class="ab-save" type="submit">Sign in</button>
+  </form>
+</main>
+</body></html>"""
+
+
+def render_login(error: str = "") -> str:
+    err = f'<div class="ab-err" role="alert">{_html(error)}</div>' if error else ""
+    return LOGIN_PAGE.format(styles=STYLES, error=err)
+
+
+def signout_html() -> str:
+    if not CONFIG.auth_token:
+        return ""
+    return '<br><a href="/logout" style="color:var(--ab-text3)">sign out</a>'
+
 
 SETTINGS_SCRIPT = """
 function abToastSettings(text) {
@@ -1522,7 +1572,7 @@ SERIES_PAGE = """<!doctype html>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
-    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
 <main class="ab-main">
@@ -1632,9 +1682,17 @@ function abSeriesBusy() {
   if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return true;
   return false;
 }
+// stale series listings are fetched in the background; asking is a POST, never a GET
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('/api/series', {method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({action:'refresh'})}).catch(() => {});
+});
 let abSeriesSig = null;
 function abSeriesWatch() {
-  fetch('/api/state').then(r => r.json()).then(d => {
+  fetch('/api/state').then(r => {
+    if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+    return r.json();
+  }).then(d => {
     const sig = JSON.stringify(d.counts) + '|' + (d.rev || '');
     if (abSeriesSig === null) { abSeriesSig = sig; return; }
     if (sig !== abSeriesSig && !abSeriesBusy()) location.reload();
@@ -2310,7 +2368,7 @@ AUDIBLE_PD = "https://www.audible.com/pd?asin="
 _EMPTY_SHELF = {"series": [], "by_path": {}, "missing_total": 0}
 
 
-def _series_shelf(state, refresh: bool = True) -> dict:
+def _series_shelf(state, refresh: bool = False) -> dict:
     """The aggregation, or an empty shelf - a series problem must never blank a page."""
     try:
         return series_mod.aggregate(state, refresh=refresh)
@@ -2559,6 +2617,7 @@ def render_series(state) -> str:
             "what you're missing.</div>"
         )
     return SERIES_PAGE.format(
+        signout=signout_html(),
         styles=STYLES,
         version=__version__,
         rail_total=sum(counts.values()),
@@ -2687,6 +2746,7 @@ def render_settings(state) -> str:
 
     rc = rail_counts(state, counts)
     return SETTINGS_PAGE.format(
+        signout=signout_html(),
         styles=STYLES,
         version=__version__,
         lib_active="",
@@ -2901,7 +2961,7 @@ def render(state, status: str = "", query: str = "") -> str:
         if narrators:
             decision.append("Narrated by <b>{n}</b>".format(n=_html("; ".join(narrators))))
         if unit.confidence:
-            decision.append(f"Match confidence: <b>{unit.confidence}</b>")
+            decision.append(f"Match confidence: <b>{_html(unit.confidence)}</b>")
         if unit.asin:
             decision.append(
                 f'ASIN <a class="ab-alink" href="https://www.audible.com/pd?asin={_attr(unit.asin)}" '
@@ -3297,6 +3357,7 @@ def render(state, status: str = "", query: str = "") -> str:
     )
 
     return PAGE.format(
+        signout=signout_html(),
         styles=STYLES,
         script=SCRIPT,
         version=__version__,
@@ -3390,7 +3451,17 @@ def snapshot(state) -> dict:
     }
 
 
-def run_manual(state, unit, force: bool = False) -> None:
+#: caps the manual-action threads (each runs ffprobe over the book plus catalog calls)
+MANUAL_SLOTS = threading.BoundedSemaphore(max(1, CONFIG.manual_workers))
+
+
+def reset_manual_slots(n: int | None = None) -> None:
+    """Re-size the manual-action cap (tests, or after CONFIG.manual_workers changes)."""
+    global MANUAL_SLOTS
+    MANUAL_SLOTS = threading.BoundedSemaphore(max(1, n if n is not None else CONFIG.manual_workers))
+
+
+def run_manual(state, unit, force: bool = False, slot=None) -> None:
     """A Retry / Use this ASIN / Convert anyway request, run off the request thread.
 
     The book leaves the queue however it ends - converted, still in review, held, a dry
@@ -3403,23 +3474,335 @@ def run_manual(state, unit, force: bool = False) -> None:
         logging.getLogger("audiobind").exception("manual action for %s failed", unit.state_key)
     finally:
         CONTROL.dequeue(unit.state_key)
+        if slot is not None:
+            slot.release()
+
+
+        CONTROL.dequeue(unit.rel_path)
+        if slot is not None:
+            slot.release()
+
+
+def _os_error_code(exc: OSError) -> str:
+    """A client-safe label for an OSError: its errno name, never the message (which
+    carries container paths). The full error goes to the log."""
+    return errno.errorcode.get(exc.errno or 0, "error") if isinstance(exc, OSError) else "error"
+
+
+def removal_unsafe(target: Path, root: Path, kind: str) -> str:
+    """Re-check a planned delete target right before removing it ('' = go ahead).
+
+    ``target`` was built from a resolved parent plus its own name when the delete was
+    planned. If anything was swapped since - a parent folder replaced by a symlink, the
+    root re-pointed, a folder turned into a link - the path no longer means what was
+    checked, so the delete must stop.
+    """
+    try:
+        parent_now = target.parent.resolve(strict=True)
+    except OSError:
+        return "its parent folder disappeared"
+    if parent_now != target.parent:
+        return "a parent folder was replaced by a link"
+    try:
+        target.relative_to(root)
+    except ValueError:
+        return "it is no longer inside the allowed folder"
+    if target == root or target.parent == target:
+        return "it is the root folder itself"
+    if target.is_symlink() and kind != "link":
+        return "the folder was replaced by a link"
+    return ""
+
+
+def plan_target(p) -> tuple[Path, str]:
+    """(absolute path with a resolved parent, kind) - the leaf itself is never followed."""
+    raw = Path(p)
+    target = raw.parent.resolve() / raw.name
+    if target.is_symlink():
+        kind = "link"
+    elif target.is_dir():
+        kind = "dir"
+    else:
+        kind = "file"
+    return target, kind
+
+
+def output_sharers(state, rel: str, folder: Path) -> int:
+    """How many OTHER rows point their output into ``folder`` (a re-rip that reached
+    "already published" records the first book's output as its own)."""
+    count = 0
+    for other in state.all(None):
+        if other.path == rel or not other.output:
+            continue
+        try:
+            other_dir = Path(other.output).resolve().parent
+        except (OSError, RuntimeError):
+            continue
+        if other_dir == folder or folder in other_dir.parents:
+            count += 1
+    return count
+
+
+def host_name(value: str) -> str:
+    """A Host header (or ALLOWED_HOSTS entry) as a bare lower-case name: no port, no brackets."""
+    v = value.strip().lower()
+    if v.startswith("["):  # [v6] or [v6]:port
+        end = v.find("]")
+        return v[1:end] if end > 0 else ""
+    if v.count(":") == 1:  # name:port or v4:port; a bare v6 address has several colons
+        v = v.split(":", 1)[0]
+    return v.rstrip(".")
+
+
+def allowed_host_names() -> set[str]:
+    return {host_name(h) for h in CONFIG.allowed_hosts if host_name(h)}
+
+
+_HOSTS_WARNED = False
+_REFUSED_HOSTS: set[str] = set()
+
+
+def warn_default_hosts() -> None:
+    """One clear line at start-up when ALLOWED_HOSTS was never set."""
+    global _HOSTS_WARNED
+    if _HOSTS_WARNED or CONFIG.allowed_hosts_set:
+        return
+    _HOSTS_WARNED = True
+    logging.getLogger("audiobind").warning(
+        "ALLOWED_HOSTS is not set: the web UI only answers to %s, so it may be unreachable from "
+        "other machines until you set ALLOWED_HOSTS to the LAN IP / hostname you browse to "
+        "(for example ALLOWED_HOSTS=192.168.1.10,tower.local)",
+        ",".join(CONFIG.allowed_hosts),
+    )
+
+
+#: added to every response (including BaseHTTPRequestHandler's own error pages)
+SECURITY_HEADERS = (
+    ("X-Frame-Options", "DENY"),
+    ("Content-Security-Policy", "frame-ancestors 'none'"),
+    ("X-Content-Type-Options", "nosniff"),
+    ("Referrer-Policy", "same-origin"),
+)
+#: the largest JSON body any endpoint accepts
+MAX_BODY = 64 * 1024
 
 
 class Handler(BaseHTTPRequestHandler):
     state = None
     server_version = f"audiobind/{__version__}"
+    #: a client that stops sending (slowloris, Content-Length larger than the body) is cut off
+    timeout = 15
 
-    def _send(self, code: int, body: bytes, content_type: str) -> None:
+    def end_headers(self) -> None:
+        for name, value in SECURITY_HEADERS:
+            self.send_header(name, value)
+        super().end_headers()
+
+    def _read_json(self) -> dict | None:
+        """The request body as a JSON object, or None after a 400/413 has been sent."""
+        raw_length = self.headers.get("Content-Length")
+        try:
+            length = int(raw_length) if raw_length not in (None, "") else 0
+        except ValueError:
+            self._send(400, b'{"error":"bad Content-Length"}', "application/json")
+            return None
+        if length < 0 or length > MAX_BODY:
+            self.close_connection = True
+            self._send(413, b'{"error":"request body too large"}', "application/json")
+            return None
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}") if length else {}
+        except (ValueError, UnicodeDecodeError):
+            self._send(400, b'{"error":"bad request"}', "application/json")
+            return None
+        if not isinstance(payload, dict):
+            self._send(400, b'{"error":"the body must be a JSON object"}', "application/json")
+            return None
+        return payload
+
+    def _send(self, code: int, body: bytes, content_type: str, headers: dict | None = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
+    def _request_host(self) -> str:
+        """The host this request was addressed to: X-Forwarded-Host behind a trusted proxy,
+        else Host. Empty when there is none (HTTP/1.0 without a Host header)."""
+        if CONFIG.trusted_proxy:
+            forwarded = (self.headers.get("X-Forwarded-Host") or "").split(",", 1)[0].strip()
+            if forwarded:
+                return forwarded
+        return (self.headers.get("Host") or "").strip()
+
+    def _host_refused(self) -> bool:
+        """DNS-rebinding guard for every request: refuse (403) a Host not in ALLOWED_HOSTS.
+
+        A hostile page can point its own domain at this server's LAN address, which makes
+        it "same-origin" to the browser - but the browser still sends that domain as Host.
+        """
+        requested = self._request_host()
+        if requested and host_name(requested) in allowed_host_names():
+            return False
+        if requested:
+            message = (
+                f"Host '{requested[:100]}' is not allowed. Add it to ALLOWED_HOSTS in the "
+                "container settings to use Audiobind at this address."
+            )
+        else:
+            message = "Requests must name a Host (HTTP/1.1)."
+        key = requested[:100].lower()
+        if key not in _REFUSED_HOSTS and len(_REFUSED_HOSTS) < 64:  # once per host: no log flood
+            _REFUSED_HOSTS.add(key)
+            logging.getLogger("audiobind").warning(
+                "refused a request for host %r (not in ALLOWED_HOSTS)", requested[:100]
+            )
+        self._send(403, message.encode("utf-8", "replace"), "text/plain; charset=utf-8")
+        return True
+
+    # ---- optional AUTH_TOKEN login -------------------------------------------------------
+
+    #: reachable without signing in: the login page itself and the icon it shows
+    AUTH_EXEMPT = ("/login", "/logout", "/favicon.svg", "/icon.svg")
+
+    def _client_ip(self) -> str:
+        """Source address for the failed-login limit (the proxy's last hop when trusted)."""
+        if CONFIG.trusted_proxy:
+            hops = [h.strip() for h in (self.headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
+            if hops:
+                return hops[-1][:64]
+        return self.client_address[0] if self.client_address else "?"
+
+    def _auth_status(self, path: str) -> int:
+        """0 when the request may proceed, else 401 (not signed in) or 429 (locked out)."""
+        if not CONFIG.auth_token or path.rstrip("/") in self.AUTH_EXEMPT:
+            return 0
+        sid = auth_mod.cookie_value(self.headers.get("Cookie"))
+        if sid and auth_mod.SESSIONS.valid(sid):
+            return 0
+        header = self.headers.get("Authorization") or ""
+        scheme, _, given = header.partition(" ")
+        if path.startswith("/api/") and scheme.lower() == "bearer" and given.strip():
+            ip = self._client_ip()
+            if auth_mod.LIMITER.blocked(ip):
+                return 429
+            if auth_mod.token_matches(given.strip(), CONFIG.auth_token):
+                return 0
+            auth_mod.LIMITER.record(ip)
+            logging.getLogger("audiobind").warning("wrong API token from %s", ip)
+        return 401
+
+    def _auth_refused(self, path: str) -> bool:
+        code = self._auth_status(path)
+        if code == 0:
+            return False
+        if code == 429:
+            wait = auth_mod.LIMITER.retry_after(self._client_ip())
+            self._send(
+                429,
+                b'{"error":"too many wrong tokens - try again later"}',
+                "application/json",
+                {"Retry-After": str(wait)},
+            )
+        elif self.command == "GET" and not path.startswith(("/api/", "/cover")):
+            self._send(303, b"", "text/plain", {"Location": "/login"})
+        else:
+            self._send(
+                401,
+                b'{"error":"authentication required"}',
+                "application/json",
+                {"WWW-Authenticate": 'Bearer realm="audiobind"'},
+            )
+        return True
+
+    def _login_body(self) -> tuple[str, bool]:
+        """(token, wants_json) from a form or JSON login POST."""
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length < 0 or length > 4096:
+            raise ValueError("bad length")
+        raw = self.rfile.read(length) if length else b""
+        if ctype == "application/json":
+            payload = json.loads(raw or b"{}")
+            if not isinstance(payload, dict):
+                raise ValueError("not an object")
+            return str(payload.get("token", "")), True
+        form = parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True)
+        return (form.get("token") or [""])[0], False
+
+    def _handle_login(self) -> None:
+        refusal = self._origin_refusal()
+        if refusal is not None:
+            code, message = refusal
+            self._send(code, json.dumps({"error": message}).encode(), "application/json")
+            return
+        try:
+            given, wants_json = self._login_body()
+        except (ValueError, UnicodeDecodeError):
+            self._send(400, b'{"error":"bad request"}', "application/json")
+            return
+        if not CONFIG.auth_token:
+            self._send(303, b"", "text/plain", {"Location": "/"})
+            return
+        ip = self._client_ip()
+
+        def reply(code: int, message: str, headers: dict | None = None) -> None:
+            if wants_json:
+                self._send(code, json.dumps({"error": message}).encode(), "application/json", headers)
+            else:
+                self._send(code, render_login(message).encode(), "text/html; charset=utf-8", headers)
+
+        if auth_mod.LIMITER.blocked(ip):
+            wait = auth_mod.LIMITER.retry_after(ip)
+            reply(
+                429,
+                f"Too many wrong tokens. Try again in {max(1, (wait + 59) // 60)} minute(s).",
+                {"Retry-After": str(wait)},
+            )
+            return
+        if not auth_mod.token_matches(given, CONFIG.auth_token):
+            auth_mod.LIMITER.record(ip)
+            logging.getLogger("audiobind").warning("failed sign-in from %s", ip)
+            reply(401, "That token is not right.")
+            return
+        auth_mod.LIMITER.reset(ip)
+        cookie = {"Set-Cookie": auth_mod.session_cookie(auth_mod.SESSIONS.create())}
+        logging.getLogger("audiobind").info("signed in from %s", ip)
+        if wants_json:
+            self._send(200, b'{"ok":true}', "application/json", cookie)
+        else:
+            self._send(303, b"", "text/plain", {**cookie, "Location": "/"})
+
+    def _handle_logout(self) -> None:
+        sid = auth_mod.cookie_value(self.headers.get("Cookie"))
+        if sid:
+            auth_mod.SESSIONS.revoke(sid)
+        target = "/login" if CONFIG.auth_token else "/"
+        self._send(303, b"", "text/plain", {"Set-Cookie": auth_mod.expired_cookie(), "Location": target})
+
     def do_GET(self):  # noqa: N802
+        if self._host_refused():
+            return
         path, _, query = self.path.partition("?")
+        if self._auth_refused(path):
+            return
         params = {k: v[0] for k, v in parse_qs(query, keep_blank_values=True).items()}
         status = params.get("status", "")
+        if path.rstrip("/") == "/login":
+            if not CONFIG.auth_token:
+                self._send(303, b"", "text/plain", {"Location": "/"})
+            else:
+                self._send(200, render_login().encode(), "text/html; charset=utf-8")
+            return
+        if path.rstrip("/") == "/logout":
+            self._handle_logout()
+            return
         if path in ("/favicon.svg", "/icon.svg"):
             icon = ICON_PATH
             if icon.exists():
@@ -3498,19 +3881,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"no cover", "text/plain")
             return
         kind = "image/png" if found.suffix.lower() == ".png" else "image/jpeg"
-        self.send_response(200)
-        self.send_header("Content-Type", kind)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "public, max-age=86400")
-        self.end_headers()
-        self.wfile.write(body)
+        self._send(200, body, kind, {"Cache-Control": "public, max-age=86400"})
 
     def _handle_unit(self) -> None:
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except (ValueError, TypeError):
-            self._send(400, b'{"error":"bad request"}', "application/json")
+        payload = self._read_json()
+        if payload is None:
             return
 
         rel = str(payload.get("path", ""))
@@ -3611,6 +3986,7 @@ class Handler(BaseHTTPRequestHandler):
             # shares with sibling books. Each target must sit strictly inside LIBRARY_ROOT.
             unit = find_unit(CONFIG.library_root, CONFIG.ignore_globs, rel)
             targets: list[Path] = []
+            kinds: dict[Path, str] = {}
             if unit is not None:
                 owned = owned_paths(unit)
                 if any(Path(p).resolve() == lib_root for p in owned):
@@ -3625,7 +4001,13 @@ class Handler(BaseHTTPRequestHandler):
                     if resolved == lib_root:
                         self._send(400, b'{"error":"refusing to delete the library root"}', "application/json")
                         return
-                    targets.append(Path(p))
+                    # remove through the resolved parent (TOCTOU: re-verified before removal)
+                    target, kind = plan_target(p)
+                    if removal_unsafe(target, lib_root, kind):
+                        self._send(400, b'{"error":"source path escapes library root"}', "application/json")
+                        return
+                    targets.append(target)
+                    kinds[target] = kind
                 foreign = foreign_audio(unit, [str(t) for t in targets])
                 if foreign:
                     self._send(
@@ -3653,6 +4035,8 @@ class Handler(BaseHTTPRequestHandler):
                 out_parent = out_path.parent
                 if out_parent != out_root:
                     out_trash = out_parent
+            # never take a published book that another row also points at
+            out_shared = output_sharers(self.state, rel, out_trash) if out_trash is not None else 0
 
             # HARD DELETE: the published output is removed permanently and the book is
             # forgotten. The source folder is removed too when the library mount allows
@@ -3666,16 +4050,40 @@ class Handler(BaseHTTPRequestHandler):
             if targets:
                 before = files_under([str(t) for t in targets])
                 error: OSError | None = None
+                changed = ""
                 for target in targets:
+                    changed = removal_unsafe(target, Path(CONFIG.library_root).resolve(), kinds[target])
+                    if not changed and Path(CONFIG.library_root).resolve() != lib_root:
+                        changed = "the library folder was re-pointed"
+                    if changed:
+                        changed = f"{target.name}: {changed}"
+                        break
                     try:
-                        if target.is_dir() and not target.is_symlink():
+                        if target.is_symlink():
+                            target.unlink()  # a link is removed, never followed
+                        elif target.is_dir():
                             shutil.rmtree(str(target))
-                        elif target.exists() or target.is_symlink():
+                        elif target.exists():
                             target.unlink()
                     except OSError as exc:
                         error = exc
                         break
                 remaining = {f for f in before if os.path.lexists(f)}
+                if changed:
+                    log.error("HARD DELETE %s; stopped, the path changed on disk: %s", rel, changed)
+                    self._send(
+                        409,
+                        json.dumps(
+                            {
+                                "error": "the book's folder changed on disk while it was being deleted "
+                                f"({changed}). Stopped - nothing more was removed and the book was kept. "
+                                "Scan again, then retry.",
+                                "source_partial": remaining != before,
+                            }
+                        ).encode(),
+                        "application/json",
+                    )
+                    return
                 if error is None:
                     source_removed = True
                     log.info("HARD DELETE %s; source removed: %s", rel, ", ".join(map(str, targets)))
@@ -3688,7 +4096,8 @@ class Handler(BaseHTTPRequestHandler):
                         json.dumps(
                             {
                                 "error": f"the source was only partly deleted ({len(before) - len(remaining)} "
-                                f"of {len(before)} files removed) before this error: {error}. "
+                                f"of {len(before)} files removed) before a file system error "
+                                f"({_os_error_code(error)}; details in the Audiobind log). "
                                 "Nothing else was touched - fix the permissions and delete again.",
                                 "source_partial": True,
                             }
@@ -3706,7 +4115,12 @@ class Handler(BaseHTTPRequestHandler):
                     log.error("HARD DELETE %s; source removal failed: %s", rel, error)
                     self._send(
                         500,
-                        json.dumps({"error": f"source removal failed: {error}"}).encode(),
+                        json.dumps(
+                            {
+                                "error": f"source removal failed ({_os_error_code(error)}) - "
+                                "details are in the Audiobind log"
+                            }
+                        ).encode(),
                         "application/json",
                     )
                     return
@@ -3719,13 +4133,35 @@ class Handler(BaseHTTPRequestHandler):
                 log.info("HARD DELETE %s; source folder not found at %s", rel, src_path)
 
             output_removed = "absent"
-            if out_trash is not None and out_trash.exists():
+            output_kept_reason = ""
+            if out_trash is not None and out_shared:
+                output_removed = "kept"
+                output_kept_reason = f"also used by {out_shared} other book(s)"
+                log.info("HARD DELETE %s; output kept, %s: %s", rel, output_kept_reason, out_trash)
+            elif out_trash is not None and out_trash.exists():
+                changed = removal_unsafe(out_trash, out_root, "dir")
+                if not changed and Path(CONFIG.output_root).resolve() != out_root:
+                    changed = "the output folder was re-pointed"
+                if changed:
+                    log.error("HARD DELETE %s; output not removed, the path changed on disk: %s", rel, changed)
+                    self._send(
+                        409,
+                        json.dumps(
+                            {
+                                "error": f"the published folder changed on disk ({changed}). Its removal "
+                                "was stopped and the book was kept. Scan again, then retry.",
+                                "source_removed": source_removed,
+                            }
+                        ).encode(),
+                        "application/json",
+                    )
+                    return
                 try:
                     shutil.rmtree(str(out_trash))
                     output_removed = "removed"
                     log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
                 except OSError as exc:
-                    output_removed = f"failed: {exc}"
+                    output_removed = f"failed ({_os_error_code(exc)}) - details are in the Audiobind log"
                     log.error("HARD DELETE %s; could not remove output %s: %s", rel, out_trash, exc)
             else:
                 log.info("HARD DELETE %s; output -> none", rel)
@@ -3742,13 +4178,50 @@ class Handler(BaseHTTPRequestHandler):
                         "source_kept": bool(source_kept_reason),
                         "source_kept_reason": source_kept_reason,
                         "output": output_removed,
+                        "output_kept_reason": output_kept_reason,
                     }
                 ).encode(),
                 "application/json",
             )
             return
 
-        # library keys resolve under LIBRARY_ROOT exactly as before; "ingest:" keys under INGEST_DIR
+        if action not in ("retry", "force", "recheck", "set_asin"):
+            self._send(400, b'{"error":"unknown action"}', "application/json")
+            return
+        # every manual action re-audits the book off the request thread: never stack one on a
+        # book that is already encoding or waiting, and never run more than MANUAL_WORKERS
+        if CONTROL.current_unit == rel:
+            self._send(
+                409,
+                b'{"error":"this book is encoding right now - try again once it finishes"}',
+                "application/json",
+            )
+            return
+        if rel in CONTROL.queue_snapshot()["units"]:
+            self._send(409, b'{"error":"this book is already waiting for an action"}', "application/json")
+            return
+        slot = MANUAL_SLOTS
+        if not slot.acquire(blocking=False):
+            self._send(
+                429,
+                b'{"error":"another action is already running - try again when it finishes"}',
+                "application/json",
+            )
+            return
+        started = ""
+        try:
+            started = self._start_manual(rel, action, payload, slot)
+        finally:
+            if not started:  # a started thread releases the slot when it ends
+                slot.release()
+        if started:
+            self._send(
+                200, json.dumps({"ok": True, "action": started, "unit": rel}).encode(), "application/json"
+            )
+
+    def _start_manual(self, rel: str, action: str, payload: dict, slot) -> str:
+        """Validate and start one manual action; returns the action started, or '' after
+        sending the refusal. The started thread owns ``slot`` from then on."""
         unit = ingest_mod.find_any_unit(rel)
         if unit is None:
             if ingest_mod.is_ingest(rel):
@@ -3759,7 +4232,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             self._send(404, b'{"error":"no such unit"}', "application/json")
-            return
+            return ""
 
         if action == "set_asin":
             asin = str(payload.get("asin", "")).strip().upper()
@@ -3769,48 +4242,35 @@ class Handler(BaseHTTPRequestHandler):
                     b'{"error":"that is not an ASIN - it is 8-14 letters and digits, like B005EHN61O"}',
                     "application/json",
                 )
-                return
-            self.state.set_asin_override(rel, asin)
-            # setting the ASIN by hand is an edit like any other: it locks
-            self.state.lock_fields(rel, {"asin"})
-            action = "retry"
-        if action not in ("retry", "force", "recheck"):
-            self._send(400, b'{"error":"unknown action"}', "application/json")
-            return
-        if action == "recheck":
-            # the per-book Re-check all: the same manual re-audit Retry runs (a hand-set ASIN is
-            # honoured and never fallen back from, auto-convert rules still apply) - offered on
-            # every row, so it must not stack on a book that is already in flight
-            if CONTROL.current_unit == rel:
-                self._send(
-                    409,
-                    b'{"error":"this book is encoding right now - re-check it once it finishes"}',
-                    "application/json",
-                )
-                return
-            if rel in CONTROL.queue_snapshot()["units"]:
-                self._send(
-                    409, b'{"error":"this book is already waiting to be re-checked"}', "application/json"
-                )
-                return
-
-        logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
-        CONTROL.enqueue(rel)
-        threading.Thread(
-            target=run_manual,
-            args=(self.state, unit),
-            kwargs={"force": action == "force"},
-            daemon=True,
-            name="manual-" + action,
-        ).start()
-        self._send(200, json.dumps({"ok": True, "action": action, "unit": rel}).encode(), "application/json")
+                return ""
+        # atomic: two requests for one book can't both get past this
+        if not CONTROL.try_enqueue(rel):
+            self._send(409, b'{"error":"this book is already waiting for an action"}', "application/json")
+            return ""
+        try:
+            if action == "set_asin":
+                self.state.set_asin_override(rel, asin)
+                # setting the ASIN by hand is an edit like any other: it locks
+                self.state.lock_fields(rel, {"asin"})
+                action = "retry"
+            # "recheck" is the per-book Re-check all: the same manual re-audit Retry runs (a
+            # hand-set ASIN is honoured and never fallen back from, auto-convert rules apply)
+            logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
+            threading.Thread(
+                target=run_manual,
+                args=(self.state, unit),
+                kwargs={"force": action == "force", "slot": slot},
+                daemon=True,
+                name="manual-" + action,
+            ).start()
+        except BaseException:
+            CONTROL.dequeue(rel)
+            raise
+        return action
 
     def _handle_settings(self) -> None:
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except (ValueError, TypeError):
-            self._send(400, b'{"error":"bad request"}', "application/json")
+        payload = self._read_json()
+        if payload is None:
             return
 
         # Reset: clear all six setting keys and hand back the live environment values
@@ -3872,17 +4332,20 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"ok": True, "custom": custom}).encode(), "application/json")
 
     def _handle_series(self) -> None:
-        """I have this / Undo: the per-ASIN "owned without a rip" marker."""
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except (ValueError, TypeError):
-            self._send(400, b'{"error":"bad request"}', "application/json")
-            return
-        if not isinstance(payload, dict):
-            self._send(400, b'{"error":"bad request"}', "application/json")
+        """I have this / Undo: the per-ASIN "owned without a rip" marker; and "refresh",
+        which queues stale series listings for the background refresher (GETs never do)."""
+        payload = self._read_json()
+        if payload is None:
             return
         action = str(payload.get("action", "")).lower()
+        if action == "refresh":
+            _series_shelf(self.state, refresh=True)
+            self._send(
+                200,
+                json.dumps({"ok": True, "refreshing": series_mod.REFRESHER.busy}).encode(),
+                "application/json",
+            )
+            return
         asin = str(payload.get("asin", "")).strip().upper()
         if action not in ("mark_owned", "unmark_owned"):
             self._send(400, b'{"error":"unknown action"}', "application/json")
@@ -3912,28 +4375,41 @@ class Handler(BaseHTTPRequestHandler):
           cross-origin after a CORS preflight, which this server never answers, so a page
           on another site cannot fire a no-cors ``text/plain`` POST at the API.
         * When the browser says where the request came from (Origin, else Referer), that
-          host must be this server's own Host (or X-Forwarded-Host behind a proxy).
+          host must be this server's own Host (or X-Forwarded-Host behind a proxy, when
+          TRUSTED_PROXY is on).
           Requests with neither header - curl, scripts - stay allowed.
         """
         ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         if ctype != "application/json":
             return 415, "requests must be sent as application/json"
+        return self._origin_refusal()
+
+    def _origin_refusal(self) -> tuple[int, str] | None:
+        """Origin/Referer, when sent, must name this server's own host."""
         source = self.headers.get("Origin")
         if source is None:
             source = self.headers.get("Referer")
         if source is None:
             return None
         claimed = urlsplit(source.strip()).netloc.lower() if source.strip() not in ("", "null") else ""
-        allowed = {
-            h.strip().lower()
-            for h in (self.headers.get("Host") or "", *(self.headers.get("X-Forwarded-Host") or "").split(","))
-            if h.strip()
-        }
+        forwarded = (self.headers.get("X-Forwarded-Host") or "").split(",") if CONFIG.trusted_proxy else []
+        allowed = {h.strip().lower() for h in (self.headers.get("Host") or "", *forwarded) if h.strip()}
         if not claimed or claimed not in allowed:
             return 403, "cross-site request refused"
         return None
 
     def do_POST(self):  # noqa: N802
+        if self._host_refused():
+            return
+        path = self.path.partition("?")[0].rstrip("/")
+        if path == "/login":
+            self._handle_login()
+            return
+        if path == "/logout":
+            self._handle_logout()
+            return
+        if self._auth_refused(path):
+            return
         refusal = self._post_refusal()
         if refusal is not None:
             code, message = refusal
@@ -3951,11 +4427,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.path.startswith("/api/control"):
             self._send(404, b'{"error":"not found"}', "application/json")
             return
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except (ValueError, TypeError):
-            self._send(400, b'{"error":"bad request"}', "application/json")
+        payload = self._read_json()
+        if payload is None:
             return
 
         action = str(payload.get("action", "")).lower()
@@ -3995,6 +4468,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(state):
     Handler.state = state
+    warn_default_hosts()
     server = ThreadingHTTPServer(("0.0.0.0", CONFIG.web_port), Handler)
     if CONFIG.web_port == 0:
         CONFIG.web_port = server.server_address[1]
