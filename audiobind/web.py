@@ -1669,9 +1669,17 @@ function abSeriesBusy() {
   if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return true;
   return false;
 }
+// stale series listings are fetched in the background; asking is a POST, never a GET
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('/api/series', {method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({action:'refresh'})}).catch(() => {});
+});
 let abSeriesSig = null;
 function abSeriesWatch() {
-  fetch('/api/state').then(r => r.json()).then(d => {
+  fetch('/api/state').then(r => {
+    if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+    return r.json();
+  }).then(d => {
     const sig = JSON.stringify(d.counts) + '|' + (d.rev || '');
     if (abSeriesSig === null) { abSeriesSig = sig; return; }
     if (sig !== abSeriesSig && !abSeriesBusy()) location.reload();
@@ -2332,7 +2340,7 @@ AUDIBLE_PD = "https://www.audible.com/pd?asin="
 _EMPTY_SHELF = {"series": [], "by_path": {}, "missing_total": 0}
 
 
-def _series_shelf(state, refresh: bool = True) -> dict:
+def _series_shelf(state, refresh: bool = False) -> dict:
     """The aggregation, or an empty shelf - a series problem must never blank a page."""
     try:
         return series_mod.aggregate(state, refresh=refresh)
@@ -2918,7 +2926,7 @@ def render(state, status: str = "", query: str = "") -> str:
         if narrators:
             decision.append("Narrated by <b>{n}</b>".format(n=_html("; ".join(narrators))))
         if unit.confidence:
-            decision.append(f"Match confidence: <b>{unit.confidence}</b>")
+            decision.append(f"Match confidence: <b>{_html(unit.confidence)}</b>")
         if unit.asin:
             decision.append(
                 f'ASIN <a class="ab-alink" href="https://www.audible.com/pd?asin={_attr(unit.asin)}" '
@@ -3425,6 +3433,12 @@ def run_manual(state, unit, force: bool = False, slot=None) -> None:
             slot.release()
 
 
+def _os_error_code(exc: OSError) -> str:
+    """A client-safe label for an OSError: its errno name, never the message (which
+    carries container paths). The full error goes to the log."""
+    return errno.errorcode.get(exc.errno or 0, "error") if isinstance(exc, OSError) else "error"
+
+
 def removal_unsafe(target: Path, root: Path, kind: str) -> str:
     """Re-check a planned delete target right before removing it ('' = go ahead).
 
@@ -3512,9 +3526,49 @@ def warn_default_hosts() -> None:
     )
 
 
+#: added to every response (including BaseHTTPRequestHandler's own error pages)
+SECURITY_HEADERS = (
+    ("X-Frame-Options", "DENY"),
+    ("Content-Security-Policy", "frame-ancestors 'none'"),
+    ("X-Content-Type-Options", "nosniff"),
+    ("Referrer-Policy", "same-origin"),
+)
+#: the largest JSON body any endpoint accepts
+MAX_BODY = 64 * 1024
+
+
 class Handler(BaseHTTPRequestHandler):
     state = None
     server_version = f"audiobind/{__version__}"
+    #: a client that stops sending (slowloris, Content-Length larger than the body) is cut off
+    timeout = 15
+
+    def end_headers(self) -> None:
+        for name, value in SECURITY_HEADERS:
+            self.send_header(name, value)
+        super().end_headers()
+
+    def _read_json(self) -> dict | None:
+        """The request body as a JSON object, or None after a 400/413 has been sent."""
+        raw_length = self.headers.get("Content-Length")
+        try:
+            length = int(raw_length) if raw_length not in (None, "") else 0
+        except ValueError:
+            self._send(400, b'{"error":"bad Content-Length"}', "application/json")
+            return None
+        if length < 0 or length > MAX_BODY:
+            self.close_connection = True
+            self._send(413, b'{"error":"request body too large"}', "application/json")
+            return None
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}") if length else {}
+        except (ValueError, UnicodeDecodeError):
+            self._send(400, b'{"error":"bad request"}', "application/json")
+            return None
+        if not isinstance(payload, dict):
+            self._send(400, b'{"error":"the body must be a JSON object"}', "application/json")
+            return None
+        return payload
 
     def _send(self, code: int, body: bytes, content_type: str, headers: dict | None = None) -> None:
         self.send_response(code)
@@ -3775,19 +3829,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"no cover", "text/plain")
             return
         kind = "image/png" if found.suffix.lower() == ".png" else "image/jpeg"
-        self.send_response(200)
-        self.send_header("Content-Type", kind)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "public, max-age=86400")
-        self.end_headers()
-        self.wfile.write(body)
+        self._send(200, body, kind, {"Cache-Control": "public, max-age=86400"})
 
     def _handle_unit(self) -> None:
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except (ValueError, TypeError):
-            self._send(400, b'{"error":"bad request"}', "application/json")
+        payload = self._read_json()
+        if payload is None:
             return
 
         rel = str(payload.get("path", ""))
@@ -3987,7 +4033,8 @@ class Handler(BaseHTTPRequestHandler):
                         json.dumps(
                             {
                                 "error": f"the source was only partly deleted ({len(before) - len(remaining)} "
-                                f"of {len(before)} files removed) before this error: {error}. "
+                                f"of {len(before)} files removed) before a file system error "
+                                f"({_os_error_code(error)}; details in the Audiobind log). "
                                 "Nothing else was touched - fix the permissions and delete again.",
                                 "source_partial": True,
                             }
@@ -4005,7 +4052,12 @@ class Handler(BaseHTTPRequestHandler):
                     log.error("HARD DELETE %s; source removal failed: %s", rel, error)
                     self._send(
                         500,
-                        json.dumps({"error": f"source removal failed: {error}"}).encode(),
+                        json.dumps(
+                            {
+                                "error": f"source removal failed ({_os_error_code(error)}) - "
+                                "details are in the Audiobind log"
+                            }
+                        ).encode(),
                         "application/json",
                     )
                     return
@@ -4046,7 +4098,7 @@ class Handler(BaseHTTPRequestHandler):
                     output_removed = "removed"
                     log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
                 except OSError as exc:
-                    output_removed = f"failed: {exc}"
+                    output_removed = f"failed ({_os_error_code(exc)}) - details are in the Audiobind log"
                     log.error("HARD DELETE %s; could not remove output %s: %s", rel, out_trash, exc)
             else:
                 log.info("HARD DELETE %s; output -> none", rel)
@@ -4147,11 +4199,8 @@ class Handler(BaseHTTPRequestHandler):
         return action
 
     def _handle_settings(self) -> None:
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except (ValueError, TypeError):
-            self._send(400, b'{"error":"bad request"}', "application/json")
+        payload = self._read_json()
+        if payload is None:
             return
 
         # Reset: clear all six setting keys and hand back the live environment values
@@ -4213,17 +4262,20 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"ok": True, "custom": custom}).encode(), "application/json")
 
     def _handle_series(self) -> None:
-        """I have this / Undo: the per-ASIN "owned without a rip" marker."""
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except (ValueError, TypeError):
-            self._send(400, b'{"error":"bad request"}', "application/json")
-            return
-        if not isinstance(payload, dict):
-            self._send(400, b'{"error":"bad request"}', "application/json")
+        """I have this / Undo: the per-ASIN "owned without a rip" marker; and "refresh",
+        which queues stale series listings for the background refresher (GETs never do)."""
+        payload = self._read_json()
+        if payload is None:
             return
         action = str(payload.get("action", "")).lower()
+        if action == "refresh":
+            _series_shelf(self.state, refresh=True)
+            self._send(
+                200,
+                json.dumps({"ok": True, "refreshing": series_mod.REFRESHER.busy}).encode(),
+                "application/json",
+            )
+            return
         asin = str(payload.get("asin", "")).strip().upper()
         if action not in ("mark_owned", "unmark_owned"):
             self._send(400, b'{"error":"unknown action"}', "application/json")
@@ -4305,11 +4357,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.path.startswith("/api/control"):
             self._send(404, b'{"error":"not found"}', "application/json")
             return
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except (ValueError, TypeError):
-            self._send(400, b'{"error":"bad request"}', "application/json")
+        payload = self._read_json()
+        if payload is None:
             return
 
         action = str(payload.get("action", "")).lower()

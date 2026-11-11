@@ -16,6 +16,9 @@ from .util import COLLECTION_RE, NOISE_RE, PART_RE, SEQ_RE, SERIES_DIR_RE, STOPW
 AUDIO_EXT = {".mp3", ".m4b", ".m4a", ".mp4", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma"}
 
 
+#: state keys starting with this belong to ingest rows, never to library folders
+RESERVED_KEY_PREFIX = "ingest:"
+
 #: never handed to ffmpeg: a line break starts a new concat-list directive, NUL truncates
 UNSAFE_PATH_CHARS = {"\n": "a line break", "\r": "a carriage return", "\x00": "a NUL byte"}
 #: the start of the note on a book held for an unsafe name (advice.py keys off it)
@@ -246,6 +249,10 @@ def discover_units(root: str | Path, ignore: list[str]) -> list[BookUnit]:
             # a shared parent ("Author/{Foo Part 1, Bar Part 1}") is not the book: guess
             # from the bucket's own name, with the parent folder as context
             guess_path = unit.name if rel_dir == os.curdir else os.path.join(rel_dir, unit.name)
+        # "ingest:" is reserved for state keys of ingest rows: a library folder literally named
+        # "ingest:..." is keyed "./ingest:..." instead (same folder on disk, different key)
+        if unit.rel_path.startswith(RESERVED_KEY_PREFIX):
+            unit.rel_path = "./" + unit.rel_path
         # rel_path is the state DB's primary key: it must stay unique, even against a real
         # folder that happens to be named like a synthetic "<parent>#<key>"
         base, n = unit.rel_path, 2

@@ -247,10 +247,15 @@ class TestBadgeAndDegraded(StateCase):
 
 class TestRefreshStaysOffTheRenderPath(StateCase):
     def test_render_queues_stale_series_and_never_fetches_inline(self):
+        # v0.15.1: rendering (a GET) never queues outbound lookups; the daemon loop does
+        from audiobind import daemon
+
         self.owned(1, 2, 3)
         with mock.patch.object(series, "FETCH") as fetch:
             web.render(self.state)
             web.render_series(self.state)
+            self.assertFalse(any(call.args[1] for call in self.scheduled.call_args_list))
+            daemon.refresh_series(self.state)
         fetch.assert_not_called()
         jobs = self.scheduled.call_args[0][1]
         self.assertEqual([j["name"] for j in jobs], ["Jack Reacher"])
