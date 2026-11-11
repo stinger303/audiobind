@@ -154,8 +154,9 @@ tmpfs; the app itself only writes to `/config`, `/output` and - for Delete -
 to hand the files to `PUID`/`PGID` (`CHOWN`, `SETUID`, `SETGID`; the app runs
 without any), and `no-new-privileges`. Audiobind feeds media from your library to
 ffmpeg, and those files may come from anywhere, so these limits keep a malicious
-file's reach small. Rebuilt images ship every week with the latest ffmpeg and base
-image patches; prefer a version tag over `:latest`.
+file's reach small. `:latest` is rebuilt every week (no build cache) so it picks up
+ffmpeg and base-image security patches. Version tags stay exactly as released: pin
+one for reproducible installs and move to the next release for patches.
 
 **Library mount: your call.** Mounting `/library` read-only (`:ro`) means Audiobind
 can never change or delete your sources, at the cost of Delete no longer removing
