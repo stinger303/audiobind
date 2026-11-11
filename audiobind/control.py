@@ -96,6 +96,14 @@ class Control:
             if rel not in self._queue:
                 self._queue.append(rel)
 
+    def try_enqueue(self, rel: str) -> bool:
+        """Queue ``rel`` unless it is already waiting (atomic check-and-add)."""
+        with self._lock:
+            if rel in self._queue:
+                return False
+            self._queue.append(rel)
+            return True
+
     def dequeue(self, rel: str) -> None:
         with self._lock:
             if rel in self._queue:

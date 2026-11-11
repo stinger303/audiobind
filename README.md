@@ -194,6 +194,7 @@ docker exec audiobind audiobind health             # exit 0 while the daemon is 
 | `SAMPLE_RATE` | `44100` | Output sample rate |
 | `JOBS` | `1` | Books converted in parallel |
 | `NICE` | `10` | ffmpeg CPU priority |
+| `MANUAL_WORKERS` | `2` | Manual actions (Retry, Convert anyway, Use this ASIN, Re-check) allowed at once; more get "another action is already running" |
 | `MAX_RUNTIME_DELTA` | `0.25` | Hold when runtime differs by more than this fraction |
 | `REGION` | `us` | Audible region (`us`, `ca`, `uk`, `au`, `fr`, `de`, `it`, `es`, `jp`, `in`) |
 | `DRY_RUN` | `false` | Decide and log, write nothing |

@@ -78,6 +78,8 @@ class Config:
     allowed_hosts_set: bool = False
     #: honour X-Forwarded-Host (only behind a reverse proxy you control)
     trusted_proxy: bool = False
+    #: manual Retry / Convert anyway / Use this ASIN / Re-check actions allowed at once
+    manual_workers: int = 2
     #: optional shared secret for the web UI and API; empty = no login (the old behaviour)
     auth_token: str = ""
 
@@ -110,6 +112,7 @@ class Config:
             allowed_hosts_set=bool(_env("ALLOWED_HOSTS", "")),
             trusted_proxy=_env_bool("TRUSTED_PROXY", False),
             auth_token=_env("AUTH_TOKEN", ""),
+            manual_workers=max(1, _env_int("MANUAL_WORKERS", 2)),
         )
 
     def ensure_dirs(self) -> None:

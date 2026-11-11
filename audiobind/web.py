@@ -3398,7 +3398,17 @@ def snapshot(state) -> dict:
     }
 
 
-def run_manual(state, unit, force: bool = False) -> None:
+#: caps the manual-action threads (each runs ffprobe over the book plus catalog calls)
+MANUAL_SLOTS = threading.BoundedSemaphore(max(1, CONFIG.manual_workers))
+
+
+def reset_manual_slots(n: int | None = None) -> None:
+    """Re-size the manual-action cap (tests, or after CONFIG.manual_workers changes)."""
+    global MANUAL_SLOTS
+    MANUAL_SLOTS = threading.BoundedSemaphore(max(1, n if n is not None else CONFIG.manual_workers))
+
+
+def run_manual(state, unit, force: bool = False, slot=None) -> None:
     """A Retry / Use this ASIN / Convert anyway request, run off the request thread.
 
     The book leaves the queue however it ends - converted, still in review, held, a dry
@@ -3411,6 +3421,8 @@ def run_manual(state, unit, force: bool = False) -> None:
         logging.getLogger("audiobind").exception("manual action for %s failed", unit.rel_path)
     finally:
         CONTROL.dequeue(unit.rel_path)
+        if slot is not None:
+            slot.release()
 
 
 def removal_unsafe(target: Path, root: Path, kind: str) -> str:
@@ -4058,10 +4070,47 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if action not in ("retry", "force", "recheck", "set_asin"):
+            self._send(400, b'{"error":"unknown action"}', "application/json")
+            return
+        # every manual action re-audits the book off the request thread: never stack one on a
+        # book that is already encoding or waiting, and never run more than MANUAL_WORKERS
+        if CONTROL.current_unit == rel:
+            self._send(
+                409,
+                b'{"error":"this book is encoding right now - try again once it finishes"}',
+                "application/json",
+            )
+            return
+        if rel in CONTROL.queue_snapshot()["units"]:
+            self._send(409, b'{"error":"this book is already waiting for an action"}', "application/json")
+            return
+        slot = MANUAL_SLOTS
+        if not slot.acquire(blocking=False):
+            self._send(
+                429,
+                b'{"error":"another action is already running - try again when it finishes"}',
+                "application/json",
+            )
+            return
+        started = ""
+        try:
+            started = self._start_manual(rel, action, payload, slot)
+        finally:
+            if not started:  # a started thread releases the slot when it ends
+                slot.release()
+        if started:
+            self._send(
+                200, json.dumps({"ok": True, "action": started, "unit": rel}).encode(), "application/json"
+            )
+
+    def _start_manual(self, rel: str, action: str, payload: dict, slot) -> str:
+        """Validate and start one manual action; returns the action started, or '' after
+        sending the refusal. The started thread owns ``slot`` from then on."""
         unit = find_unit(CONFIG.library_root, CONFIG.ignore_globs, rel)
         if unit is None:
             self._send(404, b'{"error":"no such unit"}', "application/json")
-            return
+            return ""
 
         if action == "set_asin":
             asin = str(payload.get("asin", "")).strip().upper()
@@ -4071,41 +4120,31 @@ class Handler(BaseHTTPRequestHandler):
                     b'{"error":"that is not an ASIN - it is 8-14 letters and digits, like B005EHN61O"}',
                     "application/json",
                 )
-                return
-            self.state.set_asin_override(rel, asin)
-            # setting the ASIN by hand is an edit like any other: it locks
-            self.state.lock_fields(rel, {"asin"})
-            action = "retry"
-        if action not in ("retry", "force", "recheck"):
-            self._send(400, b'{"error":"unknown action"}', "application/json")
-            return
-        if action == "recheck":
-            # the per-book Re-check all: the same manual re-audit Retry runs (a hand-set ASIN is
-            # honoured and never fallen back from, auto-convert rules still apply) - offered on
-            # every row, so it must not stack on a book that is already in flight
-            if CONTROL.current_unit == rel:
-                self._send(
-                    409,
-                    b'{"error":"this book is encoding right now - re-check it once it finishes"}',
-                    "application/json",
-                )
-                return
-            if rel in CONTROL.queue_snapshot()["units"]:
-                self._send(
-                    409, b'{"error":"this book is already waiting to be re-checked"}', "application/json"
-                )
-                return
-
-        logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
-        CONTROL.enqueue(rel)
-        threading.Thread(
-            target=run_manual,
-            args=(self.state, unit),
-            kwargs={"force": action == "force"},
-            daemon=True,
-            name="manual-" + action,
-        ).start()
-        self._send(200, json.dumps({"ok": True, "action": action, "unit": rel}).encode(), "application/json")
+                return ""
+        # atomic: two requests for one book can't both get past this
+        if not CONTROL.try_enqueue(rel):
+            self._send(409, b'{"error":"this book is already waiting for an action"}', "application/json")
+            return ""
+        try:
+            if action == "set_asin":
+                self.state.set_asin_override(rel, asin)
+                # setting the ASIN by hand is an edit like any other: it locks
+                self.state.lock_fields(rel, {"asin"})
+                action = "retry"
+            # "recheck" is the per-book Re-check all: the same manual re-audit Retry runs (a
+            # hand-set ASIN is honoured and never fallen back from, auto-convert rules apply)
+            logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
+            threading.Thread(
+                target=run_manual,
+                args=(self.state, unit),
+                kwargs={"force": action == "force", "slot": slot},
+                daemon=True,
+                name="manual-" + action,
+            ).start()
+        except BaseException:
+            CONTROL.dequeue(rel)
+            raise
+        return action
 
     def _handle_settings(self) -> None:
         try:
