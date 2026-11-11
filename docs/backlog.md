@@ -151,3 +151,68 @@ shaped versions of the idea:
 9. **Series shelf grouping** — optional shelf mode grouping published books by
    series with sequence badges, reading the series data the matcher already
    persists.
+
+## MAM acquisition pipeline + wishlist/discovery — planned 2026-11-10 (owner approved)
+
+Phase plan agreed with owner. Trigger stays human (a MAM bookmark or a
+wishlist click); everything after the trigger is automatic. Ratio safety is
+MAM's server-side "Require FL Wedge" preference (owner configured 2026-11-10:
+Require mode, size-above 1 MiB, auto-apply left empty) — never rely on
+client-side wedge application (Prowlarr regression history). Prowlarr is
+deliberately NOT part of this: bookmarks RSS feeds qBittorrent natively, and
+the wishlist watcher talks to MAM's official API directly.
+
+### Phase 1 — ingest plumbing (Audiobind v0.16 "ingest")
+
+- New read-only watched root: mount `/mnt/user/cache_plex/torrents` :ro as
+  `/ingest` (qBittorrent has no library mount and cannot write the media
+  tree; converting in place from a read-only mount keeps seeding intact by
+  construction). Env `INGEST_DIR`, off by default when unset.
+- Daemon treats each direct child directory of /ingest as a candidate unit —
+  same unit model and matcher as the library; publish to OUTPUT_ROOT as
+  today. Never write to /ingest (it is :ro anyway).
+- UI: ingest rows on the table page (torrent name, match confidence,
+  convert/skip actions, source dir shown in the detail panel); unmatched
+  ingest rows land on the needs-attention shelf. Statuses carry a distinct
+  source marker so library rows and ingest rows never blur.
+- Runtime controls per standing rule: pause/dry-run already gate the whole
+  loop; no ingest-specific switch without an owner ask.
+- Deploy includes container recreate with the new mount + template
+  (`my-Audiobind.xml`) kept in step; owner approves the recreate.
+
+### Phase 1 acceptance test (before trusting the chain)
+
+Bookmark one audiobook -> wedge auto-applies -> RSS -> qBittorrent auto-
+download -> appears as ingest row -> converts -> published. Verify on MAM
+stats that zero download bytes counted (the Require-wedge feature is marked
+in-development by MAM itself; a blocked download is the expected failure
+mode, a ratio hit is the bug).
+
+### Phase 2 — discovery: search + recommendations (Audiobind)
+
+1. **Search button** — queries the Audible catalog API we already use
+   (multi-region per backlog item 1); results page with a "Get this" button
+   that adds to the wishlist.
+2. **Recommendations from the owned library** — local computation over
+   persisted metadata (ASIN, authors, narrators, series, genres):
+   more-by-this-author, same-narrator, same-genre. Candidates come from
+   Audible catalog lookups, deduped against the library (already-in-library
+   guard reused). Owner picks from suggestions; nothing auto-added.
+3. **Series completion** — extends the series feature: "10 of 20 owned"
+   shows the missing sequels individually or a "want them all" action; both
+   add to the wishlist.
+
+### Phase 3 — wishlist watcher (separate component, builds nothing fragile)
+
+- Wishlist page in Audiobind: the "books to get" list, each row showing
+  status (wanted / found on MAM / bookmarked / downloaded+published).
+- Watcher loop: for each wanted title, search MAM's official API through the
+  VPN (join `network: container:gluetun`, same netns pattern as
+  qBittorrent/firefox — MAM sessions are IP-locked), auto-bookmark the best
+  edition, and stop there: the Phase 1 conveyor (bookmark -> RSS ->
+  download -> convert) does the rest. Research step first: confirm the MAM
+  API supports bookmarking and what rate limits apply; if it does not,
+  watcher degrades to a "found on MAM — click to bookmark" list, still
+  useful.
+- A downloaded wishlist row resolves automatically when the book appears in
+  the published library (ASIN match).
