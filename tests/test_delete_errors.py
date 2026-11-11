@@ -28,7 +28,9 @@ class TestDeleteErrors(LiveServerCase):
         with mock.patch.object(web.shutil, "rmtree", side_effect=nasty):
             status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
         self.assertEqual(status, 500)
-        self.assertIn('"no"', body["error"])
+        # v0.15.1: the client gets the errno name, the raw message (paths) stays in the log
+        self.assertIn("EIO", body["error"])
+        self.assertNotIn('"no"', body["error"])
         self.assertIsNotNone(self.state.get("Author/Book"))
 
     @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root ignores permissions")

@@ -233,7 +233,7 @@ class TestIngestManualActions(LiveServerCase):
         touch(str(self.ingest_root / TORRENT / "01.mp3"))
         self.state.save(UnitState(path=KEY, status="review"))
         seen = []
-        with mock.patch("audiobind.web.run_manual", side_effect=lambda state, unit, force=False: seen.append(unit)):
+        with mock.patch("audiobind.web.run_manual", side_effect=lambda state, unit, force=False, **_kw: seen.append(unit)):
             status, body = self.post({"action": "retry", "path": KEY})
             for _ in range(50):
                 if seen:

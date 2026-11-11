@@ -84,7 +84,11 @@ Audiobind is pending publication in Community Applications. Until it is listed:
 3. Click **Docker** > **Add Container** and select **audiobind** from the template dropdown.
 4. Fill in the paths for your library (read-only), output directory, and appdata, then click **Apply**.
 
-The template sets `PUID=99 PGID=100 --restart=unless-stopped` and exposes port 8080 for the web UI.
+The template sets `PUID=99 PGID=100`, runs the container hardened (`--read-only --tmpfs /tmp
+--cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID
+--security-opt no-new-privileges:true`) and exposes port 8080 for the web UI. Set
+**Allowed hosts** to your server's LAN IP / hostname, or the UI only answers on the server
+itself.
 
 ### Docker run
 
@@ -99,11 +103,15 @@ docker run -d \
   -e SCAN_INTERVAL_MIN=30 \
   -e REGION=us \
   -e DRY_RUN=false \
+  -e ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.10,tower.local \
+  --read-only --tmpfs /tmp \
+  --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID \
+  --security-opt no-new-privileges:true \
   -v /path/to/audiobooks:/library:rw \
   -v /path/to/audiobooks-fixed:/output \
   -v /path/to/appdata/audiobind:/config \
   -p 8080:8080 \
-  ghcr.io/stinger303/audiobind:0.12.0
+  ghcr.io/stinger303/audiobind:0.15.1
 ```
 
 ### Docker Compose
@@ -111,7 +119,7 @@ docker run -d \
 ```yaml
 services:
   audiobind:
-    image: ghcr.io/stinger303/audiobind:0.12.0
+    image: ghcr.io/stinger303/audiobind:0.15.1
     restart: unless-stopped
     environment:
       - PUID=99
@@ -121,13 +129,39 @@ services:
       - SCAN_INTERVAL_MIN=30
       - REGION=us
       - DRY_RUN=false
+      - ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.10,tower.local
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - /path/to/audiobooks:/library:rw
+      # - /path/to/audiobooks:/library:ro   # safer, but Delete can then no longer remove sources
       - /path/to/audiobooks-fixed:/output
       - /path/to/appdata/audiobind:/config
     ports:
       - "8080:8080"
 ```
+
+### Hardening
+
+The examples above run the container with a read-only root filesystem (`/tmp` is a
+tmpfs; the app itself only writes to `/config`, `/output` and - for Delete -
+`/library`), every Linux capability dropped except the three the entrypoint needs
+to hand the files to `PUID`/`PGID` (`CHOWN`, `SETUID`, `SETGID`; the app runs
+without any), and `no-new-privileges`. Audiobind feeds media from your library to
+ffmpeg, and those files may come from anywhere, so these limits keep a malicious
+file's reach small. `:latest` is rebuilt every week (no build cache) so it picks up
+ffmpeg and base-image security patches. Version tags stay exactly as released: pin
+one for reproducible installs and move to the next release for patches.
+
+**Library mount: your call.** Mounting `/library` read-only (`:ro`) means Audiobind
+can never change or delete your sources, at the cost of Delete no longer removing
+the source folder (it still removes the output and forgets the book). Writable
+(`:rw`) lets Delete remove sources too.
 
 ### First run
 
@@ -194,11 +228,15 @@ docker exec audiobind audiobind health             # exit 0 while the daemon is 
 | `SAMPLE_RATE` | `44100` | Output sample rate |
 | `JOBS` | `1` | Books converted in parallel |
 | `NICE` | `10` | ffmpeg CPU priority |
+| `MANUAL_WORKERS` | `2` | Manual actions (Retry, Convert anyway, Use this ASIN, Re-check) allowed at once; more get "another action is already running" |
 | `MAX_RUNTIME_DELTA` | `0.25` | Hold when runtime differs by more than this fraction |
 | `REGION` | `us` | Audible region (`us`, `ca`, `uk`, `au`, `fr`, `de`, `it`, `es`, `jp`, `in`) |
 | `DRY_RUN` | `false` | Decide and log, write nothing |
 | `WEB_ENABLED` | `true` | Status page |
 | `WEB_PORT` | `8080` | Status page port |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host names / IPs the web UI answers to (ports are ignored). **Add the LAN IP and hostname you browse to**, e.g. `192.168.1.10,tower,tower.local`; any other `Host` gets a 403. This blocks DNS-rebinding attacks from websites you visit. Keep `localhost,127.0.0.1` in the list for scripts on the server itself |
+| `TRUSTED_PROXY` | `false` | `true` only behind your own reverse proxy: `X-Forwarded-Host` is then checked against `ALLOWED_HOSTS` instead of `Host` |
+| `AUTH_TOKEN` | *(unset)* | Optional password for the web UI and API. When set, the UI shows a sign-in page (session cookie, 7 days, `HttpOnly`, `SameSite=Strict`) and scripts send `Authorization: Bearer <token>` to `/api/...`. Five wrong tokens from one IP lock it out for 10 minutes. Unset = no login, as before |
 | `NOTIFY_URL` | | Optional webhook for a per-scan summary |
 | `PUID` / `PGID` | `99` / `100` | Ownership of written files |
 

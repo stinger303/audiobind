@@ -7,6 +7,8 @@ PGID="${PGID:-100}"
 UMASK="${UMASK:-022}"
 
 if [ "$(id -u)" = "0" ]; then
+    # cosmetic (names in /etc/passwd); fails harmlessly on a --read-only root fs because
+    # gosu below switches to the numeric PUID:PGID either way
     groupmod -o -g "$PGID" audiobind >/dev/null 2>&1 || true
     usermod -o -u "$PUID" audiobind >/dev/null 2>&1 || true
 
