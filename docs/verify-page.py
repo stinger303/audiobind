@@ -16,11 +16,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 TMP = tempfile.mkdtemp(prefix="audiobind-verify-")
 os.environ.setdefault("STATE_DIR", TMP)
+# shown in the ingest row's detail panel; the web server never scans it (only the daemon does)
+os.environ.setdefault("INGEST_DIR", "/ingest")
 os.environ["WEB_PORT"] = os.environ.get("VERIFY_PORT", "8099")
 PORT = os.environ["WEB_PORT"]
 
@@ -36,7 +39,11 @@ BOOKS = [
     ("Child/61 Hours", "review", "LOW", "61 Hours", "Lee Child", 14.1),
     ('Odd/A "Quoted" Book', "held", "MEDIUM", 'A "Quoted" Book', "Someone & Co", 3.0),
     ("Long/" + "x" * 60, "failed", "NONE", "A Very Long Title " * 4, "Nobody", 44.5),
+    # an ingest row: a torrent folder from INGEST_DIR, with a brace in its name on purpose
+    ("ingest:Andy Weir - Project Hail Mary [MAM] {B08G9PRS1K}", "review", "LOW", "Project Hail Mary",
+     "Andy Weir", 16.2),
 ]
+INGEST_KEY = BOOKS[-1][0]
 for path, status, conf, title, author, hours in BOOKS:
     state.save(UnitState(path=path, status=status, confidence=conf, title=title, author=author,
                          hours=hours, files=3, src_mb=420, out_mb=310, chapters=31,
@@ -87,7 +94,17 @@ check("favicon link intact", "/favicon.svg" in html)
 check("dark theme intact", "#08090a" in html)
 check("quoted title escaped", "&quot;Quoted&quot;" in html)
 check("every book rendered",
-      all(t in html for t in ("The Burning Room", "61 Hours", "Quoted", "Very Long Title")))
+      all(t in html for t in ("The Burning Room", "61 Hours", "Quoted", "Very Long Title", "Project Hail Mary")))
+# ---- ingest rows (0.16.0): one badge per ingest row in the table and one on its shelf card,
+# the container source path in its panel, and Delete marked so it asks the server (which refuses)
+badges = html.count('class="ab-ingest-badge"')
+check("ingest badge on the row and its shelf card (and nowhere else)", badges == 2, f"found {badges}")
+check("ingest badge uses a numeric ref", "&#8675; ingest" in html)
+check("ingest detail shows the container source dir",
+      'Ingest source (read-only, still seeding): <span class="dim"><code>'
+      "/ingest/Andy Weir - Project Hail Mary [MAM] {B08G9PRS1K}</code>" in html)
+markers = html.count('data-source="ingest"')
+check("ingest Delete controls marked (kebab + panel) and no library row marked", markers == 2, f"found {markers}")
 check("detail panels rendered", html.count('class="dd"') == len(BOOKS) + len(SERIES_BOOKS))
 check("no CDN references", "http://" not in html and "https://" not in html)
 
@@ -104,6 +121,22 @@ elif script:
 check("/api/state responds", '"counts"' in get("/api/state"))
 units = get("/api/units?status=review")
 check("/api/units filter works", '"61 Hours"' in units and "Burning" not in units)
+api_units = {u["path"]: u for u in json.loads(get("/api/units"))["units"]}
+check("/api/units carries source per unit",
+      api_units[INGEST_KEY]["source"] == "ingest" and api_units["Child/61 Hours"]["source"] == "library")
+api_state = json.loads(get("/api/state"))
+check("/api/state reports the ingest dir", api_state.get("ingest_dir") == "/ingest" and "counts" in api_state)
+status_code, refusal = None, {}
+try:
+    urllib.request.urlopen(urllib.request.Request(
+        f"http://127.0.0.1:{PORT}/api/unit", headers={"Content-Type": "application/json"},
+        data=json.dumps({"action": "delete", "path": INGEST_KEY, "confirm": True}).encode()), timeout=10)
+except urllib.error.HTTPError as exc:
+    status_code, refusal = exc.code, json.loads(exc.read() or b"{}")
+    exc.close()
+check("Delete on an ingest row is refused",
+      status_code == 409 and "remove the torrent in qBittorrent" in refusal.get("error", "")
+      and state.get(INGEST_KEY) is not None)
 filtered = get("/?q=connelly")
 table_body = re.search(r'<tbody id="ab-body">(.*?)</tbody>', filtered, re.S)
 check("?q= narrows server-side",
