@@ -165,7 +165,48 @@ the source folder (it still removes the output and forgets the book). Writable
 
 ### First run
 
-Open `http://<host>:8080` for the status page. Books are discovered on the first scan (within `SCAN_INTERVAL_MIN` minutes). Review and held books need attention in the sidebar — you decide what to convert. See the [CHANGELOG](CHANGELOG.md) for what changed in each release.
+Open `http://<host>:8080`. The first time, Audiobind asks you to **create your account**:
+a username (1-64 characters) and a password (at least 8 characters, typed twice). There is
+exactly one account; once it exists the setup page is gone for good, and every page and
+API call needs you signed in. Until then nothing but the setup page answers, so do this
+right after you start the container, from your own network.
+
+Then you get the status page. Books are discovered on the first scan (within `SCAN_INTERVAL_MIN` minutes). Review and held books need attention in the sidebar — you decide what to convert. See the [CHANGELOG](CHANGELOG.md) for what changed in each release.
+
+### Signing in
+
+* **Browser:** username and password on the sign-in page. A session lasts 7 days
+  (`HttpOnly`, `SameSite=Strict` cookie). Five failed sign-ins from one IP lock that IP out
+  for 10 minutes. A wrong username and a wrong password get the same answer.
+* **Scripts:** send the account password as a Bearer token:
+  `curl -H "Authorization: Bearer $AUDIOBIND_PASSWORD" localhost:8080/api/state`. Wrong
+  passwords count towards the same lockout.
+* **Change the password or username** in **Settings → Account**. Both need the current
+  password. The browser you change it from stays signed in. Every other browser is
+  signed out.
+* The password is stored only as a salted PBKDF2-SHA256 hash (600,000 rounds) in the state
+  database under `/config`. It is never logged.
+
+**Forgot the password?** There is no reset link, on purpose. Reset it from a shell on the
+server instead:
+
+```bash
+docker exec -it audiobind audiobind reset-password
+```
+
+It asks for a username (Enter keeps the current one) and the new password, typed twice and
+hidden. Whatever account existed is replaced, and every browser is signed out. On a fresh
+database it creates the account instead. `--username NAME` skips the username question.
+Without a terminal (no `-it`) it refuses unless you pass `--username`, so a script can't
+wipe your sign-in by accident. In that case the new password is read from the first line of
+stdin: `printf '%s\n' "$NEW" | docker exec -i audiobind audiobind reset-password --username me`.
+
+**Upgrading from `AUTH_TOKEN`:** existing installs keep working. While `AUTH_TOKEN` is set
+and no account exists, the setup page is skipped. You sign in with any username (for example
+`admin`) and the token as the password, and `Bearer <token>` still works for scripts. Create
+the account in **Settings → Account** (it asks for the token to confirm) or with
+`reset-password`. From then on the account is the only way in: `AUTH_TOKEN` stops working
+and you can remove it.
 
 ## Controls in the web UI
 
@@ -181,18 +222,19 @@ The status page is also the control panel:
 Both toggles survive container restarts. Scripted equivalent:
 
 ```bash
-curl -X POST -H 'Content-Type: application/json' -d '{"action":"pause"}'    localhost:8080/api/control
-curl -X POST -H 'Content-Type: application/json' -d '{"action":"resume"}'   localhost:8080/api/control
-curl -X POST -H 'Content-Type: application/json' -d '{"action":"scan"}'     localhost:8080/api/control
-curl -X POST -H 'Content-Type: application/json' -d '{"action":"dry_run","value":false}' localhost:8080/api/control
+AUTH="Authorization: Bearer $AUDIOBIND_PASSWORD"
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"action":"pause"}'    localhost:8080/api/control
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"action":"resume"}'   localhost:8080/api/control
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"action":"scan"}'     localhost:8080/api/control
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"action":"dry_run","value":false}' localhost:8080/api/control
 ```
 
 Every POST must be sent as `Content-Type: application/json` (anything else gets a 415).
 If the request carries an `Origin` or `Referer` header, it has to name this server's own
 host, or `X-Forwarded-Host` when you're behind a reverse proxy. Anything else gets a 403. That
 stops another website you visit from pressing these buttons for you. Scripts that send
-neither header, like the `curl` lines above, keep working. There is no login, so keep the
-port on your LAN.
+neither header, like the `curl` lines above, keep working. They still need the Bearer
+password (see [Signing in](#signing-in)). Keep the port on your LAN all the same.
 
 ### Series
 
@@ -212,6 +254,7 @@ docker exec audiobind audiobind scan               # one pass, convert what is s
 docker exec audiobind audiobind convert --unit "Michael Lewis- Moneyball"
 docker exec audiobind audiobind daemon             # the default: scan forever
 docker exec audiobind audiobind health             # exit 0 while the daemon is alive
+docker exec -it audiobind audiobind reset-password # forgot the password: set a new one
 ```
 
 ## Configuration
@@ -236,7 +279,7 @@ docker exec audiobind audiobind health             # exit 0 while the daemon is 
 | `WEB_PORT` | `8080` | Status page port |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host names / IPs the web UI answers to (ports are ignored). **Add the LAN IP and hostname you browse to**, e.g. `192.168.1.10,tower,tower.local`; any other `Host` gets a 403. This blocks DNS-rebinding attacks from websites you visit. Keep `localhost,127.0.0.1` in the list for scripts on the server itself |
 | `TRUSTED_PROXY` | `false` | `true` only behind your own reverse proxy: `X-Forwarded-Host` is then checked against `ALLOWED_HOSTS` instead of `Host` |
-| `AUTH_TOKEN` | *(unset)* | Optional password for the web UI and API. When set, the UI shows a sign-in page (session cookie, 7 days, `HttpOnly`, `SameSite=Strict`) and scripts send `Authorization: Bearer <token>` to `/api/...`. Five wrong tokens from one IP lock it out for 10 minutes. Unset = no login, as before |
+| `AUTH_TOKEN` | *(unset)* | **Deprecated - use the account instead (see [Signing in](#signing-in)).** A shared password for the web UI and API. It only applies while no account exists: you sign in with any username and the token as the password (session cookie, 7 days, `HttpOnly`, `SameSite=Strict`), and scripts send `Authorization: Bearer <token>` to `/api/...`. Five failed sign-ins from one IP lock it out for 10 minutes. While it is set, the first-run setup page is skipped. Once an account exists, the token no longer signs in |
 | `NOTIFY_URL` | | Optional webhook for a per-scan summary |
 | `PUID` / `PGID` | `99` / `100` | Ownership of written files |
 

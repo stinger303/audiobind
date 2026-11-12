@@ -13,6 +13,11 @@ from audiobind.config import CONFIG
 from audiobind.matching import Match
 from audiobind.state import State, UnitState
 
+try:
+    from live import sign_in_urllib, sign_out_urllib
+except ImportError:
+    from tests.live import sign_in_urllib, sign_out_urllib
+
 BOOK = {
     "asin": "B005EHN61O",
     "title": "Moneyball",
@@ -236,6 +241,7 @@ class TestEditorUI(unittest.TestCase):
         CONFIG.web_port = 0  # kernel picks a free port: no contention
         web.Handler.state = self.state
         server = web.serve(self.state)
+        sign_in_urllib(self.state)
         try:
 
             def post(body):
@@ -272,6 +278,7 @@ class TestEditorUI(unittest.TestCase):
             caught.exception.close()
             self.assertEqual(caught.exception.code, 404)
         finally:
+            sign_out_urllib()
             server.shutdown()
             server.server_close()
 

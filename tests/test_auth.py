@@ -75,6 +75,8 @@ class UnitTests(unittest.TestCase):
 
 
 class AuthLiveTests(LiveServerCase):
+    signed_in = False  # these tests drive sign-in themselves
+
     def setUp(self):
         super().setUp()
         self.saved_token = CONFIG.auth_token
@@ -108,24 +110,33 @@ class AuthLiveTests(LiveServerCase):
         body = urllib.parse.urlencode({"token": token}).encode()
         return self.raw("/login", body, {"Content-Type": "application/x-www-form-urlencoded"})
 
-    # -- auth off: unchanged ---------------------------------------------------------------
+    # -- no token and no account (0.16.0-dev2: "auth off" is gone - first run means /setup) --
 
-    def test_auth_off_everything_open(self):
+    def test_no_token_no_account_nothing_is_open(self):
         CONFIG.auth_token = ""
-        self.assertEqual(self.raw("/")[0], 200)
-        self.assertEqual(self.raw("/api/units")[0], 200)
+        status, headers, _ = self.raw("/")
+        self.assertEqual(status, 303)
+        self.assertEqual(headers["Location"], "/setup")
+        status, _, body = self.raw("/api/units")
+        self.assertEqual(status, 403)
+        self.assertNotIn(b"Author/Book", body)
         status, _ = self.post({"action": "pause"}, path="/api/control")
-        self.assertEqual(status, 200)
+        self.assertEqual(status, 403)
+        self.assertFalse(CONTROL.paused)
 
-    def test_auth_off_login_page_redirects_home(self):
+    def test_no_token_no_account_login_page_redirects_to_setup(self):
         CONFIG.auth_token = ""
         status, headers, _ = self.raw("/login")
         self.assertEqual(status, 303)
-        self.assertEqual(headers["Location"], "/")
+        self.assertEqual(headers["Location"], "/setup")
 
-    def test_auth_off_no_signout_link(self):
+    def test_no_signout_link_until_sign_in_exists(self):
+        from audiobind import web
+
         CONFIG.auth_token = ""
-        self.assertNotIn(b"/logout", self.raw("/")[2])
+        self.assertNotIn("/logout", web.render(self.state))
+        CONFIG.auth_token = TOKEN
+        self.assertIn("/logout", web.render(self.state))
 
     # -- auth on: refusals -----------------------------------------------------------------
 

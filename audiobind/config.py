@@ -84,7 +84,8 @@ class Config:
     trusted_proxy: bool = False
     #: manual Retry / Convert anyway / Use this ASIN / Re-check actions allowed at once
     manual_workers: int = 2
-    #: optional shared secret for the web UI and API; empty = no login (the old behaviour)
+    #: deprecated shared secret for the web UI and API: only signs in while no account exists
+    #: in the state DB (and skips first-run /setup); the account takes precedence once created
     auth_token: str = ""
 
     ignore_globs: list[str] = field(

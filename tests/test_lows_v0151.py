@@ -46,7 +46,8 @@ class LiveLows(LiveServerCase):
         return lines[0], dict(line.split(": ", 1) for line in lines[1:] if ": " in line)
 
     def host(self) -> bytes:
-        return f"Host: 127.0.0.1:{CONFIG.web_port}\r\n".encode()
+        # Host plus the signed-in session (0.16.0-dev2: a fresh DB would otherwise answer /setup)
+        return f"Host: 127.0.0.1:{CONFIG.web_port}\r\nCookie: {self.cookie}\r\n".encode()
 
     # -- headers -----------------------------------------------------------------------
 

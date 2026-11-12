@@ -14,6 +14,11 @@ from audiobind import web
 from audiobind.config import CONFIG
 from audiobind.state import State, UnitState
 
+try:
+    from live import sign_in_urllib, sign_out_urllib
+except ImportError:
+    from tests.live import sign_in_urllib, sign_out_urllib
+
 
 def brace_unit(path="Frank Herbert/Dune {Unabridged}", **kw):
     detail = {
@@ -89,8 +94,10 @@ class TestBracesOverHttp(unittest.TestCase):
         CONFIG.web_port = 0
         self.server = web.serve(self.state)
         self.base = "http://127.0.0.1:%d" % CONFIG.web_port
+        sign_in_urllib(self.state)
 
     def tearDown(self):
+        sign_out_urllib()
         self.server.shutdown()
         self.server.server_close()
         web.Handler.state = None
