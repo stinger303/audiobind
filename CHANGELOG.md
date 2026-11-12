@@ -5,6 +5,51 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.16.0-dev2] - 2026-11-11
+
+### Added
+- **Your own account: username and password.** The first time you open Audiobind it
+  asks you to create one: a username (1-64 characters) and a password (at least 8, typed
+  twice). Creating it signs you in. There is only one account. Once it exists the setup
+  page redirects to the library and a second setup is refused. Until it exists, every
+  page goes to the setup page. Only the setup page, the icon and `/healthz` answer.
+- **Sign-in asks for both fields.** A wrong username and a wrong password get the same
+  message ("That username or password is not right."), and the server does the same work
+  for either, so a guess never learns which half was wrong. Five failed sign-ins from one
+  IP still lock that IP out for 10 minutes. Sessions still last 7 days.
+- **Settings → Account:** change the password (current password, new, confirm) or the
+  username (current password required). The browser you do it from stays signed in.
+  Every other browser is signed out. Wrong current passwords count towards the same
+  lockout.
+- **`audiobind reset-password`** for a forgotten password:
+  `docker exec -it audiobind audiobind reset-password`. It asks for the username (Enter
+  keeps the current one) and a new password twice, hidden. It replaces the account, or
+  creates it on a fresh database, and signs every browser out, even ones signed in to a
+  daemon that is already running. `--username NAME` skips the username question. Without
+  a terminal it refuses unless `--username` is given, and then it reads the password
+  from stdin. There is deliberately no reset link on the web page.
+- Scripts can send the account password as `Authorization: Bearer <password>`. A
+  password that was already accepted is remembered (in memory, until it changes), so a
+  polling script does not cost a full password check on every request.
+
+### Changed
+- **`AUTH_TOKEN` is deprecated, but existing installs are not locked out.** While it is
+  set and no account exists, the setup page is skipped. You sign in with any username
+  (for example `admin`) and the token as the password, and `Bearer <token>` keeps
+  working. Settings → Account offers to create the account, confirmed with the token. As
+  soon as an account exists it takes precedence: the token no longer signs in, and
+  sessions that signed in with it end.
+- The password is stored as a salted PBKDF2-SHA256 hash (600,000 rounds, a fresh 16-byte
+  salt every time it is set) in a new `credentials` table in the state database. The
+  table is created automatically. Passwords, hashes and Bearer values are never logged
+  or returned by the API.
+- The lockout message now reads "Too many failed sign-ins" instead of "Too many wrong
+  tokens". A wrong Bearer is logged as "wrong API credentials".
+
+### Fixed
+- An install without `AUTH_TOKEN` no longer serves the library, the controls and Delete
+  to anyone who can reach the port. It asks for an account first.
+
 ## [0.16.0-dev1] - 2026-11-10
 
 ### Added
