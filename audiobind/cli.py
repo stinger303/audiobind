@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import getpass
 import json
 import logging
 import sys
 from pathlib import Path
 
 from . import __version__, daemon
+from . import auth as auth_mod
 from .config import CONFIG, effective_val, set_effective
 from .pipeline import audit_unit, process_unit
 from .state import State
@@ -115,6 +117,58 @@ def cmd_health(args) -> int:
     return 1
 
 
+def _read_secret(prompt: str, interactive: bool) -> str:
+    """A hidden prompt on a terminal; one line of stdin otherwise (only reachable with
+    --username, for scripted resets: ``printf '%s\\n' "$PW" | audiobind reset-password ...``)."""
+    if interactive:
+        return getpass.getpass(prompt)
+    line = sys.stdin.readline()
+    return line[:-1] if line.endswith("\n") else line
+
+
+def cmd_reset_password(args) -> int:
+    """Forgot the password: set a new username/password, replacing the account if there is
+    one (that IS the reset) or creating it on a fresh database. Needs shell access to the
+    container - there is deliberately no way to do this over HTTP without signing in."""
+    interactive = sys.stdin.isatty()
+    if not interactive and args.username is None:
+        print(
+            "audiobind: reset-password needs a terminal (docker exec -it ...). For a scripted "
+            "reset pass --username and the new password on stdin.",
+            file=sys.stderr,
+        )
+        return 2
+    state = State(CONFIG.state_dir)
+    try:
+        current = state.get_credentials()
+        if args.username is not None:
+            username = args.username.strip()
+        else:
+            default = current.username if current else "admin"
+            username = input(f"Username [{default}]: ").strip() or default
+        problem = auth_mod.username_problem(username)
+        if problem:
+            print(f"audiobind: {problem}", file=sys.stderr)
+            return 2
+        password = _read_secret("New password: ", interactive)
+        confirm = _read_secret("Repeat new password: ", interactive) if interactive else None
+        problem = auth_mod.password_problem(password, confirm)
+        if problem:
+            print(f"audiobind: {problem} Nothing was changed.", file=sys.stderr)
+            return 2
+        state.set_credentials(username, auth_mod.hash_password(password))
+    except (EOFError, KeyboardInterrupt):
+        print("\naudiobind: cancelled - nothing was changed.", file=sys.stderr)
+        return 1
+    finally:
+        state.close()
+    verb = "replaced" if current else "created"
+    print(f"Account {verb}: sign in as {username!r}. Every other signed-in browser is signed out.")
+    if CONFIG.auth_token:
+        print("AUTH_TOKEN no longer signs in now that an account exists; you can remove it.")
+    return 0
+
+
 def cmd_version(args) -> int:
     print(f"audiobind {__version__}")
     return 0
@@ -139,11 +193,18 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("daemon", help="scan forever + status page").set_defaults(func=cmd_daemon)
     sub.add_parser("health", help="exit 0 when the daemon is alive").set_defaults(func=cmd_health)
     sub.add_parser("version").set_defaults(func=cmd_version)
+    reset = sub.add_parser(
+        "reset-password",
+        help="set a new username/password (replaces the account; creates it on a fresh install)",
+    )
+    reset.add_argument("--username", help="the account's username (skips the username prompt)")
+    reset.set_defaults(func=cmd_reset_password)
 
     args = parser.parse_args(argv)
     setup_logging(args.verbose)
-    # version/health must work even with no volumes mounted (healthchecks, `docker run ... version`)
-    if args.command not in ("version", "health"):
+    # version/health must work even with no volumes mounted (healthchecks, `docker run ... version`);
+    # reset-password only needs the state volume - a missing library must not stop a lockout fix
+    if args.command not in ("version", "health", "reset-password"):
         try:
             CONFIG.preflight()
         except RuntimeError as exc:

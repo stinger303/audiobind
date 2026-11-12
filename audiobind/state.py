@@ -7,7 +7,7 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 SCHEMA = """
@@ -63,6 +63,17 @@ CREATE TABLE IF NOT EXISTS field_locks (
     locked_at   REAL,
     PRIMARY KEY (path, field)
 );
+CREATE TABLE IF NOT EXISTS credentials (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    username      TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    salt          TEXT NOT NULL,
+    algo          TEXT NOT NULL,
+    iterations    INTEGER NOT NULL,
+    created_at    REAL NOT NULL,
+    updated_at    REAL NOT NULL,
+    version       INTEGER NOT NULL DEFAULT 1
+);
 """
 
 #: metadata fields a human edit locks: the editor's fields plus the ASIN set with Edit ASIN.
@@ -108,6 +119,25 @@ class UnitState:
     #: "library" or "ingest". Informational on the way in: save() always stores the source
     #: the key says (key_source), so a row can never claim a source its path does not have
     source: str = SOURCE_LIBRARY
+
+
+@dataclass(frozen=True)
+class Credentials:
+    """The one account (single-user app: the table holds at most one row, id = 1).
+
+    ``password_hash``/``salt`` are hex PBKDF2 output (see auth.hash_password) and are left
+    out of repr() so a log line or traceback can never print them. ``version`` goes up on
+    every change; sessions created under an older version stop working.
+    """
+
+    username: str
+    password_hash: str = field(repr=False)
+    salt: str = field(repr=False)
+    algo: str = ""
+    iterations: int = 0
+    created_at: float = 0.0
+    updated_at: float = 0.0
+    version: int = 0
 
 
 class State:
@@ -592,6 +622,81 @@ class State:
             cursor = self.connection.execute("DELETE FROM units WHERE path = ?", (path,))
             self.connection.commit()
             return cursor.rowcount > 0
+
+    # ------------------------------------------------- the account
+    def get_credentials(self) -> Credentials | None:
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT username, password_hash, salt, algo, iterations, created_at, updated_at, version "
+                "FROM credentials WHERE id = 1"
+            ).fetchone()
+        if row is None:
+            return None
+        return Credentials(**{k: row[k] for k in row.keys()})
+
+    def has_credentials(self) -> bool:
+        with self._lock:
+            return self.connection.execute("SELECT 1 FROM credentials WHERE id = 1").fetchone() is not None
+
+    def credentials_version(self) -> int:
+        """0 while there is no account."""
+        with self._lock:
+            row = self.connection.execute("SELECT version FROM credentials WHERE id = 1").fetchone()
+        return int(row["version"]) if row else 0
+
+    def create_credentials(self, username: str, hashed) -> int:
+        """First setup: create THE account. Returns its version (1), or 0 when an account
+        already exists - the single INSERT is what makes a racing second setup lose."""
+        now = time.time()
+        with self._lock:
+            try:
+                self.connection.execute(
+                    "INSERT INTO credentials (id, username, password_hash, salt, algo, iterations, "
+                    "created_at, updated_at, version) VALUES (1,?,?,?,?,?,?,?,1)",
+                    (username, hashed.digest, hashed.salt, hashed.algo, int(hashed.iterations), now, now),
+                )
+            except sqlite3.IntegrityError:
+                return 0
+        return 1
+
+    def set_credentials(self, username: str, hashed) -> int:
+        """Create or replace the account (Settings with the legacy token, reset-password).
+        Returns the new version, always above any version a session could hold."""
+        now = time.time()
+        with self._lock, self._txn():
+            self.connection.execute(
+                "INSERT INTO credentials (id, username, password_hash, salt, algo, iterations, "
+                "created_at, updated_at, version) VALUES (1,?,?,?,?,?,?,?,1) "
+                "ON CONFLICT(id) DO UPDATE SET username=excluded.username, "
+                "password_hash=excluded.password_hash, salt=excluded.salt, algo=excluded.algo, "
+                "iterations=excluded.iterations, updated_at=excluded.updated_at, "
+                "version=credentials.version + 1",
+                (username, hashed.digest, hashed.salt, hashed.algo, int(hashed.iterations), now, now),
+            )
+            return int(self.connection.execute("SELECT version FROM credentials WHERE id = 1").fetchone()[0])
+
+    def set_password(self, hashed) -> int:
+        """A new password for the existing account. Returns the new version (0: no account)."""
+        with self._lock, self._txn():
+            cursor = self.connection.execute(
+                "UPDATE credentials SET password_hash=?, salt=?, algo=?, iterations=?, updated_at=?, "
+                "version = version + 1 WHERE id = 1",
+                (hashed.digest, hashed.salt, hashed.algo, int(hashed.iterations), time.time()),
+            )
+            if cursor.rowcount == 0:
+                return 0
+            return int(self.connection.execute("SELECT version FROM credentials WHERE id = 1").fetchone()[0])
+
+    def set_username(self, username: str) -> int:
+        """Rename the existing account. Returns the new version (0: no account)."""
+        with self._lock, self._txn():
+            cursor = self.connection.execute(
+                "UPDATE credentials SET username=?, updated_at=?, version = version + 1 WHERE id = 1",
+                (username, time.time()),
+            )
+            if cursor.rowcount == 0:
+                return 0
+            return int(self.connection.execute("SELECT version FROM credentials WHERE id = 1").fetchone()[0])
 
     def heartbeat(self) -> None:
         self.set_meta("heartbeat", time.time())
