@@ -507,6 +507,17 @@ select.ab-in{font:inherit;font-size:12.5px;padding:7px 10px;border-radius:8px;
   border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);max-width:200px}
 select.ab-in:focus{outline:none;border-color:#2b5ea8}
 input[type=number].ab-in{max-width:100px}
+.ab-acct{margin-top:28px;padding-top:4px;border-top:1px solid var(--ab-border)}
+.ab-acct-head{font-size:15px;font-weight:600;margin:14px 0 4px}
+.ab-acct-who{font-size:12.5px;color:var(--ab-text3);margin-bottom:6px}
+.ab-acct-who b{color:var(--ab-text2);font-weight:500}
+.ab-acct-form{display:flex;flex-direction:column;gap:8px;padding:14px 0;
+  border-bottom:1px solid var(--ab-border-subtle)}
+.ab-acct-form:last-of-type{border-bottom:none}
+.ab-acct-title{font-size:13px;font-weight:500;color:var(--ab-text)}
+.ab-acct-lbl{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--ab-text3)}
+.ab-acct-lbl .ab-in{max-width:300px}
+.ab-acct-row{display:flex;align-items:center;gap:10px;margin-top:2px}
 .ab-overflow{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text4);padding:8px 24px;flex:none;}
 #ab-toast{position:fixed;right:18px;bottom:18px;z-index:50;max-width:420px;
   background:var(--ab-surface2);border:1px solid rgba(242,163,60,.4);border-radius:8px;
@@ -1334,11 +1345,13 @@ SETTINGS_PAGE = """<!doctype html>
       <button class="btn" onclick="abResetSettings()">Reset to defaults</button>
       <span class="ab-fb" id="ab-settings-fb"></span>
     </div>
+    {account_section}
   </section>
 </main>
 <div id="ab-toast" role="status" aria-live="polite"></div>
 <script>
 {settings_script}
+{account_script}
 </script>
 </body></html>"""
 
@@ -1361,27 +1374,189 @@ body{{align-items:center;justify-content:center;overflow:auto}}
 </style></head><body>
 <main class="ab-login">
   <h1>Audiobind</h1>
-  <p>This server asks for its access token.</p>
+  <p>{login_hint}</p>
   <form method="post" action="/login">
-    <label for="ab-token">Access token</label>
-    <input class="ab-in" id="ab-token" name="token" type="password"
-           autocomplete="current-password" autofocus required>
-    {error}
+    <label for="ab-username">Username</label>
+    <input class="ab-in" id="ab-username" name="username" type="text" value="{login_username}"
+           autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64"
+           autofocus required>
+    <label for="ab-password">Password</label>
+    <input class="ab-in" id="ab-password" name="password" type="password"
+           autocomplete="current-password" required>
+    {login_error}
     <button class="ab-save" type="submit">Sign in</button>
   </form>
 </main>
 </body></html>"""
 
+SETUP_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audiobind &#183; Create your account</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#5e6ad2">
+<style>{styles}
+body{{align-items:center;justify-content:center;overflow:auto}}
+.ab-setup{{width:380px;max-width:calc(100vw - 32px);background:var(--ab-panel);
+  border:1px solid var(--ab-border);border-radius:12px;padding:28px 24px}}
+.ab-setup h1{{font-size:17px;font-weight:600;margin-bottom:4px}}
+.ab-setup p{{color:var(--ab-text3);font-size:12.5px;line-height:1.5;margin-bottom:18px}}
+.ab-setup label{{display:block;color:var(--ab-text3);font-size:11.5px;margin-bottom:6px}}
+.ab-setup .ab-in{{width:100%;margin-bottom:14px}}
+.ab-setup .ab-save{{width:100%;justify-content:center}}
+.ab-setup .ab-setup-err{{color:var(--ab-red);font-size:12.5px;margin:-4px 0 12px}}
+</style></head><body>
+<main class="ab-setup">
+  <h1>Welcome to Audiobind</h1>
+  <p>Create the account that signs in to this server. There is only one account; you can
+  change its username and password later in Settings.</p>
+  <form method="post" action="/setup">
+    <label for="ab-setup-username">Username</label>
+    <input class="ab-in" id="ab-setup-username" name="username" type="text" value="{setup_username}"
+           autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64"
+           autofocus required>
+    <label for="ab-setup-password">Password (at least {setup_min} characters)</label>
+    <input class="ab-in" id="ab-setup-password" name="password" type="password"
+           autocomplete="new-password" minlength="{setup_min}" required>
+    <label for="ab-setup-confirm">Confirm password</label>
+    <input class="ab-in" id="ab-setup-confirm" name="confirm" type="password"
+           autocomplete="new-password" minlength="{setup_min}" required>
+    {setup_error}
+    <button class="ab-save" type="submit">Create account</button>
+  </form>
+</main>
+</body></html>"""
 
-def render_login(error: str = "") -> str:
+
+def render_login(error: str = "", username: str = "", legacy: bool = False) -> str:
     err = f'<div class="ab-err" role="alert">{_html(error)}</div>' if error else ""
-    return LOGIN_PAGE.format(styles=STYLES, error=err)
+    hint = (
+        "Sign in with any username and this server's access token (AUTH_TOKEN) as the password."
+        if legacy
+        else "Sign in to continue."
+    )
+    return LOGIN_PAGE.format(
+        styles=STYLES, login_error=err, login_username=_attr(username), login_hint=_html(hint)
+    )
 
 
-def signout_html() -> str:
-    if not CONFIG.auth_token:
+def render_setup(error: str = "", username: str = "") -> str:
+    err = f'<div class="ab-setup-err" role="alert">{_html(error)}</div>' if error else ""
+    return SETUP_PAGE.format(
+        styles=STYLES, setup_error=err, setup_username=_attr(username), setup_min=auth_mod.PASSWORD_MIN
+    )
+
+
+def signout_html(state=None) -> str:
+    """The rail's sign-out link - shown whenever signing in is in force."""
+    if not CONFIG.auth_token and not (state is not None and state.has_credentials()):
         return ""
     return '<br><a href="/logout" style="color:var(--ab-text3)">sign out</a>'
+
+
+def render_account_section(state) -> str:
+    """Settings > Account: change password / change username (both need the current
+    password). Before an account exists - an install still signing in with AUTH_TOKEN -
+    it offers to create one instead, confirmed with the token."""
+    creds = state.get_credentials()
+    min_len = auth_mod.PASSWORD_MIN
+    if creds is None:
+        if not CONFIG.auth_token:
+            return ""
+        return ACCOUNT_LEGACY_HTML.format(acct_min=min_len)
+    return ACCOUNT_HTML.format(acct_user=_html(creds.username), acct_min=min_len)
+
+
+ACCOUNT_HTML = """<section class="ab-acct" aria-labelledby="ab-acct-head">
+  <h2 class="ab-acct-head" id="ab-acct-head">Account</h2>
+  <div class="ab-acct-who">Signed in as <b id="ab-acct-user">{acct_user}</b>.
+    Changing the password or username signs out every other browser; this one stays signed in.</div>
+  <form class="ab-acct-form" data-acct="password" onsubmit="return abAccountSubmit(this)">
+    <span class="ab-acct-title">Change password</span>
+    <label class="ab-acct-lbl">Current password
+      <input class="ab-in" name="current" type="password" autocomplete="current-password" required></label>
+    <label class="ab-acct-lbl">New password (at least {acct_min} characters)
+      <input class="ab-in" name="new_password" type="password" autocomplete="new-password"
+             minlength="{acct_min}" required></label>
+    <label class="ab-acct-lbl">Confirm new password
+      <input class="ab-in" name="confirm" type="password" autocomplete="new-password"
+             minlength="{acct_min}" required></label>
+    <div class="ab-acct-row"><button class="ab-save" type="submit">Change password</button>
+      <span class="ab-fb" data-acct-fb></span></div>
+  </form>
+  <form class="ab-acct-form" data-acct="username" onsubmit="return abAccountSubmit(this)">
+    <span class="ab-acct-title">Change username</span>
+    <label class="ab-acct-lbl">New username
+      <input class="ab-in" name="username" type="text" autocomplete="username" autocapitalize="none"
+             spellcheck="false" maxlength="64" required></label>
+    <label class="ab-acct-lbl">Current password
+      <input class="ab-in" name="current" type="password" autocomplete="current-password" required></label>
+    <div class="ab-acct-row"><button class="ab-save" type="submit">Change username</button>
+      <span class="ab-fb" data-acct-fb></span></div>
+  </form>
+  <div class="ab-setting-hint">Forgot the password? Run <code>audiobind reset-password</code>
+    inside the container (<code>docker exec -it audiobind audiobind reset-password</code>).</div>
+</section>"""
+
+ACCOUNT_LEGACY_HTML = """<section class="ab-acct" aria-labelledby="ab-acct-head">
+  <h2 class="ab-acct-head" id="ab-acct-head">Account</h2>
+  <div class="ab-acct-who">You are signed in with the access token (AUTH_TOKEN), which is
+    deprecated. Create an account to sign in with a username and password instead. Once it
+    exists, AUTH_TOKEN stops working and every other browser is signed out.</div>
+  <form class="ab-acct-form" data-acct="create" onsubmit="return abAccountSubmit(this)">
+    <span class="ab-acct-title">Create account</span>
+    <label class="ab-acct-lbl">Username
+      <input class="ab-in" name="username" type="text" autocomplete="username" autocapitalize="none"
+             spellcheck="false" maxlength="64" required></label>
+    <label class="ab-acct-lbl">Password (at least {acct_min} characters)
+      <input class="ab-in" name="new_password" type="password" autocomplete="new-password"
+             minlength="{acct_min}" required></label>
+    <label class="ab-acct-lbl">Confirm password
+      <input class="ab-in" name="confirm" type="password" autocomplete="new-password"
+             minlength="{acct_min}" required></label>
+    <label class="ab-acct-lbl">Current access token
+      <input class="ab-in" name="current" type="password" autocomplete="current-password" required></label>
+    <div class="ab-acct-row"><button class="ab-save" type="submit">Create account</button>
+      <span class="ab-fb" data-acct-fb></span></div>
+  </form>
+</section>"""
+
+ACCOUNT_SCRIPT = """
+// ---- Settings > Account: each form posts JSON to /api/account; passwords never leave the form otherwise
+function abAccountSubmit(form) {
+  const fb = form.querySelector('[data-acct-fb]');
+  const body = {action: form.dataset.acct};
+  form.querySelectorAll('input').forEach(el => { body[el.name] = el.value; });
+  fb.className = 'ab-fb';
+  fb.textContent = 'saving...';
+  fetch('/api/account', {method:'POST', headers:{'Content-Type':'application/json'},
+                         body: JSON.stringify(body)})
+    .then(r => {
+      if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+      return r.json().then(res => ({ok: r.ok, res: res}));
+    })
+    .then(out => {
+      if (!out.ok) {
+        fb.className = 'ab-fb ab-bad';
+        fb.textContent = out.res.error || 'could not save';
+        return;
+      }
+      form.reset();
+      if (form.dataset.acct === 'create') { location.reload(); return; }
+      const who = document.getElementById('ab-acct-user');
+      if (who && out.res.username) who.textContent = out.res.username;
+      fb.className = 'ab-fb ab-good';
+      fb.textContent = form.dataset.acct === 'username' ? 'username changed' : 'password changed';
+      setTimeout(() => { fb.textContent = ''; fb.className = 'ab-fb'; }, 6000);
+    })
+    .catch(err => {
+      if (String(err && err.message) === 'signed out') return;
+      fb.className = 'ab-fb ab-bad';
+      fb.textContent = 'could not reach the daemon';
+    });
+  return false;
+}
+"""
 
 
 SETTINGS_SCRIPT = """
@@ -2617,7 +2792,7 @@ def render_series(state) -> str:
             "what you're missing.</div>"
         )
     return SERIES_PAGE.format(
-        signout=signout_html(),
+        signout=signout_html(state),
         styles=STYLES,
         version=__version__,
         rail_total=sum(counts.values()),
@@ -2746,7 +2921,7 @@ def render_settings(state) -> str:
 
     rc = rail_counts(state, counts)
     return SETTINGS_PAGE.format(
-        signout=signout_html(),
+        signout=signout_html(state),
         styles=STYLES,
         version=__version__,
         lib_active="",
@@ -2762,6 +2937,8 @@ def render_settings(state) -> str:
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         controls="\n".join(controls_parts),
         settings_script=SETTINGS_SCRIPT,
+        account_section=render_account_section(state),
+        account_script=ACCOUNT_SCRIPT,
     )
 
 
@@ -3357,7 +3534,7 @@ def render(state, status: str = "", query: str = "") -> str:
     )
 
     return PAGE.format(
-        signout=signout_html(),
+        signout=signout_html(state),
         styles=STYLES,
         script=SCRIPT,
         version=__version__,
@@ -3663,10 +3840,15 @@ class Handler(BaseHTTPRequestHandler):
         self._send(403, message.encode("utf-8", "replace"), "text/plain; charset=utf-8")
         return True
 
-    # ---- optional AUTH_TOKEN login -------------------------------------------------------
+    # ---- sign-in: the account (or the legacy AUTH_TOKEN) ---------------------------------
 
     #: reachable without signing in: the login page itself and the icon it shows
     AUTH_EXEMPT = ("/login", "/logout", "/favicon.svg", "/icon.svg")
+    #: before the first account exists (and with no AUTH_TOKEN) nothing else is reachable:
+    #: only these, plus the setup page and the health probe
+    SETUP_EXEMPT = AUTH_EXEMPT + ("/setup", "/healthz")
+    #: _auth_status code for "no account yet - go to /setup"
+    SETUP_NEEDED = 428
 
     def _client_ip(self) -> str:
         """Source address for the failed-login limit (the proxy's last hop when trusted)."""
@@ -3676,12 +3858,33 @@ class Handler(BaseHTTPRequestHandler):
                 return hops[-1][:64]
         return self.client_address[0] if self.client_address else "?"
 
+    def _setup_pending(self) -> bool:
+        """First run: no account in the DB and no legacy AUTH_TOKEN to sign in with."""
+        return not CONFIG.auth_token and not self.state.has_credentials()
+
+    def _bearer_ok(self, given: str, creds) -> bool:
+        """The account password (once an account exists), else the legacy AUTH_TOKEN."""
+        if creds is None:
+            return auth_mod.token_matches(given, CONFIG.auth_token)
+        if auth_mod.BEARERS.hit(given, creds.version):
+            return True
+        if auth_mod.verify_password(given, creds):
+            auth_mod.BEARERS.add(given, creds.version)
+            return True
+        return False
+
     def _auth_status(self, path: str) -> int:
-        """0 when the request may proceed, else 401 (not signed in) or 429 (locked out)."""
-        if not CONFIG.auth_token or path.rstrip("/") in self.AUTH_EXEMPT:
+        """0 when the request may proceed, else 401 (not signed in), 429 (locked out) or
+        SETUP_NEEDED (no account exists yet)."""
+        clean = path.rstrip("/")
+        creds = self.state.get_credentials()
+        if creds is None and not CONFIG.auth_token:
+            return 0 if clean in self.SETUP_EXEMPT else self.SETUP_NEEDED
+        if clean in self.AUTH_EXEMPT:
             return 0
+        version = creds.version if creds else 0
         sid = auth_mod.cookie_value(self.headers.get("Cookie"))
-        if sid and auth_mod.SESSIONS.valid(sid):
+        if sid and auth_mod.SESSIONS.valid(sid, version):
             return 0
         header = self.headers.get("Authorization") or ""
         scheme, _, given = header.partition(" ")
@@ -3689,10 +3892,10 @@ class Handler(BaseHTTPRequestHandler):
             ip = self._client_ip()
             if auth_mod.LIMITER.blocked(ip):
                 return 429
-            if auth_mod.token_matches(given.strip(), CONFIG.auth_token):
+            if self._bearer_ok(given.strip(), creds):
                 return 0
             auth_mod.LIMITER.record(ip)
-            logging.getLogger("audiobind").warning("wrong API token from %s", ip)
+            logging.getLogger("audiobind").warning("wrong API credentials from %s", ip)
         return 401
 
     def _auth_refused(self, path: str) -> bool:
@@ -3703,10 +3906,19 @@ class Handler(BaseHTTPRequestHandler):
             wait = auth_mod.LIMITER.retry_after(self._client_ip())
             self._send(
                 429,
-                b'{"error":"too many wrong tokens - try again later"}',
+                b'{"error":"too many failed sign-ins - try again later"}',
                 "application/json",
                 {"Retry-After": str(wait)},
             )
+        elif code == self.SETUP_NEEDED:
+            if self.command == "GET" and not path.startswith(("/api/", "/cover")):
+                self._send(303, b"", "text/plain", {"Location": "/setup"})
+            else:
+                self._send(
+                    403,
+                    b'{"error":"no account yet - open /setup to create one","setup":"/setup"}',
+                    "application/json",
+                )
         elif self.command == "GET" and not path.startswith(("/api/", "/cover")):
             self._send(303, b"", "text/plain", {"Location": "/login"})
         else:
@@ -3718,8 +3930,9 @@ class Handler(BaseHTTPRequestHandler):
             )
         return True
 
-    def _login_body(self) -> tuple[str, bool]:
-        """(token, wants_json) from a form or JSON login POST."""
+    def _form_body(self, names: tuple[str, ...]) -> tuple[dict[str, str], bool]:
+        """({name: value}, wants_json) from a small form or JSON POST (login, setup).
+        Fields that were not sent are absent from the dict, not empty."""
         ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -3732,9 +3945,13 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(raw or b"{}")
             if not isinstance(payload, dict):
                 raise ValueError("not an object")
-            return str(payload.get("token", "")), True
+            return {n: str(payload[n]) for n in names if payload.get(n) is not None}, True
         form = parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True)
-        return (form.get("token") or [""])[0], False
+        return {n: form[n][0] for n in names if n in form}, False
+
+    def _locked_out_message(self, ip: str) -> tuple[str, int]:
+        wait = auth_mod.LIMITER.retry_after(ip)
+        return f"Too many failed sign-ins. Try again in {max(1, (wait + 59) // 60)} minute(s).", wait
 
     def _handle_login(self) -> None:
         refusal = self._origin_refusal()
@@ -3743,47 +3960,167 @@ class Handler(BaseHTTPRequestHandler):
             self._send(code, json.dumps({"error": message}).encode(), "application/json")
             return
         try:
-            given, wants_json = self._login_body()
+            fields, wants_json = self._form_body(("username", "password", "token"))
         except (ValueError, UnicodeDecodeError):
             self._send(400, b'{"error":"bad request"}', "application/json")
             return
-        if not CONFIG.auth_token:
-            self._send(303, b"", "text/plain", {"Location": "/"})
+        if self._setup_pending():
+            self._send(303, b"", "text/plain", {"Location": "/setup"})
             return
+        creds = self.state.get_credentials()
+        username = fields.get("username", "").strip()
         ip = self._client_ip()
 
         def reply(code: int, message: str, headers: dict | None = None) -> None:
             if wants_json:
                 self._send(code, json.dumps({"error": message}).encode(), "application/json", headers)
             else:
-                self._send(code, render_login(message).encode(), "text/html; charset=utf-8", headers)
+                page = render_login(message, username, legacy=creds is None)
+                self._send(code, page.encode(), "text/html; charset=utf-8", headers)
 
         if auth_mod.LIMITER.blocked(ip):
-            wait = auth_mod.LIMITER.retry_after(ip)
-            reply(
-                429,
-                f"Too many wrong tokens. Try again in {max(1, (wait + 59) // 60)} minute(s).",
-                {"Retry-After": str(wait)},
-            )
+            message, wait = self._locked_out_message(ip)
+            reply(429, message, {"Retry-After": str(wait)})
             return
-        if not auth_mod.token_matches(given, CONFIG.auth_token):
+        if creds is not None:
+            # the account: both fields, one generic answer, the same work either way
+            ok = auth_mod.check_login(creds, username, fields.get("password", ""))
+        elif "password" in fields:
+            # legacy AUTH_TOKEN, no account yet: any username, the token as the password
+            ok = bool(username) and auth_mod.token_matches(fields["password"], CONFIG.auth_token)
+        else:
+            # a pre-0.16 token-only form or script ({"token": ...}) keeps working until an account exists
+            ok = auth_mod.token_matches(fields.get("token", ""), CONFIG.auth_token)
+        if not ok:
             auth_mod.LIMITER.record(ip)
             logging.getLogger("audiobind").warning("failed sign-in from %s", ip)
-            reply(401, "That token is not right.")
+            reply(401, "That username or password is not right.")
             return
         auth_mod.LIMITER.reset(ip)
-        cookie = {"Set-Cookie": auth_mod.session_cookie(auth_mod.SESSIONS.create())}
+        version = creds.version if creds else 0
+        cookie = {"Set-Cookie": auth_mod.session_cookie(auth_mod.SESSIONS.create(version))}
         logging.getLogger("audiobind").info("signed in from %s", ip)
         if wants_json:
             self._send(200, b'{"ok":true}', "application/json", cookie)
         else:
             self._send(303, b"", "text/plain", {**cookie, "Location": "/"})
 
+    def _handle_setup(self) -> None:
+        """First run: create THE account and sign this browser in. Refused once an account
+        exists - and while AUTH_TOKEN guards the server, so nobody can claim an install
+        that is still protected by its token."""
+        refusal = self._origin_refusal()
+        if refusal is not None:
+            code, message = refusal
+            self._send(code, json.dumps({"error": message}).encode(), "application/json")
+            return
+        try:
+            fields, wants_json = self._form_body(("username", "password", "confirm"))
+        except (ValueError, UnicodeDecodeError):
+            self._send(400, b'{"error":"bad request"}', "application/json")
+            return
+
+        def refuse_existing() -> None:
+            if wants_json:
+                self._send(409, b'{"error":"setup is already done - sign in instead"}', "application/json")
+            else:
+                self._send(303, b"", "text/plain", {"Location": "/"})
+
+        if not self._setup_pending():
+            refuse_existing()
+            return
+        username = fields.get("username", "").strip()
+        password = fields.get("password", "")
+        problem = auth_mod.username_problem(username) or auth_mod.password_problem(
+            password, fields.get("confirm", "")
+        )
+        if problem:
+            if wants_json:
+                self._send(400, json.dumps({"error": problem}).encode(), "application/json")
+            else:
+                self._send(400, render_setup(problem, username).encode(), "text/html; charset=utf-8")
+            return
+        version = self.state.create_credentials(username, auth_mod.hash_password(password))
+        if not version:  # another setup won the race
+            refuse_existing()
+            return
+        cookie = {"Set-Cookie": auth_mod.session_cookie(auth_mod.SESSIONS.create(version))}
+        logging.getLogger("audiobind").info("account created from %s", self._client_ip())
+        if wants_json:
+            self._send(200, b'{"ok":true}', "application/json", cookie)
+        else:
+            self._send(303, b"", "text/plain", {**cookie, "Location": "/"})
+
+    def _handle_account(self) -> None:
+        """Settings > Account. Every change needs the current password (the access token
+        while there is no account yet); a wrong one counts towards the sign-in lockout.
+        A change bumps the credential version: this browser stays signed in, every other
+        session ends."""
+        payload = self._read_json()
+        if payload is None:
+            return
+        action = str(payload.get("action", "")).lower()
+        if action not in ("password", "username", "create"):
+            self._send(400, b'{"error":"unknown action"}', "application/json")
+            return
+        ip = self._client_ip()
+        if auth_mod.LIMITER.blocked(ip):
+            message, wait = self._locked_out_message(ip)
+            self._send(429, json.dumps({"error": message}).encode(), "application/json", {"Retry-After": str(wait)})
+            return
+        creds = self.state.get_credentials()
+        if (creds is None) != (action == "create"):
+            message = "an account already exists" if creds else "there is no account yet - create one first"
+            self._send(409, json.dumps({"error": message}).encode(), "application/json")
+            return
+        current = str(payload.get("current") or "")
+        if creds is None:
+            current_ok = auth_mod.token_matches(current, CONFIG.auth_token)
+        else:
+            current_ok = auth_mod.verify_password(current, creds)
+        if not current_ok:
+            auth_mod.LIMITER.record(ip)
+            logging.getLogger("audiobind").warning("wrong current password on Settings from %s", ip)
+            what = "access token" if creds is None else "current password"
+            self._send(403, json.dumps({"error": f"The {what} is not right."}).encode(), "application/json")
+            return
+        username = str(payload.get("username") or "").strip()
+        new_password = str(payload.get("new_password") or "")
+        problem = ""
+        if action in ("username", "create"):
+            problem = auth_mod.username_problem(username)
+        if not problem and action in ("password", "create"):
+            problem = auth_mod.password_problem(new_password, str(payload.get("confirm") or ""))
+        if problem:
+            self._send(400, json.dumps({"error": problem}).encode(), "application/json")
+            return
+        old_version = creds.version if creds else 0
+        if action == "password":
+            version = self.state.set_password(auth_mod.hash_password(new_password))
+        elif action == "username":
+            version = self.state.set_username(username)
+        else:
+            version = self.state.set_credentials(username, auth_mod.hash_password(new_password))
+        if not version:
+            self._send(409, b'{"error":"the account changed meanwhile - reload the page"}', "application/json")
+            return
+        sid = auth_mod.cookie_value(self.headers.get("Cookie"))
+        keep = sid if sid and auth_mod.SESSIONS.valid(sid, old_version) else ""
+        auth_mod.SESSIONS.bump(version, keep=keep)
+        auth_mod.BEARERS.clear()
+        logging.getLogger("audiobind").info("account: %s changed from %s", action, ip)
+        current_creds = self.state.get_credentials()
+        self._send(
+            200,
+            json.dumps({"ok": True, "username": current_creds.username if current_creds else ""}).encode(),
+            "application/json",
+        )
+
     def _handle_logout(self) -> None:
         sid = auth_mod.cookie_value(self.headers.get("Cookie"))
         if sid:
             auth_mod.SESSIONS.revoke(sid)
-        target = "/login" if CONFIG.auth_token else "/"
+        target = "/setup" if self._setup_pending() else "/login"
         self._send(303, b"", "text/plain", {"Set-Cookie": auth_mod.expired_cookie(), "Location": target})
 
     def do_GET(self):  # noqa: N802
@@ -3795,10 +4132,18 @@ class Handler(BaseHTTPRequestHandler):
         params = {k: v[0] for k, v in parse_qs(query, keep_blank_values=True).items()}
         status = params.get("status", "")
         if path.rstrip("/") == "/login":
-            if not CONFIG.auth_token:
-                self._send(303, b"", "text/plain", {"Location": "/"})
+            if self._setup_pending():
+                self._send(303, b"", "text/plain", {"Location": "/setup"})
             else:
-                self._send(200, render_login().encode(), "text/html; charset=utf-8")
+                page = render_login(legacy=not self.state.has_credentials())
+                self._send(200, page.encode(), "text/html; charset=utf-8")
+            return
+        if path.rstrip("/") == "/setup":
+            # once there is an account - or a legacy AUTH_TOKEN - setup is over (or skipped)
+            if self._setup_pending():
+                self._send(200, render_setup().encode(), "text/html; charset=utf-8")
+            else:
+                self._send(303, b"", "text/plain", {"Location": "/"})
             return
         if path.rstrip("/") == "/logout":
             self._handle_logout()
@@ -4405,6 +4750,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/login":
             self._handle_login()
             return
+        if path == "/setup":
+            self._handle_setup()
+            return
         if path == "/logout":
             self._handle_logout()
             return
@@ -4414,6 +4762,9 @@ class Handler(BaseHTTPRequestHandler):
         if refusal is not None:
             code, message = refusal
             self._send(code, json.dumps({"error": message}).encode(), "application/json")
+            return
+        if path == "/api/account":
+            self._handle_account()
             return
         if self.path.startswith("/api/unit"):
             self._handle_unit()

@@ -12,6 +12,11 @@ from audiobind import catalog, covers, web
 from audiobind.config import CONFIG
 from audiobind.state import State, UnitState
 
+try:
+    from live import sign_in_urllib, sign_out_urllib
+except ImportError:
+    from tests.live import sign_in_urllib, sign_out_urllib
+
 JPEG = b"\xff\xd8\xff\xe0" + b"x" * 4000 + b"\xff\xd9"
 
 
@@ -158,6 +163,7 @@ class TestCoverEndpointAndMarkup(CoverBase):
         web.Handler.state = self.state
         self.state.save(UnitState(path="A/B", status="ready", asin="B005EHN61O", title="B"))
         server = web.serve(self.state)
+        sign_in_urllib(self.state)
         url = f"http://127.0.0.1:{CONFIG.web_port}/cover"
         try:
             with urllib.request.urlopen(f"{url}?asin=B005EHN61O", timeout=10) as response:
@@ -171,6 +177,7 @@ class TestCoverEndpointAndMarkup(CoverBase):
             caught.exception.close()
             self.assertEqual(caught.exception.code, 404)
         finally:
+            sign_out_urllib()
             server.shutdown()
             server.server_close()
 

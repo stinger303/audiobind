@@ -26,9 +26,12 @@ os.environ.setdefault("STATE_DIR", TMP)
 os.environ.setdefault("INGEST_DIR", "/ingest")
 os.environ["WEB_PORT"] = os.environ.get("VERIFY_PORT", "8099")
 PORT = os.environ["WEB_PORT"]
+# a fresh install with no legacy token: the page must walk through first-run setup
+os.environ.pop("AUTH_TOKEN", None)
 
 import json                                                  # noqa: E402
 import time                                                  # noqa: E402
+import urllib.parse                                          # noqa: E402
 
 from audiobind import series, web                            # noqa: E402
 from audiobind.state import State, UnitState                 # noqa: E402
@@ -67,13 +70,6 @@ state.series_cache_put(series.group_key("Jack Reacher", "Lee Child"), True,
 state.heartbeat()
 
 server = web.serve(state)
-
-
-def get(path: str) -> str:
-    return urllib.request.urlopen(f"http://127.0.0.1:{PORT}{path}", timeout=10).read().decode()
-
-
-html = get("/")
 problems: list[str] = []
 
 
@@ -83,6 +79,77 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         problems.append(name)
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+NO_REDIRECT = urllib.request.build_opener(_NoRedirect)
+
+
+def fetch(path: str, data: bytes | None = None, headers: dict | None = None):
+    """(status, headers, body text) without following redirects."""
+    req = urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", data=data, headers=headers or {})
+    try:
+        with NO_REDIRECT.open(req, timeout=10) as resp:
+            return resp.status, resp.headers, resp.read().decode()
+    except urllib.error.HTTPError as exc:
+        out = exc.code, exc.headers, exc.read().decode()
+        exc.close()
+        return out
+
+
+def node_check(name: str, page: str, filename: str) -> None:
+    scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
+    check(f"{name}: exactly one inline script", len(scripts) == 1, f"found {len(scripts)}")
+    if scripts and shutil.which("node"):
+        js = pathlib.Path(TMP) / filename
+        js.write_text(scripts[0], encoding="utf-8")
+        proc = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True)
+        check(f"{name}: inline JS parses (node --check)", proc.returncode == 0, proc.stderr.strip()[:400])
+
+
+# ---- first run (0.16.0-dev2): no account yet, so everything but /setup goes to /setup
+print("first-run setup:")
+status, headers, _ = fetch("/")
+check("fresh DB: / redirects to /setup", status == 303 and headers.get("Location") == "/setup",
+      f"{status} {headers.get('Location')}")
+status, headers, _ = fetch("/settings")
+check("fresh DB: /settings redirects to /setup", status == 303 and headers.get("Location") == "/setup")
+status, _, body = fetch("/api/units")
+check("fresh DB: the API is refused", status == 403 and "Connelly" not in body)
+status, _, setup_page = fetch("/setup")
+check("setup page served", status == 200)
+check("setup: username, password and confirm fields",
+      all(f'name="{n}"' in setup_page for n in ("username", "password", "confirm")))
+check("setup: no unexpanded {placeholders}",
+      not re.search(r"\{(styles|setup_error|setup_username|setup_min)\}", setup_page))
+check("setup: own component class, numeric refs only",
+      'class="ab-setup"' in setup_page and "&#183;" in setup_page and "&middot;" not in setup_page)
+check("setup: no scripts, no CDN", "<script" not in setup_page and "http://" not in setup_page
+      and "https://" not in setup_page)
+status, headers, _ = fetch(
+    "/setup",
+    urllib.parse.urlencode({"username": "verify", "password": "verify-pass-1", "confirm": "verify-pass-1"}).encode(),
+    {"Content-Type": "application/x-www-form-urlencoded"},
+)
+COOKIE = (headers.get("Set-Cookie") or "").split(";", 1)[0]
+check("setup creates the account and signs in", status == 303 and COOKIE.startswith("audiobind_session="),
+      f"{status} {COOKIE[:20]}")
+status, headers, _ = fetch("/setup", headers={"Cookie": COOKIE})
+check("after setup /setup redirects to /", status == 303 and headers.get("Location") == "/")
+status, _, login_page = fetch("/login")
+check("login page has username + password", 'name="username"' in login_page and 'name="password"' in login_page)
+check("login: no unexpanded {placeholders}",
+      not re.search(r"\{(styles|login_error|login_username|login_hint)\}", login_page))
+
+
+def get(path: str) -> str:
+    req = urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", headers={"Cookie": COOKIE})
+    return urllib.request.urlopen(req, timeout=10).read().decode()
+
+
+html = get("/")
 print(f"rendered page: {len(html)} bytes")
 check("no unexpanded {placeholders}",
       not re.search(r"\{(version|rows|headers|styles|script|colgroup|query|series_item)\}", html))
@@ -129,7 +196,7 @@ check("/api/state reports the ingest dir", api_state.get("ingest_dir") == "/inge
 status_code, refusal = None, {}
 try:
     urllib.request.urlopen(urllib.request.Request(
-        f"http://127.0.0.1:{PORT}/api/unit", headers={"Content-Type": "application/json"},
+        f"http://127.0.0.1:{PORT}/api/unit", headers={"Content-Type": "application/json", "Cookie": COOKIE},
         data=json.dumps({"action": "delete", "path": INGEST_KEY, "confirm": True}).encode()), timeout=10)
 except urllib.error.HTTPError as exc:
     status_code, refusal = exc.code, json.loads(exc.read() or b"{}")
@@ -174,6 +241,26 @@ if sscript and shutil.which("node"):
     check("series: inline JS parses (node --check)", proc.returncode == 0, proc.stderr.strip()[:400])
 api = json.loads(get("/api/series"))
 check("/api/series responds", api.get("missing_total") == 2 and api["series"][0]["slug"] == "jack-reacher")
+
+# ---- Settings > Account (0.16.0-dev2)
+print("settings page:")
+settings_page = get("/settings")
+check("settings: no unexpanded {placeholders}",
+      not re.search(r"\{(styles|controls|settings_script|account_section|account_script|acct_user|acct_min)\}",
+                    settings_page))
+check("settings: Account section names the signed-in user",
+      'class="ab-acct"' in settings_page and '<b id="ab-acct-user">verify</b>' in settings_page)
+check("settings: change-password and change-username forms",
+      'data-acct="password"' in settings_page and 'data-acct="username"' in settings_page
+      and settings_page.count('name="current"') == 2)
+check("settings: reset-password hint", "docker exec -it audiobind audiobind reset-password" in settings_page)
+check("settings: sign-out link", 'href="/logout"' in settings_page)
+check("settings: no CDN references", "http://" not in settings_page and "https://" not in settings_page)
+node_check("settings", settings_page, "settings.js")
+creds = state.get_credentials()
+served = html + settings_page + get("/api/state") + get("/api/units")
+check("no password, hash or salt in any served page",
+      "verify-pass-1" not in served and creds.password_hash not in served and creds.salt not in served)
 
 server.shutdown()
 state.close()
