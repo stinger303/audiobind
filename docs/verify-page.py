@@ -33,7 +33,7 @@ import json                                                  # noqa: E402
 import time                                                  # noqa: E402
 import urllib.parse                                          # noqa: E402
 
-from audiobind import catalog, series, web                   # noqa: E402
+from audiobind import catalog, discover, series, web         # noqa: E402
 from audiobind.state import State, UnitState                 # noqa: E402
 
 state = State(pathlib.Path(TMP))
@@ -280,6 +280,52 @@ check("wishlist tab lists it with Remove", "The Late Show" in wish and "abUnwant
 check("rail shows the wishlist count", 'id="ab-rail-wanted" title="books on your wishlist">1</span>' in wish)
 node_check("wishlist", wish, "wishlist.js")
 check("/api/wishlist responds", json.loads(get("/api/wishlist")).get("count") == 1)
+
+# ---- For you (0.17.0-dev1): suggestions from owned authors; again a faked catalog
+print("for you page:")
+FAKE_BY_AUTHOR = {
+    "Lee Child": [catalog.Product(asin="B00MAKEME1", title="Make Me", authors=["Lee Child"],
+                                  narrators=["Dick Hill"], hours=13.1, year="2015",
+                                  image="https://m.media-amazon.com/images/I/makeme.jpg")],
+    # one owned (title + author) and one already wishlisted: neither may be suggested
+    "Michael Connelly": list(FAKE_RESULTS),
+}
+recs_calls: list[dict] = []
+
+
+def fake_recs_query(**kw):
+    recs_calls.append(kw)
+    return list(FAKE_BY_AUTHOR.get(kw.get("author") or "", []))
+
+
+catalog.query = fake_recs_query
+before_refresh = get("/discover/for-you")
+check("for you: no unexpanded {placeholders}",
+      not re.search(r"\{(version|styles|discover_script|discover_item|series_item|disc_tabs|disc_body)\}",
+                    before_refresh))
+check("for you: For you tab is the active one",
+      'class="chip on" href="/discover/for-you" aria-current="page">For you</a>' in before_refresh)
+check("for you: a page load never queries the catalog", recs_calls == [])
+check("for you: Refresh button and status bar", 'id="ab-recs"' in before_refresh
+      and 'onclick="abRecsRefresh(true)">Refresh</button>' in before_refresh)
+status, _, queued = fetch("/api/discover/recommendations", json.dumps({"action": "refresh", "force": True}).encode(),
+                          {"Content-Type": "application/json", "Cookie": COOKIE})
+check("for you: Refresh queues a background refresh", status == 200 and json.loads(queued).get("queued") is True)
+discover.RECS_REFRESHER.join(10)
+check("for you: one refresh stays within the call cap", 0 < len(recs_calls) <= discover.MAX_CALLS,
+      f"{len(recs_calls)} calls")
+recs_page = get("/discover/for-you")
+check("for you: section and seed headings", "<h3>More by authors you own</h3>" in recs_page
+      and "<h4>Lee Child<span>you own 4</span></h4>" in recs_page)
+check("for you: a suggestion with Get this",
+      'data-asin="B00MAKEME1"' in recs_page and "abWant(this,'for_you')\">Get this</button>" in recs_page)
+check("for you: owned and wishlisted books are not suggested",
+      'data-asin="B00LIBRARY"' not in recs_page and 'data-asin="B00NEWBOOK"' not in recs_page)
+check("for you: nothing was added on its own", json.loads(get("/api/wishlist")).get("count") == 1)
+check("for you: no CDN references", "http://" not in recs_page and "https://" not in recs_page)
+node_check("for you", recs_page, "foryou.js")
+recs_api = json.loads(get("/api/discover/recommendations"))
+check("/api/discover/recommendations responds", recs_api.get("fetched_at") and recs_api.get("stale") is False)
 
 # ---- Settings > Account (0.16.0-dev2)
 print("settings page:")

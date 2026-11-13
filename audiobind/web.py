@@ -3003,9 +3003,50 @@ function abUnwant(btn) {
     })
     .catch(() => { abToast('could not reach the daemon'); btn.disabled = false; });
 }
+// For you: the page shows the stored suggestions only. Opening it asks for a refresh, which
+// the server runs only when nothing is stored or it is over a week old; Refresh always asks.
+function abRecsLive(on) {
+  const live = document.getElementById('ab-recs-live');
+  const btn = document.getElementById('ab-recs-btn');
+  if (live) live.hidden = !on;
+  if (btn) btn.disabled = on;
+}
+function abRecsPoll(before) {
+  fetch('/api/discover/recommendations').then(r => {
+    if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+    return r.json();
+  }).then(d => {
+    const now = d.fetched_at ? String(Math.round(d.fetched_at * 1000)) : '';
+    if (!d.refreshing) {
+      if (now !== before) { location.reload(); return; }
+      abRecsLive(false);
+      return;
+    }
+    setTimeout(() => abRecsPoll(before), 3000);
+  }).catch(() => setTimeout(() => abRecsPoll(before), 6000));
+}
+function abRecsRefresh(force) {
+  const box = document.getElementById('ab-recs');
+  if (!box) return;
+  const before = box.dataset.fetched || '';
+  abPost('/api/discover/recommendations', {action: 'refresh', force: !!force})
+    .then(out => {
+      if (!out.ok) { abToast(out.res.error || 'that did not work'); return; }
+      if (out.res.refreshing) { abRecsLive(true); abRecsPoll(before); }
+      else if (force) abToast('Suggestions are up to date');
+    })
+    .catch(() => abToast('could not reach the daemon'));
+}
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('ab-recs')) abRecsRefresh(false);
+});
 """
 
-DISCOVER_TABS = (("search", "/discover", "Search"), ("wishlist", "/discover/wishlist", "Wishlist"))
+DISCOVER_TABS = (
+    ("search", "/discover", "Search"),
+    ("for_you", "/discover/for-you", "For you"),
+    ("wishlist", "/discover/wishlist", "Wishlist"),
+)
 
 
 def _discover_rail_item(state, active: bool = False) -> str:
@@ -3115,6 +3156,93 @@ def _discover_search_body(result: dict) -> str:
     return f'{intro}{form}<section class="ab-disc-panel" aria-label="Search results">{body}</section>'
 
 
+RECS_SEED_WORDS = {
+    "author": ("you own {n}", "you own 1"),
+    "narrator": ("reads {n} of yours", "reads 1 of yours"),
+    "genre": ("{n} of your books", "1 of your books"),
+}
+
+
+def _discover_recs_body(state) -> str:
+    """For you: stored suggestions grouped by why they are suggested. Cache only."""
+    recs = discover_mod.recommendations(state)
+    fetched = recs.get("fetched_at")
+    intro = (
+        '<p class="ab-disc-intro">Suggestions from what you already own: more by your top authors, '
+        "books read by your top narrators, and your top genres. <b>Get this</b> puts one on your "
+        "wishlist &#8212; nothing is ever added on its own, and books you own or already want "
+        "are left out.</p>"
+    )
+    if fetched:
+        n = int(recs.get("calls") or 0)
+        status = (
+            f"Updated <b>{_html(rel_age(fetched))}</b> &#183; {n} catalog "
+            f"{_plural(n, 'request', 'requests')} (at most {discover_mod.MAX_CALLS} per refresh)"
+        )
+        if recs.get("last_error") or (recs.get("failed") and recs.get("failed") == n):
+            status += ' &#183; <span class="warn">the last refresh could not reach the catalog</span>'
+        elif recs.get("failed"):
+            status += f' &#183; <span class="warn">{int(recs["failed"])} of them failed</span>'
+        if recs.get("stale"):
+            status += " &#183; over a week old"
+    else:
+        status = "No suggestions stored yet."
+    stamp = str(int(round(float(fetched) * 1000))) if fetched else ""
+    bar = (
+        f'<div class="ab-disc-bar" id="ab-recs" data-fetched="{stamp}"><span>{status}</span>'
+        '<span id="ab-recs-live" hidden><span class="ab-spin"></span> Asking the catalog&#8230;</span>'
+        '<span class="ab-spacer"></span>'
+        f'<button id="ab-recs-btn" title="Ask the catalog again (at most {discover_mod.MAX_CALLS} requests)." '
+        'onclick="abRecsRefresh(true)">Refresh</button></div>'
+    )
+    if not fetched:
+        empty = (
+            "Building your suggestions from your library &#8212; this takes a few seconds."
+            if recs.get("refreshing")
+            else "Press <b>Refresh</b> to build suggestions from your library."
+        )
+        return f'{intro}{bar}<section class="ab-disc-panel"><div class="ab-disc-empty">{empty}</div></section>'
+    signals = recs.get("signals") or {}
+    if not any(signals.get(k) for k in ("authors", "narrators", "genres")):
+        return (
+            f'{intro}{bar}<section class="ab-disc-panel"><div class="ab-disc-empty">Your library has '
+            "nothing to go on yet. Suggestions come from the authors, narrators and genres of the "
+            "books Audiobind has matched.</div></section>"
+        )
+    panels = []
+    for section in recs["sections"]:
+        kind = section["kind"]
+        groups = section.get("groups") or []
+        head = f'<h3>{_html(section["title"])}</h3>'
+        if not groups:
+            if kind == "genre":
+                note = (
+                    "No genre data yet. Genres are read from the metadata.json Audiobind writes "
+                    "beside each published book, so they show up once books are converted."
+                )
+            elif kind == "narrator":
+                note = "No narrator data yet. Narrators are kept with each book's catalog match."
+            else:
+                note = "No author data yet."
+            panels.append(f'<section class="ab-disc-panel">{head}<div class="ab-disc-empty">{note}</div></section>')
+            continue
+        parts = [head]
+        many, one = RECS_SEED_WORDS[kind]
+        for group in groups:
+            owned = int(group.get("owned") or 0)
+            words = one if owned == 1 else many.format(n=owned)
+            parts.append(f'<h4>{_html(str(group.get("seed") or ""))}<span>{words}</span></h4>')
+            items = group.get("items") or []
+            if not group.get("ok"):
+                parts.append('<div class="ab-disc-empty ab-disc-err">The catalog could not be reached for this one on the last refresh.</div>')
+            elif not items:
+                parts.append('<div class="ab-disc-empty">Nothing new &#8212; what the catalog lists is already yours or on your wishlist.</div>')
+            else:
+                parts.append("".join(_disc_row(i, "for_you") for i in items))
+        panels.append(f'<section class="ab-disc-panel" aria-label="{_attr(section["title"])}">{"".join(parts)}</section>')
+    return intro + bar + "".join(panels)
+
+
 def _discover_wishlist_body(state) -> str:
     rows = state.wishlist_all()
     intro = (
@@ -3160,6 +3288,8 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
     wanted = state.wishlist_count()
     if tab == "wishlist":
         body = _discover_wishlist_body(state)
+    elif tab == "for_you":
+        body = _discover_recs_body(state)
     else:
         tab = "search"
         if result is None:
@@ -4591,6 +4721,13 @@ class Handler(BaseHTTPRequestHandler):
         if path.rstrip("/") == "/discover/wishlist":
             self._send(200, render_discover(self.state, "wishlist").encode(), "text/html; charset=utf-8")
             return
+        if path.rstrip("/") == "/discover/for-you":
+            self._send(200, render_discover(self.state, "for_you").encode(), "text/html; charset=utf-8")
+            return
+        if path.rstrip("/") == "/api/discover/recommendations":
+            # the stored result only: a GET never queries the catalog
+            self._send(200, json.dumps(discover_mod.recommendations(self.state)).encode(), "application/json")
+            return
         if path in ("/series", "/series/"):
             self._send(200, render_series(self.state).encode(), "text/html; charset=utf-8")
             return
@@ -5201,6 +5338,19 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/wishlist/remove":
             self._handle_wishlist(remove=True)
+            return
+        if path == "/api/discover/recommendations":
+            payload = self._read_json()
+            if payload is None:
+                return
+            if str(payload.get("action", "")).lower() != "refresh":
+                self._send(400, b'{"error":"unknown action"}', "application/json")
+                return
+            queued = discover_mod.request_refresh(self.state, force=bool(payload.get("force")))
+            # "refreshing" stays true for a refresh that already finished (memoised catalog
+            # answers can be that fast): the page then polls once, sees the new result, reloads
+            body = {"ok": True, "queued": queued, "refreshing": queued or discover_mod.RECS_REFRESHER.busy}
+            self._send(200, json.dumps(body).encode(), "application/json")
             return
         if not self.path.startswith("/api/control"):
             self._send(404, b'{"error":"not found"}', "application/json")

@@ -270,6 +270,21 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PR
 Adding an ASIN that's already on the list changes nothing. If Audiobind has never shown an
 ASIN (in a search, a suggestion or a series), send `"title"` (and `"authors"`) with it.
 
+The **For you** tab (`/discover/for-you`) suggests books based on what you already own. It has
+three sections: more by your top 5 authors, books read by your top 3 narrators, and your top 2
+genres. Genres come from the `metadata.json` written beside each published book. Books you own
+or already want are left out, and so are summaries and other knockoffs. Suggestions are stored,
+so opening the page doesn't query the catalog. A refresh runs when nothing is stored yet, when
+the stored suggestions are more than 7 days old, or when you press **Refresh**. One refresh
+makes at most 10 catalog requests (one per author, narrator and genre). Nothing goes on the
+wishlist until you press **Get this**.
+
+```bash
+curl -H "$AUTH" localhost:8080/api/discover/recommendations          # stored result only
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
+     -d '{"action":"refresh","force":true}' localhost:8080/api/discover/recommendations
+```
+
 ### CLI
 
 ```bash

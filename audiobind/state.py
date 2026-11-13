@@ -91,6 +91,11 @@ CREATE TABLE IF NOT EXISTS catalog_seen (
     payload     TEXT NOT NULL DEFAULT '{}',
     seen_at     REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS discover_cache (
+    key         TEXT PRIMARY KEY,
+    fetched_at  REAL NOT NULL,
+    payload     TEXT NOT NULL DEFAULT '{}'
+);
 """
 
 #: a book a Discover page showed is remembered this long (its cover stays fetchable and a
@@ -778,6 +783,32 @@ class State:
         with self._lock:
             row = self.connection.execute("SELECT image FROM catalog_seen WHERE asin = ?", (asin,)).fetchone()
         return (row["image"] or "") if row else None
+
+    # ------------------------------------------------- stored Discover results (For you)
+    def discover_cache_put(self, key: str, payload: dict) -> float:
+        """Store one computed result with the time it was fetched; returns that time."""
+        now = time.time()
+        with self._lock:
+            self.connection.execute(
+                "INSERT INTO discover_cache (key, fetched_at, payload) VALUES (?,?,?) "
+                "ON CONFLICT(key) DO UPDATE SET fetched_at=excluded.fetched_at, payload=excluded.payload",
+                (key, now, json.dumps(payload or {})),
+            )
+        return now
+
+    def discover_cache_get(self, key: str) -> dict | None:
+        """{"fetched_at", "payload"} or None when nothing was stored yet."""
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT fetched_at, payload FROM discover_cache WHERE key = ?", (key,)
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except ValueError:
+            payload = {}
+        return {"fetched_at": float(row["fetched_at"] or 0), "payload": payload if isinstance(payload, dict) else {}}
 
     # ------------------------------------------------- the account
     def get_credentials(self) -> Credentials | None:
