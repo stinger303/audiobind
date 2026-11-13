@@ -5,6 +5,38 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.16.0-dev4] - 2026-11-13
+
+### Added
+- **Knockoffs are recognised.** A catalog entry counts as a knockoff, not an edition, when
+  its title or subtitle says summarized, summary, study guide or workbook, or starts with
+  `[Review]` or `Review:`. An entry with no runtime also counts when another candidate in
+  the same search has a real one. The case of the words does not matter.
+- **Audnex settles close calls.** When another candidate scores within 0.10 of the best,
+  Audiobind asks Audnex about the best and up to three of those close rivals. A candidate
+  Audnex agrees with (same title and author, runtime within 5%) beats one it does not
+  agree with. A rival Audnex does not back can no longer narrow the margin of a pick it
+  does back. When nothing is that close, nothing is looked up, so a book with no Audnex
+  record grades exactly as before. Some ASINs have no Audnex record in a region.
+- **Knockoff badge in the detail panel.** Knockoffs still show among the other candidates,
+  with a Knockoff badge and the reason: a summary, review or catalog stub never counts
+  against the pick. "Use this edition" still works on them. When Audnex backed the pick,
+  its card says "Audnex agrees".
+
+### Changed
+- **A best match that is itself a knockoff grades LOW.** It is still matched and shown,
+  but a person decides. LOW goes to review under every auto-convert setting, "medium"
+  included. To keep a summary edition you really want, pin its ASIN or use it from the
+  other candidates.
+
+### Fixed
+- **A knockoff no longer costs the real edition its HIGH grade.** The margin a pick needs
+  (0.05 for HIGH) is now measured against the best real candidate of a different work.
+  Knockoffs are left out. With no real runner-up the pick is decisive. *The Butcher's
+  Masquerade* (Matt Dinniman) was an exact match: score 1.0, runtime 23.57 hrs against
+  23.55. It was parked at MEDIUM behind "[Review] The Butcher's Masquerade (Matt
+  Dinniman) Summarized." Now it grades HIGH and converts on its own.
+
 ## [0.16.0-dev3] - 2026-11-12
 
 ### Added
