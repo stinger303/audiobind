@@ -37,7 +37,9 @@ matters to you.
    book is a *unit*, never a directory.
 2. **Verify against the Audible catalog.** Title, author, narrator, series, ASIN - via the public
    Audible search API and Audnex. Every candidate is scored, and the winner must beat the best
-   *different* work by a margin before it is trusted.
+   *different* work by a margin before it is trusted. Knockoffs (summaries, reviews, study
+   guides, zero-runtime stubs) never count against that margin, and when two candidates are
+   neck and neck the one Audnex agrees with wins.
 3. **Prove completeness.** The summed runtime of the parts is compared with the catalog runtime.
    A set that is an hour short is reported, not merged.
 4. **Merge and convert.** One `ffmpeg` pass: concat demuxer, AAC, Audnex chapter marks scaled

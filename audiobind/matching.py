@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from . import catalog
@@ -34,8 +35,15 @@ class Match:
     query_author: str = ""
     #: other candidates the search scored highly (other editions of the same work);
     #: [{"asin", "title", "authors", "score", "hours", "title_sim", "author_sim", "language",
-    #: "language_penalized", "runtime_delta_pct"}], best first, chosen one excluded
+    #: "language_penalized", "runtime_delta_pct", "knockoff", "corroborated"}], best first,
+    #: chosen one excluded
     alternates: list[dict] = field(default_factory=list)
+    #: the chosen product is a summary / review / study guide / zero-runtime catalog stub
+    #: (see is_knockoff); grading never lets it past LOW
+    knockoff: bool = False
+    #: Audnex agreed with the chosen product (True), disagreed or had no record (False), or
+    #: was never asked because nothing competed for the margin (None)
+    corroborated: bool | None = None
 
     @property
     def asin(self) -> str:
@@ -82,6 +90,86 @@ def infer_author_from_series(series: str) -> str:
 
 def _same_work(a: Product, b: Product) -> bool:
     return norm(a.title) == norm(b.title) and norm((a.authors or [""])[0]) == norm((b.authors or [""])[0])
+
+
+#: title words that mark a catalog entry as something written *about* a book, not an edition of it
+_KNOCKOFF_WORDS = re.compile(r"\b(summarized|summary|study\s+guide|workbook)\b", re.IGNORECASE)
+#: "[Review] The Butcher's Masquerade ...", "Review: Atomic Habits"
+_REVIEW_PREFIX = re.compile(r"^\W*(\[\s*review\s*\]|review\s*:)", re.IGNORECASE)
+
+
+def _field(product, name: str) -> str:
+    if isinstance(product, dict):
+        return str(product.get(name) or "")
+    return str(getattr(product, name, "") or "")
+
+
+def _runtime_min(product) -> float:
+    """Catalog runtime in minutes; 0 when missing. Takes a Product or a raw catalog dict."""
+    try:
+        if isinstance(product, dict):
+            if product.get("runtime_length_min") is not None:
+                return float(product.get("runtime_length_min") or 0)
+            return float(product.get("hours") or 0) * 60
+        return float(getattr(product, "hours", 0) or 0) * 60
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def is_knockoff(product, peers=()) -> bool:
+    """True when a catalog candidate is a knockoff, not an edition of the work.
+
+    A knockoff is a summary / review / study guide / workbook (by its title, or its subtitle:
+    a knockoff that copies the real title verbatim carries the marker there), or an entry with
+    no runtime while at least one of ``peers`` (the other candidates of the same search) has a
+    real one: a zero-runtime hit beside real editions is catalog junk. Pure: no catalog calls.
+    ``product`` and ``peers`` may be Products or raw catalog dicts.
+    """
+    for text in (_field(product, "title"), _field(product, "subtitle")):
+        if _KNOCKOFF_WORDS.search(text) or _REVIEW_PREFIX.search(text):
+            return True
+    if _runtime_min(product) <= 0:
+        return any(peer is not product and _runtime_min(peer) > 0 for peer in peers)
+    return False
+
+
+#: margins below this are what grade() acts on (0.05 HIGH, 0.10 title-only MEDIUM), so only
+#: rivals this close to the best are worth a second-source check
+CORROBORATION_WINDOW = 0.10
+#: how many close rivals are checked against Audnex at most (each is one memoised lookup)
+CORROBORATION_MAX_RIVALS = 3
+#: Audnex and the catalog must agree on the runtime within this fraction when both list one
+CORROBORATION_RUNTIME_TOLERANCE = 0.05
+
+
+def corroborated(product: Product) -> bool:
+    """Does Audnex (the second catalog source) agree with this candidate?
+
+    True only when Audnex has a record for the ASIN whose title and author match the candidate
+    and whose runtime is consistent with it. A missing record is False here - callers must only
+    use this to break a contest between candidates, never to demote a lone match (some ASINs
+    legitimately have no Audnex record in a region).
+    """
+    try:
+        record = catalog.book(product.asin)
+    except Exception:  # a lookup failure is "no record", never a crash in matching
+        return False
+    if not isinstance(record, dict) or not record.get("asin"):
+        return False
+    if sim(product.title, str(record.get("title") or "")) < 0.85:
+        return False
+    names = [str(a.get("name") or "") for a in (record.get("authors") or []) if isinstance(a, dict)]
+    if product.authors and not any(sim(a, b) >= 0.85 for a in product.authors for b in names):
+        return False
+    try:
+        record_min = float(record.get("runtimeLengthMin") or 0)
+    except (TypeError, ValueError):
+        record_min = 0.0
+    catalog_min = _runtime_min(product)
+    if record_min > 0 and catalog_min > 0:
+        if abs(record_min - catalog_min) / catalog_min > CORROBORATION_RUNTIME_TOLERANCE:
+            return False
+    return True
 
 
 def match_from_asin(asin: str, local_hours: float = 0.0) -> Match:
@@ -176,11 +264,12 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
     if not scored:
         return Match(author_from_series=author_from_series, query_title=title, query_author=author)
 
+    products = [s["product"] for s in scored.values()]
+    for entry in scored.values():
+        entry["knockoff"] = is_knockoff(entry["product"], products)
+        entry["corroborated"] = None  # None = never asked Audnex
     ranked = sorted(scored.values(), key=lambda s: s["score"], reverse=True)
-    best = ranked[0]
-    # margin over the best *different* work: duplicate editions are not ambiguity
-    rivals = [s["score"] for s in ranked[1:] if not _same_work(s["product"], best["product"])]
-    margin = round(best["score"] - (max(rivals) if rivals else 0.0), 3)
+    best, margin = _pick_and_margin(ranked)
 
     match = Match(
         product=best["product"],
@@ -195,6 +284,8 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
         runtime_delta_pct=best["runtime_delta_pct"],
         query_title=title,
         query_author=author,
+        knockoff=best["knockoff"],
+        corroborated=best["corroborated"],
     )
     match.confidence = grade(match)
     # keep the runners-up (other editions of the same work, near misses) so the
@@ -212,17 +303,63 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
             "language": s["product"].language,
             "language_penalized": s["language_penalized"],
             "runtime_delta_pct": s["runtime_delta_pct"],
+            # badged in the panel; a knockoff never counted against the pick's margin
+            "knockoff": s["knockoff"],
+            "corroborated": s["corroborated"],
         }
-        for s in ranked[1:5]
-        if s["product"].asin != best["product"].asin
+        for s in [s for s in ranked if s is not best][:4]
     ]
     return match
+
+
+def _pick_and_margin(ranked: list[dict]) -> tuple[dict, float]:
+    """The best candidate and its margin over the strongest rival that counts.
+
+    Rivals that never count: other editions of the same work (duplicate editions are not
+    ambiguity) and knockoffs (catalog junk is not ambiguity either). With no rival left the
+    margin is the best score itself - decisive.
+
+    When rivals sit within CORROBORATION_WINDOW of the best, the best and those rivals are
+    checked against Audnex: a corroborated candidate outranks an uncorroborated one, and an
+    uncorroborated rival never eats a corroborated best's margin. With no close rival nothing
+    is looked up, so a missing Audnex record can never demote a lone match.
+    """
+    best = ranked[0]
+
+    def rivals_of(pick: dict) -> list[dict]:
+        return [
+            s
+            for s in ranked
+            if s is not pick and not s["knockoff"] and not _same_work(s["product"], pick["product"])
+        ]
+
+    rivals = rivals_of(best)
+    if not best["knockoff"]:
+        close = [r for r in rivals if best["score"] - r["score"] < CORROBORATION_WINDOW]
+        close = close[:CORROBORATION_MAX_RIVALS]
+        if close:
+            for entry in [best, *close]:
+                entry["corroborated"] = corroborated(entry["product"])
+            if not best["corroborated"]:
+                backed = [r for r in close if r["corroborated"]]
+                if backed:
+                    best = backed[0]  # highest-scoring corroborated contender
+                    rivals = rivals_of(best)
+            if best["corroborated"]:
+                # checked and unbacked rivals step aside; unchecked (farther) ones still count
+                rivals = [r for r in rivals if r["corroborated"] is not False]
+    top_rival = max((r["score"] for r in rivals), default=0.0)
+    return best, round(best["score"] - top_rival, 3)
 
 
 def grade(match: Match) -> str:
     """HIGH needs title *and* author corroborated plus a clear win over other works."""
     if not match.product:
         return "NONE"
+    if match.knockoff:
+        # the best hit is a summary / review / zero-runtime stub: a person decides. LOW, not
+        # MEDIUM, so no auto-convert tier (not even "medium") converts it unseen
+        return "LOW"
     if not (match.language or "english").lower().startswith("english"):
         # a foreign-language hit must never auto-convert at HIGH confidence
         return "MEDIUM"

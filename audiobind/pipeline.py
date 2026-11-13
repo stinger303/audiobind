@@ -245,6 +245,10 @@ def record(
                 "language": audit.match.product.language if audit.match.product else "",
                 "language_penalized": audit.match.language_penalized,
                 "runtime_delta_pct": audit.match.runtime_delta_pct,
+                # the pick is a summary / review / zero-runtime stub (graded LOW), and whether
+                # Audnex backed it when another candidate competed for the margin
+                "knockoff": audit.match.knockoff,
+                "corroborated": audit.match.corroborated,
                 "query_title": audit.match.query_title,
                 "query_author": audit.match.query_author,
                 # "folder" or "embedded": which names the search above was run with
