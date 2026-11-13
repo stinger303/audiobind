@@ -12,11 +12,14 @@ encoder only reads its sources, and Delete refuses ingest rows outright.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from .config import CONFIG, effective_val
+from .probe import probe_tags
 from .state import INGEST_KEY_PREFIX, SOURCE_INGEST, key_source
-from .units import BookUnit, discover_ingest_units, find_unit
+from .units import BookUnit, clean_torrent_name, discover_ingest_units, find_unit
+from .util import clean
 
 log = logging.getLogger("audiobind")
 
@@ -118,6 +121,30 @@ def find_any_unit(key: str) -> BookUnit | None:
     if is_ingest(key):
         return find_ingest_unit(key)
     return find_unit(CONFIG.library_root, CONFIG.ignore_globs, key)
+
+
+#: tag keys holding the book's author, most specific first (album_artist is the book's
+#: credited artist; artist is sometimes per track; composer is a last resort)
+AUTHOR_TAGS = ("album_artist", "albumartist", "artist", "composer")
+
+
+def embedded_names(unit: BookUnit) -> tuple[str, str]:
+    """(author, title) from the embedded tags of the unit's first audio file; "" when absent.
+
+    Read-only: one ffprobe of one file. A single file's ``title`` tag is the book; across
+    several files ``title`` is usually the track ("Chapter 01"), so ``album`` comes first then.
+    Multi-valued artist tags ("Lee Child; Jeff Harding") keep only the first name.
+    """
+    if not unit.files:
+        return "", ""
+    tags = probe_tags(unit.files[0])
+    if not tags:
+        return "", ""
+    title_keys = ("album", "title") if unit.n_files > 1 else ("title", "album")
+    title = next((tags[k] for k in title_keys if tags.get(k)), "")
+    author = next((tags[k] for k in AUTHOR_TAGS if tags.get(k)), "")
+    author = re.split(r"\s*[;/]\s*", author, maxsplit=1)[0]
+    return clean(author), (clean(clean_torrent_name(title)) if title else "")
 
 
 def source_dir(key: str) -> str:

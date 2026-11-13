@@ -2346,6 +2346,9 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
             if q_title
             else "Your folder gave no title to compare"
         )
+        if match.get("name_source") == "embedded":
+            # an ingest unit whose torrent name found nothing, matched on its own audio tags
+            title_note += " &#183; from the audio file&#8217;s embedded tags, not the torrent name"
         bars.append(
             _ev_bar("Title match", f"{_pct(title_sim)}%", _pct(title_sim), _sim_fill(title_sim), title_note)
         )

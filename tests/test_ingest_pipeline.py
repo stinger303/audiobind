@@ -77,9 +77,11 @@ class PipelineCase(IngestConfigCase):
         shutil.move(str(temp), str(out_path))
         return EncodeResult(path=out_path, duration=7200.0, size=3, chapters=2, chapters_source="test")
 
-    def scan(self, products=(PHM,), hours_per_file=3600.0):
+    def scan(self, products=(PHM,), hours_per_file=3600.0, search=None):
+        """``search``, when given, answers catalog.search instead of the fixed ``products``."""
+        answer = {"side_effect": search} if search else {"return_value": list(products)}
         with (
-            mock.patch.object(catalog, "search", return_value=list(products)),
+            mock.patch.object(catalog, "search", **answer),
             mock.patch.object(catalog, "book", return_value={"title": "Project Hail Mary",
                                                               "authors": [{"name": "Andy Weir"}]}),
             mock.patch.object(catalog, "chapters", return_value=[]),
