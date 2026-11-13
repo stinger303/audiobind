@@ -3,15 +3,17 @@ and a second source (Audnex) settles a contest between near-identical candidates
 
 import json
 import pathlib
+import re
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from audiobind import pipeline
+from audiobind import pipeline, web
 from audiobind.catalog import Product
 from audiobind.matching import Match, corroborated, grade, is_knockoff, match_unit
-from audiobind.state import State
+from audiobind.state import State, UnitState
 from audiobind.units import BookUnit, Part
+from tests.test_match_evidence import alt, evidence_detail, text
 
 
 def product(asin, title, author, hours, subtitle=""):
@@ -319,6 +321,72 @@ class TestCorroboratedRule(unittest.TestCase):
         self.assertTrue(self._check(audnex("B0X", MONEYBALL, LEWIS, 0)))
         no_runtime = product("B0X", MONEYBALL, LEWIS, 0)
         self.assertTrue(self._check(audnex("B0X", MONEYBALL, LEWIS, 600), no_runtime))
+
+
+class TestPanelBadges(unittest.TestCase):
+    """The detail panel badges knockoffs so the other-editions view stays honest."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.state = State(pathlib.Path(self.dir.name))
+
+    def tearDown(self):
+        self.state.close()
+        self.dir.cleanup()
+
+    def panel(self, detail, alternates, start_at='<div class="ab-ev">', end_at='<div class="ab-edit"'):
+        self.state.save(
+            UnitState(
+                path="Duhigg/Habit",
+                status="review",
+                confidence="HIGH",
+                asin="B0FD4CV4BF",
+                title="The Power of Habit",
+                detail=detail,
+                alternates=json.dumps(alternates),
+                hours=10.5,
+            )
+        )
+        page = web.render(self.state)
+        start = page.index(start_at)
+        return page[start : page.index(end_at, start)]
+
+    def rival_rows(self, panel):
+        return re.findall(r'<div class="ab-evrival">.*?</button></div>', panel)
+
+    def test_knockoff_rival_is_badged_with_its_reason(self):
+        knock = alt(asin="B0KO", title="Summary of The Power of Habit", score=0.91, knockoff=True)
+        real = alt(asin="B0SFB", title="Smarter Faster Better", score=0.65, title_sim=0.41)
+        rows = self.rival_rows(self.panel(evidence_detail(), [knock, real]))
+        self.assertEqual(len(rows), 2)
+        self.assertIn('class="ab-ko"', rows[0])
+        self.assertIn("Knockoff", text(rows[0]))
+        self.assertIn("never counts against the pick", text(rows[0]))
+        self.assertIn('data-asin="B0KO"', rows[0])  # still one click to use
+        self.assertNotIn('class="ab-ko"', rows[1])
+
+    def test_rows_without_the_flag_are_not_badged(self):
+        panel = self.panel(evidence_detail(), [alt(asin="B0SFB", title="Smarter Faster Better", score=0.65)])
+        self.assertNotIn('class="ab-ko"', panel)
+        self.assertNotIn("Audnex agrees", panel)
+
+    def test_knockoff_winner_is_badged(self):
+        panel = self.panel(evidence_detail(knockoff=True), [])
+        win = panel[panel.index('<div class="ab-evwin">') : panel.index('<div class="ab-evbars">')]
+        self.assertIn('class="ab-ko"', win)
+
+    def test_corroboration_is_shown(self):
+        loser = alt(asin="B0NEAR", title="Money Ball", score=0.97, title_sim=0.95, corroborated=False)
+        panel = self.panel(evidence_detail(corroborated=True), [loser])
+        self.assertIn("Audnex agrees", panel)
+        self.assertIn("Audnex doesn&#8217;t back this entry", self.rival_rows(panel)[0])
+
+    def test_legacy_editions_list_badges_too(self):
+        legacy = json.dumps({"match": {"asin": "B0FD4CV4BF", "title": "The Power of Habit"}})
+        alts = [{"asin": "B0KO", "title": "Summary of Habit", "authors": ["X"], "knockoff": True}]
+        panel = self.panel(legacy, alts, start_at='<div class="ab-editions">', end_at="</p></div>")
+        self.assertIn("Other editions seen", panel)
+        self.assertIn('class="ab-ko"', panel)
 
 
 if __name__ == "__main__":

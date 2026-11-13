@@ -442,6 +442,9 @@ tr.drow[hidden] td{padding:0}
 .ab-evwhy b{color:var(--ab-amber);font-weight:600;}
 .ab-evsc{font-family:var(--ab-mono);font-size:12px;color:var(--ab-text3);flex:none;}
 .ab-evrival button{height:28px;padding:0 12px;font-size:12px;border-radius:6px;flex:none;}
+.ab-ko{display:inline-block;margin-right:6px;padding:0 5px;border:1px solid currentColor;border-radius:4px;
+  font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--ab-amber);
+  vertical-align:1px;}
 @media (max-width:700px){.ab-evbars{grid-template-columns:1fr;}}
 .ab-edit{grid-column:1/-1;border-top:1px solid #1c2230;padding-top:14px;}
 .ab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 18px;}
@@ -2226,12 +2229,24 @@ def _has_evidence(data: dict) -> bool:
     return isinstance(data, dict) and "title_sim" in data
 
 
+#: the badge on a catalog entry the matcher flagged as a knockoff (fixed copy, no escaping needed)
+KNOCKOFF_BADGE = (
+    '<span class="ab-ko" title="A summary, review, study guide or zero-runtime catalog entry - '
+    'not an edition of the book. It never counts against the match margin.">Knockoff</span>'
+)
+
+
+def knockoff_badge(entry: dict) -> str:
+    return KNOCKOFF_BADGE if isinstance(entry, dict) and entry.get("knockoff") else ""
+
+
 def rival_reason(
     alt: dict,
     local_hours: float,
     tolerance: float,
     winner_score: float = 1.0,
     author_known: bool = True,
+    winner_corroborated: bool = False,
 ) -> str:
     """One plain-English line (HTML) saying why this candidate lost to the pick.
 
@@ -2242,6 +2257,10 @@ def rival_reason(
         return ""
     title, author = _num(alt.get("title_sim")), _num(alt.get("author_sim"))
     clauses: list[str] = []
+    if alt.get("knockoff"):
+        clauses.append("A summary, review or catalog stub, not an edition — it never counts against the pick")
+    elif winner_corroborated and alt.get("corroborated") is False:
+        clauses.append("Audnex doesn&#8217;t back this entry, and it does back the pick")
     if author_known and author >= 0.9 and title < 0.6:
         clauses.append(f"Title match only <b>{_pct(title)}%</b> — a different book by the same author")
     if alt.get("language_penalized"):
@@ -2316,6 +2335,9 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
         f'ASIN <a class="ab-alink" href="https://www.audible.com/pd?asin={asin}" '
         f'target="_blank" rel="noopener">{asin}</a>'
     )
+    winner_corroborated = match.get("corroborated") is True
+    if winner_corroborated:
+        facts.append("Audnex agrees")
     if pinned:
         score_html = '<div class="ab-evv">&mdash;</div><div class="ab-evl">you picked this edition</div>'
     else:
@@ -2325,7 +2347,7 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
         '<div class="ab-evwin">'
         + cover_html(unit)
         + '<div class="ab-evmeta">'
-        + f'<div class="ab-evt">{_html(str(match.get("title") or unit.title))}</div>'
+        + f'<div class="ab-evt">{knockoff_badge(match)}{_html(str(match.get("title") or unit.title))}</div>'
         + f'<div class="ab-eva">{byline}</div>'
         + f'<div class="ab-evm">{" &middot; ".join(facts)}</div>'
         + "</div>"
@@ -2416,13 +2438,20 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
     if others:
         rows = []
         for alt in others:
-            reason = rival_reason(alt, local_hours, tolerance, winner_score=score, author_known=author_known)
+            reason = rival_reason(
+                alt,
+                local_hours,
+                tolerance,
+                winner_score=score,
+                author_known=author_known,
+                winner_corroborated=winner_corroborated,
+            )
             if not reason:
                 reason = _html("; ".join(str(a) for a in (alt.get("authors") or [])))
             alt_asin = _attr(str(alt.get("asin")))
             rows.append(
                 '<div class="ab-evrival"><div class="ab-evmeta">'
-                f'<b class="ab-evrt">{_html(str(alt.get("title") or ""))}</b>'
+                f'<b class="ab-evrt">{knockoff_badge(alt)}{_html(str(alt.get("title") or ""))}</b>'
                 f'<div class="ab-evwhy">{reason}</div></div>'
                 f'<span class="ab-evsc">{_num(alt.get("score")):.2f}</span>'
                 '<button title="Set this Audible entry as the book\'s ASIN (locks it), then re-check against it." '
@@ -3268,7 +3297,7 @@ def render(state, status: str = "", query: str = "") -> str:
                 edition_rows.append(
                     (
                         '<div class="ab-edition">'
-                        '<span class="ab-edmain"><b>{ti}</b>'
+                        '<span class="ab-edmain"><b>{ko}{ti}</b>'
                         '<span class="ab-edsub">{au} &middot; '
                         '<a class="ab-alink" href="https://www.audible.com/pd?asin={a}" '
                         'target="_blank" rel="noopener">{a}</a></span></span>'
@@ -3276,6 +3305,7 @@ def render(state, status: str = "", query: str = "") -> str:
                         're-check against it." onclick="abUseEdition(this)" data-asin="{a}">'
                         "Use this edition</button></div>"
                     ).format(
+                        ko=knockoff_badge(alt),
                         ti=_html(str(alt.get("title") or "")),
                         au=_html("; ".join(alt.get("authors") or [])),
                         a=_attr(str(alt.get("asin"))),
