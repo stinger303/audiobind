@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "audiobind"
-version = "0.16.0-dev2"
+version = "0.16.0-dev3"
 description = "Merge, convert and correctly tag audiobook libraries"
 readme = "README.md"
 requires-python = ">=3.10"
