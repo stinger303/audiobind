@@ -33,7 +33,7 @@ import json                                                  # noqa: E402
 import time                                                  # noqa: E402
 import urllib.parse                                          # noqa: E402
 
-from audiobind import series, web                            # noqa: E402
+from audiobind import catalog, series, web                   # noqa: E402
 from audiobind.state import State, UnitState                 # noqa: E402
 
 state = State(pathlib.Path(TMP))
@@ -241,6 +241,45 @@ if sscript and shutil.which("node"):
     check("series: inline JS parses (node --check)", proc.returncode == 0, proc.stderr.strip()[:400])
 api = json.loads(get("/api/series"))
 check("/api/series responds", api.get("missing_total") == 2 and api["series"][0]["slug"] == "jack-reacher")
+
+# ---- Discover (0.17.0-dev1): the catalog is faked in-process - this script never searches Audible
+print("discover page:")
+FAKE_RESULTS = [
+    catalog.Product(asin="B00LIBRARY", title="The Burning Room", authors=["Michael Connelly"],
+                    narrators=["Titus Welliver"], hours=10.4, year="2014",
+                    image="https://m.media-amazon.com/images/I/burning.jpg"),
+    catalog.Product(asin="B00NEWBOOK", title="The Late Show", authors=["Michael Connelly"],
+                    narrators=["Katherine Moennig"], series="Renée Ballard", sequence="1", hours=10.2,
+                    year="2017", image="https://m.media-amazon.com/images/I/late.jpg"),
+]
+catalog.query = lambda **kw: list(FAKE_RESULTS)
+check("rail has a Discover tab between Series and Settings",
+      re.search(r'</span> Series.*?href="/discover">\s*<span class="ab-glyph">&#8981;</span> Discover.*?</span> Settings',
+                html, re.S) is not None)
+disc = get("/discover")
+check("discover: no unexpanded {placeholders}",
+      not re.search(r"\{(version|styles|discover_script|discover_item|series_item|disc_tabs|disc_body)\}", disc))
+check("discover: Discover tab is the active one", 'ab-active" href="/discover" aria-current="page"' in disc)
+check("discover: title and author fields, no results before a search",
+      'name="title"' in disc and 'name="author"' in disc and 'class="ab-disc-row"' not in disc)
+check("discover: no CDN references", "http://" not in disc and "https://" not in disc)
+node_check("discover", disc, "discover.js")
+found = get("/discover?title=connelly")
+check("discover: results rendered", "2 results for &#8220;connelly&#8221;" in found)
+owned_row = re.search(r'data-asin="B00LIBRARY">.*?(?=<div class="ab-disc-row"|</section>)', found, re.S)
+check("discover: a book already in the library is marked, with no Get this",
+      owned_row is not None and "In your library" in owned_row.group(0) and "Get this" not in owned_row.group(0))
+check("discover: other books get a Get this button", "abWant(this,'search')\">Get this</button>" in found)
+check("discover: covers go through the local proxy, no external URLs",
+      "/cover?asin=B00NEWBOOK" in found and "https://" not in found)
+status, _, added = fetch("/api/wishlist", json.dumps({"asin": "B00NEWBOOK", "origin": "search"}).encode(),
+                         {"Content-Type": "application/json", "Cookie": COOKIE})
+check("Get this adds to the wishlist", status == 200 and json.loads(added).get("added") is True)
+wish = get("/discover/wishlist")
+check("wishlist tab lists it with Remove", "The Late Show" in wish and "abUnwant(this)" in wish)
+check("rail shows the wishlist count", 'id="ab-rail-wanted" title="books on your wishlist">1</span>' in wish)
+node_check("wishlist", wish, "wishlist.js")
+check("/api/wishlist responds", json.loads(get("/api/wishlist")).get("count") == 1)
 
 # ---- Settings > Account (0.16.0-dev2)
 print("settings page:")

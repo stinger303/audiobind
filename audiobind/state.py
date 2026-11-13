@@ -85,7 +85,17 @@ CREATE TABLE IF NOT EXISTS wishlist (
     sequence    TEXT NOT NULL DEFAULT '',
     hours       REAL NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS catalog_seen (
+    asin        TEXT PRIMARY KEY,
+    image       TEXT NOT NULL DEFAULT '',
+    payload     TEXT NOT NULL DEFAULT '{}',
+    seen_at     REAL NOT NULL
+);
 """
+
+#: a book a Discover page showed is remembered this long (its cover stays fetchable and a
+#: "Get this" click can use the catalog's metadata); wishlist rows are never forgotten
+CATALOG_SEEN_TTL_SECONDS = 90 * 24 * 3600
 
 #: a wishlist row's life: "wanted" is the only status Phase 2 writes. Phase 3 (the MAM
 #: watcher) adds the later ones; nothing here moves a row past "wanted".
@@ -724,6 +734,50 @@ class State:
     def wishlist_count(self) -> int:
         with self._lock:
             return int(self.connection.execute("SELECT COUNT(*) FROM wishlist").fetchone()[0])
+
+    # ------------------------------------------------- books a Discover page showed
+    def catalog_seen_put(self, products: list[dict]) -> None:
+        """Remember catalog results (search, recommendations) by ASIN. This is what lets the
+        cover proxy fetch their art - only for ASINs a page really showed - and what a "Get
+        this" click takes its metadata from. Old rows age out unless they are wishlisted."""
+        now = time.time()
+        rows = [
+            (str(p["asin"]), str(p.get("image") or ""), json.dumps(p), now)
+            for p in products
+            if p.get("asin")
+        ]
+        with self._lock, self._txn():
+            self.connection.executemany(
+                "INSERT INTO catalog_seen (asin, image, payload, seen_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(asin) DO UPDATE SET image=excluded.image, payload=excluded.payload, "
+                "seen_at=excluded.seen_at",
+                rows,
+            )
+            self.connection.execute(
+                "DELETE FROM catalog_seen WHERE seen_at < ? AND asin NOT IN (SELECT asin FROM wishlist)",
+                (now - CATALOG_SEEN_TTL_SECONDS,),
+            )
+
+    def catalog_seen(self, asin: str) -> dict | None:
+        if not asin:
+            return None
+        with self._lock:
+            row = self.connection.execute("SELECT payload FROM catalog_seen WHERE asin = ?", (asin,)).fetchone()
+        if row is None:
+            return None
+        try:
+            data = json.loads(row["payload"] or "{}")
+        except ValueError:
+            return None
+        return data if isinstance(data, dict) else None
+
+    def catalog_seen_image(self, asin: str) -> str | None:
+        """The catalog image URL for an ASIN a Discover page showed; None when it showed none."""
+        if not asin:
+            return None
+        with self._lock:
+            row = self.connection.execute("SELECT image FROM catalog_seen WHERE asin = ?", (asin,)).fetchone()
+        return (row["image"] or "") if row else None
 
     # ------------------------------------------------- the account
     def get_credentials(self) -> Credentials | None:

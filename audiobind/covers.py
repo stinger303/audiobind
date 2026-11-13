@@ -82,6 +82,10 @@ def stored_image_url(state: State, asin: str) -> str:
     listed = (state.series_image(asin) or "").strip()
     if listed:
         return listed
+    # ... and so does a search result or recommendation a Discover page showed
+    shown = (state.catalog_seen_image(asin) or "").strip()
+    if shown:
+        return shown
     images = catalog.product_images(asin)
     for size in ("500", "1000"):
         if images.get(size):
@@ -113,10 +117,14 @@ def fetch_by_asin(state: State, asin: str) -> Path | None:
     path = cached_path(asin)
     if path.is_file():
         return path  # served from disk forever after
-    if not state.has_asin(asin) and state.series_image(asin) is None:
-        # only books in the library - or in a series listing the shelf fetched from the
-        # catalog - get covers fetched: /cover?asin=<anything> must not trigger outbound
-        # requests or leave a .miss file per made-up value
+    if (
+        not state.has_asin(asin)
+        and state.series_image(asin) is None
+        and state.catalog_seen_image(asin) is None
+    ):
+        # only books in the library, in a series listing the shelf fetched, or in catalog
+        # results a Discover page showed get covers fetched: /cover?asin=<anything> must not
+        # trigger outbound requests or leave a .miss file per made-up value
         return None
     if _miss_is_fresh(asin):
         return None
