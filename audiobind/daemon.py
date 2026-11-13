@@ -13,14 +13,19 @@ from .control import CONTROL
 from .pipeline import process_unit
 from .prefetch import PREFETCH, already_decided, next_eligible
 from .state import SOURCE_INGEST, State
-from .units import BookUnit, discover_units
+from .units import BookUnit, discover_units, is_single_file
 
 log = logging.getLogger("audiobind")
 
 
 def _ingest_source_gone(unit: BookUnit) -> bool:
-    """A torrent folder removed (or being removed) since discovery: nothing to read any more."""
+    """A torrent removed (or being removed) since discovery: nothing to read any more.
+
+    The unit's path is the torrent folder, or the file itself for a single-file torrent.
+    """
     try:
+        if is_single_file(unit):
+            return not os.path.isfile(unit.path)
         return not os.path.isdir(unit.path) or not all(os.path.isfile(f) for f in unit.files)
     except OSError:
         return True

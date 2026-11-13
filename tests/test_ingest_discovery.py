@@ -160,7 +160,8 @@ class TestIngestDiscovery(IngestConfigCase):
         touch(str(r / "Andy Weir - Project Hail Mary" / "CD1" / "a.mp3"))
         touch(str(r / "Andy Weir - Project Hail Mary" / "CD2" / "b.mp3"))
         touch(str(r / "Andy Weir - Project Hail Mary" / "cover.jpg"), b"jpg")
-        touch(str(r / "stray-file.mp3"))  # a loose file is not a torrent folder
+        touch(str(r / "Single File Torrent.m4b"))  # a one-file torrent lands as a bare file
+        touch(str(r / ".hidden-file.mp3"))  # hidden files are skipped like hidden folders
         touch(str(r / ".incomplete" / "Some Book" / "01.mp3"))  # hidden folder
         touch(str(r / "Linux ISO" / "distro.iso"), b"iso")  # no audio at all
         touch(str(r / "notes.txt"), b"txt")
@@ -174,16 +175,17 @@ class TestIngestDiscovery(IngestConfigCase):
             [
                 "Andy Weir - Project Hail Mary",
                 "Brandon Sanderson - The Way of Kings (2010) [MAM v5] {B003ZWFO7E}",
+                "Single File Torrent.m4b",
             ],
         )
         for unit in units:
             self.assertEqual(unit.source, "ingest")
             self.assertEqual(unit.state_key, "ingest:" + unit.rel_path)
 
-    def test_stray_files_and_dot_dirs_are_ignored(self):
+    def test_non_audio_and_hidden_entries_are_ignored(self):
         self.build()
         keys = {u.rel_path for u in discover_ingest_units(self.ingest_root, CONFIG.ignore_globs)}
-        self.assertFalse(any("stray" in k or "incomplete" in k or "Linux" in k for k in keys))
+        self.assertFalse(any("hidden" in k or "incomplete" in k or "Linux" in k or "notes" in k for k in keys))
 
     def test_disc_folders_inside_a_torrent_group_into_one_book(self):
         self.build()
