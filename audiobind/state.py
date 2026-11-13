@@ -74,7 +74,22 @@ CREATE TABLE IF NOT EXISTS credentials (
     updated_at    REAL NOT NULL,
     version       INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS wishlist (
+    asin        TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    authors     TEXT NOT NULL DEFAULT '[]',
+    added_at    REAL NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'wanted',
+    origin      TEXT NOT NULL DEFAULT '',
+    series      TEXT NOT NULL DEFAULT '',
+    sequence    TEXT NOT NULL DEFAULT '',
+    hours       REAL NOT NULL DEFAULT 0
+);
 """
+
+#: a wishlist row's life: "wanted" is the only status Phase 2 writes. Phase 3 (the MAM
+#: watcher) adds the later ones; nothing here moves a row past "wanted".
+WISHLIST_WANTED = "wanted"
 
 #: metadata fields a human edit locks: the editor's fields plus the ASIN set with Edit ASIN.
 #: A locked field is never overwritten by a rescan, re-check or re-rip; unlocking hands it
@@ -622,6 +637,93 @@ class State:
             cursor = self.connection.execute("DELETE FROM units WHERE path = ?", (path,))
             self.connection.commit()
             return cursor.rowcount > 0
+
+    # ------------------------------------------------- the wishlist
+    # Books you clicked "Get this" / "Want" on. The hand-off point to Phase 3: nothing in this
+    # build downloads, searches a tracker or adds a row on its own - every row is one click.
+    _WISHLIST_INSERT = (
+        "INSERT OR IGNORE INTO wishlist (asin, title, authors, added_at, status, origin, series, "
+        "sequence, hours) VALUES (?,?,?,?,?,?,?,?,?)"
+    )
+
+    @staticmethod
+    def _wishlist_params(item: dict, now: float) -> tuple:
+        authors = [str(a) for a in (item.get("authors") or []) if str(a or "").strip()]
+        try:
+            hours = float(item.get("hours") or 0)
+        except (TypeError, ValueError):
+            hours = 0.0
+        return (
+            str(item["asin"]),
+            str(item.get("title") or ""),
+            json.dumps(authors),
+            now,
+            WISHLIST_WANTED,
+            str(item.get("origin") or ""),
+            str(item.get("series") or ""),
+            str(item.get("sequence") or ""),
+            hours,
+        )
+
+    @staticmethod
+    def _wishlist_row(row) -> dict:
+        try:
+            authors = json.loads(row["authors"] or "[]")
+        except ValueError:
+            authors = []
+        return {
+            "asin": row["asin"],
+            "title": row["title"] or "",
+            "authors": authors if isinstance(authors, list) else [],
+            "added_at": float(row["added_at"] or 0),
+            "status": row["status"] or WISHLIST_WANTED,
+            "origin": row["origin"] or "",
+            "series": row["series"] or "",
+            "sequence": row["sequence"] or "",
+            "hours": float(row["hours"] or 0),
+        }
+
+    def wishlist_add(self, item: dict) -> bool:
+        """Add one book; True when it is new. Adding an ASIN that is already on the list
+        changes nothing - not its added_at, not its status (idempotent)."""
+        with self._lock:
+            cursor = self.connection.execute(self._WISHLIST_INSERT, self._wishlist_params(item, time.time()))
+        return cursor.rowcount > 0
+
+    def wishlist_add_many(self, items: list[dict]) -> int:
+        """Add several books all-or-nothing; returns how many were new."""
+        now = time.time()
+        added = 0
+        with self._lock, self._txn():
+            for item in items:
+                cursor = self.connection.execute(self._WISHLIST_INSERT, self._wishlist_params(item, now))
+                added += cursor.rowcount
+        return added
+
+    def wishlist_remove(self, asin: str) -> bool:
+        with self._lock:
+            cursor = self.connection.execute("DELETE FROM wishlist WHERE asin = ?", (asin,))
+        return cursor.rowcount > 0
+
+    def wishlist_get(self, asin: str) -> dict | None:
+        with self._lock:
+            row = self.connection.execute("SELECT * FROM wishlist WHERE asin = ?", (asin,)).fetchone()
+        return self._wishlist_row(row) if row else None
+
+    def wishlist_all(self) -> list[dict]:
+        """Every row, newest first."""
+        with self._lock:
+            rows = self.connection.execute("SELECT * FROM wishlist ORDER BY added_at DESC, asin").fetchall()
+        return [self._wishlist_row(r) for r in rows]
+
+    def wishlist_asins(self) -> set[str]:
+        with self._lock:
+            rows = self.connection.execute("SELECT asin FROM wishlist").fetchall()
+        return {r["asin"] for r in rows}
+
+    def wishlist_count(self) -> int:
+        with self._lock:
+            return int(self.connection.execute("SELECT COUNT(*) FROM wishlist").fetchone()[0])
 
     # ------------------------------------------------- the account
     def get_credentials(self) -> Credentials | None:

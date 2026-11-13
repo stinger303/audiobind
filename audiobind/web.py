@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 from . import __version__, matching
 from . import ingest as ingest_mod
 from . import auth as auth_mod
+from . import discover as discover_mod
 from . import overrides as overrides_mod
 from . import series as series_mod
 from .advice import explain
@@ -4229,6 +4230,10 @@ class Handler(BaseHTTPRequestHandler):
             }
             self._send(200, json.dumps(payload).encode(), "application/json")
             return
+        if path.rstrip("/") == "/api/wishlist":
+            rows = [discover_mod.public_row(r) for r in self.state.wishlist_all()]
+            self._send(200, json.dumps({"count": len(rows), "items": rows}).encode(), "application/json")
+            return
         if path in ("/series", "/series/"):
             self._send(200, render_series(self.state).encode(), "text/html; charset=utf-8")
             return
@@ -4746,6 +4751,32 @@ class Handler(BaseHTTPRequestHandler):
             "application/json",
         )
 
+    def _handle_wishlist(self, remove: bool = False) -> None:
+        """POST /api/wishlist adds one book (idempotent); POST /api/wishlist/remove takes one off.
+        Every add is one click on a page (or one API call) - nothing adds rows on its own."""
+        payload = self._read_json()
+        if payload is None:
+            return
+        if remove:
+            asin = str(payload.get("asin", "")).strip().upper()
+            if not valid_asin(asin):
+                self._send(400, b'{"error":"that is not an ASIN"}', "application/json")
+                return
+            if not self.state.wishlist_remove(asin):
+                self._send(404, b'{"error":"that book is not on your wishlist"}', "application/json")
+                return
+            logging.getLogger("audiobind").info("wishlist: removed %s", asin)
+            body = {"ok": True, "asin": asin, "removed": True, "count": self.state.wishlist_count()}
+            self._send(200, json.dumps(body).encode(), "application/json")
+            return
+        row, added, error = discover_mod.add(self.state, payload)
+        if row is None:
+            self._send(400, json.dumps({"error": error}).encode(), "application/json")
+            return
+        body = {"ok": True, "asin": row["asin"], "added": added, "item": discover_mod.public_row(row),
+                "count": self.state.wishlist_count()}
+        self._send(200, json.dumps(body).encode(), "application/json")
+
     def _post_refusal(self) -> tuple[int, str] | None:
         """Cross-site request guard for every POST: (status, error) to refuse, else None.
 
@@ -4807,6 +4838,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/series"):
             self._handle_series()
+            return
+        if path == "/api/wishlist":
+            self._handle_wishlist()
+            return
+        if path == "/api/wishlist/remove":
+            self._handle_wishlist(remove=True)
             return
         if not self.path.startswith("/api/control"):
             self._send(404, b'{"error":"not found"}', "application/json")
