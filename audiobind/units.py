@@ -256,22 +256,47 @@ def discover_ingest_units(root: str | Path, ignore: list[str]) -> list[BookUnit]
 
     Every direct child folder holding audio (at any depth inside it) is a candidate book; the
     library's own grouping then runs unchanged inside it, so ``Torrent/CD1`` + ``Torrent/CD2``
-    is one book, keyed on the torrent folder. Audio files sitting loose in the ingest root are
-    strays, not torrents, and are ignored, as are hidden folders and the IGNORE names. Nothing
-    here (or anywhere else) ever writes, moves or deletes under the ingest root.
+    is one book, keyed on the torrent folder. A torrent of ONE audio file lands as a bare file
+    in the ingest root (``Title (Unabridged).m4b``): each such direct child file is a book of
+    its own, keyed on the file name, never grouped with its neighbours (each is a separate
+    torrent). Hidden entries and the IGNORE names are skipped. Nothing here (or anywhere else)
+    ever writes, moves or deletes under the ingest root.
     """
     root = Path(root)
     if not root.is_dir():
         return []
-    leaves = [leaf for leaf in discover(root, ignore) if not leaf.get("loose")]
-    units = _name_units(group(leaves), root)
+    leaves = discover(root, ignore)
+    units = group([leaf for leaf in leaves if not leaf.get("loose")])
+    for leaf in leaves:
+        filename = os.path.basename(leaf["path"])
+        if not leaf.get("loose") or _skip(filename, ignore):
+            continue
+        units.append(
+            BookUnit(
+                path=leaf["path"],
+                name=leaf["name"],  # the file name without its extension
+                parent=str(root),
+                parts=[Part(name=filename, files=list(leaf["files"]))],
+            )
+        )
+    units.sort(key=lambda u: (u.path, u.key))
+    units = _name_units(units, root, ingest=True)
     for unit in units:
         unit.source = SOURCE_INGEST
     return units
 
 
-def _name_units(units: list[BookUnit], root: Path) -> list[BookUnit]:
-    """Give each grouped unit its rel_path (unique under ``root``) and its name guesses."""
+def is_single_file(unit: BookUnit) -> bool:
+    """A unit that is one bare audio file (its path is the file itself, not a folder)."""
+    return len(unit.files) == 1 and os.path.abspath(unit.path) == os.path.abspath(unit.files[0])
+
+
+def _name_units(units: list[BookUnit], root: Path, ingest: bool = False) -> list[BookUnit]:
+    """Give each grouped unit its rel_path (unique under ``root``) and its name guesses.
+
+    ``ingest`` units guess from a bare file's name without its extension; library units are
+    named exactly as they always were.
+    """
     seen: set[str] = set()
     for unit in units:
         rel_dir = os.path.relpath(unit.path, root)
@@ -284,6 +309,10 @@ def _name_units(units: list[BookUnit], root: Path) -> list[BookUnit]:
             # a shared parent ("Author/{Foo Part 1, Bar Part 1}") is not the book: guess
             # from the bucket's own name, with the parent folder as context
             guess_path = unit.name if rel_dir == os.curdir else os.path.join(rel_dir, unit.name)
+        elif ingest and is_single_file(unit):
+            # "Title (Unabridged).m4b" is guessed from "Title (Unabridged)"; the key keeps the
+            # full file name, which is what is on disk
+            guess_path = unit.name
         # "ingest:" is reserved for state keys of ingest rows: a library folder literally named
         # "ingest:..." is keyed "./ingest:..." instead (same folder on disk, different key)
         if unit.rel_path.startswith(RESERVED_KEY_PREFIX):
