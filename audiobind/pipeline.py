@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import shutil
@@ -10,16 +11,21 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import catalog, encode, library, matching
+from . import catalog, encode, ingest, library, matching
 from . import overrides as overrides_mod
 from .config import CONFIG, effective_auto_tiers, effective_val
 from .control import CONTROL, Stopped
 from .probe import probe
-from .state import State, UnitState
+from .state import SOURCE_INGEST, State, UnitState
 from .units import BookUnit, looks_like_collection, unsafe_path_reason
+from .util import norm
 
 #: the daemon and the manual "Retry / Convert anyway" buttons must not encode two books at once
 CONVERT_LOCK = threading.Lock()
+
+#: Audit.name_source values, recorded in the detail's match block
+NAME_SOURCE_FOLDER = "folder"
+NAME_SOURCE_EMBEDDED = "embedded"
 
 
 @dataclass
@@ -42,6 +48,9 @@ class Audit:
     #: where convert_unit would file the book, and whether it was already there
     out_path: str = ""
     already_published: bool = False
+    #: which names the catalog match was searched with: "folder" (the folder/file name, as
+    #: always) or "embedded" (an ingest unit's own audio tags, after the folder found nothing)
+    name_source: str = NAME_SOURCE_FOLDER
 
     @property
     def runtime_matches(self) -> bool:
@@ -68,6 +77,12 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
     audit.src_mb = round(sum(os.path.getsize(f) for f in unit.files if os.path.exists(f)) / 1e6, 1)
 
     audit.match = matching.match_unit(unit, asin_override, local_hours=audit.hours)
+    if unit.source == SOURCE_INGEST and not asin_override and audit.match.confidence == "NONE":
+        embedded = _match_embedded(unit, audit.hours)
+        if embedded is not None:
+            audit.match = embedded
+            audit.name_source = NAME_SOURCE_EMBEDDED
+            audit.notes.append("matched on the audio file's embedded tags")
     audit.confidence = audit.match.confidence
 
     avg_hours = audit.hours / len(unit.files) if unit.files else 0
@@ -85,7 +100,10 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
         audit.notes.append(f"{audit.unreadable} unreadable file(s)")
     if unit.multi_part:
         audit.notes.append(f"{len(unit.parts)} parts combined")
-    if not unit.author_guess and audit.match.product:
+    searched_author = unit.author_guess or (
+        audit.match.query_author if audit.name_source == NAME_SOURCE_EMBEDDED else ""
+    )
+    if not searched_author and audit.match.product:
         audit.notes.append("author taken from catalog")
     if audit.match.product and not audit.runtime_matches:
         audit.notes.append(f"runtime {audit.hours}h vs catalog {audit.match.product.hours}h")
@@ -94,6 +112,28 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
 
     audit.action = choose_action(unit, audit.confidence, audit.runtime_matches, audit.codecs)
     return audit
+
+
+def _match_embedded(unit: BookUnit, local_hours: float) -> matching.Match | None:
+    """INGEST ONLY, after the folder name matched nothing: retry with the files' own tags.
+
+    A torrent name is often junk while a single m4b carries correct title/artist tags. Returns
+    the retry's match when it found something (any tier - the usual grading and auto-convert
+    rules still apply), else None so the folder's NONE stands. The unit itself is not changed.
+    """
+    author, title = ingest.embedded_names(unit)
+    if not (author or title):
+        return None
+    retry_unit = dataclasses.replace(
+        unit, author_guess=author or unit.author_guess, title_guess=title or unit.title_guess
+    )
+    if (norm(retry_unit.author_guess), norm(retry_unit.title_guess)) == (
+        norm(unit.author_guess),
+        norm(unit.title_guess),
+    ):
+        return None  # the tags say what the folder said: the same search would find nothing again
+    retry = matching.match_unit(retry_unit, local_hours=local_hours)
+    return retry if retry.confidence != "NONE" else None
 
 
 def choose_action(unit: BookUnit, confidence: str, runtime_matches: bool, codecs: set[str]) -> str:
@@ -207,6 +247,8 @@ def record(
                 "runtime_delta_pct": audit.match.runtime_delta_pct,
                 "query_title": audit.match.query_title,
                 "query_author": audit.match.query_author,
+                # "folder" or "embedded": which names the search above was run with
+                "name_source": audit.name_source,
                 # what the catalog says this book's series is, for the series shelf
                 "series": audit.match.product.series if audit.match.product else "",
                 "sequence": audit.match.product.sequence if audit.match.product else "",

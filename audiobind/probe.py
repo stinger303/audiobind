@@ -59,6 +59,45 @@ def probe(path: str | Path, timeout: int = 60) -> Probe:
         return Probe()
 
 
+def probe_tags(path: str | Path, timeout: int = 30) -> dict[str, str]:
+    """The file's embedded text tags (title, album, artist, album_artist, composer, ...).
+
+    Keys are lower-cased (FLAC/Vorbis write ``TITLE``, MP4 writes ``title``); container
+    (format) tags win over per-stream ones. {} when ffprobe fails or the file has none.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                *PROTOCOL_WHITELIST,
+                "-v",
+                "error",
+                "-show_entries",
+                "format_tags:stream_tags",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        data = json.loads(result.stdout or "{}")
+    except (subprocess.SubprocessError, ValueError, OSError):
+        return {}
+    tags: dict[str, str] = {}
+    sources = [(s or {}).get("tags") or {} for s in (data.get("streams") or [])]
+    sources.append((data.get("format") or {}).get("tags") or {})
+    for source in sources:  # later sources (the format) overwrite stream tags
+        if not isinstance(source, dict):
+            continue
+        for key, value in source.items():
+            text = str(value or "").strip()
+            if text:
+                tags[str(key).lower()] = text
+    return tags
+
+
 def probe_chapters(path: str | Path) -> list[dict]:
     result = subprocess.run(
         ["ffprobe", *PROTOCOL_WHITELIST, "-v", "error", "-show_chapters", "-of", "json", str(path)],
