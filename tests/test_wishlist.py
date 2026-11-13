@@ -186,9 +186,9 @@ class TestDiscoveryNeedsSignIn(LiveServerCase):
     """Every new route sits behind the existing sign-in; none is exempt."""
 
     signed_in = False
-    PAGES = ("/discover", "/discover?title=dune", "/discover/wishlist")
-    API_GETS = ("/api/wishlist", "/api/discover/search?title=dune")
-    POSTS = ("/api/wishlist", "/api/wishlist/remove")
+    PAGES = ("/discover", "/discover?title=dune", "/discover/wishlist", "/discover/for-you")
+    API_GETS = ("/api/wishlist", "/api/discover/search?title=dune", "/api/discover/recommendations")
+    POSTS = ("/api/wishlist", "/api/wishlist/remove", "/api/discover/recommendations")
 
     def setUp(self):
         super().setUp()
