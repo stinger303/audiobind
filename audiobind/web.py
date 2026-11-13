@@ -601,6 +601,40 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-series-hook .ab-series-qn{font-size:9px}
 .ab-series-hook .btn{flex:none;text-decoration:none}
 
+.ab-disc-wrap{padding:14px 24px 24px;display:flex;flex-direction:column;gap:14px;max-width:1180px}
+.ab-disc-tabs .chip{text-decoration:none}
+.ab-disc-intro{font-size:12.5px;color:var(--ab-text3);line-height:1.5}
+.ab-disc-intro b{color:var(--ab-text2);font-weight:500}
+.ab-disc-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ab-disc-form .ab-search{width:280px}
+.ab-disc-form .ab-search.ab-disc-author{width:220px}
+.ab-disc-panel{background:var(--ab-panel);border:1px solid var(--ab-border);border-radius:10px;padding:14px 16px}
+.ab-disc-panel h3{font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--ab-text3);margin:0 0 8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ab-disc-panel h3 .ab-disc-why{font-size:11.5px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--ab-text4)}
+.ab-disc-panel h4{font-size:12.5px;font-weight:600;color:var(--ab-text2);margin:12px 0 4px}
+.ab-disc-panel h4 span{font-weight:400;color:var(--ab-text4);font-size:11.5px;margin-left:6px}
+.ab-disc-row{display:flex;gap:12px;align-items:center;padding:7px 10px;border-radius:8px}
+.ab-disc-row:nth-child(even){background:var(--ab-surface2)}
+.ab-disc-row img{width:30px;height:45px;border-radius:3px;object-fit:cover;flex:none;background:var(--ab-surface2)}
+.ab-disc-row img.ab-gone{visibility:hidden}
+.ab-disc-meta{flex:1;min-width:0}
+.ab-disc-t{font-size:13px;font-weight:600;letter-spacing:-.1px;color:var(--ab-text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab-disc-a{font-size:11.5px;color:var(--ab-text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab-disc-m{color:var(--ab-text4);font-size:11px;font-family:var(--ab-mono);margin-top:1px}
+.ab-disc-seq{font-family:var(--ab-mono);font-size:12px;color:var(--ab-text3);width:34px;flex:none;text-align:right}
+.ab-disc-pill{font-size:10px;font-weight:600;letter-spacing:.5px;padding:2px 8px;border-radius:4px;flex:none;
+  color:var(--ab-text3);background:rgba(255,255,255,.05)}
+.ab-disc-pill.ab-disc-have{color:var(--ab-green);background:var(--ab-green-soft)}
+.ab-disc-pill.ab-disc-want{color:var(--ab-accent-bright);background:rgba(94,106,210,.14)}
+.ab-disc-row button{height:28px;padding:0 11px;font-size:11.5px;font-weight:600;flex:none}
+.ab-disc-empty{font-size:12.5px;color:var(--ab-text3);padding:6px 0}
+.ab-disc-empty.ab-disc-err{color:var(--ab-amber)}
+.ab-disc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--ab-text4)}
+.ab-disc-bar b{color:var(--ab-text2);font-weight:500}
+.ab-disc-bar .ab-spacer{flex:1}
+
 @media(max-width:1080px){.ab-rail{display:none}}
 @media(max-width:820px){.ab-hidemd{display:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -1200,6 +1234,7 @@ PAGE = """<!doctype html>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
     {series_item}
+    {discover_item}
     <a class="ab-rail-item" href="/settings">
       <span class="ab-glyph">&#9881;</span> Settings
       </a>
@@ -1312,6 +1347,7 @@ SETTINGS_PAGE = """<!doctype html>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
     {series_item}
+    {discover_item}
     <a class="ab-rail-item{set_active}" href="/settings">
       <span class="ab-glyph">&#9881;</span> Settings
       </a>
@@ -1732,6 +1768,7 @@ SERIES_PAGE = """<!doctype html>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
     {series_item}
+    {discover_item}
     <a class="ab-rail-item" href="/settings">
       <span class="ab-glyph">&#9881;</span> Settings
       </a>
@@ -2833,12 +2870,318 @@ def render_series(state) -> str:
         rail_held_count=rc["held"],
         rail_failed_count=rc["failed"],
         series_item=_series_rail_item(shelf["missing_total"], active=True),
+        discover_item=_discover_rail_item(state),
         library=_html(CONFIG.host_library or str(CONFIG.library_root)),
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
         output=_html(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         body=body,
         series_script=SERIES_SCRIPT,
+    )
+
+
+# ---------------------------------------------------------------------------- Discover
+# Search the catalog, suggestions from what you own, the wishlist. A "Get this" / "Want"
+# click is the only thing that ever adds a wishlist row. f-strings only for anything that
+# carries a catalog title; numeric character references in new markup.
+
+DISCOVER_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audiobind &#183; Discover</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<meta name="theme-color" content="#5e6ad2">
+<style>{styles}</style></head><body>
+<aside class="ab-rail">
+  <div class="ab-rail-brand"><a href="/" title="Back to the library">Audiobind</a></div>
+  <div class="ab-rail-label">Workspace</div>
+  <nav class="ab-rail-section" aria-label="Main">
+    <a class="ab-rail-item" href="/">
+      <span class="ab-glyph">&#8962;</span> Library
+      <span class="ab-count">{rail_total}</span></a>
+    {series_item}
+    {discover_item}
+    <a class="ab-rail-item" href="/settings">
+      <span class="ab-glyph">&#9881;</span> Settings
+      </a>
+  </nav>
+  <div class="ab-rail-label">Attention</div>
+  <nav class="ab-rail-section" aria-label="Attention">
+    <a class="ab-rail-item ab-alert" href="/?status=review">
+      <span class="ab-glyph">&#9873;</span> Review
+      <span class="ab-count">{rail_review_count}</span></a>
+    <a class="ab-rail-item ab-alert" href="/?status=held">
+      <span class="ab-glyph">&#x23F8;</span> Held
+      <span class="ab-count">{rail_held_count}</span></a>
+    <a class="ab-rail-item ab-alert" href="/?status=failed">
+      <span class="ab-glyph">&#215;</span> Failed
+      <span class="ab-count">{rail_failed_count}</span></a>
+  </nav>
+  <div class="ab-rail-spacer"></div>
+  <div class="ab-rail-foot">
+    <b>library</b> <span title="{library_attr}">{library}</span><br>
+    <b>output</b> &#8594; <span title="{output_attr}">{output}</span>{signout}
+  </div>
+</aside>
+<main class="ab-main">
+  <header class="ab-topbar">
+    <h1>Discover</h1>
+    <span class="ab-version">v{version}</span>
+    <div class="ab-right"></div>
+  </header>
+  <div class="ab-disc-wrap">
+    <nav class="chips ab-disc-tabs" aria-label="Discover">{disc_tabs}</nav>
+{disc_body}
+  </div>
+</main>
+<div id="ab-toast" role="status" aria-live="polite"></div>
+<script>
+{discover_script}
+</script>
+</body></html>"""
+
+DISCOVER_SCRIPT = """
+function abToast(text) {
+  const el = document.getElementById('ab-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('on');
+  clearTimeout(abToast.t);
+  abToast.t = setTimeout(() => el.classList.remove('on'), 5000);
+}
+function abCoverFail(img) {
+  img.classList.add('ab-gone');
+}
+function abPost(url, body) {
+  return fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+    .then(r => {
+      if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+      return r.json().then(res => ({ok: r.ok, res: res}));
+    });
+}
+function abRailWanted(count) {
+  const el = document.getElementById('ab-rail-wanted');
+  if (el && typeof count === 'number') { el.textContent = count; el.hidden = count < 1; }
+}
+// Get this / Want: one click, one wishlist row - nothing is downloaded
+function abWant(btn, origin) {
+  const row = btn.closest('[data-asin]');
+  if (!row) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'adding\\u2026';
+  abPost('/api/wishlist', {asin: row.dataset.asin, origin: origin})
+    .then(out => {
+      if (!out.ok) {
+        abToast(out.res.error || 'that did not work');
+        btn.disabled = false;
+        btn.textContent = label;
+        return;
+      }
+      btn.textContent = 'On your wishlist';
+      btn.classList.remove('primary');
+      abRailWanted(out.res.count);
+      abToast(out.res.added ? 'Added to your wishlist' : 'Already on your wishlist');
+    })
+    .catch(() => {
+      abToast('could not reach the daemon');
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+}
+function abUnwant(btn) {
+  const row = btn.closest('[data-asin]');
+  if (!row) return;
+  btn.disabled = true;
+  abPost('/api/wishlist/remove', {asin: row.dataset.asin})
+    .then(out => {
+      if (!out.ok) { abToast(out.res.error || 'that did not work'); btn.disabled = false; return; }
+      row.remove();
+      abRailWanted(out.res.count);
+      abToast('Taken off your wishlist');
+    })
+    .catch(() => { abToast('could not reach the daemon'); btn.disabled = false; });
+}
+"""
+
+DISCOVER_TABS = (("search", "/discover", "Search"), ("wishlist", "/discover/wishlist", "Wishlist"))
+
+
+def _discover_rail_item(state, active: bool = False) -> str:
+    """The rail's Discover tab, under Series; the count is books on your wishlist."""
+    classes = "ab-rail-item" + (" ab-active" if active else "")
+    current = ' aria-current="page"' if active else ""
+    try:
+        wanted = state.wishlist_count()
+    except Exception:  # noqa: BLE001 - the rail must never blank a page
+        wanted = 0
+    hidden = "" if wanted else " hidden"
+    return (
+        f'<a class="{classes}" href="/discover"{current}>\n'
+        f'      <span class="ab-glyph">&#8981;</span> Discover\n'
+        f'      <span class="ab-count" id="ab-rail-wanted" title="books on your wishlist"{hidden}>{int(wanted)}</span></a>'
+    )
+
+
+def _discover_tabs(active: str, wanted: int) -> str:
+    out = []
+    for key, href, label in DISCOVER_TABS:
+        on = key == active
+        count = f' <span class="n">{int(wanted)}</span>' if key == "wishlist" else ""
+        klass = "chip on" if on else "chip"
+        current = ' aria-current="page"' if on else ""
+        out.append(f'<a class="{klass}" href="{href}"{current}>{label}{count}</a>')
+    return "".join(out)
+
+
+def _disc_names(names) -> str:
+    return _html(", ".join(str(n) for n in (names or []) if n))
+
+
+def _disc_row(item: dict, origin: str, seq_label: str = "") -> str:
+    """One catalog book: cover, title, who wrote and reads it, the facts, and what you can do."""
+    asin = str(item.get("asin") or "")
+    title = str(item.get("title") or "")
+    badge = '<span class="ab-ko" title="A summary, review or study guide - not the book itself.">Knockoff</span>' if item.get("knockoff") else ""
+    byline = []
+    if item.get("authors"):
+        byline.append("By " + _disc_names(item["authors"]))
+    if item.get("narrators"):
+        byline.append("Narrated by " + _disc_names(item["narrators"]))
+    facts = []
+    if _num(item.get("hours")) > 0:
+        facts.append(f"{_num(item.get('hours')):.1f} hrs")
+    if item.get("series"):
+        seq = f" #{_html(str(item['sequence']))}" if item.get("sequence") else ""
+        facts.append(_html(str(item["series"])) + seq)
+    if item.get("year"):
+        facts.append(_html(str(item["year"])))
+    facts.append(f"ASIN {_html(asin)}")
+    src = "/cover?asin=" + quote(asin, safe="") if asin else ""
+    img = f'<img src="{_attr(src)}" alt="" loading="lazy" onerror="abCoverFail(this)">' if src else ""
+    seq_html = f'<span class="ab-disc-seq">{seq_label}</span>' if seq_label else ""
+    if item.get("in_library"):
+        state_html = '<span class="ab-disc-pill ab-disc-have" title="A book in your library is this one (same ASIN, or same title and author).">In your library</span>'
+    elif item.get("wishlisted"):
+        state_html = '<span class="ab-disc-pill ab-disc-want">On your wishlist</span>'
+    else:
+        state_html = (
+            f'<button class="btn primary" title="Put this book on your wishlist. Nothing is downloaded." '
+            f"onclick=\"abWant(this,'{origin}')\">Get this</button>"
+        )
+    sub = f'<div class="ab-disc-a">{" &#183; ".join(byline)}</div>' if byline else ""
+    return (
+        f'<div class="ab-disc-row" data-asin="{_attr(asin)}">{seq_html}{img}'
+        f'<div class="ab-disc-meta"><div class="ab-disc-t" title="{_attr(title)}">{badge}{_html(title)}</div>'
+        f'{sub}<div class="ab-disc-m">{" &#183; ".join(facts)}</div></div>'
+        f"{state_html}</div>"
+    )
+
+
+def _discover_search_body(result: dict) -> str:
+    title, author = result.get("title") or "", result.get("author") or ""
+    intro = (
+        '<p class="ab-disc-intro">Search the Audible catalog by title, with an author to narrow it. '
+        "<b>Get this</b> puts a book on your wishlist &#8212; nothing is downloaded, and books "
+        "already in your library are marked.</p>"
+    )
+    form = (
+        '<form class="ab-disc-form" method="get" action="/discover" role="search">'
+        f'<input class="ab-search" name="title" type="search" maxlength="200" autocomplete="off" '
+        f'spellcheck="false" placeholder="Title or keywords" value="{_attr(title)}" aria-label="Title">'
+        f'<input class="ab-search ab-disc-author" name="author" type="search" maxlength="200" '
+        f'autocomplete="off" spellcheck="false" placeholder="Author (optional)" value="{_attr(author)}" '
+        'aria-label="Author">'
+        '<button class="primary" type="submit">Search</button></form>'
+    )
+    if not title and not author:
+        return intro + form
+    asked = " by ".join(f"&#8220;{_html(q)}&#8221;" for q in (title, author) if q)
+    if not result.get("ok"):
+        panel = f'<div class="ab-disc-empty ab-disc-err">{_html(result.get("error") or "")}</div>'
+        return f'{intro}{form}<section class="ab-disc-panel" aria-label="Search results">{panel}</section>'
+    results = result.get("results") or []
+    if not results:
+        body = f'<div class="ab-disc-empty">Nothing in the Audible catalog for {asked}.</div>'
+    else:
+        owned = sum(1 for r in results if r.get("in_library"))
+        why = f'<span class="ab-disc-why">{owned} already in your library</span>' if owned else ""
+        n = len(results)
+        body = (
+            f"<h3>{n} {_plural(n, 'result', 'results')} for {asked}{why}</h3>"
+            + "".join(_disc_row(r, "search") for r in results)
+        )
+    return f'{intro}{form}<section class="ab-disc-panel" aria-label="Search results">{body}</section>'
+
+
+def _discover_wishlist_body(state) -> str:
+    rows = state.wishlist_all()
+    intro = (
+        '<p class="ab-disc-intro">The books you asked for with <b>Get this</b> or <b>Want</b>. '
+        "This list is the hand-off point: nothing here is searched for or downloaded yet. "
+        "<b>Remove</b> takes a book off.</p>"
+    )
+    if not rows:
+        return intro + '<section class="ab-disc-panel"><div class="ab-disc-empty">Your wishlist is empty.</div></section>'
+    items = []
+    origins = {"search": "from Search", "for_you": "from For you", "series": "from Series", "api": "from the API"}
+    for row in rows:
+        asin = row["asin"]
+        facts = []
+        if row.get("hours"):
+            facts.append(f"{_num(row['hours']):.1f} hrs")
+        if row.get("series"):
+            seq = f" #{_html(row['sequence'])}" if row.get("sequence") else ""
+            facts.append(_html(row["series"]) + seq)
+        facts.append(f"ASIN {_html(asin)}")
+        facts.append(_html(f"added {rel_age(row['added_at'])} {origins.get(row.get('origin') or '', '')}".strip()))
+        src = "/cover?asin=" + quote(asin, safe="")
+        by = f'<div class="ab-disc-a">By {_disc_names(row["authors"])}</div>' if row.get("authors") else ""
+        items.append(
+            f'<div class="ab-disc-row" data-asin="{_attr(asin)}">'
+            f'<img src="{_attr(src)}" alt="" loading="lazy" onerror="abCoverFail(this)">'
+            f'<div class="ab-disc-meta"><div class="ab-disc-t">{_html(row["title"])}</div>{by}'
+            f'<div class="ab-disc-m">{" &#183; ".join(facts)}</div></div>'
+            f'<span class="ab-disc-pill">{_html(row["status"]).upper()}</span>'
+            '<button title="Take this book off your wishlist." onclick="abUnwant(this)">Remove</button></div>'
+        )
+    n = len(rows)
+    return intro + (
+        f'<section class="ab-disc-panel" aria-label="Wishlist"><h3>{n} {_plural(n, "book", "books")} wanted</h3>'
+        + "".join(items) + "</section>"
+    )
+
+
+def render_discover(state, tab: str = "search", title: str = "", author: str = "", result: dict | None = None) -> str:
+    """The Discover page. Search runs one catalog query only when a query was typed."""
+    counts = state.counts()
+    rc = rail_counts(state, counts)
+    wanted = state.wishlist_count()
+    if tab == "wishlist":
+        body = _discover_wishlist_body(state)
+    else:
+        tab = "search"
+        if result is None:
+            result = discover_mod.search(state, title, author)
+        body = _discover_search_body(result)
+    return DISCOVER_PAGE.format(
+        signout=signout_html(state),
+        styles=STYLES,
+        version=__version__,
+        rail_total=sum(counts.values()),
+        rail_review_count=rc["review"],
+        rail_held_count=rc["held"],
+        rail_failed_count=rc["failed"],
+        series_item=_series_rail_item(_series_shelf(state, refresh=False)["missing_total"]),
+        discover_item=_discover_rail_item(state, active=True),
+        library=_html(CONFIG.host_library or str(CONFIG.library_root)),
+        library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
+        output=_html(CONFIG.host_output or str(CONFIG.output_root)),
+        output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
+        disc_tabs=_discover_tabs(tab, wanted),
+        disc_body=body,
+        discover_script=DISCOVER_SCRIPT,
     )
 
 
@@ -2960,6 +3303,7 @@ def render_settings(state) -> str:
         lib_active="",
         set_active=" ab-active",
         series_item=_series_rail_item(_series_shelf(state, refresh=False)["missing_total"]),
+        discover_item=_discover_rail_item(state),
         rail_total=total,
         rail_review_count=rc["review"],
         rail_held_count=rc["held"],
@@ -3582,6 +3926,7 @@ def render(state, status: str = "", query: str = "") -> str:
         health_scan=_fmt_age(heartbeat_age),
         rail_total=total,
         series_item=_series_rail_item(series_shelf["missing_total"]),
+        discover_item=_discover_rail_item(state),
         rail_review_count=rc["review"],
         rail_held_count=rc["held"],
         rail_failed_count=rc["failed"],
@@ -4233,6 +4578,18 @@ class Handler(BaseHTTPRequestHandler):
         if path.rstrip("/") == "/api/wishlist":
             rows = [discover_mod.public_row(r) for r in self.state.wishlist_all()]
             self._send(200, json.dumps({"count": len(rows), "items": rows}).encode(), "application/json")
+            return
+        if path.rstrip("/") == "/api/discover/search":
+            result = discover_mod.search(self.state, params.get("title", ""), params.get("author", ""))
+            payload = {**result, "count": len(result["results"])}
+            self._send(200 if result["ok"] else 502, json.dumps(payload).encode(), "application/json")
+            return
+        if path.rstrip("/") in ("/discover", "/discover/search"):
+            page = render_discover(self.state, "search", params.get("title", ""), params.get("author", ""))
+            self._send(200, page.encode(), "text/html; charset=utf-8")
+            return
+        if path.rstrip("/") == "/discover/wishlist":
+            self._send(200, render_discover(self.state, "wishlist").encode(), "text/html; charset=utf-8")
             return
         if path in ("/series", "/series/"):
             self._send(200, render_series(self.state).encode(), "text/html; charset=utf-8")

@@ -158,6 +158,40 @@ def search(title: str | None = None, author: str | None = None, limit: int = 10)
     return [Product.from_audible(p) for p in (data.get("products") or [])]
 
 
+#: the most results one discovery query asks for (the catalog's page size caps it at 50 anyway)
+QUERY_MAX_RESULTS = 50
+
+
+def query(
+    title: str = "",
+    author: str = "",
+    narrator: str = "",
+    keywords: str = "",
+    limit: int = 20,
+) -> list[Product] | None:
+    """One catalog search for the Discover pages; None when the request failed.
+
+    Unlike ``search`` (which the matcher uses and which folds a failure into an empty list),
+    a page needs to tell "nothing found" from "the catalog could not be reached". Goes
+    through ``_get_json``, so the politeness gap, the backoff and the URL memo all apply.
+    """
+    params: dict = {
+        "num_results": max(1, min(int(limit), QUERY_MAX_RESULTS)),
+        "products_sort_by": "Relevance",
+        "response_groups": "product_desc,media,series,contributors,product_attrs,product_extended_attrs",
+        "image_sizes": "500,1000",
+    }
+    for name, value in (("title", title), ("author", author), ("narrator", narrator), ("keywords", keywords)):
+        if str(value or "").strip():
+            params[name] = str(value).strip()
+    if len(params) == 4:  # nothing to search for
+        return []
+    data = _get_json(AUDIBLE + "?" + urllib.parse.urlencode(params))
+    if not isinstance(data, dict):
+        return None
+    return [Product.from_audible(p) for p in (data.get("products") or []) if isinstance(p, dict)]
+
+
 #: the catalog's largest page; a series listing walks at most SERIES_MAX_PAGES of them
 SERIES_PAGE_SIZE = 50
 SERIES_MAX_PAGES = 4

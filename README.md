@@ -248,6 +248,28 @@ missing. **Copy Audible link** copies the book's Audible page address. Series li
 fetched in the background, at most once a day per series. `/api/series` returns the same
 data as JSON.
 
+### Discover and the wishlist
+
+The **Discover** tab (`/discover`) searches the Audible catalog by title, with an optional
+author. Each result shows its cover, authors, narrators, runtime, series and release year.
+Books already in your library are marked **In your library**: same ASIN, same title and
+author, or marked "I have this" on the Series page. **Get this** puts a book on your
+wishlist. That's all it does: nothing is downloaded, and no tracker is contacted. The
+wishlist is where a later version picks books up. The **Wishlist** tab lists it, and
+**Remove** takes a book off. The number on the Discover tab is the wishlist size. Search uses
+one catalog request at a time, with the same pacing as matching, and only the US store
+(`api.audible.com`).
+
+```bash
+curl -H "$AUTH" 'localhost:8080/api/discover/search?title=project+hail+mary&author=weir'
+curl -H "$AUTH" localhost:8080/api/wishlist
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PRS1K"}' localhost:8080/api/wishlist
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PRS1K"}' localhost:8080/api/wishlist/remove
+```
+
+Adding an ASIN that's already on the list changes nothing. If Audiobind has never shown an
+ASIN (in a search, a suggestion or a series), send `"title"` (and `"authors"`) with it.
+
 ### CLI
 
 ```bash

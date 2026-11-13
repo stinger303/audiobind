@@ -3,6 +3,7 @@
 Nothing here touches the network: series listings are stored straight into the state DB.
 """
 
+import http.client
 import json
 import pathlib
 import tempfile
@@ -11,13 +12,14 @@ import unittest
 from unittest import mock
 
 from audiobind import auth as auth_mod
-from audiobind import discover, series, web
+from audiobind import catalog, discover, series, web
+from audiobind.config import CONFIG
 from audiobind.state import State, UnitState
 
 try:
-    from live import LiveServerCase
+    from live import LiveServerCase, seed_account
 except ImportError:
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, seed_account
 
 
 def item(asin, title="A Book", authors=("Someone",), **extra):
@@ -184,26 +186,48 @@ class TestDiscoveryNeedsSignIn(LiveServerCase):
     """Every new route sits behind the existing sign-in; none is exempt."""
 
     signed_in = False
-    GETS = ("/api/wishlist",)
+    PAGES = ("/discover", "/discover?title=dune", "/discover/wishlist")
+    API_GETS = ("/api/wishlist", "/api/discover/search?title=dune")
     POSTS = ("/api/wishlist", "/api/wishlist/remove")
 
     def setUp(self):
         super().setUp()
         self.state.create_credentials("owner", auth_mod.hash_password("owner-pass-123", iterations=1000))
 
+    def raw(self, method, path, body=None, cookie=""):
+        """(status, Location) without following a redirect."""
+        conn = http.client.HTTPConnection("127.0.0.1", CONFIG.web_port, timeout=10)
+        headers = {"Content-Type": "application/json"} if body is not None else {}
+        if cookie:
+            headers["Cookie"] = cookie
+        conn.request(method, path, body=json.dumps(body).encode() if body is not None else None, headers=headers)
+        response = conn.getresponse()
+        response.read()
+        conn.close()
+        return response.status, response.getheader("Location")
+
     def test_no_new_route_is_exempt(self):
-        for route in self.GETS + self.POSTS:
-            self.assertNotIn(route, web.Handler.AUTH_EXEMPT)
-            self.assertNotIn(route, web.Handler.SETUP_EXEMPT)
+        for route in self.PAGES + self.API_GETS + self.POSTS:
+            bare = route.split("?", 1)[0]
+            self.assertNotIn(bare, web.Handler.AUTH_EXEMPT)
+            self.assertNotIn(bare, web.Handler.SETUP_EXEMPT)
 
     def test_signed_out_requests_are_refused(self):
-        for route in self.GETS:
-            status, _ = self.request(route, headers={})
-            self.assertIn(status, (303, 401), route)
-        for route in self.POSTS:
-            status, _ = self.request(route, {"asin": "B000000001", "title": "x"})
-            self.assertEqual(status, 401, route)
+        with mock.patch.object(catalog, "query") as query:
+            for route in self.PAGES:
+                self.assertEqual(self.raw("GET", route), (303, "/login"), route)
+            for route in self.API_GETS:
+                self.assertEqual(self.raw("GET", route)[0], 401, route)
+            for route in self.POSTS:
+                self.assertEqual(self.raw("POST", route, {"asin": "B000000001", "title": "x"})[0], 401, route)
+        query.assert_not_called()
         self.assertEqual(self.state.wishlist_count(), 0)
+
+    def test_signed_in_requests_go_through(self):
+        cookie = seed_account(self.state)
+        with mock.patch.object(catalog, "query", return_value=[]):
+            for route in self.PAGES + self.API_GETS:
+                self.assertEqual(self.raw("GET", route, cookie=cookie)[0], 200, route)
 
 
 if __name__ == "__main__":

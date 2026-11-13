@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import logging
 
+from . import catalog, matching
 from . import series as series_mod
 from .covers import valid_asin
 from .state import WISHLIST_WANTED
+from .util import norm
 
 log = logging.getLogger("audiobind")
 
@@ -58,8 +60,11 @@ def series_entry(state, asin: str) -> dict | None:
 
 
 def known_product(state, asin: str) -> dict | None:
-    """What the server already knows about an ASIN: a series listing entry. Known metadata
-    always wins over what a client posts."""
+    """What the server already knows about an ASIN: a catalog result a Discover page showed,
+    else a series listing entry. Known metadata always wins over what a client posts."""
+    seen = state.catalog_seen(asin)
+    if seen and seen.get("title"):
+        return {"asin": asin, **{k: seen.get(k) for k in ("title", "authors", "series", "sequence", "hours")}}
     return series_entry(state, asin)
 
 
@@ -114,4 +119,122 @@ def public_row(row: dict) -> dict:
                                     "series", "sequence", "hours")}
 
 
-__all__ = ["ORIGINS", "WISHLIST_WANTED", "add", "known_product", "public_row", "series_entry", "wishlist_item"]
+# ------------------------------------------------------------------ already in your library
+class LibraryIndex:
+    """The already-in-library guard for catalog results.
+
+    A catalog book is yours when a book in the library is matched or pinned to its ASIN, when
+    you marked its ASIN "I have this" on the Series page, or when a library book has the same
+    title and first author after normalisation (another edition of the same work). The same
+    three rules the series shelf uses to count a book as owned.
+    """
+
+    def __init__(self, rows: list[dict], marks: set[str]):
+        self.asins: dict[str, dict] = {}
+        self.works: dict[tuple[str, str], dict] = {}
+        for row in rows:
+            for asin in (row.get("asin"), row.get("asin_override")):
+                if asin:
+                    self.asins.setdefault(str(asin), row)
+            title = norm(row.get("title"))
+            author = norm(series_mod.unit_author(row))
+            if title and author:
+                self.works.setdefault((title, author), row)
+        self.marks = set(marks)
+
+    @classmethod
+    def from_state(cls, state) -> LibraryIndex:
+        return cls(state.series_rows(), state.owned_marks())
+
+    def owner(self, product: dict) -> dict | None:
+        """The library row that makes this catalog book yours ({} for an "I have this" mark)."""
+        asin = str(product.get("asin") or "")
+        if asin and asin in self.asins:
+            return self.asins[asin]
+        if asin and asin in self.marks:
+            return {}
+        authors = product.get("authors") or []
+        key = (norm(product.get("title")), norm(authors[0] if authors else ""))
+        if key[0] and key[1] and key in self.works:
+            return self.works[key]
+        return None
+
+    def owns(self, product: dict) -> bool:
+        return self.owner(product) is not None
+
+
+# ------------------------------------------------------------------ catalog results
+def product_dict(product) -> dict:
+    """A catalog Product as the Discover pages, the API and the catalog_seen table store it."""
+    return {
+        "asin": product.asin,
+        "title": product.title,
+        "subtitle": product.subtitle,
+        "authors": list(product.authors),
+        "narrators": list(product.narrators),
+        "series": product.series,
+        "sequence": product.sequence,
+        "hours": product.hours,
+        "year": product.year,
+        "language": product.language,
+        "image": product.image,
+    }
+
+
+def mark(state, products: list[dict], index: LibraryIndex | None = None, wanted: set[str] | None = None) -> list[dict]:
+    """Each result with ``in_library`` / ``wishlisted`` / ``knockoff`` flags for the page."""
+    index = index or LibraryIndex.from_state(state)
+    wanted = state.wishlist_asins() if wanted is None else wanted
+    out = []
+    for product in products:
+        row = dict(product)
+        owner = index.owner(product)
+        row["in_library"] = owner is not None
+        row["library_status"] = (owner or {}).get("status") or ""
+        row["wishlisted"] = product.get("asin") in wanted
+        row["knockoff"] = matching.is_knockoff(product, products)
+        out.append(row)
+    return out
+
+
+#: one search page shows at most this many results
+SEARCH_LIMIT = 25
+MAX_QUERY = 200
+
+
+def search(state, title: str = "", author: str = "", limit: int = SEARCH_LIMIT) -> dict:
+    """One catalog search for the Search page / API: {"ok", "error", "results", ...}.
+
+    One throttled catalog request (catalog.query), single region: the store the catalog
+    API answers for (api.audible.com). Results are remembered in catalog_seen so their
+    covers can be shown and a "Get this" click stores the catalog's own metadata.
+    """
+    title = _text(title, MAX_QUERY)
+    author = _text(author, MAX_QUERY)
+    out = {"ok": True, "error": "", "title": title, "author": author, "results": []}
+    if not title and not author:
+        return out
+    products = catalog.query(title=title, author=author, limit=limit)
+    if products is None:
+        out["ok"] = False
+        out["error"] = "The Audible catalog could not be reached - try again in a minute."
+        return out
+    rows = [product_dict(p) for p in products if p.asin]
+    state.catalog_seen_put(rows)
+    out["results"] = mark(state, rows)
+    return out
+
+
+__all__ = [
+    "ORIGINS",
+    "WISHLIST_WANTED",
+    "LibraryIndex",
+    "add",
+    "known_product",
+    "mark",
+    "product_dict",
+    "public_row",
+    "search",
+    "series_entry",
+    "wishlist_item",
+]
