@@ -294,8 +294,9 @@ def is_single_file(unit: BookUnit) -> bool:
 def _name_units(units: list[BookUnit], root: Path, ingest: bool = False) -> list[BookUnit]:
     """Give each grouped unit its rel_path (unique under ``root``) and its name guesses.
 
-    ``ingest`` units guess from a bare file's name without its extension; library units are
-    named exactly as they always were.
+    ``ingest`` units guess from a bare file's name without its extension, and every name
+    segment goes through clean_torrent_name first; library units are named exactly as they
+    always were.
     """
     seen: set[str] = set()
     for unit in units:
@@ -324,7 +325,7 @@ def _name_units(units: list[BookUnit], root: Path, ingest: bool = False) -> list
             unit.rel_path = f"{base}#{n}"
             n += 1
         seen.add(unit.rel_path)
-        _guess(unit, guess_path)
+        _guess(unit, guess_path, ingest=ingest)
     return units
 
 
@@ -334,6 +335,32 @@ def find_unit(root: str | Path, ignore: list[str], rel: str) -> BookUnit | None:
 
 
 # ------------------------------------------------------------------ name parsing
+#: torrent tags: "[MAM v5]", "[CA]", "{ASIN:B00...}" - never part of a title, dropped whole
+_TORRENT_TAG_RE = re.compile(r"\[[^\[\]]*\]|\{[^{}]*\}")
+#: not part of any Audible title, bracketed or bare
+_EDITION_RE = re.compile(r"\(\s*(?:un)?abridged\s*\)|\b(?:un)?abridged\b", re.I)
+#: "Book 1: Dune" - SEQ_RE's separators do not include a colon; a letter must still follow
+_BOOK_COLON_RE = re.compile(r"^\s*book\s*\d{1,3}(?:\.\d)?\s*:\s*(?=[A-Za-z])", re.I)
+
+
+def clean_torrent_name(name: str) -> str:
+    """``01 Convergence [CA]`` -> ``Convergence``: a torrent folder/file name, ready to parse.
+
+    INGEST ONLY - library folders were named by hand and are never put through this. Drops
+    bracketed/braced tags with their contents, Unabridged/Abridged, and a leading sequence
+    number using the library's own safe rule (SEQ_RE: 1-3 digits, then a title starting with
+    a letter - so ``1984`` and ``2001 A Space Odyssey`` survive). Returns the name tidied but
+    otherwise unchanged when stripping would leave nothing.
+    """
+    text = _TORRENT_TAG_RE.sub(" ", name or "")
+    text = _EDITION_RE.sub(" ", text)
+    text = re.sub(r"\(\s*\)", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" -_.,;")
+    text = SEQ_RE.sub("", _BOOK_COLON_RE.sub("", text))
+    text = re.sub(r"\s+", " ", text).strip(" -_.,;")
+    return text or re.sub(r"\s+", " ", name or "").strip()
+
+
 def author_like(text: str | None) -> float:
     """0..1 confidence that a string is a person's name, not a title."""
     if not text:
@@ -381,8 +408,11 @@ def split_author_title(name: str) -> tuple[str | None, str | None]:
     return None, text
 
 
-def _guess(unit: BookUnit, guess_path: str = "") -> None:
+def _guess(unit: BookUnit, guess_path: str = "", ingest: bool = False) -> None:
     segments = [p for p in Path(guess_path or unit.rel_path).parts if p]
+    if ingest:
+        # torrent names carry tags and sequence prefixes; library names never go through this
+        segments = [clean_torrent_name(p) for p in segments]
     stem = segments[-1] if segments else unit.name
     parent = segments[-2] if len(segments) > 1 else ""
     grandparent = segments[-3] if len(segments) > 2 else ""
