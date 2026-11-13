@@ -5,6 +5,52 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.17.0-dev1] - 2026-11-13
+
+### Added
+- **A wishlist.** A new `wishlist` table in the state DB stores ASIN, title, authors, when
+  it was added and status `wanted`. Adding a book that is already there changes nothing.
+  `GET /api/wishlist` lists it, `POST /api/wishlist` adds a book and
+  `POST /api/wishlist/remove` takes one off. Books go on it only when you click. Nothing
+  is downloaded, and no tracker is contacted. A later version picks books up from here.
+- **Discover tab, Search.** A new rail item between Series and Settings searches the
+  Audible catalog by title, with an optional author. Each result shows its cover, authors,
+  narrators, runtime, series and release year. A book already in your library is marked
+  **In your library**: same ASIN, same title and first author, or marked "I have this".
+  Knockoffs carry their badge. **Get this** adds a book to the wishlist. Searches go one
+  request at a time through the catalog's usual pacing, and only the US store
+  (`api.audible.com`) is searched. Searching several regions is not in this build.
+  `GET /api/discover/search` returns the same results as JSON.
+- **Discover tab, For you.** Suggestions based on what you own: more by your top 5
+  authors, books read by your top 3 narrators, and your top 2 genres (from the
+  `metadata.json` beside each published book). Books you own or already want are left
+  out, and so are knockoffs, other languages and second editions. A result only counts
+  when the seed author or narrator is really credited on it. Suggestions are stored with
+  the time they were fetched. Opening the page reads the stored list and never queries
+  the catalog. A refresh runs in the background when nothing is stored yet, when the list
+  is more than 7 days old, or when you press **Refresh**. One refresh makes at most 10
+  catalog requests. If none of them reach the catalog, the last good list is kept.
+  `GET` / `POST /api/discover/recommendations` give the stored list and start a refresh.
+- **Series completion.** Each series card shows "owned X of Y" and says the total comes
+  from the Audible catalog, with when it was checked. The missing list (title, sequence,
+  runtime) has a **Want** button on each book. **Want all missing** adds every missing book
+  in the series in one click and one transaction, skipping any already wanted. It uses
+  the server's current missing list, so a book you got after the page loaded isn't added.
+  `POST /api/wishlist` with `series` and `"missing": "all"` does the same.
+
+### Changed
+- On the Series page, **Want** is now the main button on missing books. **Copy Audible
+  link** is still beside it.
+- `/api/series` now says where each series total comes from (`source`: `catalog`,
+  `pending`, `not_found` or `unreachable`). It also includes `last_error`.
+
+### Fixed
+- **A series with no total now says why.** Before, a series card said "fetching series
+  size…" even when the catalog had answered that no such series exists, or couldn't be
+  reached. Now the card shows **total unknown** and the reason: still fetching, Audible
+  has no listing, or the catalog couldn't be reached and will be tried again. The detail
+  panel's series block says the same.
+
 ## [0.16.0-dev4] - 2026-11-13
 
 ### Added
