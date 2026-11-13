@@ -348,6 +348,22 @@ REFRESHER = Refresher()
 
 
 # ------------------------------------------------------------------ the gap computation
+#: where a series total comes from - the page says which, and never invents a number
+SOURCE_CATALOG = "catalog"          # a stored Audible listing: the total is known
+SOURCE_PENDING = "pending"          # never asked yet: the background refresher will
+SOURCE_NOT_FOUND = "not_found"      # the catalog answered and has no such series
+SOURCE_UNREACHABLE = "unreachable"  # the catalog could not be reached; retried later
+
+
+def source_of(record: dict | None) -> str:
+    if not record:
+        return SOURCE_PENDING
+    if record.get("ok") and (record.get("payload") or {}).get("entries"):
+        return SOURCE_CATALOG
+    reason = str((record.get("payload") or {}).get("reason") or "")
+    return SOURCE_NOT_FOUND if reason == SOURCE_NOT_FOUND else SOURCE_UNREACHABLE
+
+
 def compute(group: dict, record: dict | None, marks: set[str]) -> dict:
     """One series card: owned, total (only when known), missing, the cover strip, the extras."""
     books = group["books"]
@@ -370,6 +386,8 @@ def compute(group: dict, record: dict | None, marks: set[str]) -> dict:
         "next_gap": None,
         "avg_hours": 0.0,
         "fetched_at": None,
+        "source": source_of(record),
+        "last_error": "",
     }
     payload = (record or {}).get("payload") or {}
     entries = payload.get("entries") or []
@@ -379,6 +397,7 @@ def compute(group: dict, record: dict | None, marks: set[str]) -> dict:
     if payload.get("title"):
         view["name"] = payload["title"]
     view["fetched_at"] = payload.get("fetched_at")
+    view["last_error"] = str(payload.get("last_error") or "")
     numbered = {}
     for entry in entries:
         number = seq_number(entry.get("sequence"))
@@ -511,7 +530,8 @@ def missing_total(state) -> int:
 def public(view: dict) -> dict:
     """A series card as the /api/series JSON shows it."""
     keep = ("slug", "name", "author", "owned", "known", "total", "have", "missing", "marked",
-            "extras", "unnumbered", "between", "other", "next_gap", "avg_hours", "fetched_at")
+            "extras", "unnumbered", "between", "other", "next_gap", "avg_hours", "fetched_at",
+            "source", "last_error")
     out = {k: view.get(k) for k in keep}
     out["missing"] = [{k: m.get(k) for k in ("n", "asin", "title", "hours")} for m in view["missing"]]
     out["marked"] = [{k: m.get(k) for k in ("n", "asin", "title")} for m in view["marked"]]

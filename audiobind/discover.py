@@ -120,6 +120,51 @@ def add(state, payload: dict) -> tuple[dict | None, bool, str]:
     return state.wishlist_get(item["asin"]), added, ""
 
 
+def want_missing(state, slug: str) -> tuple[dict | None, int, str]:
+    """"Want all missing" on the Series page: every missing entry of one series onto the
+    wishlist in one click. (result, http status, error).
+
+    The missing list is the server's own, from the stored Audible listing (cache only, never
+    the network) - so a stale page can't add a book you got since it was drawn. Rows already
+    on the wishlist are left alone; a series whose size is unknown has nothing to add.
+    """
+    slug = str(slug or "").strip().lower()
+    try:
+        shelf = series_mod.aggregate(state, refresh=False)
+    except Exception:  # noqa: BLE001
+        log.exception("series shelf could not be read for want-all")
+        return None, 500, "the series shelf could not be read"
+    view = next((v for v in shelf["series"] if v.get("slug") == slug), None)
+    if view is None:
+        return None, 404, "no series by that name on your shelf"
+    if not view.get("known"):
+        return None, 409, "the size of this series is unknown, so nothing counts as missing"
+    wanted = state.wishlist_asins()
+    items: list[dict] = []
+    already: list[str] = []
+    for entry in view["missing"]:
+        item = {
+            "asin": entry["asin"],
+            "title": _text(entry.get("title"), MAX_TITLE),
+            "authors": [view["author"]] if view.get("author") else [],
+            "series": _text(view.get("name"), MAX_TITLE),
+            "sequence": str(entry.get("n") or entry.get("sequence") or ""),
+            "hours": entry.get("hours") or 0,
+            "origin": "series",
+        }
+        if not valid_asin(item["asin"]) or not item["title"]:
+            continue
+        if item["asin"] in wanted:
+            already.append(item["asin"])
+        else:
+            items.append(item)
+    state.wishlist_add_many(items)  # one transaction: all of them or none
+    added = [i["asin"] for i in items]
+    if added:
+        log.info("wishlist: added %d missing from %s", len(added), view["name"])
+    return {"series": view["slug"], "name": view["name"], "added": added, "already": already}, 200, ""
+
+
 def public_row(row: dict) -> dict:
     """A wishlist row as the API shows it."""
     return {k: row.get(k) for k in ("asin", "title", "authors", "added_at", "status", "origin",
@@ -545,5 +590,6 @@ __all__ = [
     "request_refresh",
     "search",
     "series_entry",
+    "want_missing",
     "wishlist_item",
 ]

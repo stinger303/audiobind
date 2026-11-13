@@ -327,6 +327,31 @@ node_check("for you", recs_page, "foryou.js")
 recs_api = json.loads(get("/api/discover/recommendations"))
 check("/api/discover/recommendations responds", recs_api.get("fetched_at") and recs_api.get("stale") is False)
 
+# ---- series completion (0.17.0-dev1): Want / Want all missing on the Series page
+print("series completion:")
+spage = get("/series")
+smissing = re.search(r'<section class="ab-series-panel" id="ab-series-missing-jack-reacher".*?</section>', spage, re.S)
+smissing = smissing.group(0) if smissing else ""
+check("series: card names the source of the total",
+      '<div class="ab-series-src">total from the Audible catalog &#183; checked just now</div>' in spage)
+check("series: each missing row has a Want button", smissing.count('onclick="abSeriesWant(this)">Want</button>') == 2)
+check("series: one Want all missing button",
+      'data-series="jack-reacher"' in smissing and '>Want all 2 missing</button>' in smissing)
+check("series: missing rows show sequence and runtime",
+      '<span class="ab-series-seq">4</span>' in smissing and "12.9 hrs" in smissing)
+node_check("series completion", spage, "series-want.js")
+before_all = json.loads(get("/api/wishlist")).get("count")
+status, _, wanted_all = fetch("/api/wishlist", json.dumps({"series": "jack-reacher", "missing": "all"}).encode(),
+                              {"Content-Type": "application/json", "Cookie": COOKIE})
+wanted_all = json.loads(wanted_all or "{}")
+check("Want all missing adds every missing entry",
+      status == 200 and wanted_all.get("added") == ["B0000000J4", "B0000000J5"]
+      and wanted_all.get("count") == before_all + 2)
+spage = get("/series")
+check("series: after Want all, the panel says they are all wanted",
+      "All 2 on your wishlist" in spage and 'onclick="abSeriesWantAll(this)"' not in spage)
+check("series: the wishlist lists them from the series", "Personal" in get("/discover/wishlist"))
+
 # ---- Settings > Account (0.16.0-dev2)
 print("settings page:")
 settings_page = get("/settings")

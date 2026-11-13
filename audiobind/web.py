@@ -576,6 +576,14 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-series-pill{font-size:10px;font-weight:600;letter-spacing:.5px;color:var(--ab-amber);
   background:var(--ab-amber-soft);padding:2px 8px;border-radius:4px;flex:none}
 .ab-series-pill.ab-series-have{color:var(--ab-green);background:var(--ab-green-soft)}
+.ab-series-pill.ab-series-wanted{color:var(--ab-accent-bright);background:rgba(94,106,210,.14)}
+.ab-series-src{color:var(--ab-text4);font-size:11px;margin:-6px 0 10px}
+.ab-series-unk{color:var(--ab-text3);background:var(--ab-surface2);font-size:10.5px;font-weight:600;
+  letter-spacing:.5px;padding:2px 8px;border-radius:4px;text-transform:uppercase}
+.ab-series-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--ab-text4);
+  margin:0 0 8px}
+.ab-series-bar .ab-spacer{flex:1}
+.ab-series-bar button{height:28px;padding:0 12px;font-size:11.5px;font-weight:600}
 .ab-series-row button{height:28px;padding:0 11px;font-size:11.5px;font-weight:600;flex:none}
 .ab-series-kpi{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0 4px}
 .ab-series-kpi b{font-family:var(--ab-mono);font-size:16px;color:var(--ab-amber)}
@@ -1872,6 +1880,71 @@ function abSeriesMark(btn, on) {
       btn.textContent = label;
     });
 }
+// Want / Want all missing: onto the wishlist (Discover > Wishlist); nothing is downloaded
+function abSeriesPost(body) {
+  return fetch('/api/wishlist', {method:'POST', headers:{'Content-Type':'application/json'},
+                                 body: JSON.stringify(body)})
+    .then(r => {
+      if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+      return r.json().then(res => ({ok: r.ok, res: res}));
+    });
+}
+function abSeriesWanted(count) {
+  const el = document.getElementById('ab-rail-wanted');
+  if (el && typeof count === 'number') { el.textContent = count; el.hidden = count < 1; }
+}
+function abSeriesWant(btn) {
+  const row = btn.closest('[data-asin]');
+  if (!row) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'adding\\u2026';
+  abSeriesPost({asin: row.dataset.asin, origin: 'series'})
+    .then(out => {
+      if (!out.ok) {
+        abToast(out.res.error || 'that did not work');
+        btn.disabled = false;
+        btn.textContent = label;
+        return;
+      }
+      // a marker, not a disabled button: a disabled one would hold off the auto-reload
+      const pill = document.createElement('span');
+      pill.className = 'ab-series-pill ab-series-wanted';
+      pill.textContent = 'On your wishlist';
+      btn.replaceWith(pill);
+      abSeriesWanted(out.res.count);
+      abToast(out.res.added ? 'Added to your wishlist' : 'Already on your wishlist');
+    })
+    .catch(() => {
+      abToast('could not reach the daemon');
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+}
+function abSeriesWantAll(btn) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'adding\\u2026';
+  abSeriesPost({series: btn.dataset.series, missing: 'all'})
+    .then(out => {
+      if (!out.ok) {
+        abToast(out.res.error || 'that did not work');
+        btn.disabled = false;
+        btn.textContent = label;
+        return;
+      }
+      const n = (out.res.added || []).length;
+      abSeriesWanted(out.res.count);
+      abToast(n ? (n === 1 ? 'Added 1 book to your wishlist' : 'Added ' + n + ' books to your wishlist')
+                : 'They are all on your wishlist already');
+      setTimeout(() => location.reload(), 700);
+    })
+    .catch(() => {
+      abToast('could not reach the daemon');
+      btn.disabled = false;
+      btn.textContent = label;
+    });
+}
 // /series#jack-reacher (from a book's "See what you're missing"): scroll to that card and
 // light it up for a moment; the hash is then dropped so a later refresh does not jump back
 function abSeriesFocus() {
@@ -2663,6 +2736,23 @@ def _plural(n: int, one: str, many: str) -> str:
     return one if n == 1 else many
 
 
+#: why a series has no total - the card and the detail-panel hook say which, never a number
+SERIES_UNKNOWN_WHY = {
+    series_mod.SOURCE_PENDING: "fetching series size&hellip;",
+    series_mod.SOURCE_NOT_FOUND: "Audible has no listing for this series",
+    series_mod.SOURCE_UNREACHABLE: "the Audible catalog could not be reached &#183; trying again later",
+}
+
+
+def _series_source(view: dict) -> str:
+    """Where the total came from: 'total from the Audible catalog · checked 3h ago'."""
+    age = rel_age(view.get("fetched_at"))
+    text = "total from the Audible catalog" + (f" &#183; checked {_html(age)}" if age else "")
+    if view.get("last_error"):
+        text += " &#183; the last check failed, so this is the earlier listing"
+    return text
+
+
 def _series_card(view: dict) -> str:
     slug = _attr(view["slug"])
     sub_bits = [_html(view["author"])] if view.get("author") else []
@@ -2677,7 +2767,10 @@ def _series_card(view: dict) -> str:
             else '<span class="ab-series-complete">COMPLETE</span>'
         )
         count = f'<b>{view["have"]}</b><span class="ab-series-of">of {view["total"]} owned</span>{badge}'
-        strip = '<div class="ab-series-strip">' + "".join(_series_tile(t) for t in view["tiles"]) + "</div>"
+        strip = (
+            f'<div class="ab-series-src">{_series_source(view)}</div>'
+            '<div class="ab-series-strip">' + "".join(_series_tile(t) for t in view["tiles"]) + "</div>"
+        )
         if missing:
             nxt = view["next_gap"] or {}
             foot = (
@@ -2687,10 +2780,15 @@ def _series_card(view: dict) -> str:
         else:
             foot = '<span class="ab-series-dim">nothing to chase</span>'
     else:
-        # never a guessed total: just what you have, until Audible answers
-        count = f'<b>{view["owned"]}</b><span class="ab-series-of">owned</span>'
+        # never a guessed total: just what you have, and why the size is unknown
+        count = (
+            f'<b>{view["owned"]}</b><span class="ab-series-of">owned</span>'
+            '<span class="ab-series-unk" title="No series total: Audiobind only shows one the '
+            'Audible catalog gave it.">total unknown</span>'
+        )
         strip = ""
-        foot = '<span class="ab-series-dim">fetching series size&hellip;</span>'
+        why = SERIES_UNKNOWN_WHY.get(view.get("source"), SERIES_UNKNOWN_WHY[series_mod.SOURCE_PENDING])
+        foot = f'<span class="ab-series-dim">{why}</span>'
     if view["known"] and view["missing"]:
         # same target as the "Show the N missing" link: one anchor, one panel, no extra state
         name_html = (
@@ -2707,7 +2805,9 @@ def _series_card(view: dict) -> str:
     )
 
 
-def _series_row(entry: dict, seq_label: str, actions: bool = True) -> str:
+def _series_row(entry: dict, seq_label: str, actions: bool = True, wanted: frozenset | set = frozenset()) -> str:
+    """One listing entry. ``actions`` (the missing list): I have this, and Want - or the
+    "On your wishlist" marker when it is already there."""
     asin = str(entry.get("asin") or "")
     facts = []
     if _num(entry.get("hours")) > 0:
@@ -2721,6 +2821,15 @@ def _series_row(entry: dict, seq_label: str, actions: bool = True) -> str:
         buttons = ""
     else:
         pill = '<span class="ab-series-pill">Not in your library</span>'
+        if not actions:
+            want = ""
+        elif asin in wanted:
+            want = '<span class="ab-series-pill ab-series-wanted">On your wishlist</span>'
+        else:
+            want = (
+                '<button class="btn primary" title="Put this book on your wishlist. Nothing is downloaded." '
+                'onclick="abSeriesWant(this)">Want</button>'
+            )
         buttons = (
             (
                 '<button title="You own this book without a rip - stop counting it as missing." '
@@ -2728,8 +2837,9 @@ def _series_row(entry: dict, seq_label: str, actions: bool = True) -> str:
                 if actions
                 else ""
             )
-            + '<button class="btn primary" title="Copy this book\'s Audible page address." '
+            + '<button title="Copy this book\'s Audible page address." '
             'onclick="abSeriesCopy(this)">Copy Audible link</button>'
+            + want
         )
     return (
         f'<div class="ab-series-row" data-asin="{_attr(asin)}" data-link="{_attr(AUDIBLE_PD + quote(asin, safe=""))}">'
@@ -2740,7 +2850,29 @@ def _series_row(entry: dict, seq_label: str, actions: bool = True) -> str:
     )
 
 
-def _series_panel(view: dict) -> str:
+def _series_want_bar(view: dict, wanted: frozenset | set) -> str:
+    """'Want all 13 missing' - one click, every missing entry onto the wishlist - and where
+    the list came from."""
+    missing = view["missing"]
+    open_ = [m for m in missing if m.get("asin") not in wanted]
+    owned, total = view["have"], view["total"]
+    source = f"You own {owned} of {total} &#183; {_series_source(view)}"
+    if not missing:
+        action = ""
+    elif not open_:
+        action = f'<span class="ab-series-pill ab-series-wanted">All {len(missing)} on your wishlist</span>'
+    else:
+        n = len(open_)
+        label = f"Want all {n} missing" if n == len(missing) else f"Want the other {n} missing"
+        action = (
+            f'<button class="btn primary" data-series="{_attr(view["slug"])}" '
+            f'title="Put every missing book in this series on your wishlist. Nothing is downloaded." '
+            f'onclick="abSeriesWantAll(this)">{label}</button>'
+        )
+    return f'<div class="ab-series-bar"><span>{source}</span><span class="ab-spacer"></span>{action}</div>'
+
+
+def _series_panel(view: dict, wanted: frozenset | set = frozenset()) -> str:
     """'Missing from Jack Reacher — 13 books', with the hidden not-numbered entries below."""
     if not view["known"] or not (view["missing"] or view["marked"]):
         return ""
@@ -2751,7 +2883,9 @@ def _series_panel(view: dict) -> str:
         head = f"Missing from {name} &mdash; {missing} {_plural(missing, 'book', 'books')}"
     else:
         head = f"Nothing missing from {name}"
-    rows = "".join(_series_row(m, str(int(m["n"]))) for m in view["missing"])
+    rows = _series_want_bar(view, wanted) + "".join(
+        _series_row(m, str(int(m["n"])), wanted=wanted) for m in view["missing"]
+    )
 
     kpis = []
     if missing:
@@ -2821,7 +2955,9 @@ def series_hook_html(view: dict | None) -> str:
             sub = "You have every numbered book in this series &mdash; nothing to chase"
     else:
         head = f"{name} &mdash; you have {view['owned']}"
-        sub = "fetching series size&hellip;"
+        sub = "total unknown &#183; " + SERIES_UNKNOWN_WHY.get(
+            view.get("source"), SERIES_UNKNOWN_WHY[series_mod.SOURCE_PENDING]
+        )
     owned_tiles = [t for t in view["tiles"] if t["kind"] != "gap"][:8]
     gap_tiles = [t for t in view["tiles"] if t["kind"] == "gap"][:5]
     tiles = owned_tiles + gap_tiles
@@ -2848,12 +2984,18 @@ def render_series(state) -> str:
     if views:
         intro = (
             '<p class="ab-series-intro">Every series with two or more of your books, checked '
-            "against the Audible series order. <b>I have this</b> marks a book you own without "
-            "a rip, so it stops counting as missing; <b>Copy Audible link</b> is for when you "
-            "want to go get it.</p>"
+            "against the Audible series order. <b>Want</b> puts a missing book on your wishlist "
+            "(<b>Want all missing</b> does the whole list in one click); nothing is downloaded. "
+            "<b>I have this</b> marks a book you own without a rip, so it stops counting as "
+            "missing. A series total only ever comes from the Audible catalog &#8212; when it "
+            "has no listing, the total says unknown.</p>"
         )
+        try:
+            wanted = frozenset(state.wishlist_asins())
+        except Exception:  # noqa: BLE001 - the wishlist must never blank the Series page
+            wanted = frozenset()
         cards = "".join(_series_card(v) for v in views)
-        panels = "".join(_series_panel(v) for v in views)
+        panels = "".join(_series_panel(v, wanted) for v in views)
         body = f'{intro}<section class="ab-series-shelf" aria-label="Your series">{cards}</section>{panels}'
     else:
         body = (
@@ -5261,6 +5403,18 @@ class Handler(BaseHTTPRequestHandler):
                 return
             logging.getLogger("audiobind").info("wishlist: removed %s", asin)
             body = {"ok": True, "asin": asin, "removed": True, "count": self.state.wishlist_count()}
+            self._send(200, json.dumps(body).encode(), "application/json")
+            return
+        if "series" in payload:
+            # {"series": "<slug>", "missing": "all"}: the Series page's "Want all missing" click
+            if str(payload.get("missing", "")).lower() != "all":
+                self._send(400, b'{"error":"send \\"missing\\": \\"all\\" with a series"}', "application/json")
+                return
+            result, status, error = discover_mod.want_missing(self.state, str(payload.get("series") or ""))
+            if result is None:
+                self._send(status, json.dumps({"error": error}).encode(), "application/json")
+                return
+            body = {"ok": True, **result, "count": self.state.wishlist_count()}
             self._send(200, json.dumps(body).encode(), "application/json")
             return
         row, added, error = discover_mod.add(self.state, payload)

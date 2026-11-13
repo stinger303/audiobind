@@ -248,6 +248,19 @@ missing. **Copy Audible link** copies the book's Audible page address. Series li
 fetched in the background, at most once a day per series. `/api/series` returns the same
 data as JSON.
 
+Each card shows "owned X of Y" and notes that the total comes from the Audible catalog, with
+when it was checked. Audiobind never estimates a total. If Audible has no listing, or the
+catalog couldn't be reached, the card shows **total unknown** and the reason. In the missing
+list, **Want** puts one book on your wishlist. **Want all missing** adds every missing book in
+the series in one click. Books already on the wishlist are skipped, and nothing is downloaded.
+Want all uses the server's current missing list, so a book you got after the page loaded isn't
+added.
+
+```bash
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
+     -d '{"series":"jack-reacher","missing":"all"}' localhost:8080/api/wishlist
+```
+
 ### Discover and the wishlist
 
 The **Discover** tab (`/discover`) searches the Audible catalog by title, with an optional
