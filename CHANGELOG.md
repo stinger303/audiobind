@@ -5,6 +5,41 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.16.0-dev3] - 2026-11-12
+
+### Added
+- **Ingest falls back to the files' own tags.** If an ingest book's name matches nothing
+  in the catalog (confidence NONE), Audiobind reads the embedded tags of its first audio
+  file and searches again. The title comes from `title`, or from `album` first when there
+  are several files. The author comes from `album_artist`, `artist` or `composer`. This is
+  one read-only ffprobe. If the second search finds something, its match is used, and the
+  usual grading and auto-convert tiers still apply. The detail records which names won
+  (`name_source`: `folder` or `embedded`). The "why this match" panel and the row note
+  say when the tags were used. Library books, ingest books whose name already matched,
+  and books with a pinned ASIN never read tags.
+
+### Changed
+- **Torrent names are cleaned before an ingest book is matched.** Tags in square
+  brackets or braces are dropped with their contents (`[CA]`, `[MAM v5]`,
+  `{ASIN:...}`). So are Unabridged and Abridged, a leading sequence number (`01 `,
+  `03. `, `Book 2 - `, `Book 1: `), and extra spaces. Numbers that are the title stay:
+  `1984` and `2001 A Space Odyssey` survive. The author is still read the way it was.
+  Only ingest books are cleaned. Library folders are parsed exactly as before. The state
+  key and the path on disk keep the raw torrent name.
+
+### Fixed
+- **Single-file torrents are found.** A torrent of one audio file lands as a bare file in
+  `INGEST_DIR`, for example `The Guilty Will Robie, Book 4 (Unabridged).m4b`. These were
+  never discovered, because only folders counted. Now every audio file directly in the
+  ingest root is a book of its own (m4b, m4a, mp3, flac, ogg, opus, wav and the other
+  audio types the library already knows; the extension's case does not matter). It is
+  keyed on the file name and its title is the file name without the extension. It goes
+  through the same match, convert and publish steps. Hidden and IGNORE-listed files are
+  skipped. Two files side by side are two books, never grouped. The file itself is only
+  read.
+- **`01 Convergence [CA]` was searched as "Convergence CA"** and matched nothing. It is
+  now searched as "Convergence" (see Changed).
+
 ## [0.16.0-dev2] - 2026-11-11
 
 ### Added
