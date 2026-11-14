@@ -12,6 +12,7 @@ the catastrophic outcome, so every choice here leans conservative.
 
 from __future__ import annotations
 
+import functools
 import html
 import json
 import re
@@ -22,7 +23,6 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
-from . import __version__
 from .util import clean, norm, sim
 
 #: the site; the two endpoint URLs below are the only URLs this module builds
@@ -389,11 +389,32 @@ def authorized_url(url: str) -> bool:
     return url == SEARCH_URL or url.startswith(DOWNLOAD_URL + "?tid=")
 
 
-def urllib_transport(method: str, url: str, data: bytes | None, headers: dict, timeout: float):
-    """(status, headers, body) - the one place a MAM request leaves the process."""
+_OPENERS: dict = {}
+_OPENERS_LOCK = threading.Lock()
+
+
+def _opener(proxy: str = ""):
+    """The opener for ``proxy`` ("" = direct), built once and shared by search and download.
+    With a proxy only that proxy handler is installed (an https target goes through an HTTP
+    CONNECT tunnel); the environment's proxy variables are never consulted."""
+    with _OPENERS_LOCK:
+        if proxy not in _OPENERS:
+            handlers: list = [_NoRedirect()]
+            if proxy:
+                handlers.insert(0, urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+            _OPENERS[proxy] = urllib.request.build_opener(*handlers)
+        return _OPENERS[proxy]
+
+
+def urllib_transport(method: str, url: str, data: bytes | None, headers: dict, timeout: float,
+                     proxy: str = ""):
+    """(status, headers, body) - the one place a MAM request leaves the process.
+
+    With ``proxy`` set this is fail-closed: one attempt through the proxy, and any failure is a
+    MamError. There is no retry and never a direct fallback."""
     if not authorized_url(url):
         raise MamError("refusing a URL outside the two authorized MAM endpoints")
-    opener = urllib.request.build_opener(_NoRedirect())
+    opener = _opener(proxy)
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with opener.open(request, timeout=timeout) as response:
@@ -406,6 +427,10 @@ def urllib_transport(method: str, url: str, data: bytes | None, headers: dict, t
         finally:
             exc.close()
         return exc.code, dict(exc.headers or {}), body
+    except Exception as exc:  # noqa: BLE001
+        if proxy:
+            raise MamError(f"MAM request through the proxy failed ({type(exc).__name__}); not sent directly") from exc
+        raise
 
 
 def _retry_after(headers: dict) -> float:
@@ -433,10 +458,12 @@ class MamClient:
 
     TIMEOUT = 30.0
 
-    def __init__(self, mam_id: str, transport=urllib_transport, limiter: RateLimiter | None = None,
-                 backoff: Backoff | None = None):
+    def __init__(self, mam_id: str, transport=None, limiter: RateLimiter | None = None,
+                 backoff: Backoff | None = None, proxy: str = "", user_agent: str = ""):
         self._mam_id = str(mam_id or "").strip()
-        self.transport = transport
+        self._user_agent = str(user_agent or "").strip()
+        # the default transport carries the proxy; a test's fake transport is used as given
+        self.transport = transport or functools.partial(urllib_transport, proxy=str(proxy or "").strip())
         self.limiter = limiter or RateLimiter()
         self.backoff = backoff or Backoff()
         self._lock = threading.Lock()
@@ -446,7 +473,10 @@ class MamClient:
         return f"MamClient(requests={self.requests}, backoff={self.backoff.remaining():.0f}s)"
 
     def _headers(self, extra: dict | None = None) -> dict:
-        return {"Cookie": f"mam_id={self._mam_id}", "User-Agent": f"audiobind/{__version__}", **(extra or {})}
+        headers = {"Cookie": f"mam_id={self._mam_id}"}
+        if self._user_agent:  # no override unless the owner set MAM_USER_AGENT; never our name or version
+            headers["User-Agent"] = self._user_agent
+        return {**headers, **(extra or {})}
 
     def _request(self, method: str, url: str, data: bytes | None = None, extra: dict | None = None) -> bytes:
         if not self._mam_id:

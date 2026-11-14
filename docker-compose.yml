@@ -38,8 +38,34 @@ services:
       - /mnt/user/appdata/audiobind:/config
     ports:
       - "8080:8080"
+    # ---- OPTIONAL: send every MyAnonamouse request through a VPN (see README, "Running MAM
+    # through a VPN"). Option A, recommended: share the gluetun service's network. Then DELETE the
+    # "ports:" block above (the port moves to gluetun below), and uncomment these two lines:
+    # network_mode: "service:gluetun"
+    # depends_on: [gluetun]
+    # Option B: keep the ports above and use gluetun's HTTP proxy instead (fail-closed):
+    #   add to environment:  - MAM_PROXY=http://gluetun:8888   (and HTTPPROXY=on on gluetun)
+    # Either way you can arm the tripwire:  - MAM_HOME_WAN_IP=203.0.113.7
+    # If qBittorrent shares gluetun's network too:  - QBIT_URL=http://127.0.0.1:8083
     healthcheck:
       test: ["CMD", "audiobind", "health"]
       interval: 60s
       timeout: 5s
       start_period: 180s
+
+  # ---- OPTIONAL VPN container for the example above (uncomment the whole block) ----
+  # gluetun:
+  #   image: qmcgaw/gluetun
+  #   container_name: gluetun
+  #   restart: unless-stopped
+  #   cap_add: [NET_ADMIN]
+  #   devices:
+  #     - /dev/net/tun:/dev/net/tun
+  #   environment:
+  #     - VPN_SERVICE_PROVIDER=mullvad          # 60+ providers, see the Gluetun wiki
+  #     - VPN_TYPE=wireguard
+  #     - WIREGUARD_PRIVATE_KEY=change-me
+  #     - WIREGUARD_ADDRESSES=10.64.0.2/32
+  #     # - HTTPPROXY=on                         # only for option B (MAM_PROXY)
+  #   ports:
+  #     - "8080:8080"                            # Audiobind's UI, published here for option A

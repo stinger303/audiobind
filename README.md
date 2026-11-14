@@ -337,6 +337,131 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"action":"run"}
 curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PRS1K"}' localhost:8080/api/wishlist/retry
 ```
 
+### Running MAM through a VPN
+
+MyAnonamouse ties your session to an IP address, and many people want every request to MAM
+to leave through a VPN and never from the home connection. Audiobind helps in three ways. They
+stack, so use one, two or all three:
+
+1. **Share a VPN container's network namespace** (recommended).
+2. **Send MAM through an HTTP proxy** (`MAM_PROXY`).
+3. **Arm the tripwire** (`MAM_HOME_WAN_IP`): a check that refuses to talk to MAM from your home IP.
+
+Audiobind also sends **no identifying `User-Agent`** to MAM: it never announces its name or
+version. The request carries only your session cookie and what the endpoint needs. If you
+would rather look like a particular client, set `MAM_USER_AGENT` and that text is sent as-is.
+
+If you have never used a VPN container: it is a container that holds your VPN connection
+(WireGuard or OpenVPN) and routes its own traffic through it. Other containers can then be
+attached to it so *their* traffic goes through the VPN too. The examples below use Gluetun
+(which supports 60+ providers), but the idea is identical for any of them.
+
+#### 1. Share the VPN container's network namespace (recommended)
+
+A container started with `--network container:<vpn-container>` lives *inside* the VPN
+container's network stack. It has no network of its own, so the kernel itself sends everything
+through the VPN: there is no second route and no fallback. If the VPN drops, Audiobind simply
+has no internet, it does not quietly use your home connection. DNS also follows the VPN
+container, so lookups do not leak to your ISP. (This is why a plain proxy without DNS handling
+is weaker: the proxy hides the traffic, but a name lookup made outside it can still go out the
+home connection.)
+
+Because Audiobind no longer has its own network, **publish its web port on the VPN container**,
+not on Audiobind: remove Audiobind's `-p` and add `-p 8686:8080` to the VPN container (host
+port 8686 here, pick any).
+
+```bash
+# 1. the VPN container first (Gluetun with WireGuard; see the Gluetun wiki for your provider)
+docker run -d --name gluetun --restart unless-stopped \
+  --cap-add NET_ADMIN --device /dev/net/tun \
+  -e VPN_SERVICE_PROVIDER=mullvad -e VPN_TYPE=wireguard \
+  -e WIREGUARD_PRIVATE_KEY=... -e WIREGUARD_ADDRESSES=10.64.0.2/32 \
+  -p 8686:8080 \
+  qmcgaw/gluetun
+
+# 2. Audiobind inside its network: NO -p here
+docker run -d --name audiobind --restart unless-stopped \
+  --network container:gluetun \
+  -e MAM_ID=... -e QBIT_USER=admin -e QBIT_PASS=... \
+  -e ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.10 \
+  -v /path/to/audiobooks:/library:rw -v /path/to/audiobooks-fixed:/output \
+  -v /path/to/appdata/audiobind:/config \
+  ghcr.io/stinger303/audiobind:latest
+```
+
+Add your server's address (the one in `-p`, e.g. `192.168.1.10`) to `ALLOWED_HOSTS`, as usual.
+
+The same pattern works with any VPN container that gives you a tunnel inside a container:
+`linuxserver/wireguard`, `wg-easy`, `tailscale` (as a sidecar, with an exit node set),
+`openvpn-client`, and Gluetun itself. Swap the container name in `--network container:<name>`
+and publish the port on *that* container.
+
+Things to know:
+
+- **qBittorrent in the same namespace.** If qBittorrent also runs in the VPN container's
+  network, it is reached at `127.0.0.1`, so set `QBIT_URL=http://127.0.0.1:8083` (use your own
+  WebUI port). Its LAN address will time out, because the VPN container's firewall blocks it.
+- **Start order matters.** The VPN container must be running before Audiobind starts, and
+  Audiobind must be recreated if the VPN container is recreated (a container attached by name
+  keeps pointing at the old network). In Compose use `depends_on: [gluetun]`; on Unraid put the
+  VPN container above Audiobind in the autostart order (drag to reorder on the Docker tab) and
+  give it a short wait.
+- **Verify it** (the image has no `wget` or `curl`, so use Python):
+
+  ```bash
+  docker exec audiobind python3 -c "import urllib.request;print(urllib.request.urlopen('https://ipinfo.io/ip').read().decode())"
+  ```
+
+  It must print the VPN's exit address, **not** your home IP. If it prints your home IP, stop
+  and fix the setup before you set `MAM_ID`.
+
+#### 2. An HTTP proxy (`MAM_PROXY`)
+
+If your VPN container offers an HTTP proxy (Gluetun: `HTTPPROXY=on`, port 8888), or you have
+any HTTP CONNECT proxy, point Audiobind at it. The web UI stays on your LAN as it is today.
+
+```bash
+# on the VPN container: -e HTTPPROXY=on -p 8888:8888   (only if other machines need it)
+docker run -d --name audiobind ... -p 8686:8080 \
+  -e MAM_PROXY=http://gluetun:8888 \
+  ghcr.io/stinger303/audiobind:latest
+```
+
+`MAM_PROXY` takes `http://host:port` or `https://host:port`; a value that is not one of those
+stops Audiobind from starting, with a message naming `MAM_PROXY`. Every MAM search and download
+goes through it. It is **fail-closed**: if the proxy is down or refuses, the request fails and
+the watcher backs off. Audiobind never retries without the proxy and never falls back to a
+direct connection.
+
+**SOCKS5 is not supported.** Audiobind uses only the Python standard library, which has no SOCKS
+client. Most VPN containers offer an HTTP proxy too, but the namespace approach above is
+preferred: it covers DNS and has no "proxy forgot to be used" failure mode.
+
+#### 3. Arm the tripwire (`MAM_HOME_WAN_IP`)
+
+Set `MAM_HOME_WAN_IP` to your home connection's public IP address (what your ISP gave you;
+search "what is my IP" from a device on your LAN):
+
+```bash
+-e MAM_HOME_WAN_IP=203.0.113.7
+```
+
+At the start of every watcher cycle, before anything is sent to MAM, Audiobind asks
+`ipinfo.io` (and `api.ipify.org` as a backup) what public address it is connecting from, going
+through `MAM_PROXY` if you set one. That is one small HTTPS request per cycle, with no cookie
+and nothing about you in it.
+
+- Same as your home IP: the cycle is **refused**, nothing is sent to MAM, and Settings >
+  Watcher says so in red.
+- Different (the VPN's address): the cycle runs and the log says `MAM egress: <ip>`.
+- Cannot be checked (both lookups fail): treated like a refusal. It **fails closed**, because
+  "I could not tell" is not "it is safe".
+
+It is the belt-and-braces check for the day a container gets recreated without the VPN, or an
+update drops a setting. Settings > Watcher shows what MAM sees, when it was last checked, and
+whether the guard is armed. The same values are in `GET /api/watcher` (`egress_ip`,
+`egress_checked_at`, `egress_guard`, `egress_reason`).
+
 ### CLI
 
 ```bash
@@ -372,7 +497,10 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `TRUSTED_PROXY` | `false` | `true` only behind your own reverse proxy: `X-Forwarded-Host` is then checked against `ALLOWED_HOSTS` instead of `Host` |
 | `AUTH_TOKEN` | *(unset)* | **Deprecated - use the account instead (see [Signing in](#signing-in)).** A shared password for the web UI and API. It only applies while no account exists: you sign in with any username and the token as the password (session cookie, 7 days, `HttpOnly`, `SameSite=Strict`), and scripts send `Authorization: Bearer <token>` to `/api/...`. Five failed sign-ins from one IP lock it out for 10 minutes. While it is set, the first-run setup page is skipped. Once an account exists, the token no longer signs in |
 | `NOTIFY_URL` | | Optional webhook for a per-scan summary |
-| `MAM_ID` | *(unset)* | The MyAnonamouse `mam_id` session cookie for the [wishlist watcher](#the-wishlist-watcher-myanonamouse). Unset = the watcher is off: no thread, no network. A secret - never shown in the UI, the API or the log |
+| `MAM_ID` | *(unset)* | **The switch for the [wishlist watcher](#the-wishlist-watcher-myanonamouse).** The MyAnonamouse `mam_id` session cookie. Unset = the watcher is off: no thread, no network. A secret - never shown in the UI, the API or the log |
+| `MAM_USER_AGENT` | *(unset)* | `User-Agent` sent to MAM. Unset = none is set (Audiobind never announces its name or version); a value is sent verbatim |
+| `MAM_PROXY` | *(unset)* | `http://host:port` or `https://host:port` proxy for every MAM request. Unset = direct. Fail-closed, never falls back to direct; a malformed value stops startup. See [Running MAM through a VPN](#running-mam-through-a-vpn) |
+| `MAM_HOME_WAN_IP` | *(unset)* | Your home public IP. When set, each watcher cycle first checks the IP MAM would see (one HTTPS request to `ipinfo.io`) and makes no MAM request if it equals this one, or cannot be checked |
 | `WATCH_INTERVAL_MIN` | `60` | Minutes between watcher cycles (10-1440) |
 | `WATCH_MAX_PER_CYCLE` | `5` | Wishlist books one watcher cycle searches at most (1-20) |
 | `QBIT_URL` | `http://localhost:8083` | qBittorrent WebUI the watcher hands torrents to |

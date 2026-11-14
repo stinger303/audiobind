@@ -24,16 +24,34 @@ case "$IDLE" in
   *) echo "library is BUSY - aborting"; exit 1;;
 esac
 
+echo "== 0b. pre-flight: the network namespace container is running =="
+NETMODE=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('network_mode',''))" "$SNAPSHOT")
+case "$NETMODE" in
+  container:*)
+    NS="${NETMODE#container:}"
+    if [ "$($SSH "docker inspect -f '{{.State.Running}}' '$NS' 2>/dev/null" || true)" != "true" ]; then
+      echo "REFUSING: the network container '$NS' is not running. Audiobind must run inside its VPN"
+      echo "namespace, and without it MAM would be reached from the home connection. Start '$NS' first."
+      exit 1
+    fi
+    echo "  namespace container $NS is running";;
+esac
+
 echo "== 1. build the docker run command from the stored snapshot =="
 RUNARGS=$(python3 - "$SNAPSHOT" <<'PYEOF'
 import json, sys, shlex
 s = json.load(open(sys.argv[1]))
+if any("REPLACE_ME" in b for b in s["binds"]):
+    sys.exit("live-args.json still has a REPLACE_ME bind - fill in the real host path first")
 parts = ["--restart " + s["restart"]]
+if s.get("network_mode"):
+    parts.append("--network " + shlex.quote(s["network_mode"]))
 parts += ["-v " + shlex.quote(b) for b in s["binds"]]
 parts += ["--label " + shlex.quote(k + "=" + v) for k, v in s.get("labels", {}).items()]
 parts += ["-e " + shlex.quote(e) for e in s["env"]]
-for k, v in s["ports"].items():
-    parts += ["-p " + shlex.quote(f'{v[0]["HostPort"]}:{k.split("/")[0]}')]
+if not s.get("network_mode"):  # a shared namespace cannot publish ports: the VPN container does
+    for k, v in s["ports"].items():
+        parts += ["-p " + shlex.quote(f'{v[0]["HostPort"]}:{k.split("/")[0]}')]
 parts.append(shlex.quote(s["image"]) if s.get("image") else "")
 print(" ".join(p for p in parts if p))
 PYEOF
