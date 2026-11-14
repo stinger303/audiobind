@@ -55,6 +55,7 @@ class TestEnvDefaultsAreLive(EnvCase):
                 "scan_interval": 2,
                 "nice": 5,
                 "region": CONFIG.region,
+                "expected_egress": "",
             },
         )
 

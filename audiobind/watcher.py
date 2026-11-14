@@ -309,7 +309,8 @@ class Watcher:
     def _egress_guard(self, state) -> tuple[str, str, str]:
         """(verdict, reason, observed ip), before any MAM request. Not armed = no probe at all."""
         home = _setting("mam_home_wan_ip")
-        if not home:
+        expected = _setting("mam_expected_egress_ip")
+        if not home and not expected:
             state.set_meta(META_EGRESS, {})
             return "off", egress.judge("", "")[1], ""
         observed, why = "", ""
@@ -317,12 +318,11 @@ class Watcher:
             observed = egress.probe(_setting("mam_proxy"))
         except Exception as exc:  # noqa: BLE001 - whatever went wrong, MAM stays untouched
             why = str(exc) or type(exc).__name__
-        verdict, reason = egress.judge(home, observed)
+        verdict, reason = egress.judge(home, observed, expected)
         if verdict == "unknown":
             reason = f"the egress IP could not be verified ({why}) - the watcher will not contact MAM until it can"
         elif verdict == "blocked":
-            reason = (f"MAM would see {observed}, which is your home connection - the watcher will not "
-                      "contact MAM from here. Start the VPN container or fix MAM_PROXY")
+            reason += " - the watcher will not contact MAM from here. Update the allowed address in Settings, or start the VPN container / fix MAM_PROXY"
         else:
             log.info("MAM egress: %s", observed)
         state.set_meta(META_EGRESS, {"ip": observed, "at": time.time(), "reason": reason if verdict == "unknown" else ""})
@@ -420,21 +420,24 @@ class Watcher:
             until = float(saved.get("until") or 0) if isinstance(saved, dict) else 0.0
             backoff = max(0.0, until - time.time())
         home = _setting("mam_home_wan_ip")
+        expected = _setting("mam_expected_egress_ip")
+        armed = bool(home or expected)
         rec = state.get_meta(META_EGRESS) or {}
         rec = rec if isinstance(rec, dict) else {}
         seen = str(rec.get("ip") or "")
-        if not home:
+        if not armed:
             guard, guard_reason = "off", egress.judge("", "")[1]
         elif seen:
-            guard, guard_reason = egress.judge(home, seen)
+            guard, guard_reason = egress.judge(home, seen, expected)
         else:
             guard, guard_reason = "unknown", str(rec.get("reason") or "not checked yet")
         return {
-            "egress_ip": seen if home else "",
-            "egress_checked_at": rec.get("at") if home else None,
+            "egress_ip": seen if armed else "",
+            "egress_checked_at": rec.get("at") if armed else None,
             "egress_guard": guard,
             "egress_reason": guard_reason,
             "egress_home_ip": home,
+            "egress_expected": expected,
             "configured": configured(),
             "enabled": not reason,
             "reason": reason,

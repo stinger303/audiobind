@@ -5,6 +5,29 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev3] - 2026-11-14
+
+### Added
+- **`MAM_EXPECTED_EGRESS_IP`**: an optional allowlist for the egress guard. When set, MAM must
+  see exactly this address (your VPN's exit IP) or the cycle is refused with **zero MAM
+  requests**, because a MAM session is tied to one IP. Empty = off (the default); a value that
+  is not an IPv4/IPv6 address stops startup with a message naming the variable.
+- **Settings > Watcher, "Only reach MAM from one IP"**: the same value as a text setting, saved
+  in the database and effective on the next cycle with no restart. The environment value is the
+  default until something is saved; blank turns the check off; an invalid address is refused
+  with a clear message and not stored. "Reset to defaults" hands back the environment value.
+- Guard order: (1) the home IP, when it matches: blocked with the home-connection reason;
+  (2) expected set and different: blocked, "MAM would see X, but this installation only allows
+  Y"; (3) expected set and equal: ok; (4) nothing armed: off; unverifiable: unknown (fail
+  closed). The probe now runs when either check is armed.
+- `GET /api/watcher` gains `egress_expected`, and `egress_reason` says which rule produced the
+  verdict. Settings > Watcher shows the address MAM sees, the expected one, the verdict, and
+  what to change when blocked.
+
+### Changed
+- The blocked notice on Settings and the Wishlist bar now quotes the guard's reason rather than
+  always saying "home connection", since a block can come from either check.
+
 ## [0.18.0-dev2] - 2026-11-14
 
 ### Added

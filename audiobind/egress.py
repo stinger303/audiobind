@@ -1,7 +1,7 @@
 """The egress guard: which public IP does MAM see, and is it the home connection?
 
 ``probe`` asks a plain-text "what is my IP" service (through MAM_PROXY when one is set, so it
-sees what MAM sees); ``judge`` compares the answer with MAM_HOME_WAN_IP. The watcher runs both
+sees what MAM sees); ``judge`` compares the answer with MAM_HOME_WAN_IP (never this IP) and MAM_EXPECTED_EGRESS_IP (only this IP). The watcher runs both
 at the start of every cycle and makes no MAM request unless the verdict is ``ok`` (or ``off``).
 This is the only request in the app that is not a MAM endpoint, and it carries no cookie.
 """
@@ -44,18 +44,30 @@ def probe(proxy: str, timeout: float = 10.0) -> str:
     raise EgressError("; ".join(problems))
 
 
-def judge(configured_home_ip: str, observed: str) -> tuple[str, str]:
-    """(``off`` | ``ok`` | ``blocked`` | ``unknown``, reason)."""
+def _same(a: str, b: str) -> bool:
+    try:
+        return ipaddress.ip_address(a) == ipaddress.ip_address(b)
+    except ValueError:
+        return a == b
+
+
+def judge(configured_home_ip: str, observed: str, expected_ip: str = "") -> tuple[str, str]:
+    """(``off`` | ``ok`` | ``blocked`` | ``unknown``, reason).
+
+    Order: the home IP (denylist) is checked first, then the expected IP (allowlist). With
+    neither set the guard is ``off``; with one armed and no observed address it is ``unknown``
+    (fail closed)."""
     home = (configured_home_ip or "").strip()
-    if not home:
-        return "off", "MAM_HOME_WAN_IP is not set - the egress guard is not armed"
+    expected = (expected_ip or "").strip()
+    if not home and not expected:
+        return "off", "neither MAM_HOME_WAN_IP nor MAM_EXPECTED_EGRESS_IP is set - the egress guard is not armed"
     seen = (observed or "").strip()
     if not seen:
         return "unknown", "the egress IP could not be verified"
-    try:
-        same = ipaddress.ip_address(seen) == ipaddress.ip_address(home)
-    except ValueError:
-        same = seen == home
-    if same:
+    if home and _same(seen, home):
         return "blocked", f"MAM would see {seen}, which is your home connection (MAM_HOME_WAN_IP)"
+    if expected:
+        if not _same(seen, expected):
+            return "blocked", f"MAM would see {seen}, but this installation only allows {expected}"
+        return "ok", f"MAM sees {seen}, the allowed address"
     return "ok", f"MAM sees {seen}, not your home connection"

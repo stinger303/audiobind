@@ -140,6 +140,9 @@ class Config:
     mam_user_agent: str = ""
     mam_proxy: str = field(default="", repr=False)
     mam_home_wan_ip: str = ""
+    #: optional allowlist: set = MAM must see exactly this address, or the watcher refuses to
+    #: contact MAM. "" = this check is off. Also editable in Settings > Watcher.
+    mam_expected_egress_ip: str = ""
 
     ignore_globs: list[str] = field(
         default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
@@ -181,6 +184,7 @@ class Config:
             mam_user_agent=_env("MAM_USER_AGENT", ""),
             mam_proxy=_proxy_value(_env("MAM_PROXY", "")),
             mam_home_wan_ip=_ip_value("MAM_HOME_WAN_IP", _env("MAM_HOME_WAN_IP", "")),
+            mam_expected_egress_ip=_ip_value("MAM_EXPECTED_EGRESS_IP", _env("MAM_EXPECTED_EGRESS_IP", "")),
         )
 
     def ensure_dirs(self) -> None:
@@ -220,7 +224,7 @@ CONFIG = Config.from_env()
 #: each scan and whenever the settings page saves.
 _EFFECTIVE: dict[str, object] = {}
 
-SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region")
+SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region", "expected_egress")
 
 SETTING_MAP: dict[str, str] = {
     "auto_convert": "auto_convert",
@@ -229,6 +233,7 @@ SETTING_MAP: dict[str, str] = {
     "scan_interval": "scan_interval_min",
     "nice": "nice",
     "region": "region",
+    "expected_egress": "mam_expected_egress_ip",
 }
 
 SETTING_TYPES: dict[str, type] = {
@@ -238,6 +243,7 @@ SETTING_TYPES: dict[str, type] = {
     "scan_interval": int,
     "nice": int,
     "region": str,
+    "expected_egress": str,  # free text, validated by valid_ip_or_empty (not a choice, not a number)
 }
 
 #: the values the settings page offers; an environment value outside these is added to the
@@ -269,7 +275,16 @@ def setting_env_defaults() -> dict[str, object]:
         "scan_interval": int(CONFIG.scan_interval_min),
         "nice": int(CONFIG.nice),
         "region": str(CONFIG.region).lower(),
+        "expected_egress": str(CONFIG.mam_expected_egress_ip or ""),
     }
+
+
+def valid_ip_or_empty(text: str) -> str:
+    """The canonical form of an IPv4/IPv6 address, or "" for blank. Raises ValueError otherwise."""
+    import ipaddress
+
+    text = (text or "").strip()
+    return str(ipaddress.ip_address(text)) if text else ""
 
 
 def setting_choices(key: str) -> list[str]:

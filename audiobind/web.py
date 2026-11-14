@@ -33,6 +33,7 @@ from .config import (
     setting_effective,
     setting_env,
     setting_env_defaults,
+    valid_ip_or_empty,
 )
 from .control import CONTROL
 from .covers import resolve as resolve_cover
@@ -3454,8 +3455,8 @@ def _watcher_bar(status: dict) -> str:
     elif not status["enabled"]:
         text = f'<span class="warn">The MAM watcher is disabled: {_html(status["reason"])}.</span>'
     elif status.get("egress_guard") == "blocked":
-        text = ('<span class="warn">The MAM watcher is <b>stopped</b>: this connection is not the VPN '
-                f'(MAM would see your home IP, {_html(status.get("egress_ip") or "")}). Nothing is searched for.</span>')
+        text = ('<span class="warn">The MAM watcher is <b>stopped</b>: this connection is not the one you allowed '
+                f'({_html(status.get("egress_reason") or "")}). Nothing is searched for.</span>')
     elif status.get("egress_guard") == "unknown" and status.get("egress_checked_at"):
         text = ('<span class="warn">The MAM watcher is <b>stopped</b>: it cannot confirm this connection is the VPN, '
                 "so it will not contact MAM.</span>")
@@ -3566,29 +3567,42 @@ def render_watcher_section(state) -> str:
     guard = s.get("egress_guard") or "off"
     if guard == "blocked":
         warn += (
-            '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: this is your home connection, not the VPN.</b> '
-            f"MAM would see {_html(s['egress_ip'])}, which is the address you told the guard to keep away from MAM. "
-            "The watcher will not contact MAM from here. Start your VPN container (or fix MAM_PROXY) and the "
-            "next cycle will carry on.</div>")
+            '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: MAM would not see the allowed address.</b> '
+            f"{_html(s['egress_reason'])}. The watcher will not contact MAM from here. Either update "
+            '"Only reach MAM from one IP" below to the address you really want, or start your VPN '
+            "container (or fix MAM_PROXY); the next cycle will carry on.</div>")
     elif guard == "unknown" and s.get("egress_checked_at"):
         warn += (
             '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: the guard could not check your connection.</b> '
             f"{_html(s['egress_reason'])}. Check that your VPN container is running and MAM_PROXY is right; "
             "the watcher will not contact MAM until it can see where it is connecting from.</div>")
+    verdict_html = {"ok": '<span class="ok">allowed</span>', "blocked": '<span class="warn">blocked</span>',
+                    "unknown": '<span class="warn">unverified</span>'}.get(guard, "")
     if s["egress_ip"]:
         sees = f"MAM sees <b>{_html(s['egress_ip'])}</b>"
+        if s.get("egress_expected"):
+            sees += f" &#183; expected <b>{_html(s['egress_expected'])}</b>"
+        if verdict_html:
+            sees += f" &#183; {verdict_html}"
         if s.get("egress_checked_at"):
             sees += f" &#183; Checked {_html(time.strftime('%H:%M', time.localtime(float(s['egress_checked_at']))))}"
     elif guard == "off":
         sees = "Not checked &#8212; the guard is off, so Audiobind does not look up what MAM sees"
     else:
         sees = "Not checked yet &#8212; it is looked up at the start of each cycle"
+        if s.get("egress_expected"):
+            sees += f" &#183; expected <b>{_html(s['egress_expected'])}</b>"
+    guard_bits = []
+    if s.get("egress_expected"):
+        guard_bits.append(f"only reaches MAM from {_html(s['egress_expected'])}")
     if s.get("egress_home_ip"):
-        guard_html = f"refuses to run from your home IP ({_html(s['egress_home_ip'])})"
+        guard_bits.append(f"refuses to run from your home IP ({_html(s['egress_home_ip'])})")
+    if guard_bits:
+        guard_html = " and ".join(guard_bits)
         if guard == "blocked":
             guard_html = f'<span class="warn">{guard_html} &#8212; blocking now</span>'
     else:
-        guard_html = "not armed (set MAM_HOME_WAN_IP to your home IP to arm it)"
+        guard_html = "not armed (set the allowed IP below, or MAM_HOME_WAN_IP, to arm it)"
     last = s["last_cycle"] or {}
     if last.get("at"):
         parts = [f"{int(last.get('searched') or 0)} searched", f"{int(last.get('sent') or 0)} sent to qBittorrent"]
@@ -3632,6 +3646,10 @@ def render_watcher_section(state) -> str:
     if s["configured"]:
         action, label = ("resume", "Resume watcher") if s["paused"] else ("pause", "Pause watcher")
         toggle = f'<button class="btn" id="ab-watch-toggle" onclick="abWatcher(\'{action}\')">{label}</button>'
+    expected_field = _setting_text(
+        "expected_egress", "Only reach MAM from one IP", setting_effective("expected_egress"),
+        is_custom(SETTING_MAP["expected_egress"]), setting_env("expected_egress"),
+        EXPECTED_EGRESS_HINT, "e.g. 213.152.187.195")
     return (
         '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
         '<h2 class="ab-acct-head" id="ab-watch-head">Watcher</h2>'
@@ -3639,9 +3657,10 @@ def render_watcher_section(state) -> str:
         "match to qBittorrent; the ingest folder takes it from there. Configured with environment variables "
         "(<code>MAM_ID</code>, <code>WATCH_INTERVAL_MIN</code>, <code>WATCH_MAX_PER_CYCLE</code>, "
         "<code>QBIT_URL</code>, <code>QBIT_USER</code>, <code>QBIT_PASS</code>, <code>MAM_PROXY</code>, "
-        "<code>MAM_USER_AGENT</code>, <code>MAM_HOME_WAN_IP</code>); the pause switch is kept "
+        "<code>MAM_USER_AGENT</code>, <code>MAM_HOME_WAN_IP</code>, <code>MAM_EXPECTED_EGRESS_IP</code>); the pause switch is kept "
         "across restarts.</div>"
         f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
+        + expected_field +
         f'<div class="ab-acct-row">{run_btn}{toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
         "</section>"
     )
@@ -3879,6 +3898,27 @@ def _setting_select(
         f'<span class="ab-setting-label">{_html(label)}{mark}</span>'
         f"{hint_html}"
         f'<select class="ab-in" data-initial="{_attr(selected)}">{opt_html}</select>'
+        "</div>"
+    )
+
+
+EXPECTED_EGRESS_HINT = (
+    "Optional. Your VPN's exit address. If Audiobind ever sees a different address it stops before "
+    "contacting MAM, because a MAM session is tied to one IP. Leave it empty to skip this check."
+)
+
+
+def _setting_text(key: str, label: str, value: str, custom: bool, env_val, hint: str = "", placeholder: str = "") -> str:
+    """A free-text setting (validated on save by the server). Blank is a valid value."""
+    mark = _custom_mark(key, custom, env_val)
+    hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
+    return (
+        f'<div class="ab-setting" data-setting="{key}">'
+        f'<span class="ab-setting-label">{_html(label)}{mark}</span>'
+        f"{hint_html}"
+        f'<input type="text" class="ab-in" value="{_attr(value or "")}" data-initial="{_attr(value or "")}" '
+        f'placeholder="{_attr(placeholder)}" autocomplete="off" spellcheck="false">'
+        '<div class="ab-acct-row"><button class="ab-save" onclick="abSaveSettings()">Save</button></div>'
         "</div>"
     )
 
@@ -5608,6 +5648,19 @@ class Handler(BaseHTTPRequestHandler):
                 validated[key] = v
             except (ValueError, TypeError):
                 errors.append(f"{key}: whole number {lo}-{hi}")
+
+        # text: the egress pin is empty (check off) or a real IP address
+        if "expected_egress" in settings:
+            raw = settings["expected_egress"]
+            try:
+                if raw is not None and not isinstance(raw, str):
+                    raise ValueError
+                validated["expected_egress"] = valid_ip_or_empty(raw or "")
+            except ValueError:
+                errors.append(
+                    f"expected_egress: {str(raw)[:64]!r} is not an IPv4 or IPv6 address "
+                    "(leave it empty to turn the check off)"
+                )
 
         if errors:
             self._send(400, json.dumps({"error": "; ".join(errors)}).encode(), "application/json")

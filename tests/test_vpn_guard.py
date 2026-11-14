@@ -1,9 +1,10 @@
-"""0.18.0-dev2: the VPN-safe MAM client - no fingerprint, MAM_PROXY (fail closed), the egress guard.
+"""0.18.0-dev2/dev3: the VPN-safe MAM client - no fingerprint, MAM_PROXY (fail closed), the egress guard.
 
 Nothing here touches the network: the MAM transport, the proxy opener and the egress probe are
 all fakes.
 """
 
+import json
 import logging
 import pathlib
 import tempfile
@@ -16,6 +17,11 @@ from unittest import mock
 from audiobind import __version__, config, egress, mam, watcher, web
 from audiobind.config import CONFIG, Config
 from audiobind.state import State
+
+try:
+    from live import LiveServerCase
+except ImportError:
+    from tests.live import LiveServerCase
 
 try:
     from test_watcher import NOTHING, FakeQbit, WatcherCase, answer, entry
@@ -323,16 +329,17 @@ class TestGuardUI(unittest.TestCase):
         self.assertIn(f"MAM sees <b>{VPN}</b>", html)
         self.assertIn("Checked ", html)
         self.assertIn(f"refuses to run from your home IP ({HOME})", html)
-        self.assertNotIn("not the VPN", html)
+        self.assertNotIn("Stopped:", html)
 
     def test_blocked_notice_on_settings_and_the_wishlist_bar(self):
         self.record(HOME)
         html = web.render_settings(self.state)
-        self.assertIn("Stopped: this is your home connection, not the VPN.", html)
-        self.assertIn("Start your VPN container (or fix MAM_PROXY)", html)
+        self.assertIn("Stopped: MAM would not see the allowed address.", html)
+        self.assertIn("which is your home connection", html)
+        self.assertIn("start your VPN container (or fix MAM_PROXY)", html)
         self.assertNotIn("http://", html)
         bar = web.render_discover(self.state, "wishlist")
-        self.assertIn("this connection is not the VPN", bar)
+        self.assertIn("this connection is not the one you allowed", bar)
         self.assertNotIn("is disabled", bar)
 
     def test_unknown_after_a_check_stops_the_bar_but_never_checked_does_not(self):
@@ -344,7 +351,213 @@ class TestGuardUI(unittest.TestCase):
     def test_unarmed_says_so(self):
         with mock.patch.object(CONFIG, "mam_home_wan_ip", ""):
             html = web.render_settings(self.state)
-        self.assertIn("not armed (set MAM_HOME_WAN_IP", html)
+        self.assertIn("not armed (set the allowed IP below, or MAM_HOME_WAN_IP", html)
+
+
+OTHER = "203.0.113.9"
+
+
+class ExpectedCase(WatcherCase):
+    HOME_SET = ""
+
+    def setUp(self):
+        super().setUp()
+        for p in (mock.patch.object(CONFIG, "mam_home_wan_ip", self.HOME_SET),
+                  mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN),
+                  mock.patch.object(CONFIG, "mam_proxy", "http://vpn:8888")):
+            p.start()
+            self.patches.append(p)
+        config._EFFECTIVE.clear()
+        self.want()
+
+    def tearDown(self):
+        config._EFFECTIVE.clear()
+        super().tearDown()
+
+    run_cycle = GuardCase.run_cycle
+
+
+class TestExpectedJudge(unittest.TestCase):
+    def test_order_and_reasons(self):
+        self.assertEqual(egress.judge("", "", "")[0], "off")
+        self.assertEqual(egress.judge("", VPN, VPN), ("ok", f"MAM sees {VPN}, the allowed address"))
+        verdict, reason = egress.judge("", OTHER, VPN)
+        self.assertEqual(verdict, "blocked")
+        self.assertEqual(reason, f"MAM would see {OTHER}, but this installation only allows {VPN}")
+        self.assertEqual(egress.judge("", "", VPN)[0], "unknown")
+        # home wins over expected, with the home reason
+        verdict, reason = egress.judge(HOME, HOME, VPN)
+        self.assertEqual(verdict, "blocked")
+        self.assertIn("home connection", reason)
+        # a different, non-expected address: expected-mismatch reason
+        self.assertIn("only allows", egress.judge(HOME, OTHER, VPN)[1])
+        self.assertEqual(egress.judge(HOME, VPN, VPN)[0], "ok")
+        # unchanged when expected is empty
+        self.assertEqual(egress.judge(HOME, VPN, "")[0], "ok")
+        self.assertEqual(egress.judge(HOME, HOME, "")[0], "blocked")
+
+
+class TestExpectedInTheWatcher(ExpectedCase):
+    def test_match_proceeds(self):
+        summary, probes = self.run_cycle(VPN, NOTHING)
+        self.assertEqual(summary["egress_guard"], "ok")
+        self.assertEqual(len(self.transport.calls), 1)
+        self.assertEqual(len(probes), 1, "the probe runs for the expected IP alone, with no home IP set")
+
+    def test_mismatch_is_blocked_with_zero_mam_calls(self):
+        summary, _ = self.run_cycle(OTHER, answer(entry(1, "Project Hail Mary")))
+        self.assertEqual(summary["egress_guard"], "blocked")
+        self.assertEqual(self.transport.calls, [])
+        self.assertEqual(self.w.client().requests, 0)
+        self.assertEqual(FakeQbit.instances, [])
+        self.assertIn(f"MAM would see {OTHER}, but this installation only allows {VPN}", summary["error"])
+        self.assertEqual(self.row()["status"], "wanted")
+        status = self.w.status(self.state)
+        self.assertEqual((status["egress_guard"], status["egress_expected"], status["egress_ip"]),
+                         ("blocked", VPN, OTHER))
+        self.assertIn("only allows", status["egress_reason"])
+
+    def test_probe_failure_is_unknown_with_zero_mam_calls(self):
+        summary, _ = self.run_cycle(egress.EgressError("down"), answer(entry(1, "Project Hail Mary")))
+        self.assertEqual(summary["egress_guard"], "unknown")
+        self.assertEqual(self.transport.calls, [])
+
+    def test_status_before_any_check_names_the_expected_ip(self):
+        status = self.w.status(self.state)
+        self.assertEqual((status["egress_guard"], status["egress_expected"]), ("unknown", VPN))
+
+
+class TestBothSet(ExpectedCase):
+    HOME_SET = HOME
+
+    def test_home_wins_with_the_home_reason(self):
+        summary, _ = self.run_cycle(HOME, NOTHING)
+        self.assertEqual(summary["egress_guard"], "blocked")
+        self.assertIn("home connection", summary["error"])
+        self.assertNotIn("only allows", summary["error"])
+        self.assertEqual(self.transport.calls, [])
+
+    def test_other_address_gets_the_expected_mismatch_reason(self):
+        summary, _ = self.run_cycle(OTHER, NOTHING)
+        self.assertEqual(summary["egress_guard"], "blocked")
+        self.assertIn("only allows", summary["error"])
+        self.assertEqual(self.transport.calls, [])
+
+
+class TestExpectedEmptyKeepsDev2(GuardCase):
+    def test_home_only_is_unchanged(self):
+        with mock.patch.object(CONFIG, "mam_expected_egress_ip", ""):
+            summary, _ = self.run_cycle(OTHER, NOTHING)
+            self.assertEqual(summary["egress_guard"], "ok")
+            self.assertEqual(len(self.transport.calls), 1)
+            summary, _ = self.run_cycle(HOME, NOTHING)
+            self.assertEqual(summary["egress_guard"], "blocked")
+            self.assertEqual(self.transport.calls, [], "run_cycle installs a fresh transport: none used")
+
+
+class TestExpectedConfig(unittest.TestCase):
+    def test_junk_is_rejected_naming_the_variable(self):
+        for value in ("213.152.187", "vpn.example", "1.2.3.4/32", "999.1.1.1"):
+            with mock.patch.dict("os.environ", {"MAM_EXPECTED_EGRESS_IP": value}):
+                with self.assertRaises(RuntimeError, msg=value) as ctx:
+                    Config.from_env()
+            self.assertIn("MAM_EXPECTED_EGRESS_IP", str(ctx.exception))
+
+    def test_empty_and_valid_are_accepted(self):
+        with mock.patch.dict("os.environ", {"MAM_EXPECTED_EGRESS_IP": ""}):
+            self.assertEqual(Config.from_env().mam_expected_egress_ip, "")
+        with mock.patch.dict("os.environ", {"MAM_EXPECTED_EGRESS_IP": f" {VPN} "}):
+            self.assertEqual(Config.from_env().mam_expected_egress_ip, VPN)
+        with mock.patch.dict("os.environ", {"MAM_EXPECTED_EGRESS_IP": "2001:0db8::1"}):
+            self.assertEqual(Config.from_env().mam_expected_egress_ip, "2001:db8::1")
+
+
+class TestExpectedSetting(LiveServerCase):
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(CONFIG, "mam_expected_egress_ip", "")
+        p.start()
+        self.addCleanup(p.stop)
+        config._EFFECTIVE.clear()
+        self.addCleanup(config._EFFECTIVE.clear)
+
+    def post(self, settings=None, **extra):
+        body = dict(extra)
+        if settings is not None:
+            body["settings"] = settings
+        req = urllib.request.Request(
+            self.base + "/api/settings", data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                return response.status, json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read() or b"{}")
+
+    def w_status(self):
+        return watcher.WATCHER.status(self.state)
+
+    def test_invalid_is_refused_and_not_stored(self):
+        for junk in ("not-an-ip", "1.2.3", "1.2.3.4/24", 12345, ["1.2.3.4"]):
+            status, body = self.post({"expected_egress": junk})
+            self.assertEqual(status, 400, junk)
+            self.assertIn("expected_egress", body["error"])
+            self.assertIn("not an IPv4 or IPv6 address", body["error"])
+        self.assertIsNone(self.state.get_meta("setting_expected_egress"))
+        self.assertEqual(config.effective_val("mam_expected_egress_ip"), "")
+
+    def test_valid_persists_and_is_what_the_watcher_reads(self):
+        status, body = self.post({"expected_egress": f" {VPN} "})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["custom"], ["expected_egress"])
+        self.assertEqual(self.state.get_meta("setting_expected_egress"), VPN)
+        self.assertEqual(config.effective_val("mam_expected_egress_ip"), VPN)
+        self.assertEqual(watcher._setting("mam_expected_egress_ip"), VPN)
+        self.assertEqual(self.w_status()["egress_expected"], VPN)
+        page = web.render_settings(self.state)
+        self.assertIn('data-setting="expected_egress"', page)
+        self.assertIn(f'value="{VPN}" data-initial="{VPN}"', page)
+        self.assertIn("Only reach MAM from one IP", page)
+        self.assertIn("Leave it empty to skip this check.", page)
+
+    def test_blank_turns_it_off_even_over_an_env_value(self):
+        with mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN):
+            page = web.render_settings(self.state)
+            self.assertIn(f'value="{VPN}" data-initial="{VPN}"', page, "the env value is the visible default")
+            status, body = self.post({"expected_egress": ""})
+            self.assertEqual(status, 200, body)
+            self.assertEqual(config.effective_val("mam_expected_egress_ip"), "")
+            self.assertEqual(self.w_status()["egress_expected"], "")
+            self.assertEqual(self.w_status()["egress_guard"], "off")
+
+    def test_reset_hands_back_the_env_value(self):
+        self.post({"expected_egress": OTHER})
+        with mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN):
+            status, body = self.post(reset=True)
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body["env_defaults"]["expected_egress"], VPN)
+            self.assertEqual(config.effective_val("mam_expected_egress_ip"), VPN)
+
+
+class TestExpectedUI(TestGuardUI):
+    def test_mismatch_shows_observed_expected_verdict_and_what_to_change(self):
+        with mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN), \
+                mock.patch.object(CONFIG, "mam_home_wan_ip", ""):
+            self.record(OTHER)
+            html = web.render_settings(self.state)
+        self.assertIn(f"MAM sees <b>{OTHER}</b>", html)
+        self.assertIn(f"expected <b>{VPN}</b>", html)
+        self.assertIn("blocked", html)
+        self.assertIn(f"only allows {VPN}", html)
+        self.assertIn("start your VPN container", html)
+        self.assertIn(f"only reaches MAM from {VPN}", html)
+
+    def test_match_shows_allowed(self):
+        with mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN), \
+                mock.patch.object(CONFIG, "mam_home_wan_ip", ""):
+            self.record(VPN)
+            html = web.render_settings(self.state)
+        self.assertIn('<span class="ok">allowed</span>', html)
 
 
 if __name__ == "__main__":
