@@ -1,9 +1,11 @@
 {
-  "captured_from": "Audiobind running 0.14.4 on Tower, 2026-11-09",
+  "captured_from": "Audiobind 0.18.0-dev1 on Tower behind GluetunVPN (network namespace shared, no published ports), 2026-11-14 - ingest host path and ALLOWED_HOSTS not captured from the live container: verify both",
+  "network_mode": "container:GluetunVPN",
   "binds": [
     "/mnt/user/data/media/audiobooks-fixed:/output:rw",
     "/mnt/user/appdata/audiobind:/config",
-    "/mnt/user/data/media/audiobooks:/library:rw"
+    "/mnt/user/data/media/audiobooks:/library:rw",
+    "REPLACE_ME_WITH_HOST_INGEST_PATH:/ingest:ro"
   ],
   "env": [
     "PUID=99",
@@ -21,7 +23,10 @@
     "STATE_DIR=/config",
     "HOST_LIBRARY=/mnt/user/data/media/audiobooks",
     "SCAN_INTERVAL_MIN=30",
-    "JOBS=1"
+    "JOBS=1",
+    "INGEST_DIR=/ingest",
+    "QBIT_URL=http://127.0.0.1:8083",
+    "ALLOWED_HOSTS=localhost,127.0.0.1,192.168.5.2,tower,tower.local"
   ],
   "cmd": ["daemon"],
   "labels": {
@@ -29,6 +34,6 @@
     "net.unraid.docker.managed": "dockerman",
     "net.unraid.docker.webui": "http://[IP]:[PORT:8080]/"
   },
-  "restart": "no",
-  "ports": {"8080/tcp": [{"HostIp": "", "HostPort": "8686"}]}
+  "restart": "unless-stopped",
+  "ports": {}
 }

@@ -28,7 +28,7 @@ import logging
 import threading
 import time
 
-from . import mam, qbit
+from . import egress, mam, qbit
 from .config import effective_val, watch_interval_min, watch_max_per_cycle
 from .control import CONTROL
 from .state import (
@@ -53,6 +53,7 @@ META_PAUSED = "watcher_paused"
 META_LAST_CYCLE = "watcher_last_cycle"
 META_LAST_ERROR = "watcher_last_error"
 META_BACKOFF = "watcher_backoff"
+META_EGRESS = "watcher_egress"
 
 
 def _stamp(at: float | None = None) -> str:
@@ -84,7 +85,8 @@ def qbit_url() -> str:
 
 # the network, behind two factories tests replace
 def make_mam() -> mam.MamClient:
-    return mam.MamClient(_setting("mam_id"))
+    return mam.MamClient(_setting("mam_id"), proxy=_setting("mam_proxy"),
+                         user_agent=_setting("mam_user_agent"))
 
 
 def make_qbit() -> qbit.QbitClient:
@@ -256,6 +258,12 @@ class Watcher:
             summary["resolved"] = len(resolve_library(state))
         except Exception:  # noqa: BLE001 - a library-match problem must not stop the search
             log.exception("wishlist watcher: library match failed")
+        verdict, reason, observed = self._egress_guard(state)
+        summary["egress_guard"] = verdict
+        if observed:
+            summary["egress_ip"] = observed
+        if verdict in ("blocked", "unknown"):
+            return self._refuse(state, summary, reason, trigger)
         client = self.client()
         holder: dict = {}
         try:
@@ -296,6 +304,38 @@ class Watcher:
             trigger, " [dry run]" if summary["dry_run"] else "", summary["searched"], summary["sent"],
             summary["would_send"], summary["not_found"], summary["errors"], summary["resolved"],
         )
+        return summary
+
+    def _egress_guard(self, state) -> tuple[str, str, str]:
+        """(verdict, reason, observed ip), before any MAM request. Not armed = no probe at all."""
+        home = _setting("mam_home_wan_ip")
+        if not home:
+            state.set_meta(META_EGRESS, {})
+            return "off", egress.judge("", "")[1], ""
+        observed, why = "", ""
+        try:
+            observed = egress.probe(_setting("mam_proxy"))
+        except Exception as exc:  # noqa: BLE001 - whatever went wrong, MAM stays untouched
+            why = str(exc) or type(exc).__name__
+        verdict, reason = egress.judge(home, observed)
+        if verdict == "unknown":
+            reason = f"the egress IP could not be verified ({why}) - the watcher will not contact MAM until it can"
+        elif verdict == "blocked":
+            reason = (f"MAM would see {observed}, which is your home connection - the watcher will not "
+                      "contact MAM from here. Start the VPN container or fix MAM_PROXY")
+        else:
+            log.info("MAM egress: %s", observed)
+        state.set_meta(META_EGRESS, {"ip": observed, "at": time.time(), "reason": reason if verdict == "unknown" else ""})
+        return verdict, reason, observed
+
+    def _refuse(self, state, summary: dict, reason: str, trigger: str) -> dict:
+        """End the cycle at the guard: nothing was requested from MAM."""
+        summary["error"] = reason
+        summary["seconds"] = round(time.time() - summary["at"], 1)
+        state.set_meta(META_LAST_CYCLE, summary)
+        state.set_meta(META_LAST_ERROR, {"at": time.time(), "message": reason})
+        log.error("wishlist watcher: egress guard (%s) - %s; no request was sent to MAM", summary["egress_guard"], reason)
+        self.next_at = time.time() + watch_interval_min() * 60
         return summary
 
     def _qbit(self, holder: dict) -> qbit.QbitClient:
@@ -379,7 +419,22 @@ class Watcher:
             saved = state.get_meta(META_BACKOFF) or {}
             until = float(saved.get("until") or 0) if isinstance(saved, dict) else 0.0
             backoff = max(0.0, until - time.time())
+        home = _setting("mam_home_wan_ip")
+        rec = state.get_meta(META_EGRESS) or {}
+        rec = rec if isinstance(rec, dict) else {}
+        seen = str(rec.get("ip") or "")
+        if not home:
+            guard, guard_reason = "off", egress.judge("", "")[1]
+        elif seen:
+            guard, guard_reason = egress.judge(home, seen)
+        else:
+            guard, guard_reason = "unknown", str(rec.get("reason") or "not checked yet")
         return {
+            "egress_ip": seen if home else "",
+            "egress_checked_at": rec.get("at") if home else None,
+            "egress_guard": guard,
+            "egress_reason": guard_reason,
+            "egress_home_ip": home,
             "configured": configured(),
             "enabled": not reason,
             "reason": reason,

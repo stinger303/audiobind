@@ -14,6 +14,43 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+def _proxy_value(raw: str) -> str:
+    """MAM_PROXY, checked at load: ``http://host:port`` or ``https://host:port`` (or empty =
+    direct). Anything else stops the start with a message naming the variable - a typo must
+    never quietly turn into a direct connection."""
+    from urllib.parse import urlsplit
+
+    raw = raw.strip()
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+        parts.port  # noqa: B018 - raises ValueError on a bad port
+        ok = (parts.scheme in ("http", "https") and bool(parts.hostname)
+              and parts.path in ("", "/") and not parts.query and not parts.fragment)
+    except ValueError:
+        ok = False
+    if not ok:
+        raise RuntimeError(
+            "MAM_PROXY is not valid: use http://host:port or https://host:port "
+            "(SOCKS is not supported); leave it empty for no proxy"
+        )
+    return raw.rstrip("/")
+
+
+def _ip_value(name: str, raw: str) -> str:
+    """An IP address variable, checked at load ("" = unset)."""
+    import ipaddress
+
+    raw = raw.strip()
+    if not raw:
+        return ""
+    try:
+        return str(ipaddress.ip_address(raw))
+    except ValueError:
+        raise RuntimeError(f"{name} is not valid: {raw!r} is not an IPv4 or IPv6 address") from None
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = _env(name, "")
     return default if raw == "" else raw.lower() in TRUTHY
@@ -97,6 +134,12 @@ class Config:
     qbit_url: str = "http://localhost:8083"
     qbit_user: str = ""
     qbit_pass: str = field(default="", repr=False)
+    #: how MAM requests leave the container. ``mam_user_agent`` "" = no User-Agent override is
+    #: sent; ``mam_proxy`` "" = direct (it may hold credentials, so never in repr());
+    #: ``mam_home_wan_ip`` set = the egress guard is armed and refuses to run from that IP.
+    mam_user_agent: str = ""
+    mam_proxy: str = field(default="", repr=False)
+    mam_home_wan_ip: str = ""
 
     ignore_globs: list[str] = field(
         default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
@@ -135,6 +178,9 @@ class Config:
             qbit_url=_env("QBIT_URL", "http://localhost:8083").rstrip("/") or "http://localhost:8083",
             qbit_user=_env("QBIT_USER", ""),
             qbit_pass=os.environ.get("QBIT_PASS", ""),  # a password keeps its spaces
+            mam_user_agent=_env("MAM_USER_AGENT", ""),
+            mam_proxy=_proxy_value(_env("MAM_PROXY", "")),
+            mam_home_wan_ip=_ip_value("MAM_HOME_WAN_IP", _env("MAM_HOME_WAN_IP", "")),
         )
 
     def ensure_dirs(self) -> None:

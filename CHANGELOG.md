@@ -5,6 +5,34 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev2] - 2026-11-14
+
+### Added
+- **`MAM_PROXY`**: `http://host:port` or `https://host:port` (an HTTP CONNECT tunnel for
+  MAM's https). Search and download share one proxied opener. **Fail-closed:** a failing
+  proxied request is an error and is never retried or sent directly. A malformed value stops
+  startup with a message naming `MAM_PROXY`. SOCKS is not supported (standard library only).
+- **Egress guard, `MAM_HOME_WAN_IP`**: at the start of every watcher cycle (dry run included),
+  before any MAM request, the IP MAM would see is looked up (`ipinfo.io`, then `api.ipify.org`,
+  through `MAM_PROXY` if set). Equal to the home IP: the cycle is refused. Lookup failed:
+  refused too (fail closed). Either way **zero MAM requests**. Empty = off, no lookup at all.
+  `GET /api/watcher` gains `egress_ip`, `egress_checked_at`, `egress_guard` and
+  `egress_reason`; Settings > Watcher shows what MAM sees, when it was checked and the guard,
+  with a notice when blocked, and the Wishlist bar says the watcher is stopped because the
+  connection is not the VPN.
+- **README "Running MAM through a VPN"**: share a VPN container's network namespace (any VPN
+  container, not just Gluetun), an HTTP proxy, and the tripwire, with a way to verify it.
+  `docker-compose.yml` gains a commented-out VPN example and the Community Applications
+  template gains the watcher, proxy, guard, qBittorrent and ingest settings.
+- `docs/live-args.json` and `docs/rollback.sh` now describe a container in a VPN network
+  namespace (`network_mode`, no published ports); the rollback refuses to run while that
+  container is not running.
+
+### Changed
+- **No fingerprint.** MAM requests no longer carry `User-Agent: audiobind/<version>`; no
+  User-Agent override is sent unless `MAM_USER_AGENT` is set, which is used verbatim.
+- `MAM_HOME_WAN_IP` that is not an IP address stops startup, naming the variable.
+
 ## [0.18.0-dev1] - 2026-11-14
 
 ### Added

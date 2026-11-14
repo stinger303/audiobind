@@ -3453,6 +3453,12 @@ def _watcher_bar(status: dict) -> str:
         text = "The MAM watcher is <b>off</b> (MAM_ID is not set): nothing here is searched for or downloaded."
     elif not status["enabled"]:
         text = f'<span class="warn">The MAM watcher is disabled: {_html(status["reason"])}.</span>'
+    elif status.get("egress_guard") == "blocked":
+        text = ('<span class="warn">The MAM watcher is <b>stopped</b>: this connection is not the VPN '
+                f'(MAM would see your home IP, {_html(status.get("egress_ip") or "")}). Nothing is searched for.</span>')
+    elif status.get("egress_guard") == "unknown" and status.get("egress_checked_at"):
+        text = ('<span class="warn">The MAM watcher is <b>stopped</b>: it cannot confirm this connection is the VPN, '
+                "so it will not contact MAM.</span>")
     elif status["paused"]:
         text = "The MAM watcher is <b>paused</b>: nothing is searched for until you resume it."
     else:
@@ -3557,6 +3563,32 @@ def render_watcher_section(state) -> str:
         state_html = '<span class="ok">Enabled</span>' + (" &#8212; running a cycle now" if s["busy"] else "")
     if s["configured"] and s["dry_run"]:
         state_html += ' &#183; <span class="warn">dry run: decisions are noted and logged, nothing is downloaded</span>'
+    guard = s.get("egress_guard") or "off"
+    if guard == "blocked":
+        warn += (
+            '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: this is your home connection, not the VPN.</b> '
+            f"MAM would see {_html(s['egress_ip'])}, which is the address you told the guard to keep away from MAM. "
+            "The watcher will not contact MAM from here. Start your VPN container (or fix MAM_PROXY) and the "
+            "next cycle will carry on.</div>")
+    elif guard == "unknown" and s.get("egress_checked_at"):
+        warn += (
+            '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: the guard could not check your connection.</b> '
+            f"{_html(s['egress_reason'])}. Check that your VPN container is running and MAM_PROXY is right; "
+            "the watcher will not contact MAM until it can see where it is connecting from.</div>")
+    if s["egress_ip"]:
+        sees = f"MAM sees <b>{_html(s['egress_ip'])}</b>"
+        if s.get("egress_checked_at"):
+            sees += f" &#183; Checked {_html(time.strftime('%H:%M', time.localtime(float(s['egress_checked_at']))))}"
+    elif guard == "off":
+        sees = "Not checked &#8212; the guard is off, so Audiobind does not look up what MAM sees"
+    else:
+        sees = "Not checked yet &#8212; it is looked up at the start of each cycle"
+    if s.get("egress_home_ip"):
+        guard_html = f"refuses to run from your home IP ({_html(s['egress_home_ip'])})"
+        if guard == "blocked":
+            guard_html = f'<span class="warn">{guard_html} &#8212; blocking now</span>'
+    else:
+        guard_html = "not armed (set MAM_HOME_WAN_IP to your home IP to arm it)"
     last = s["last_cycle"] or {}
     if last.get("at"):
         parts = [f"{int(last.get('searched') or 0)} searched", f"{int(last.get('sent') or 0)} sent to qBittorrent"]
@@ -3583,6 +3615,8 @@ def render_watcher_section(state) -> str:
                      f"{_plural(int(s['max_per_cycle']), 'book', 'books')} per cycle"),
         ("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(watcher_mod.qbit.CATEGORY)}</code> &#183; "
                         + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>')),
+        ("Connection", sees),
+        ("Guard", guard_html),
         ("Last cycle", last_html),
         ("Next cycle", next_html),
         ("Last error", error_html),
@@ -3604,7 +3638,8 @@ def render_watcher_section(state) -> str:
         '<div class="ab-acct-who">Searches MAM for the <b>wanted</b> books on your wishlist and hands a good '
         "match to qBittorrent; the ingest folder takes it from there. Configured with environment variables "
         "(<code>MAM_ID</code>, <code>WATCH_INTERVAL_MIN</code>, <code>WATCH_MAX_PER_CYCLE</code>, "
-        "<code>QBIT_URL</code>, <code>QBIT_USER</code>, <code>QBIT_PASS</code>); the pause switch is kept "
+        "<code>QBIT_URL</code>, <code>QBIT_USER</code>, <code>QBIT_PASS</code>, <code>MAM_PROXY</code>, "
+        "<code>MAM_USER_AGENT</code>, <code>MAM_HOME_WAN_IP</code>); the pause switch is kept "
         "across restarts.</div>"
         f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
         f'<div class="ab-acct-row">{run_btn}{toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
