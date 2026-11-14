@@ -248,10 +248,12 @@ class TestGuardInTheWatcher(GuardCase):
         self.assertEqual(self.row()["status"], "wanted")
 
     def test_dry_run_is_not_exempt(self):
-        with mock.patch.object(CONFIG, "dry_run", True):
-            watcher.CONTROL._dry_run = True
+        saved = watcher.CONTROL._watcher_dry_run
+        self.addCleanup(setattr, watcher.CONTROL, "_watcher_dry_run", saved)
+        with mock.patch.object(CONFIG, "watch_dry_run", True):
+            watcher.CONTROL._watcher_dry_run = True
             summary, _ = self.run_cycle(HOME, answer(entry(1, "Project Hail Mary")))
-        self.assertTrue(summary["dry_run"])
+        self.assertTrue(summary["watcher_dry_run"])
         self.assertEqual(self.transport.calls, [])
         self.assertEqual(summary["egress_guard"], "blocked")
 

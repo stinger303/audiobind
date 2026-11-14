@@ -252,7 +252,7 @@ class Watcher:
         if self.paused(state):
             return {"skipped": "paused"}
         started = time.time()
-        summary = {"at": started, "trigger": trigger, "dry_run": CONTROL.dry_run, "searched": 0, "sent": 0,
+        summary = {"at": started, "trigger": trigger, "watcher_dry_run": CONTROL.watcher_dry_run, "searched": 0, "sent": 0,
                    "would_send": 0, "not_found": 0, "errors": 0, "resolved": 0, "error": ""}
         try:
             summary["resolved"] = len(resolve_library(state))
@@ -276,7 +276,7 @@ class Watcher:
                     if self._stop.is_set() or self.paused():
                         break
                     try:
-                        outcome = self._one(state, client, row, summary["dry_run"], holder)
+                        outcome = self._one(state, client, row, summary["watcher_dry_run"], holder)
                     except mam.MamError as exc:
                         summary["error"] = str(exc)
                         break
@@ -301,7 +301,7 @@ class Watcher:
         log.info(
             "wishlist watcher: %s cycle%s - %d searched, %d sent to qBittorrent, %d would be sent (dry run), "
             "%d not found, %d error(s), %d now in the library",
-            trigger, " [dry run]" if summary["dry_run"] else "", summary["searched"], summary["sent"],
+            trigger, " [dry run]" if summary["watcher_dry_run"] else "", summary["searched"], summary["sent"],
             summary["would_send"], summary["not_found"], summary["errors"], summary["resolved"],
         )
         return summary
@@ -443,7 +443,7 @@ class Watcher:
             "reason": reason,
             "running": self.alive,
             "paused": paused,
-            "dry_run": CONTROL.dry_run,
+            "watcher_dry_run": CONTROL.watcher_dry_run,
             "busy": self.busy,
             "interval_min": watch_interval_min(),
             "max_per_cycle": watch_max_per_cycle(),
