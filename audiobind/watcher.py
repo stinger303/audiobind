@@ -29,7 +29,7 @@ import threading
 import time
 
 from . import mam, qbit
-from .config import CONFIG, watch_interval_min, watch_max_per_cycle
+from .config import effective_val, watch_interval_min, watch_max_per_cycle
 from .control import CONTROL
 from .state import (
     WISHLIST_DOWNLOADING,
@@ -59,27 +59,36 @@ def _stamp(at: float | None = None) -> str:
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() if at is None else at))
 
 
+def _setting(name: str) -> str:
+    """A watcher setting through the effective-config getter (env default unless overridden)."""
+    return str(effective_val(name) or "")
+
+
 def configured() -> bool:
     """MAM_ID set: the owner wants the watcher."""
-    return bool(CONFIG.mam_id)
+    return bool(_setting("mam_id"))
 
 
 def disabled_reason() -> str:
     """Why the watcher will not run ("" = it can)."""
-    if not CONFIG.mam_id:
+    if not _setting("mam_id"):
         return "MAM_ID is not set"
-    if not CONFIG.qbit_user or not CONFIG.qbit_pass:
+    if not _setting("qbit_user") or not _setting("qbit_pass"):
         return "QBIT_USER / QBIT_PASS are not set - the watcher has nowhere to send a torrent"
     return ""
 
 
+def qbit_url() -> str:
+    return _setting("qbit_url") or "http://localhost:8083"
+
+
 # the network, behind two factories tests replace
 def make_mam() -> mam.MamClient:
-    return mam.MamClient(CONFIG.mam_id)
+    return mam.MamClient(_setting("mam_id"))
 
 
 def make_qbit() -> qbit.QbitClient:
-    return qbit.QbitClient(CONFIG.qbit_url, CONFIG.qbit_user, CONFIG.qbit_pass)
+    return qbit.QbitClient(qbit_url(), _setting("qbit_user"), _setting("qbit_pass"))
 
 
 # ---------------------------------------------------------------------------- library match
@@ -159,7 +168,7 @@ class Watcher:
         self._thread.start()
         log.info(
             "wishlist watcher: on - every %d min, at most %d book(s) per cycle, qBittorrent %s%s",
-            watch_interval_min(), watch_max_per_cycle(), CONFIG.qbit_url, " (paused)" if self._paused else "",
+            watch_interval_min(), watch_max_per_cycle(), qbit_url(), " (paused)" if self._paused else "",
         )
         return True
 
@@ -380,8 +389,8 @@ class Watcher:
             "busy": self.busy,
             "interval_min": watch_interval_min(),
             "max_per_cycle": watch_max_per_cycle(),
-            "qbit_url": CONFIG.qbit_url,
-            "qbit_credentials": bool(CONFIG.qbit_user and CONFIG.qbit_pass),
+            "qbit_url": qbit_url(),
+            "qbit_credentials": bool(_setting("qbit_user") and _setting("qbit_pass")),
             "last_cycle": last if isinstance(last, dict) else {},
             "next_cycle_at": self.next_at if self.alive and not paused else None,
             "last_error": error if isinstance(error, dict) else {},

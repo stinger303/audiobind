@@ -386,6 +386,14 @@ class TestOffSwitch(unittest.TestCase):
         self.assertEqual(CONFIG.mam_id, "", "the test environment never sets MAM_ID")
         self.assertFalse(watcher.configured())
 
+    def test_settings_come_through_the_effective_config_getter(self):
+        values = {"mam_id": "m", "qbit_user": "u", "qbit_pass": "p", "qbit_url": "http://qbt:9"}
+        with mock.patch.object(watcher, "effective_val", side_effect=lambda name: values.get(name, "")) as getter:
+            self.assertTrue(watcher.configured())
+            self.assertEqual(watcher.disabled_reason(), "")
+            self.assertEqual(watcher.make_qbit().url, "http://qbt:9")
+        self.assertTrue({"mam_id", "qbit_user", "qbit_pass", "qbit_url"} <= {c.args[0] for c in getter.call_args_list})
+
     def test_no_thread_and_no_network_when_mam_id_is_unset(self):
         w = watcher.Watcher()
         before = {t.name for t in threading.enumerate()}
