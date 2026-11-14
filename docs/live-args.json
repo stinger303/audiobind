@@ -1,11 +1,11 @@
 {
-  "captured_from": "Audiobind 0.18.0-dev1 on Tower behind GluetunVPN (network namespace shared, no published ports), 2026-11-14 - ingest host path and ALLOWED_HOSTS not captured from the live container: verify both",
+  "captured_from": "Audiobind 0.18.0-dev2 on Tower behind GluetunVPN (network namespace shared, no published ports), 2026-11-14",
   "network_mode": "container:GluetunVPN",
   "binds": [
     "/mnt/user/data/media/audiobooks-fixed:/output:rw",
     "/mnt/user/appdata/audiobind:/config",
     "/mnt/user/data/media/audiobooks:/library:rw",
-    "REPLACE_ME_WITH_HOST_INGEST_PATH:/ingest:ro"
+    "/mnt/cache_plex/torrents/audiobind-ingest:/ingest:ro"
   ],
   "env": [
     "PUID=99",
@@ -26,7 +26,7 @@
     "JOBS=1",
     "INGEST_DIR=/ingest",
     "QBIT_URL=http://127.0.0.1:8083",
-    "ALLOWED_HOSTS=localhost,127.0.0.1,192.168.5.2,tower,tower.local"
+    "ALLOWED_HOSTS=localhost,127.0.0.1,192.168.5.2"
   ],
   "cmd": ["daemon"],
   "labels": {
