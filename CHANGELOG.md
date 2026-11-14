@@ -5,6 +5,59 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev1] - 2026-11-14
+
+### Added
+- **The wishlist watcher (MyAnonamouse).** Off unless `MAM_ID` is set; with it unset no
+  thread starts and nothing touches the network. With `MAM_ID` and the qBittorrent WebUI
+  login (`QBIT_USER` / `QBIT_PASS`, at `QBIT_URL`, default `http://localhost:8083`) a
+  background thread works through the wishlist every `WATCH_INTERVAL_MIN` minutes (default
+  60, 10-1440): up to `WATCH_MAX_PER_CYCLE` wanted books (default 5, 1-20), never-checked
+  first and oldest first, then the least recently checked. Each is searched on MAM's Torrent
+  Search JSON API (audiobooks, English). A match needs a title similarity of 0.90 or more, a
+  matching author when the book has one, audio files and not already snatched; files
+  present, the exact series and sequence, and an already-free torrent are preferred. The
+  torrent is downloaded through MAM's Download Torrent API and handed to qBittorrent
+  (category `mam-audiobooks`), and the book becomes **downloading**.
+- **Freeleech wedges are spent only when needed.** A torrent that is already free, VIP
+  freeleech or a personal freeleech is downloaded without `&fl`; any other is downloaded
+  with it. Exactly one decision per torrent, written into the book's note.
+- **Wishlist states:** wanted, downloading, in library, not found and error, moved only along
+  a fixed set of transitions. A book with no good match stays wanted with a "not found on
+  MAM (checked ...)" note and is searched again later; after 3 misses in a row it becomes
+  not found. Nothing below the threshold is ever forced. **Retry** puts a not-found or failed
+  book back to wanted.
+- **Books resolve on their own.** After every scan (watcher on or off), a wishlist book whose
+  ASIN, or title and first author, matches a converted book becomes **in library**.
+- **Wishlist tab:** a state chip, when the book was last checked, the watcher's note, and
+  Retry / Remove on each row, plus a line saying whether the watcher is off, disabled,
+  paused or on (with its next cycle and a dry-run warning).
+- **Settings > Watcher:** status (enabled, off, disabled, paused, dry run), schedule,
+  qBittorrent host, last and next cycle, last error and any MAM backoff. **Run a cycle now**
+  runs one cycle in the background; **Pause watcher** is kept across restarts, like the
+  conversion pause. Missing qBittorrent credentials show a warning here and in the log;
+  the watcher stays disabled instead of failing.
+- `GET /api/watcher`, `POST /api/watcher` (`run`, `pause`, `resume`) and
+  `POST /api/wishlist/retry`. `/api/wishlist` rows now include `note`, `checked_at`,
+  `updated_at`, `mam_tid` and `torrent_hash`.
+
+### Safety
+- The watcher calls only the two MAM endpoints MAM authorizes for automation, checks every
+  URL before sending it, never parses HTML and never follows a redirect.
+- One MAM request at a time, at least 3 s apart. Any non-200, an unreachable host or an
+  answer that is not what the endpoint documents starts a backoff (60 s, doubling to
+  30 minutes; a longer `Retry-After` is honoured) and ends the cycle. The backoff survives
+  a restart, and a restart never fires a cycle at once.
+- qBittorrent is logged into before anything is downloaded, so a qBittorrent that is down
+  never costs a wedge. A failed download or a qBittorrent refusal marks the book error and is
+  never retried on its own (wedges are not refunded); a Retry searches again first.
+- Dry run applies: the watcher searches and notes what it would download, and downloads
+  nothing.
+- `MAM_ID` and `QBIT_PASS` are never shown in a page, the API, the log or a `repr()`.
+
+### Changed
+- The Discover tab's Wishlist list shows the state chips above instead of the bare status.
+
 ## [0.17.0-dev1] - 2026-11-13
 
 ### Added
