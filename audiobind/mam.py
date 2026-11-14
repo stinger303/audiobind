@@ -86,7 +86,9 @@ def download_url(tid, use_wedge: bool) -> str:
 # ---------------------------------------------------------------------------- search results
 #: what the watcher asks the Torrent Search JSON endpoint for (fields as MAM documents them)
 SEARCH_LANG_ENGLISH = "1"
-SEARCH_CAT_AUDIOBOOKS = "14"
+#: the audiobook MAIN category, sent as tor[main_cat][]. tor[cat][] takes a LEAF category id
+#: and "14" there returns nothing at all ("Nothing returned, out of 0") for every query.
+SEARCH_MAIN_CAT_AUDIOBOOKS = "13"
 PER_PAGE = 25
 #: a body bigger than this is not a search answer or a .torrent; it is not read further
 MAX_BODY = 8 * 1024 * 1024
@@ -514,7 +516,7 @@ class MamClient:
             ("tor[text]", str(title or "")),
             ("tor[searchIn]", "torrents"),
             ("tor[browse_lang][]", SEARCH_LANG_ENGLISH),
-            ("tor[cat][]", SEARCH_CAT_AUDIOBOOKS),
+            ("tor[main_cat][]", SEARCH_MAIN_CAT_AUDIOBOOKS),
             ("tor[sortType]", "relevance"),
             ("perpage", str(PER_PAGE)),
         ]
