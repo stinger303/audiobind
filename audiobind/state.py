@@ -102,9 +102,37 @@ CREATE TABLE IF NOT EXISTS discover_cache (
 #: "Get this" click can use the catalog's metadata); wishlist rows are never forgotten
 CATALOG_SEEN_TTL_SECONDS = 90 * 24 * 3600
 
-#: a wishlist row's life: "wanted" is the only status Phase 2 writes. Phase 3 (the MAM
-#: watcher) adds the later ones; nothing here moves a row past "wanted".
+#: a wishlist row's life. Phase 2 only ever writes "wanted"; the Phase 3 watcher moves a row
+#: on from there, and only along WISHLIST_TRANSITIONS:
+#:
+#:   wanted ──found on MAM, torrent handed to qBittorrent──▶ downloading ──▶ in_library
+#:     │ └──three searches in a row found nothing──▶ not_found ──Retry──▶ wanted
+#:     └────download / qBittorrent failed──────────▶ error ──────Retry──▶ wanted
+#:
+#: "in_library" is reached from any state, but only by a library match (a converted book with
+#: the same ASIN, or the same title and author) - never by the watcher itself.
 WISHLIST_WANTED = "wanted"
+WISHLIST_DOWNLOADING = "downloading"
+WISHLIST_IN_LIBRARY = "in_library"
+WISHLIST_NOT_FOUND = "not_found"
+WISHLIST_ERROR = "error"
+WISHLIST_STATUSES = (
+    WISHLIST_WANTED, WISHLIST_DOWNLOADING, WISHLIST_IN_LIBRARY, WISHLIST_NOT_FOUND, WISHLIST_ERROR,
+)
+WISHLIST_TRANSITIONS: dict[str, frozenset[str]] = {
+    WISHLIST_WANTED: frozenset({WISHLIST_DOWNLOADING, WISHLIST_NOT_FOUND, WISHLIST_ERROR, WISHLIST_IN_LIBRARY}),
+    WISHLIST_DOWNLOADING: frozenset({WISHLIST_IN_LIBRARY, WISHLIST_ERROR}),
+    WISHLIST_NOT_FOUND: frozenset({WISHLIST_WANTED, WISHLIST_IN_LIBRARY}),
+    WISHLIST_ERROR: frozenset({WISHLIST_WANTED, WISHLIST_IN_LIBRARY}),
+    WISHLIST_IN_LIBRARY: frozenset(),
+}
+#: the states a Retry click resets to "wanted"
+WISHLIST_RETRYABLE = frozenset({WISHLIST_NOT_FOUND, WISHLIST_ERROR})
+
+
+def wishlist_transition_ok(current: str, new: str) -> bool:
+    """True when a wishlist row may move from ``current`` to ``new``."""
+    return new in WISHLIST_TRANSITIONS.get(current, frozenset())
 
 #: metadata fields a human edit locks: the editor's fields plus the ASIN set with Edit ASIN.
 #: A locked field is never overwritten by a rescan, re-check or re-rip; unlocking hands it
@@ -202,6 +230,18 @@ class State:
         ):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE units ADD COLUMN {name} {ddl}")
+        # 0.18: the watcher's bookkeeping on each wishlist row
+        existing = {row[1] for row in self.connection.execute("PRAGMA table_info(wishlist)")}
+        for name, ddl in (
+            ("note", "TEXT NOT NULL DEFAULT ''"),
+            ("checked_at", "REAL NOT NULL DEFAULT 0"),
+            ("updated_at", "REAL NOT NULL DEFAULT 0"),
+            ("misses", "INTEGER NOT NULL DEFAULT 0"),
+            ("mam_tid", "TEXT NOT NULL DEFAULT ''"),
+            ("torrent_hash", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if name not in existing:
+                self.connection.execute(f"ALTER TABLE wishlist ADD COLUMN {name} {ddl}")
 
     def _migrate_locks(self) -> None:
         """Once per database: every correction typed before field locks existed was a human
@@ -654,8 +694,8 @@ class State:
             return cursor.rowcount > 0
 
     # ------------------------------------------------- the wishlist
-    # Books you clicked "Get this" / "Want" on. The hand-off point to Phase 3: nothing in this
-    # build downloads, searches a tracker or adds a row on its own - every row is one click.
+    # Books you clicked "Get this" / "Want" on - every row is one click; nothing adds a row on
+    # its own. The Phase 3 watcher (watcher.py) moves rows along WISHLIST_TRANSITIONS.
     _WISHLIST_INSERT = (
         "INSERT OR IGNORE INTO wishlist (asin, title, authors, added_at, status, origin, series, "
         "sequence, hours) VALUES (?,?,?,?,?,?,?,?,?)"
@@ -696,6 +736,12 @@ class State:
             "series": row["series"] or "",
             "sequence": row["sequence"] or "",
             "hours": float(row["hours"] or 0),
+            "note": row["note"] or "",
+            "checked_at": float(row["checked_at"] or 0),
+            "updated_at": float(row["updated_at"] or 0),
+            "misses": int(row["misses"] or 0),
+            "mam_tid": row["mam_tid"] or "",
+            "torrent_hash": row["torrent_hash"] or "",
         }
 
     def wishlist_add(self, item: dict) -> bool:
@@ -739,6 +785,95 @@ class State:
     def wishlist_count(self) -> int:
         with self._lock:
             return int(self.connection.execute("SELECT COUNT(*) FROM wishlist").fetchone()[0])
+
+    def wishlist_status_counts(self) -> dict[str, int]:
+        with self._lock:
+            rows = self.connection.execute("SELECT status, COUNT(*) n FROM wishlist GROUP BY status").fetchall()
+        return {r["status"]: int(r["n"]) for r in rows}
+
+    def wishlist_due(self, limit: int) -> list[dict]:
+        """The "wanted" rows the watcher searches next: never-checked rows first, oldest added
+        first; then the least recently checked. Ordering by the last check is what keeps a
+        handful of books MAM does not have from starving every row behind them."""
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT * FROM wishlist WHERE status = ? ORDER BY checked_at ASC, added_at ASC, asin LIMIT ?",
+                (WISHLIST_WANTED, max(0, int(limit))),
+            ).fetchall()
+        return [self._wishlist_row(r) for r in rows]
+
+    def wishlist_set_status(
+        self,
+        asin: str,
+        new: str,
+        *,
+        expect: str | None = None,
+        note: str | None = None,
+        mam_tid: str | None = None,
+        torrent_hash: str | None = None,
+        checked: bool = False,
+    ) -> bool:
+        """Move one row to ``new`` - only along WISHLIST_TRANSITIONS, and when ``expect`` is
+        given only if the row is still in that state (a row removed or changed by a click
+        while the watcher worked on it is left alone). True when the row moved."""
+        if new not in WISHLIST_STATUSES:
+            return False
+        now = time.time()
+        with self._lock, self._txn():
+            row = self.connection.execute("SELECT status FROM wishlist WHERE asin = ?", (asin,)).fetchone()
+            if row is None:
+                return False
+            current = row["status"] or WISHLIST_WANTED
+            if expect is not None and current != expect:
+                return False
+            if not wishlist_transition_ok(current, new):
+                return False
+            sets = ["status = ?", "updated_at = ?"]
+            params: list = [new, now]
+            if new == WISHLIST_WANTED:
+                sets.append("misses = 0")
+            for column, value in (("note", note), ("mam_tid", mam_tid), ("torrent_hash", torrent_hash)):
+                if value is not None:
+                    sets.append(f"{column} = ?")
+                    params.append(str(value))
+            if checked:
+                sets.append("checked_at = ?")
+                params.append(now)
+            self.connection.execute(f"UPDATE wishlist SET {', '.join(sets)} WHERE asin = ?", (*params, asin))
+        return True
+
+    def wishlist_record_check(self, asin: str, note: str, miss: bool) -> int | None:
+        """A search that changed nothing about a "wanted" row: store when it was checked and
+        what was decided. ``miss`` counts a search that found nothing (any other outcome
+        resets the count). Returns the consecutive-miss count, or None when the row is gone or
+        no longer "wanted"."""
+        now = time.time()
+        with self._lock, self._txn():
+            row = self.connection.execute("SELECT status, misses FROM wishlist WHERE asin = ?", (asin,)).fetchone()
+            if row is None or (row["status"] or WISHLIST_WANTED) != WISHLIST_WANTED:
+                return None
+            misses = int(row["misses"] or 0) + 1 if miss else 0
+            self.connection.execute(
+                "UPDATE wishlist SET note = ?, checked_at = ?, updated_at = ?, misses = ? WHERE asin = ?",
+                (str(note), now, now, misses, asin),
+            )
+        return misses
+
+    def wishlist_retry(self, asin: str) -> bool:
+        """Retry: a "not_found" or "error" row goes back to "wanted" (and to the front of the
+        watcher's queue). True when it moved."""
+        now = time.time()
+        with self._lock, self._txn():
+            row = self.connection.execute("SELECT status FROM wishlist WHERE asin = ?", (asin,)).fetchone()
+            if row is None or row["status"] not in WISHLIST_RETRYABLE:
+                return False
+            self.connection.execute(
+                "UPDATE wishlist SET status = ?, misses = 0, checked_at = 0, updated_at = ?, "
+                "note = ? WHERE asin = ?",
+                (WISHLIST_WANTED, now, f"retry requested ({time.strftime('%Y-%m-%d %H:%M', time.localtime(now))})",
+                 asin),
+            )
+        return True
 
     # ------------------------------------------------- books a Discover page showed
     def catalog_seen_put(self, products: list[dict]) -> None:

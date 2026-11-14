@@ -88,6 +88,16 @@ class Config:
     #: in the state DB (and skips first-run /setup); the account takes precedence once created
     auth_token: str = ""
 
+    #: Phase 3 wishlist watcher (MAM auto-acquire). Empty MAM_ID = the watcher is off: no
+    #: thread, no network. The session cookie and the qBittorrent password are secrets - they
+    #: are kept out of repr() so a log line or traceback can never print them.
+    mam_id: str = field(default="", repr=False)
+    watch_interval_min: int = 60
+    watch_max_per_cycle: int = 5
+    qbit_url: str = "http://localhost:8083"
+    qbit_user: str = ""
+    qbit_pass: str = field(default="", repr=False)
+
     ignore_globs: list[str] = field(
         default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
     )
@@ -119,6 +129,12 @@ class Config:
             trusted_proxy=_env_bool("TRUSTED_PROXY", False),
             auth_token=_env("AUTH_TOKEN", ""),
             manual_workers=max(1, _env_int("MANUAL_WORKERS", 2)),
+            mam_id=_env("MAM_ID", ""),
+            watch_interval_min=_env_int("WATCH_INTERVAL_MIN", 60),
+            watch_max_per_cycle=_env_int("WATCH_MAX_PER_CYCLE", 5),
+            qbit_url=_env("QBIT_URL", "http://localhost:8083").rstrip("/") or "http://localhost:8083",
+            qbit_user=_env("QBIT_USER", ""),
+            qbit_pass=os.environ.get("QBIT_PASS", ""),  # a password keeps its spaces
         )
 
     def ensure_dirs(self) -> None:
@@ -273,6 +289,32 @@ def _config_to_setting(name: str) -> str | None:
         if cn == name:
             return sk
     return None
+
+
+#: politeness bounds for the wishlist watcher. A value outside them is pulled back in: MAM
+#: tolerates automation only on its listed endpoints and a banned account is unrecoverable,
+#: so no setting can make the watcher search more often or more per cycle than this.
+WATCH_INTERVAL_BOUNDS = (10, 1440)
+WATCH_MAX_PER_CYCLE_BOUNDS = (1, 20)
+
+
+def _clamp(value, bounds: tuple[int, int], default: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    lo, hi = bounds
+    return max(lo, min(hi, number))
+
+
+def watch_interval_min() -> int:
+    """Minutes between watcher cycles (WATCH_INTERVAL_MIN through the effective getter)."""
+    return _clamp(effective_val("watch_interval_min"), WATCH_INTERVAL_BOUNDS, 60)
+
+
+def watch_max_per_cycle() -> int:
+    """Wishlist rows one watcher cycle may search at most (WATCH_MAX_PER_CYCLE)."""
+    return _clamp(effective_val("watch_max_per_cycle"), WATCH_MAX_PER_CYCLE_BOUNDS, 5)
 
 
 def effective_auto_tiers() -> set[str]:

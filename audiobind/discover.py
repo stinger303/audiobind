@@ -168,7 +168,8 @@ def want_missing(state, slug: str) -> tuple[dict | None, int, str]:
 def public_row(row: dict) -> dict:
     """A wishlist row as the API shows it."""
     return {k: row.get(k) for k in ("asin", "title", "authors", "added_at", "status", "origin",
-                                    "series", "sequence", "hours")}
+                                    "series", "sequence", "hours", "note", "checked_at", "updated_at",
+                                    "mam_tid", "torrent_hash")}
 
 
 # ------------------------------------------------------------------ already in your library
