@@ -367,6 +367,61 @@ check("settings: reset-password hint", "docker exec -it audiobind audiobind rese
 check("settings: sign-out link", 'href="/logout"' in settings_page)
 check("settings: no CDN references", "http://" not in settings_page and "https://" not in settings_page)
 node_check("settings", settings_page, "settings.js")
+
+# ---- the wishlist watcher (0.18.0-dev1): state chips, Retry, Settings > Watcher. The web server
+# never starts the watcher (only the daemon does) and the MAM client factory is replaced, so
+# nothing here can reach MAM or qBittorrent.
+print("wishlist watcher:")
+from audiobind import watcher                                # noqa: E402
+from audiobind.config import CONFIG                          # noqa: E402
+
+watcher.make_mam = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a MAM client"))
+watcher.make_qbit = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a qBittorrent client"))
+check("watcher: off by default (no MAM_ID)", not watcher.configured() and not watcher.WATCHER.alive)
+off_settings = get("/settings")
+check("watcher: Settings section, off", 'id="watcher"' in off_settings and "Off &#8212; MAM_ID is not set" in off_settings
+      and 'id="ab-watch-run" onclick="abWatcher(\'run\')" disabled' in off_settings)
+wl_rows = [("B0VERWANT1", "wanted", ""), ("B0VERDOWN1", "downloading", "sent to qBittorrent: MAM #1 'x'"),
+           ("B0VERLIB01", "in_library", "in your library"), ("B0VERNF001", "not_found", "not found on MAM in 3 searches"),
+           ("B0VERERR01", "error", 'download of MAM #9 failed <"boom">')]
+for asin, wl_status, wl_note in wl_rows:
+    state.wishlist_add({"asin": asin, "title": f"Verify {wl_status}", "authors": ["V. Writer"], "origin": "search"})
+    if wl_status != "wanted":
+        state.wishlist_set_status(asin, wl_status, note=wl_note, checked=True)
+wl_page = get("/discover/wishlist")
+check("wishlist: one chip per state", all(f'class="ab-disc-pill ab-wl-{s}"' in wl_page for _, s, _ in wl_rows))
+check("wishlist: Retry only on not found / error", wl_page.count('onclick="abRetry(this)">Retry</button>') == 2)
+check("wishlist: notes escaped", 'failed &lt;"boom"&gt;' in wl_page and '<"boom">' not in wl_page)
+check("wishlist: last checked shown", "never checked" in wl_page and "checked just now" in wl_page)
+check("wishlist: watcher bar says it is off", "The MAM watcher is <b>off</b>" in wl_page)
+check("wishlist: no unexpanded {placeholders}",
+      not re.search(r"\{(version|styles|discover_script|discover_item|series_item|disc_tabs|disc_body)\}", wl_page))
+check("wishlist: no external URLs", "http://" not in wl_page and "https://" not in wl_page)
+node_check("wishlist watcher", wl_page, "wishlist-watcher.js")
+status, _, retried = fetch("/api/wishlist/retry", json.dumps({"asin": "B0VERERR01"}).encode(),
+                           {"Content-Type": "application/json", "Cookie": COOKIE})
+check("Retry puts an error row back to wanted", status == 200 and json.loads(retried)["item"]["status"] == "wanted")
+status, _, refused = fetch("/api/watcher", json.dumps({"action": "run"}).encode(),
+                           {"Content-Type": "application/json", "Cookie": COOKIE})
+check("Run a cycle now is refused while the watcher is off", status == 409 and "MAM_ID" in refused)
+CONFIG.mam_id, CONFIG.qbit_user, CONFIG.qbit_pass = "VERIFY-SECRET-COOKIE", "admin", "VERIFY-SECRET-PASS"
+on_settings = get("/settings")
+check("watcher: enabled section with Run and Pause", '<span class="ok">Enabled</span>' in on_settings
+      and 'onclick="abWatcher(\'run\')" title=' in on_settings and "Pause watcher" in on_settings)
+status, _, paused = fetch("/api/watcher", json.dumps({"action": "pause"}).encode(),
+                          {"Content-Type": "application/json", "Cookie": COOKIE})
+check("Pause is persisted", status == 200 and state.get_meta(watcher.META_PAUSED) is True)
+paused_settings = get("/settings")
+check("watcher: paused section offers Resume", "Resume watcher" in paused_settings)
+watcher_served = on_settings + paused_settings + get("/api/watcher") + get("/discover/wishlist")
+check("watcher: MAM_ID and QBIT_PASS are never served",
+      "VERIFY-SECRET-COOKIE" not in watcher_served and "VERIFY-SECRET-PASS" not in watcher_served)
+check("watcher settings: no unexpanded {placeholders}",
+      not re.search(r"\{(watcher_section|watcher_script|account_section)\}", on_settings))
+check("watcher settings: no CDN references", "http://" not in on_settings and "https://" not in on_settings)
+node_check("watcher settings", on_settings, "watcher-settings.js")
+CONFIG.mam_id, CONFIG.qbit_user, CONFIG.qbit_pass = "", "", ""
+
 creds = state.get_credentials()
 served = html + settings_page + get("/api/state") + get("/api/units")
 check("no password, hash or salt in any served page",
