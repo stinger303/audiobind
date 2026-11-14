@@ -1,0 +1,89 @@
+{
+  "perpage": 25,
+  "start": 0,
+  "data": [
+    {
+      "id": 1001,
+      "name": "Project Hail Mary",
+      "author_info": "{\"5512\": \"Andy Weir\"}",
+      "narrator_info": "{\"881\": \"Ray Porter\"}",
+      "series_info": "",
+      "cat": "<a href=\"/tor/browse.php?tor[cat][]=49\">Audiobooks - Science Fiction</a>",
+      "catname": "Audiobooks - Science Fiction",
+      "size": "934.2 MiB",
+      "added": "2021-05-04 12:00:00",
+      "free": false,
+      "fl_vip": false,
+      "personal_freeleech": null,
+      "dl": "a1b2c3d4e5",
+      "numfiles": 1,
+      "filetype": "m4b",
+      "tags": "Unabridged",
+      "my_snatched": 0
+    },
+    {
+      "id": "1002",
+      "name": "Project Hail Mary [Dramatized]",
+      "author_info": "{\"5512\": \"Andy Weir\"}",
+      "narrator_info": "{}",
+      "series_info": "{}",
+      "catname": "Audiobooks - Science Fiction",
+      "size": "512.0 MiB",
+      "added": "2022-01-01 00:00:00",
+      "free": "1",
+      "fl_vip": 0,
+      "personal_freeleech": "",
+      "dl": null,
+      "numfiles": "0",
+      "filetype": "mp3",
+      "tags": "",
+      "my_snatched": "0"
+    },
+    {
+      "id": 1003,
+      "name": "The Martian",
+      "author_info": "{\"5512\": \"Andy Weir\"}",
+      "narrator_info": "{\"77\": \"R. C. Bray\"}",
+      "series_info": "",
+      "catname": "Audiobooks - Science Fiction",
+      "size": "400 MiB",
+      "free": false,
+      "fl_vip": true,
+      "personal_freeleech": null,
+      "numfiles": 12,
+      "filetype": "mp3",
+      "my_snatched": 1
+    },
+    {
+      "id": 1004,
+      "name": "The Way of Kings (Stormlight Archive 1)",
+      "author_info": "{\"91\": \"Brandon Sanderson\"}",
+      "narrator_info": "{\"92\": \"Michael Kramer\", \"93\": \"Kate Reading\"}",
+      "series_info": "{\"300\": [\"The Stormlight Archive\", \"1\"]}",
+      "catname": "Audiobooks - Fantasy",
+      "size": "1.9 GiB",
+      "free": false,
+      "fl_vip": false,
+      "personal_freeleech": "2026-12-01 00:00:00",
+      "numfiles": 3,
+      "filetype": "m4b",
+      "my_snatched": false
+    },
+    {
+      "id": 1005,
+      "name": "Mistborn &amp; The Final Empire",
+      "author_info": "not json at all {",
+      "narrator_info": null,
+      "series_info": "[\"bare\"]",
+      "numfiles": "lots",
+      "filetype": "epub"
+    },
+    {
+      "id": "not-a-number",
+      "name": "dropped: no numeric id"
+    },
+    "not even an object"
+  ],
+  "total": 7,
+  "found": 7
+}
