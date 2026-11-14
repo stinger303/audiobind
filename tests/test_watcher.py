@@ -327,17 +327,14 @@ class TestLibraryMatch(WatcherCase):
         self.assertEqual(self.row()["status"], "downloading")
         self.convert("ingest:Project Hail Mary [MAM]", "Project Hail Mary", "Andy Weir", asin="B000000001")
         self.assertEqual(watcher.resolve_library(self.state), ["B000000001"])
-        row = self.row()
-        self.assertEqual(row["status"], "in_library")
-        self.assertIn("same ASIN", row["note"])
+        self.assertIsNone(self.state.wishlist_get("B000000001"), "a book you have leaves the wishlist")
         self.assertEqual(watcher.resolve_library(self.state), [], "idempotent")
 
     def test_title_and_author_match_without_the_asin(self):
         self.want("B0OTHERED1", title="The Martian", authors=("Andy Weir",))
         self.convert("Weir/The Martian", "The Martian", "Andy Weir", asin="B0DIFFEREN")
         watcher.resolve_library(self.state)
-        self.assertEqual(self.row("B0OTHERED1")["status"], "in_library")
-        self.assertIn("same title and author", self.row("B0OTHERED1")["note"])
+        self.assertIsNone(self.state.wishlist_get("B0OTHERED1"))
 
     def test_only_a_converted_or_published_book_counts(self):
         self.want()
@@ -364,7 +361,7 @@ class TestLibraryMatch(WatcherCase):
                 mock.patch.object(daemon.ingest, "discover", return_value=[]), \
                 mock.patch.object(CONFIG, "library_root", pathlib.Path(self.dir.name)):
             daemon.scan_once(self.state)
-        self.assertEqual(self.row()["status"], "in_library")
+        self.assertIsNone(self.state.wishlist_get("B000000001"))
 
     def test_a_cycle_resolves_before_searching(self):
         self.want()

@@ -612,7 +612,6 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-series-hook .btn{flex:none;text-decoration:none}
 
 .ab-disc-wrap{padding:14px 24px 24px;display:flex;flex-direction:column;gap:14px;max-width:1180px}
-.ab-disc-tabs .chip{text-decoration:none}
 .ab-disc-intro{font-size:12.5px;color:var(--ab-text3);line-height:1.5}
 .ab-disc-intro b{color:var(--ab-text2);font-weight:500}
 .ab-disc-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -1911,7 +1910,7 @@ function abSeriesMark(btn, on) {
       btn.textContent = label;
     });
 }
-// Want / Want all missing: onto the wishlist (Discover > Wishlist); nothing is downloaded
+// Want / Want all missing: onto the wishlist (the Wishlist tab); nothing is downloaded
 function abSeriesPost(body) {
   return fetch('/api/wishlist', {method:'POST', headers:{'Content-Type':'application/json'},
                                  body: JSON.stringify(body)})
@@ -3065,7 +3064,7 @@ def render_series(state) -> str:
 DISCOVER_PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Audiobind &#183; Discover</title>
+<title>Audiobind &#183; {page_title}</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="/favicon.svg">
 <meta name="theme-color" content="#5e6ad2">
@@ -3103,12 +3102,11 @@ DISCOVER_PAGE = """<!doctype html>
 </aside>
 <main class="ab-main">
   <header class="ab-topbar">
-    <h1>Discover</h1>
+    <h1>{page_title}</h1>
     <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
   </header>
   <div class="ab-disc-wrap">
-    <nav class="chips ab-disc-tabs" aria-label="Discover">{disc_tabs}</nav>
 {disc_body}
   </div>
 </main>
@@ -3237,43 +3235,33 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 """
 
-DISCOVER_TABS = (
-    ("search", "/discover", "Search"),
-    ("for_you", "/discover/for-you", "For you"),
-    ("wishlist", "/discover/wishlist", "Wishlist"),
-)
+def _discover_rail_item(state, active: str | bool = "") -> str:
+    """The rail's Discover books tab, under Series, and (with MAM configured) the Wishlist tab
+    right below it. The count badge on Wishlist is the books still wanted/downloading."""
+    if active is True:
+        active = "discover"
 
-
-def _discover_rail_item(state, active: bool = False) -> str:
-    """The rail's Discover tab, under Series; the count is books on your wishlist."""
-    classes = "ab-rail-item" + (" ab-active" if active else "")
-    current = ' aria-current="page"' if active else ""
-    try:
-        wanted = state.wishlist_count()
-    except Exception:  # noqa: BLE001 - the rail must never blank a page
-        wanted = 0
-    hidden = "" if wanted else " hidden"
-    badge = (
-        f'\n      <span class="ab-count" id="ab-rail-wanted" title="books on your wishlist"{hidden}>{int(wanted)}</span>'
-        if watcher_mod.configured() else ""
-    )
-    return (
-        f'<a class="{classes}" href="/discover"{current}>\n'
-        f'      <span class="ab-glyph">&#8981;</span> Discover{badge}</a>'
-    )
-
-
-def _discover_tabs(active: str, wanted: int) -> str:
-    out = []
-    for key, href, label in DISCOVER_TABS:
-        if key == "wishlist" and not watcher_mod.configured():
-            continue  # a MAM-only surface: nothing consumes the wishlist without the watcher
-        on = key == active
-        count = f' <span class="n">{int(wanted)}</span>' if key == "wishlist" else ""
-        klass = "chip on" if on else "chip"
+    def link(key: str, href: str, glyph: str, label: str, badge: str = "") -> str:
+        on = active == key
+        classes = "ab-rail-item" + (" ab-active" if on else "")
         current = ' aria-current="page"' if on else ""
-        out.append(f'<a class="{klass}" href="{href}"{current}>{label}{count}</a>')
-    return "".join(out)
+        return (
+            f'<a class="{classes}" href="{href}"{current}>\n'
+            f'      <span class="ab-glyph">{glyph}</span> {label}{badge}</a>'
+        )
+
+    out = link("discover", "/discover", "&#8981;", "Discover books")
+    if watcher_mod.configured():  # a MAM-only surface: nothing consumes the wishlist without the watcher
+        try:
+            wanted = state.wishlist_count()
+        except Exception:  # noqa: BLE001 - the rail must never blank a page
+            wanted = 0
+        hidden = "" if wanted else " hidden"
+        badge = (
+            f'\n      <span class="ab-count" id="ab-rail-wanted" title="books on your wishlist"{hidden}>{int(wanted)}</span>'
+        )
+        out += "\n    " + link("wishlist", "/wishlist", "&#9734;", "Wishlist", badge)
+    return out
 
 
 def _disc_names(names) -> str:
@@ -3771,36 +3759,39 @@ function abWatchPoll() {
 
 
 def render_discover(state, tab: str = "search", title: str = "", author: str = "", result: dict | None = None) -> str:
-    """The Discover page. Search runs one catalog query only when a query was typed."""
+    """Discover books: the search form with the recommendations under it (one screen). A typed
+    query runs one catalog search and its results replace the recommendations. tab="wishlist"
+    renders the separate Wishlist page (the library page's rail, no MAM: falls back to search)."""
     counts = state.counts()
     rc = rail_counts(state, counts)
-    wanted = state.wishlist_count()
     if tab == "wishlist" and not watcher_mod.configured():
-        tab = "search"  # no wishlist surface without MAM: land on Search
+        tab = "search"  # no wishlist surface without MAM: land on Discover books
     if tab == "wishlist":
         body = _discover_wishlist_body(state)
-    elif tab == "for_you":
-        body = _discover_recs_body(state)
+        page_title, active = "Wishlist", "wishlist"
     else:
-        tab = "search"
-        if result is None:
+        page_title, active = "Discover books", "discover"
+        if result is None and (title or author):
             result = discover_mod.search(state, title, author)
-        body = _discover_search_body(result)
+        if result is not None and (result.get("title") or result.get("author") or title or author):
+            body = _discover_search_body(result)
+        else:
+            body = _discover_search_body({"title": "", "author": ""}) + _discover_recs_body(state)
     return DISCOVER_PAGE.format(
         signout=signout_html(state),
         styles=STYLES,
         version=__version__,
+        page_title=page_title,
         rail_total=sum(counts.values()),
         rail_review_count=rc["review"],
         rail_held_count=rc["held"],
         rail_failed_count=rc["failed"],
         series_item=_series_rail_item(_series_shelf(state, refresh=False)["missing_total"]),
-        discover_item=_discover_rail_item(state, active=True),
+        discover_item=_discover_rail_item(state, active=active),
         library=_html(CONFIG.host_library or str(CONFIG.library_root)),
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
         output=_html(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
-        disc_tabs=_discover_tabs(tab, wanted),
         disc_body=body,
         discover_script=DISCOVER_SCRIPT,
     )
@@ -5262,11 +5253,15 @@ class Handler(BaseHTTPRequestHandler):
             page = render_discover(self.state, "search", params.get("title", ""), params.get("author", ""))
             self._send(200, page.encode(), "text/html; charset=utf-8")
             return
-        if path.rstrip("/") == "/discover/wishlist":
+        if path.rstrip("/") in ("/wishlist", "/discover/wishlist"):
+            # without MAM there is no wishlist surface: fall back to the library page
+            if not watcher_mod.configured():
+                self._send(200, render(self.state, "", "").encode(), "text/html; charset=utf-8")
+                return
             self._send(200, render_discover(self.state, "wishlist").encode(), "text/html; charset=utf-8")
             return
         if path.rstrip("/") == "/discover/for-you":
-            self._send(200, render_discover(self.state, "for_you").encode(), "text/html; charset=utf-8")
+            self._send(200, render_discover(self.state, "search").encode(), "text/html; charset=utf-8")
             return
         if path.rstrip("/") == "/api/discover/recommendations":
             # the stored result only: a GET never queries the catalog

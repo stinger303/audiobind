@@ -271,14 +271,18 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
 
 ### Discover and the wishlist
 
-The **Discover** tab (`/discover`) searches the Audible catalog by title, with an optional
-author. Each result shows its cover, authors, narrators, runtime, series and release year.
+**Discover books** (`/discover`) is one screen: a search box on top and, below it, the
+recommended books. Searching shows the results on the same page in place of the
+recommendations; clearing the query brings the recommendations back. The search form takes a
+title, with an optional author. Each result shows its cover, authors, narrators, runtime, series and release year.
 Books already in your library are marked **In your library**: same ASIN, same title and
 author, or marked "I have this" on the Series page. **Get this** puts a book on your
 wishlist. That's all it does: nothing is downloaded, and no tracker is contacted. The
 [wishlist watcher](#the-wishlist-watcher-myanonamouse) picks books up from there when it is
-on. The **Wishlist** tab lists it with each book's state and when it was last checked;
-**Retry** and **Remove** act on one book. The number on the Discover tab is the wishlist size. Search uses
+on. The **Wishlist** tab (`/wishlist`, right below Discover books in the rail, MAM only) lists it with
+each book's state and when it was last checked; **Retry** and **Remove** act on one book. The number
+on the Wishlist tab is the wishlist size. A book that lands in your library leaves the wishlist (a
+want-list holds nothing you already have), so only books you still want are listed. Search uses
 one catalog request at a time, with the same pacing as matching, and only the US store
 (`api.audible.com`).
 
@@ -292,7 +296,7 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PR
 Adding an ASIN that's already on the list changes nothing. If Audiobind has never shown an
 ASIN (in a search, a suggestion or a series), send `"title"` (and `"authors"`) with it.
 
-The **For you** tab (`/discover/for-you`) suggests books based on what you already own. It has
+The recommendations on Discover books suggest books based on what you already own. They have
 three sections: more by your top 5 authors, books read by your top 3 narrators, and your top 2
 genres. Genres come from the `metadata.json` written beside each published book. Books you own
 or already want are left out, and so are summaries and other knockoffs. Suggestions are stored,
@@ -330,7 +334,7 @@ Off unless `MAM_ID` is set. With it set (and `QBIT_USER` / `QBIT_PASS` for the q
 WebUI), a background thread works through the wishlist every `WATCH_INTERVAL_MIN` minutes:
 
 1. Books already in your library (a converted book with the same ASIN, or the same title and
-   author) are marked **In library** - this also runs after every scan, watcher or not.
+   author) are taken off the wishlist - this also runs after every scan, watcher or not.
 2. Up to `WATCH_MAX_PER_CYCLE` **wanted** books - never-checked first, oldest first, then the
    least recently checked - are searched on MAM's Torrent Search JSON API (audiobooks,
    English).

@@ -5,6 +5,24 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev10] - 2026-11-14
+
+### Added
+- **Wishlist is its own rail tab**, directly below Discover books, at `/wishlist`, with the
+  wishlist count badge. With MAM unconfigured there is no Wishlist item and `/wishlist` shows the
+  library page. `/discover/wishlist` still works as an alias.
+
+### Changed
+- **Discover is renamed "Discover books"** (rail, page title and heading; the route stays
+  `/discover`) and is one screen: the search form on top, the recommended books below it. A search
+  shows its results on the same page in place of the recommendations; clearing the query brings
+  them back. The "Search", "For you" and "Wishlist" chips are gone (`/discover/for-you` shows the
+  same page).
+- **A wishlist book that reaches the library leaves the list.** The library match now deletes the
+  row (one log line per removal) instead of marking it `in_library`; rows that do not match
+  (`wanted`, `not_found`, `error`) are never touched, and the removal is idempotent. Leftover
+  `in_library` rows from earlier versions are cleaned up the same way.
+
 ## [0.18.0-dev9] - 2026-11-14
 
 ### Added

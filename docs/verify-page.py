@@ -308,8 +308,8 @@ before_refresh = get("/discover/for-you")
 check("for you: no unexpanded {placeholders}",
       not re.search(r"\{(version|styles|discover_script|discover_item|series_item|disc_tabs|disc_body)\}",
                     before_refresh))
-check("for you: For you tab is the active one",
-      'class="chip on" href="/discover/for-you" aria-current="page">For you</a>' in before_refresh)
+check("for you: Discover shows search and recommendations together",
+      'name="title"' in before_refresh and 'id="ab-recs"' in before_refresh and ">For you</a>" not in before_refresh)
 check("for you: a page load never queries the catalog", recs_calls == [])
 check("for you: Refresh button and status bar", 'id="ab-recs"' in before_refresh
       and 'onclick="abRecsRefresh(true)">Refresh</button>' in before_refresh)
@@ -411,7 +411,7 @@ check("wishlist: one chip per state", all(f'class="ab-disc-pill ab-wl-{s}"' in w
 check("wishlist: Retry only on not found / error", wl_page.count('onclick="abRetry(this)">Retry</button>') == 2)
 check("wishlist: notes escaped", 'failed &lt;"boom"&gt;' in wl_page and '<"boom">' not in wl_page)
 check("wishlist: last checked shown", "never checked" in wl_page and "checked just now" in wl_page)
-check("wishlist: tab present with MAM_ID set", 'href="/discover/wishlist"' in get("/discover"))
+check("wishlist: rail item present with MAM_ID set", 'href="/wishlist"' in get("/discover"))
 check("wishlist: no unexpanded {placeholders}",
       not re.search(r"\{(version|styles|discover_script|discover_item|series_item|disc_tabs|disc_body)\}", wl_page))
 check("wishlist: no external URLs", "http://" not in wl_page and "https://" not in wl_page)

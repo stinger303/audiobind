@@ -264,7 +264,7 @@ class TestForYouPage(RecsCase):
         self.refresh(Catalog({("author", "Lee Child"): [prod("B0RUNNING1", "Running Blind", ["Lee Child"])],
                               ("narrator", "Dick Hill"): []}))
         html = self.render()
-        self.assertIn('class="chip on" href="/discover/for-you" aria-current="page">For you</a>', html)
+        self.assertNotIn(">For you</a>", html)
         self.assertIn("<h3>More by authors you own</h3>", html)
         self.assertIn("<h4>Lee Child<span>you own 2</span></h4>", html)
         self.assertIn("abWant(this,'for_you')\">Get this</button>", html)

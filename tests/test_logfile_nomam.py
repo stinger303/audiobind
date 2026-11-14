@@ -117,7 +117,7 @@ class TestNoMam(unittest.TestCase):
         with mock.patch.object(CONFIG, "mam_id", "x"), mock.patch.object(CONFIG, "qbit_user", "u"), \
                 mock.patch.object(CONFIG, "qbit_pass", "p"):
             self.assertTrue(watcher.configured())
-            self.assertIn('href="/discover/wishlist"', web.render_discover(self.state, "search"))
+            self.assertIn('href="/wishlist"', web.render_discover(self.state, "search"))
             self.assertIn('id="ab-rail-wanted"', web.render(self.state))
             self.assertIn("abWant(", web._disc_row(ITEM, "search"))
             self.assertIn("abSeriesWant(", web._series_row(SROW, "1"))

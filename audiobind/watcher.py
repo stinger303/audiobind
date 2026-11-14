@@ -95,32 +95,38 @@ def make_qbit() -> qbit.QbitClient:
 
 # ---------------------------------------------------------------------------- library match
 def resolve_library(state) -> list[str]:
-    """Every wishlist row whose book is now in the library becomes ``in_library``: a converted
-    (or already-published) book with the same ASIN, or the same title and first author after
-    normalisation. No network, idempotent; returns the ASINs it moved."""
+    """Every wishlist row whose book is now in the library is taken off the wishlist (a want-list
+    holds nothing you already have): a converted (or already-published) book with the same ASIN,
+    or the same title and first author after normalisation. Rows that do not match are never
+    touched (wanted / not_found / error still need attention). No network, idempotent; returns
+    the ASINs it removed."""
     from .discover import LibraryIndex  # discover pulls in the catalog; only needed here
 
-    pending = [r for r in state.wishlist_all() if r["status"] != WISHLIST_IN_LIBRARY]
+    moved = []
+    pending = []
+    for row in state.wishlist_all():
+        if row["status"] == WISHLIST_IN_LIBRARY:  # left over from before 0.18.0-dev10
+            if state.wishlist_remove(row["asin"]):
+                moved.append(row["asin"])
+                log.info("wishlist: %s is in the library - removed from the wishlist", row["title"])
+        else:
+            pending.append(row)
     if not pending:
-        return []
+        return moved
     units = [
         u for u in state.series_rows()
         if u.get("status") == "converted" or (u.get("status") == "ready" and u.get("output"))
     ]
     if not units:
-        return []
+        return moved
     index = LibraryIndex(units, set())
-    moved = []
     for row in pending:
         owner = index.owner({"asin": row["asin"], "title": row["title"], "authors": row["authors"]})
         if not owner:
             continue
-        how = "same ASIN" if owner.get("asin") == row["asin"] or owner.get("asin_override") == row["asin"] \
-            else "same title and author"
-        note = f"in your library since {_stamp()} ({how})"
-        if state.wishlist_set_status(row["asin"], WISHLIST_IN_LIBRARY, note=note):
+        if state.wishlist_remove(row["asin"]):
             moved.append(row["asin"])
-            log.info("wishlist: %s (%s) is in the library now", row["asin"], row["title"])
+            log.info("wishlist: %s is in the library - removed from the wishlist", row["title"])
     return moved
 
 
