@@ -4,7 +4,8 @@ Three calls, all POSTs to the WebUI API: ``/api/v2/auth/login``, ``/api/v2/torre
 and ``/api/v2/auth/logout``. Quirks of the 5.x build this is written against:
 
 * login answers 204 with an EMPTY body on success (older builds: 200 "Ok."); the proof is
-  the ``SID`` cookie in the jar, so that is what is checked;
+  the session cookie in the jar, so that is what is checked. Older builds name it ``SID``;
+  5.x names it after the WebUI port (``QBT_SID_8083``), so either is accepted;
 * every POST needs a ``Referer`` matching the WebUI origin, or CSRF protection refuses it;
 * ``paused`` was renamed ``stopped`` in 5.0 - both are sent as false.
 
@@ -128,7 +129,11 @@ class QbitClient:
             raise QbitError(f"qBittorrent at {self.url} could not be reached ({type(exc).__name__})") from None
 
     def _has_sid(self) -> bool:
-        return any(cookie.name == "SID" and cookie.value for cookie in self.jar)
+        """A non-empty session cookie: ``SID`` (older builds) or ``QBT_SID_<port>`` (5.x)."""
+        return any(
+            (cookie.name == "SID" or cookie.name.startswith("QBT_SID_")) and cookie.value
+            for cookie in self.jar
+        )
 
     def login(self) -> None:
         if not self._username or not self._password:

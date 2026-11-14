@@ -5,6 +5,18 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev6] - 2026-11-14
+
+### Fixed
+- **A successful qBittorrent 5.x login is no longer reported as a failure.** 5.x answers 204 and
+  names its session cookie after the WebUI port (`QBT_SID_8083`), not `SID`, so the check failed
+  and the watcher refused to download. Either name is now accepted (a non-empty value is still
+  required; no cookie or `Fails.` is still a failure).
+- **`DRY_RUN=true` now always starts dry.** The saved switch used to override it, so a container
+  started with `DRY_RUN=true` could still run a live cycle. The environment is now a floor: with
+  `DRY_RUN=true` the watcher starts dry whatever was saved (the UI switch can turn it off
+  afterwards, and that choice persists). One startup line says which source won.
+
 ## [0.18.0-dev5] - 2026-11-14
 
 ### Added
