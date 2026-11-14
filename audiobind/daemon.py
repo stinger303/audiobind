@@ -8,6 +8,7 @@ import time
 
 from . import ingest, web
 from . import series as series_mod
+from . import watcher as watcher_mod
 from .config import CONFIG, effective_val, set_effective
 from .control import CONTROL
 from .pipeline import process_unit
@@ -93,7 +94,17 @@ def scan_once(state: State, force: bool = False) -> dict:
     state.finish_run(run_id, seen, converted, held, failed)
     state.heartbeat()
     log.info("scan done: %d new, %d converted, %d held, %d failed", seen, converted, held, failed)
+    resolve_wishlist(state)
     return {"seen": seen, "converted": converted, "held": held, "failed": failed}
+
+
+def resolve_wishlist(state: State) -> None:
+    """Wishlist rows whose book is now converted become "in_library" (local only, idempotent;
+    runs whether or not the MAM watcher is on - a book can arrive by a manual bookmark too)."""
+    try:
+        watcher_mod.resolve_library(state)
+    except Exception:  # noqa: BLE001 - the wishlist must never fail a scan
+        log.exception("wishlist: library match failed")
 
 
 def refresh_series(state: State) -> None:
@@ -125,6 +136,9 @@ def run() -> None:
     if CONFIG.web_enabled:
         web.serve(state)
         log.info("status page on http://0.0.0.0:%d", CONFIG.web_port)
+    # the wishlist watcher: starts its own thread only when MAM_ID is set and qBittorrent
+    # credentials exist; otherwise one log line and nothing else (no thread, no network)
+    watcher_mod.WATCHER.start(state)
 
     set_effective(state)
     while True:
