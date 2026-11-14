@@ -345,7 +345,7 @@ stack, so use one, two or all three:
 
 1. **Share a VPN container's network namespace** (recommended).
 2. **Send MAM through an HTTP proxy** (`MAM_PROXY`).
-3. **Arm the tripwire** (`MAM_HOME_WAN_IP`): a check that refuses to talk to MAM from your home IP.
+3. **Arm the tripwire** (`MAM_HOME_WAN_IP` and/or `MAM_EXPECTED_EGRESS_IP`): a check that refuses to talk to MAM from your home IP, or from anywhere but the VPN address you name.
 
 Audiobind also sends **no identifying `User-Agent`** to MAM: it never announces its name or
 version. The request carries only your session cookie and what the endpoint needs. If you
@@ -437,9 +437,18 @@ direct connection.
 client. Most VPN containers offer an HTTP proxy too, but the namespace approach above is
 preferred: it covers DNS and has no "proxy forgot to be used" failure mode.
 
-#### 3. Arm the tripwire (`MAM_HOME_WAN_IP`)
+#### 3. Arm the tripwire (`MAM_HOME_WAN_IP`, `MAM_EXPECTED_EGRESS_IP`)
 
-Set `MAM_HOME_WAN_IP` to your home connection's public IP address (what your ISP gave you;
+There are two checks, and you can use either or both:
+
+- **"Never my home IP"** (a denylist, `MAM_HOME_WAN_IP`): refuses to run when MAM would see your home address.
+- **"Only this IP"** (an allowlist, `MAM_EXPECTED_EGRESS_IP`): refuses to run unless MAM would see exactly the address you name, normally your VPN's exit IP.
+
+The allowlist is the stronger one: the denylist only catches the one address you listed, while the allowlist also catches a VPN that reconnected on a different exit address, a proxy that changed, or any other surprise. A MAM session is tied to one IP, so pinning the address turns a silent session break into a loud refusal. The allowlist can be set as the environment variable or in **Settings > Watcher** ("Only reach MAM from one IP"); the setting takes effect on the next cycle, with no restart, and leaving it empty skips the check.
+
+Both are optional. With neither set, Audiobind makes no lookup at all. If both are set, a home-IP match is reported with the home reason first; any other address that is not the expected one is reported as "MAM would see X, but this installation only allows Y".
+
+To arm the denylist, set `MAM_HOME_WAN_IP` to your home connection's public IP address (what your ISP gave you;
 search "what is my IP" from a device on your LAN):
 
 ```bash
@@ -451,16 +460,16 @@ At the start of every watcher cycle, before anything is sent to MAM, Audiobind a
 through `MAM_PROXY` if you set one. That is one small HTTPS request per cycle, with no cookie
 and nothing about you in it.
 
-- Same as your home IP: the cycle is **refused**, nothing is sent to MAM, and Settings >
+- Same as your home IP, or (when `MAM_EXPECTED_EGRESS_IP` is set) not the expected address: the cycle is **refused**, nothing is sent to MAM, and Settings >
   Watcher says so in red.
-- Different (the VPN's address): the cycle runs and the log says `MAM egress: <ip>`.
+- Different from the home IP, and equal to the expected one when that is set (the VPN's address): the cycle runs and the log says `MAM egress: <ip>`.
 - Cannot be checked (both lookups fail): treated like a refusal. It **fails closed**, because
   "I could not tell" is not "it is safe".
 
 It is the belt-and-braces check for the day a container gets recreated without the VPN, or an
 update drops a setting. Settings > Watcher shows what MAM sees, when it was last checked, and
 whether the guard is armed. The same values are in `GET /api/watcher` (`egress_ip`,
-`egress_checked_at`, `egress_guard`, `egress_reason`).
+`egress_checked_at`, `egress_guard`, `egress_reason`, `egress_home_ip`, `egress_expected`).
 
 ### CLI
 
@@ -501,6 +510,7 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `MAM_USER_AGENT` | *(unset)* | `User-Agent` sent to MAM. Unset = none is set (Audiobind never announces its name or version); a value is sent verbatim |
 | `MAM_PROXY` | *(unset)* | `http://host:port` or `https://host:port` proxy for every MAM request. Unset = direct. Fail-closed, never falls back to direct; a malformed value stops startup. See [Running MAM through a VPN](#running-mam-through-a-vpn) |
 | `MAM_HOME_WAN_IP` | *(unset)* | Your home public IP. When set, each watcher cycle first checks the IP MAM would see (one HTTPS request to `ipinfo.io`) and makes no MAM request if it equals this one, or cannot be checked |
+| `MAM_EXPECTED_EGRESS_IP` | *(empty = off)* | Optional. The one public IP MAM may see, normally your VPN's exit address. When set, each watcher cycle first checks the IP MAM would see and makes no MAM request unless it equals this, or if it cannot be checked. A MAM session is tied to one IP, so pinning it turns a silent session break into a loud refusal. Also editable in Settings > Watcher (no restart); a value that is not an IPv4/IPv6 address stops startup |
 | `WATCH_INTERVAL_MIN` | `60` | Minutes between watcher cycles (10-1440) |
 | `WATCH_MAX_PER_CYCLE` | `5` | Wishlist books one watcher cycle searches at most (1-20) |
 | `QBIT_URL` | `http://localhost:8083` | qBittorrent WebUI the watcher hands torrents to |
