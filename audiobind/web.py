@@ -1277,7 +1277,7 @@ PAGE = """<!doctype html>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
-    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{ingest_line}{signout}
   </div>
 </aside>
 
@@ -2838,7 +2838,7 @@ def _series_row(entry: dict, seq_label: str, actions: bool = True, wanted: froze
         buttons = ""
     else:
         pill = '<span class="ab-series-pill">Not in your library</span>'
-        if not actions:
+        if not actions or not watcher_mod.configured():
             want = ""
         elif asin in wanted:
             want = '<span class="ab-series-pill ab-series-wanted">On your wishlist</span>'
@@ -2874,7 +2874,7 @@ def _series_want_bar(view: dict, wanted: frozenset | set) -> str:
     open_ = [m for m in missing if m.get("asin") not in wanted]
     owned, total = view["have"], view["total"]
     source = f"You own {owned} of {total} &#183; {_series_source(view)}"
-    if not missing:
+    if not missing or not watcher_mod.configured():
         action = ""
     elif not open_:
         action = f'<span class="ab-series-pill ab-series-wanted">All {len(missing)} on your wishlist</span>'
@@ -2999,10 +2999,14 @@ def render_series(state) -> str:
     shelf = _series_shelf(state)
     views = shelf["series"]
     if views:
+        want_help = (
+            "<b>Want</b> puts a missing book on your wishlist "
+            "(<b>Want all missing</b> does the whole list in one click); nothing is downloaded. "
+            if watcher_mod.configured() else ""
+        )
         intro = (
             '<p class="ab-series-intro">Every series with two or more of your books, checked '
-            "against the Audible series order. <b>Want</b> puts a missing book on your wishlist "
-            "(<b>Want all missing</b> does the whole list in one click); nothing is downloaded. "
+            "against the Audible series order. " + want_help +
             "<b>I have this</b> marks a book you own without a rip, so it stops counting as "
             "missing. A series total only ever comes from the Audible catalog &#8212; when it "
             "has no listing, the total says unknown.</p>"
@@ -3235,16 +3239,21 @@ def _discover_rail_item(state, active: bool = False) -> str:
     except Exception:  # noqa: BLE001 - the rail must never blank a page
         wanted = 0
     hidden = "" if wanted else " hidden"
+    badge = (
+        f'\n      <span class="ab-count" id="ab-rail-wanted" title="books on your wishlist"{hidden}>{int(wanted)}</span>'
+        if watcher_mod.configured() else ""
+    )
     return (
         f'<a class="{classes}" href="/discover"{current}>\n'
-        f'      <span class="ab-glyph">&#8981;</span> Discover\n'
-        f'      <span class="ab-count" id="ab-rail-wanted" title="books on your wishlist"{hidden}>{int(wanted)}</span></a>'
+        f'      <span class="ab-glyph">&#8981;</span> Discover{badge}</a>'
     )
 
 
 def _discover_tabs(active: str, wanted: int) -> str:
     out = []
     for key, href, label in DISCOVER_TABS:
+        if key == "wishlist" and not watcher_mod.configured():
+            continue  # a MAM-only surface: nothing consumes the wishlist without the watcher
         on = key == active
         count = f' <span class="n">{int(wanted)}</span>' if key == "wishlist" else ""
         klass = "chip on" if on else "chip"
@@ -3281,13 +3290,15 @@ def _disc_row(item: dict, origin: str, seq_label: str = "") -> str:
     seq_html = f'<span class="ab-disc-seq">{seq_label}</span>' if seq_label else ""
     if item.get("in_library"):
         state_html = '<span class="ab-disc-pill ab-disc-have" title="A book in your library is this one (same ASIN, or same title and author).">In your library</span>'
-    elif item.get("wishlisted"):
+    elif item.get("wishlisted") and watcher_mod.configured():
         state_html = '<span class="ab-disc-pill ab-disc-want">On your wishlist</span>'
-    else:
+    elif watcher_mod.configured():
         state_html = (
             f'<button class="btn primary" title="Put this book on your wishlist. Nothing is downloaded." '
             f"onclick=\"abWant(this,'{origin}')\">Get this</button>"
         )
+    else:
+        state_html = ""
     sub = f'<div class="ab-disc-a">{" &#183; ".join(byline)}</div>' if byline else ""
     return (
         f'<div class="ab-disc-row" data-asin="{_attr(asin)}">{seq_html}{img}'
@@ -3299,11 +3310,17 @@ def _disc_row(item: dict, origin: str, seq_label: str = "") -> str:
 
 def _discover_search_body(result: dict) -> str:
     title, author = result.get("title") or "", result.get("author") or ""
-    intro = (
-        '<p class="ab-disc-intro">Search the Audible catalog by title, with an author to narrow it. '
-        "<b>Get this</b> puts a book on your wishlist &#8212; nothing is downloaded, and books "
-        "already in your library are marked.</p>"
-    )
+    if watcher_mod.configured():
+        intro = (
+            '<p class="ab-disc-intro">Search the Audible catalog by title, with an author to narrow it. '
+            "<b>Get this</b> puts a book on your wishlist &#8212; nothing is downloaded, and books "
+            "already in your library are marked.</p>"
+        )
+    else:
+        intro = (
+            '<p class="ab-disc-intro">Search the Audible catalog by title, with an author to narrow it. '
+            "Books already in your library are marked.</p>"
+        )
     form = (
         '<form class="ab-disc-form" method="get" action="/discover" role="search">'
         f'<input class="ab-search" name="title" type="search" maxlength="200" autocomplete="off" '
@@ -3344,12 +3361,18 @@ def _discover_recs_body(state) -> str:
     """For you: stored suggestions grouped by why they are suggested. Cache only."""
     recs = discover_mod.recommendations(state)
     fetched = recs.get("fetched_at")
-    intro = (
-        '<p class="ab-disc-intro">Suggestions from what you already own: more by your top authors, '
-        "books read by your top narrators, and your top genres. <b>Get this</b> puts one on your "
-        "wishlist &#8212; nothing is ever added on its own, and books you own or already want "
-        "are left out.</p>"
-    )
+    if watcher_mod.configured():
+        intro = (
+            '<p class="ab-disc-intro">Suggestions from what you already own: more by your top authors, '
+            "books read by your top narrators, and your top genres. <b>Get this</b> puts one on your "
+            "wishlist &#8212; nothing is ever added on its own, and books you own or already want "
+            "are left out.</p>"
+        )
+    else:
+        intro = (
+            '<p class="ab-disc-intro">Suggestions from what you already own: more by your top authors, '
+            "books read by your top narrators, and your top genres. Books you own are left out.</p>"
+        )
     if fetched:
         n = int(recs.get("calls") or 0)
         status = (
@@ -3550,8 +3573,17 @@ def render_watcher_section(state) -> str:
     s = watcher_mod.WATCHER.status(state)
     warn = ""
     if not s["configured"]:
-        state_html = "Off &#8212; MAM_ID is not set"
-    elif not s["enabled"]:
+        return (
+            '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
+            '<h2 class="ab-acct-head" id="ab-watch-head">MAM acquisition (optional)</h2>'
+            '<div class="ab-acct-who">Audiobind can optionally look for books on your wishlist at '
+            "MyAnonamouse (MAM) and hand them to qBittorrent. It is off, and you do not need it: "
+            "Audiobind converts whatever lands in the ingest folder, from any downloader or a plain "
+            "copy. To turn MAM acquisition on, set the environment variables <code>MAM_ID</code>, "
+            "<code>QBIT_URL</code>, <code>QBIT_USER</code> and <code>QBIT_PASS</code> and restart "
+            "the container.</div></section>"
+        )
+    if not s["enabled"]:
         state_html = '<span class="warn">Disabled</span>'
         warn = (
             '<div class="ab-hintbox ab-watch-warn" role="alert"><b>The watcher is disabled.</b> '
@@ -3717,6 +3749,8 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
     counts = state.counts()
     rc = rail_counts(state, counts)
     wanted = state.wishlist_count()
+    if tab == "wishlist" and not watcher_mod.configured():
+        tab = "search"  # no wishlist surface without MAM: land on Search
     if tab == "wishlist":
         body = _discover_wishlist_body(state)
     elif tab == "for_you":
@@ -3969,6 +4003,17 @@ def in_flight_units() -> set[str]:
     if CONTROL.current_unit:
         units.add(CONTROL.current_unit)
     return units
+
+
+def _ingest_line() -> str:
+    """Rail footer: the ingest folder is the universal way in, MAM configured or not."""
+    root = ingest_mod.configured_dir()
+    where = f' <span title="{_attr(root)}">{_html(root)}</span>' if root else ""
+    state = "" if root and ingest_mod.ingest_root() is not None else " (set INGEST_DIR to use it)"
+    return (
+        f'<br><b>ingest</b> &larr;{where}{state}<br><small>Files dropped in the ingest folder are '
+        "converted whether or not MAM is configured.</small>"
+    )
 
 
 def render(state, status: str = "", query: str = "") -> str:
@@ -4510,6 +4555,7 @@ def render(state, status: str = "", query: str = "") -> str:
         output=CONFIG.host_output or str(CONFIG.output_root),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         dry_text=dry_header,
+        ingest_line=_ingest_line(),
         health_stale=health_stale,
         health_text=health_text,
         health_scan=_fmt_age(heartbeat_age),

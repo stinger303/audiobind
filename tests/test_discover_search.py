@@ -146,6 +146,12 @@ class TestSearchMarks(StateCase):
 
 
 class TestSearchPage(StateCase):
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p.start()
+        self.addCleanup(p.stop)
+
     def render(self, **kw):
         with mock.patch.object(catalog, "query", return_value=list(RESULTS)) as query:
             html = web.render_discover(self.state, "search", **kw)
@@ -215,6 +221,12 @@ class TestSearchPage(StateCase):
 
 
 class TestWishlistTab(StateCase):
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_lists_rows_with_remove(self):
         self.state.wishlist_add({"asin": "B000000001", "title": "Wanted <One>", "authors": ["A. Writer"],
                                  "origin": "search", "hours": 7.5, "series": "Saga", "sequence": "2"})
@@ -249,6 +261,9 @@ class TestAssets(unittest.TestCase):
 class TestSearchEndpoints(LiveServerCase):
     def setUp(self):
         super().setUp()
+        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p.start()
+        self.addCleanup(p.stop)
         self.schedule = mock.patch.object(series.REFRESHER, "schedule", return_value=False)
         self.schedule.start()
         self.query = mock.patch.object(catalog, "query", return_value=list(RESULTS))

@@ -10,6 +10,7 @@ from unittest import mock
 
 from audiobind import auth as auth_mod
 from audiobind import discover, series, web
+from audiobind.config import CONFIG
 
 try:
     from test_series import FIVE, StateCase, book, entry, store
@@ -110,6 +111,9 @@ class TestUnknownTotals(StateCase):
 class TestWantButtons(StateCase):
     def setUp(self):
         super().setUp()
+        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p.start()
+        self.addCleanup(p.stop)
         self.owned(1, 3)
         store(self.state, "Jack Reacher", "Lee Child", FIVE)
 
@@ -200,6 +204,9 @@ class TestWantMissing(StateCase):
 class TestWantEndpoints(LiveServerCase):
     def setUp(self):
         super().setUp()
+        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p.start()
+        self.addCleanup(p.stop)
         self.schedule = mock.patch.object(series.REFRESHER, "schedule", return_value=False)
         self.schedule.start()
         for n in (1, 3):

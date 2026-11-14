@@ -475,6 +475,9 @@ class TestExpectedConfig(unittest.TestCase):
 class TestExpectedSetting(LiveServerCase):
     def setUp(self):
         super().setUp()
+        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p.start()
+        self.addCleanup(p.stop)
         p = mock.patch.object(CONFIG, "mam_expected_egress_ip", "")
         p.start()
         self.addCleanup(p.stop)

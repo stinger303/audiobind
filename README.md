@@ -299,7 +299,24 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
      -d '{"action":"refresh","force":true}' localhost:8080/api/discover/recommendations
 ```
 
+### Bring your own downloader
+
+Audiobind is a library fixer first. Any tool that writes **completed** audiobook files into the
+ingest folder works: qBittorrent, SABnzbd, Readarr, a manual copy, a synced folder. Mount that
+folder and point `INGEST_DIR` at it:
+
+```bash
+  -v /mnt/user/downloads/audiobooks:/ingest:ro \
+  -e INGEST_DIR=/ingest
+```
+
+The one rule: files must be complete before they land in the folder (move them in when
+finished, or use the downloader's "completed" folder), or the app may see a partial book.
+MAM acquisition (below) is optional; everything else works the same without it.
+
 ### The wishlist watcher (MyAnonamouse)
+
+Optional, and off unless `MAM_ID` is set.
 
 Off unless `MAM_ID` is set. With it set (and `QBIT_USER` / `QBIT_PASS` for the qBittorrent
 WebUI), a background thread works through the wishlist every `WATCH_INTERVAL_MIN` minutes:
@@ -495,6 +512,7 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `LIBRARY_ROOT` | `/library` | Source library (writable so Delete can fully remove a book) |
 | `OUTPUT_ROOT` | `/output` | Where finished books go |
 | `STATE_DIR` | `/config` | SQLite manifest + `audit.csv` |
+| `LOG_FILE` | `<STATE_DIR>/audiobind.log` | Rotating log file (5 MB x 3 backups) written alongside stdout, so it survives a container recreate. Set to an empty string to turn the file log off. An unwritable path logs one warning and carries on with stdout only |
 | `AUTO_CONVERT` | `high` | `high`, `medium` or `off` |
 | `SCAN_INTERVAL_MIN` | `30` | Poll interval |
 | `AUDIO_BITRATE` | `128k` | Minimum AAC bitrate. A source that is already richer keeps its own bitrate (256k mp3 stays 256k); everything is capped at 320k |

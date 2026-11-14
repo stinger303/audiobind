@@ -5,6 +5,22 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev7] - 2026-11-14
+
+### Added
+- **A log file that survives a container recreate.** `LOG_FILE` (default
+  `<STATE_DIR>/audiobind.log`; empty string = off) gets a rotating file log, 5 MB x 3 backups,
+  UTF-8, same format and level as the console. stdout is unchanged. A file that cannot be opened
+  costs one console warning and nothing else. Every CLI subcommand goes through the same setup.
+- README: "Bring your own downloader".
+
+### Changed
+- **A non-MAM install no longer shows MAM surfaces.** Without `MAM_ID`: no Wishlist tab (and
+  `/discover/wishlist` lands on Search), no wishlist count in the rail, no Get this / Want /
+  Want all missing buttons (Discover and Series), and Settings > Watcher is one short block
+  explaining that MAM is optional and which variables turn it on. The rail says that files in
+  the ingest folder are converted whether or not MAM is configured.
+
 ## [0.18.0-dev6] - 2026-11-14
 
 ### Fixed
