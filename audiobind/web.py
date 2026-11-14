@@ -1442,6 +1442,8 @@ body{{align-items:center;justify-content:center;overflow:auto}}
 .ab-login label{{display:block;color:var(--ab-text3);font-size:11.5px;margin-bottom:6px}}
 .ab-login .ab-in{{width:100%;margin-bottom:14px}}
 .ab-login .ab-save{{width:100%;justify-content:center}}
+.ab-login .ab-remember{{display:flex;align-items:center;gap:8px;margin-bottom:2px;cursor:pointer}}
+.ab-login .ab-remember-hint{{color:var(--ab-text3);font-size:11px;margin:0 0 14px 22px}}
 .ab-login .ab-err{{color:var(--ab-red);font-size:12.5px;margin:-4px 0 12px}}
 </style></head><body>
 <main class="ab-login">
@@ -1455,6 +1457,9 @@ body{{align-items:center;justify-content:center;overflow:auto}}
     <label for="ab-password">Password</label>
     <input class="ab-in" id="ab-password" name="password" type="password"
            autocomplete="current-password" required>
+    <label class="ab-remember"><input type="checkbox" name="remember" value="1">
+      Keep me signed in for 30 days</label>
+    <div class="ab-remember-hint">For this browser only. Leave it off on a shared computer.</div>
     {login_error}
     <button class="ab-save" type="submit">Sign in</button>
   </form>
@@ -1500,7 +1505,9 @@ body{{align-items:center;justify-content:center;overflow:auto}}
 </body></html>"""
 
 
-def render_login(error: str = "", username: str = "", legacy: bool = False) -> str:
+def render_login(error: str = "", username: str = "", legacy: bool = False, remembered: str = "") -> str:
+    """``username`` (e.g. after a failed attempt) wins over ``remembered`` (the ab_user cookie)."""
+    username = username or remembered
     err = f'<div class="ab-err" role="alert">{_html(error)}</div>' if error else ""
     hint = (
         "Sign in with any username and this server's access token (AUTH_TOKEN) as the password."
@@ -4835,7 +4842,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         for name, value in (headers or {}).items():
-            self.send_header(name, value)
+            for one in value if isinstance(value, list) else [value]:  # Set-Cookie may repeat
+                self.send_header(name, one)
         self.end_headers()
         self.wfile.write(body)
 
@@ -4993,7 +5001,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(code, json.dumps({"error": message}).encode(), "application/json")
             return
         try:
-            fields, wants_json = self._form_body(("username", "password", "token"))
+            fields, wants_json = self._form_body(("username", "password", "token", "remember"))
         except (ValueError, UnicodeDecodeError):
             self._send(400, b'{"error":"bad request"}', "application/json")
             return
@@ -5031,7 +5039,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         auth_mod.LIMITER.reset(ip)
         version = creds.version if creds else 0
-        cookie = {"Set-Cookie": auth_mod.session_cookie(auth_mod.SESSIONS.create(version))}
+        remember = fields.get("remember", "").strip().lower() in ("1", "on", "true", "yes")
+        ttl = auth_mod.REMEMBER_TTL if remember else auth_mod.SESSION_TTL
+        sid = auth_mod.SESSIONS.create(version, ttl=ttl)
+        cookies = [auth_mod.session_cookie(sid, ttl)]
+        if username:
+            cookies.append(auth_mod.username_cookie(username))
+        cookie = {"Set-Cookie": cookies}
         logging.getLogger("audiobind").info("signed in from %s", ip)
         if wants_json:
             self._send(200, b'{"ok":true}', "application/json", cookie)
@@ -5168,7 +5182,10 @@ class Handler(BaseHTTPRequestHandler):
             if self._setup_pending():
                 self._send(303, b"", "text/plain", {"Location": "/setup"})
             else:
-                page = render_login(legacy=not self.state.has_credentials())
+                page = render_login(
+                    legacy=not self.state.has_credentials(),
+                    remembered=auth_mod.remembered_username(self.headers.get("Cookie")),
+                )
                 self._send(200, page.encode(), "text/html; charset=utf-8")
             return
         if path.rstrip("/") == "/setup":
@@ -6001,6 +6018,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(state):
     Handler.state = state
+    auth_mod.SESSIONS.attach(state)
     warn_default_hosts()
     server = ThreadingHTTPServer(("0.0.0.0", CONFIG.web_port), Handler)
     if CONFIG.web_port == 0:

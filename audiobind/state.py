@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS credentials (
     updated_at    REAL NOT NULL,
     version       INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS sessions (
+    sid_hash   TEXT PRIMARY KEY,
+    expires_at REAL NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 0,
+    created_at REAL NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS wishlist (
     asin        TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
@@ -1019,6 +1025,42 @@ class State:
             if cursor.rowcount == 0:
                 return 0
             return int(self.connection.execute("SELECT version FROM credentials WHERE id = 1").fetchone()[0])
+
+    # ------------------------------------------------- sign-in sessions
+    # Only a SHA-256 of the session id is stored, never the id (the cookie value) itself.
+    def load_sessions(self, now: float) -> list[tuple[str, float, int]]:
+        """Prune expired rows, then return (sid_hash, expires_at, version), oldest first."""
+        with self._lock:
+            self.connection.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
+            rows = self.connection.execute(
+                "SELECT sid_hash, expires_at, version FROM sessions ORDER BY created_at, expires_at"
+            ).fetchall()
+        return [(r["sid_hash"], float(r["expires_at"]), int(r["version"])) for r in rows]
+
+    def put_session(self, sid_hash: str, expires_at: float, version: int, now: float) -> None:
+        with self._lock:
+            self.connection.execute(
+                "INSERT OR REPLACE INTO sessions (sid_hash, expires_at, version, created_at) VALUES (?,?,?,?)",
+                (sid_hash, float(expires_at), int(version), float(now)),
+            )
+
+    def delete_sessions(self, sid_hashes) -> None:
+        with self._lock, self._txn():
+            for h in sid_hashes:
+                self.connection.execute("DELETE FROM sessions WHERE sid_hash = ?", (h,))
+
+    def keep_only_session(self, sid_hash: str, version: int) -> None:
+        """A credential change: every row goes except ``sid_hash``, which moves to ``version``
+        (an empty hash keeps nothing)."""
+        with self._lock, self._txn():
+            self.connection.execute("DELETE FROM sessions WHERE sid_hash != ?", (sid_hash,))
+            self.connection.execute(
+                "UPDATE sessions SET version = ? WHERE sid_hash = ?", (int(version), sid_hash)
+            )
+
+    def clear_sessions(self) -> None:
+        with self._lock:
+            self.connection.execute("DELETE FROM sessions")
 
     def heartbeat(self) -> None:
         self.set_meta("heartbeat", time.time())

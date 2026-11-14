@@ -5,6 +5,23 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev9] - 2026-11-14
+
+### Added
+- **"Keep me signed in for 30 days"** on the sign-in form (unticked by default, for that
+  browser only). Ticked, the session and its cookie `Max-Age` are 30 days (2592000); unticked is
+  the usual 7 days. The lifetime is per session (`Sessions.create(version, ttl=...)`).
+- **Remembered username:** a successful sign-in sets an `ab_user` cookie (`Path=/`, 30 days,
+  `HttpOnly`, `SameSite=Strict`) that pre-fills the username field. It never authenticates
+  anything, and signing out leaves it.
+
+### Changed
+- **Sessions survive a restart.** They are now kept in a `sessions` table in the state DB
+  (a SHA-256 of the session id, its expiry and the credential version - never the id itself),
+  loaded at startup, with expired rows pruned and the 256-session cap kept (oldest dropped).
+  A password or username change still ends every other session, and a session from before a
+  change stays invalid.
+
 ## [0.18.0-dev8] - 2026-11-14
 
 ### Changed

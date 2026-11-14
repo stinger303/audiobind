@@ -79,6 +79,7 @@ class LiveServerCase(unittest.TestCase):
         self.server.shutdown()
         self.server.server_close()
         web.Handler.state = None
+        auth_mod.SESSIONS.detach()
         CONFIG.library_root, CONFIG.output_root, CONFIG.web_port = self.saved
         self.state.close()
         self.tmp.cleanup()

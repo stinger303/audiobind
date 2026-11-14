@@ -2,8 +2,8 @@
 legacy shared AUTH_TOKEN.
 
 The account lives in the state DB as a salted PBKDF2-SHA256 hash - never the password.
-Sessions live in memory: a restart signs everyone out, which is fine for a single-user LAN
-app and means no session secret ever touches the disk. Each session is stamped with the
+Sessions are saved in the state DB (as a SHA-256 of the id, never the id itself), so a restart
+or redeploy keeps people signed in. Each session is stamped with the
 credential version it was created under; changing (or resetting) the credentials bumps
 that version, which ends every other session - even after a reset from another process.
 """
@@ -12,14 +12,24 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
+import sqlite3
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from urllib.parse import quote, unquote
+
+log = logging.getLogger("audiobind")
 
 COOKIE_NAME = "audiobind_session"
 SESSION_TTL = 7 * 24 * 3600
+#: "Keep me signed in": a per-session lifetime, chosen at the login form
+REMEMBER_TTL = 30 * 24 * 3600
+#: the remembered-username cookie. Prefills the login field; never an authenticator
+USER_COOKIE_NAME = "ab_user"
+USER_COOKIE_TTL = 30 * 24 * 3600
 #: failed logins (or wrong Bearer tokens) allowed per source IP inside FAIL_WINDOW
 FAIL_LIMIT = 5
 FAIL_WINDOW = 10 * 60
@@ -167,41 +177,83 @@ class Sessions:
 
     A session is only valid under the credential version it was created with: bumping the
     version (a password or username change, or a CLI reset) ends it.
+
+    With a ``store`` attached (the State DB) sessions survive a restart. Only a SHA-256 of
+    each id is kept - in memory and on disk - so a copy of the database holds nothing that
+    can be replayed as a cookie.
     """
 
     def __init__(self, ttl: float = SESSION_TTL, clock: Callable[[], float] = time.time):
         self.ttl = ttl
         self.clock = clock
         self._lock = threading.Lock()
-        self._expiry: dict[str, float] = {}
+        self._expiry: dict[str, float] = {}  # insertion order = age, oldest first
         self._version: dict[str, int] = {}
+        self._store = None
 
-    def create(self, version: int = 0) -> str:
-        sid = secrets.token_urlsafe(32)
+    @staticmethod
+    def _key(sid: str) -> str:
+        return hashlib.sha256(sid.encode("utf-8", "replace")).hexdigest()
+
+    def attach(self, store) -> None:
+        """Back the sessions with ``store`` and load what it holds (expired rows are pruned)."""
         now = self.clock()
         with self._lock:
+            self._store = store
+            self._expiry.clear()
+            self._version.clear()
+            try:
+                rows = store.load_sessions(now)
+            except sqlite3.Error:
+                log.warning("could not load saved sessions", exc_info=True)
+                rows = []
+            for key, expiry, version in rows[-MAX_SESSIONS:]:
+                self._expiry[key] = expiry
+                self._version[key] = version
+
+    def detach(self) -> None:
+        """Stop saving (the store is going away); sessions stay in memory."""
+        with self._lock:
+            self._store = None
+
+    def _persist(self, action: Callable[[], None]) -> None:
+        if self._store is None:
+            return
+        try:
+            action()
+        except sqlite3.Error:
+            log.warning("could not save sessions", exc_info=True)
+
+    def create(self, version: int = 0, ttl: float | None = None) -> str:
+        sid = secrets.token_urlsafe(32)
+        key = self._key(sid)
+        now = self.clock()
+        lifetime = self.ttl if ttl is None else float(ttl)
+        with self._lock:
             self._prune(now)
-            if len(self._expiry) >= MAX_SESSIONS:  # drop the oldest
-                oldest = min(self._expiry, key=self._expiry.__getitem__)
-                self._drop(oldest)
-            self._expiry[sid] = now + self.ttl
-            self._version[sid] = int(version)
+            while len(self._expiry) >= MAX_SESSIONS:  # drop the oldest
+                self._drop(next(iter(self._expiry)))
+            self._expiry[key] = now + lifetime
+            self._version[key] = int(version)
+            if self._store is not None:
+                self._persist(lambda: self._store.put_session(key, now + lifetime, int(version), now))
         return sid
 
     def valid(self, sid: str, version: int | None = None) -> bool:
         """True for a live session; with ``version``, only one created under that version."""
         if not sid:
             return False
+        key = self._key(sid)
         now = self.clock()
         with self._lock:
-            expiry = self._expiry.get(sid)
+            expiry = self._expiry.get(key)
             if expiry is None:
                 return False
             if expiry <= now:
-                self._drop(sid)
+                self._prune(now)
                 return False
-            if version is not None and self._version.get(sid, 0) != int(version):
-                self._drop(sid)  # from before a credential change: gone for good
+            if version is not None and self._version.get(key, 0) != int(version):
+                self._drop(key)  # from before a credential change: gone for good
                 return False
             return True
 
@@ -210,32 +262,46 @@ class Sessions:
         the change), which carries on under the new version."""
         now = self.clock()
         with self._lock:
-            kept = keep if keep and self._expiry.get(keep, 0) > now else ""
-            for sid in [s for s in self._expiry if s != kept]:
-                self._drop(sid)
+            keep_key = self._key(keep) if keep else ""
+            kept = keep_key if keep_key and self._expiry.get(keep_key, 0) > now else ""
+            for key in [k for k in self._expiry if k != kept]:
+                self._expiry.pop(key, None)
+                self._version.pop(key, None)
             if kept:
                 self._version[kept] = int(version)
+            if self._store is not None:
+                self._persist(lambda: self._store.keep_only_session(kept, int(version)))
 
     def revoke(self, sid: str) -> None:
+        if not sid:
+            return
         with self._lock:
-            self._drop(sid)
+            self._drop(self._key(sid))
 
     def clear(self) -> None:
         with self._lock:
             self._expiry.clear()
             self._version.clear()
+            if self._store is not None:
+                self._persist(self._store.clear_sessions)
 
-    def _drop(self, sid: str) -> None:
-        self._expiry.pop(sid, None)
-        self._version.pop(sid, None)
+    def _drop(self, key: str) -> None:
+        self._expiry.pop(key, None)
+        self._version.pop(key, None)
+        if self._store is not None:
+            self._persist(lambda: self._store.delete_sessions([key]))
 
     def __len__(self) -> int:
         with self._lock:
             return len(self._expiry)
 
     def _prune(self, now: float) -> None:
-        for sid in [s for s, exp in self._expiry.items() if exp <= now]:
-            self._drop(sid)
+        dead = [k for k, exp in self._expiry.items() if exp <= now]
+        for key in dead:
+            self._expiry.pop(key, None)
+            self._version.pop(key, None)
+        if dead and self._store is not None:
+            self._persist(lambda: self._store.delete_sessions(dead))
 
 
 class FailLimiter:
@@ -304,9 +370,19 @@ def cookie_value(header: str | None, name: str = COOKIE_NAME) -> str:
     return ""
 
 
-def session_cookie(sid: str) -> str:
-    return f"{COOKIE_NAME}={sid}; Path=/; Max-Age={SESSION_TTL}; HttpOnly; SameSite=Strict"
+def session_cookie(sid: str, ttl: int | float = SESSION_TTL) -> str:
+    return f"{COOKIE_NAME}={sid}; Path=/; Max-Age={int(ttl)}; HttpOnly; SameSite=Strict"
 
 
 def expired_cookie() -> str:
     return f"{COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
+
+
+def username_cookie(username: str) -> str:
+    """The remembered username: only ever read back to prefill the login field."""
+    value = quote(username, safe="")
+    return f"{USER_COOKIE_NAME}={value}; Path=/; Max-Age={USER_COOKIE_TTL}; HttpOnly; SameSite=Strict"
+
+
+def remembered_username(header: str | None) -> str:
+    return unquote(cookie_value(header, USER_COOKIE_NAME))[:USERNAME_MAX]

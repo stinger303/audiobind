@@ -178,8 +178,16 @@ Then you get the status page. Books are discovered on the first scan (within `SC
 ### Signing in
 
 * **Browser:** username and password on the sign-in page. A session lasts 7 days
-  (`HttpOnly`, `SameSite=Strict` cookie). Five failed sign-ins from one IP lock that IP out
+  (`HttpOnly`, `SameSite=Strict` cookie). Tick **Keep me signed in for 30 days** to make that
+  browser's session last 30 days instead (it is unticked by default; leave it off on a shared
+  computer). Sessions are saved in the state database, so a restart or redeploy does not
+  sign you out. Only a hash of each session id is stored. Changing the password or username
+  still ends every other session. Five failed sign-ins from one IP lock that IP out
   for 10 minutes. A wrong username and a wrong password get the same answer.
+* **Remembered username:** after a successful sign-in the browser keeps a small `ab_user`
+  cookie (30 days, `HttpOnly`, `SameSite=Strict`) that only pre-fills the username box. It is
+  a convenience, never a credential: a request carrying just that cookie is still signed out.
+  Signing out keeps it.
 * **Scripts:** send the account password as a Bearer token:
   `curl -H "Authorization: Bearer $AUDIOBIND_PASSWORD" localhost:8080/api/state`. Wrong
   passwords count towards the same lockout.
