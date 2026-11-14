@@ -56,6 +56,7 @@ class TestEnvDefaultsAreLive(EnvCase):
                 "nice": 5,
                 "region": CONFIG.region,
                 "expected_egress": "",
+                "vip": "YES" if CONFIG.mam_vip else "NO",
             },
         )
 

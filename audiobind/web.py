@@ -3650,6 +3650,9 @@ def render_watcher_section(state) -> str:
         "expected_egress", "Only reach MAM from one IP", setting_effective("expected_egress"),
         is_custom(SETTING_MAP["expected_egress"]), setting_env("expected_egress"),
         EXPECTED_EGRESS_HINT, "e.g. 213.152.187.195")
+    vip_field = _setting_select(
+        "vip", "VIP member", setting_effective("vip"), setting_choices("vip"),
+        is_custom(SETTING_MAP["vip"]), setting_env("vip"), hint=VIP_HINT, titlecase=True)
     return (
         '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
         '<h2 class="ab-acct-head" id="ab-watch-head">Watcher</h2>'
@@ -3657,10 +3660,10 @@ def render_watcher_section(state) -> str:
         "match to qBittorrent; the ingest folder takes it from there. Configured with environment variables "
         "(<code>MAM_ID</code>, <code>WATCH_INTERVAL_MIN</code>, <code>WATCH_MAX_PER_CYCLE</code>, "
         "<code>QBIT_URL</code>, <code>QBIT_USER</code>, <code>QBIT_PASS</code>, <code>MAM_PROXY</code>, "
-        "<code>MAM_USER_AGENT</code>, <code>MAM_HOME_WAN_IP</code>, <code>MAM_EXPECTED_EGRESS_IP</code>); the pause switch is kept "
+        "<code>MAM_USER_AGENT</code>, <code>MAM_HOME_WAN_IP</code>, <code>MAM_EXPECTED_EGRESS_IP</code>, <code>MAM_VIP</code>); the pause switch is kept "
         "across restarts.</div>"
         f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
-        + expected_field +
+        + expected_field + vip_field +
         f'<div class="ab-acct-row">{run_btn}{toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
         "</section>"
     )
@@ -3885,12 +3888,12 @@ def _custom_mark(key: str, custom: bool, env_val) -> str:
 
 
 def _setting_select(
-    key: str, label: str, value: str, options: list[str], custom: bool, env_val, hint: str = ""
+    key: str, label: str, value: str, options: list[str], custom: bool, env_val, hint: str = "", titlecase: bool = False
 ) -> str:
     mark = _custom_mark(key, custom, env_val)
     selected = next((o for o in options if str(o).upper() == str(value).upper()), options[0])
     opt_html = "".join(
-        f'<option value="{_attr(o)}"{" selected" if o == selected else ""}>{_html(o)}</option>' for o in options
+        f'<option value="{_attr(o)}"{" selected" if o == selected else ""}>{_html(o.title() if titlecase else o)}</option>' for o in options
     )
     hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
     return (
@@ -3901,6 +3904,11 @@ def _setting_select(
         "</div>"
     )
 
+
+VIP_HINT = (
+    "MyAnonamouse VIP membership (bought with bonus points). When this is No, torrents that only "
+    "VIP members can download are skipped instead of attempted."
+)
 
 EXPECTED_EGRESS_HINT = (
     "Optional. Your VPN's exit address. If Audiobind ever sees a different address it stops before "
@@ -5625,7 +5633,7 @@ class Handler(BaseHTTPRequestHandler):
         validated = {}
 
         # selects: one of the offered choices (which include an unusual env value)
-        for key, fold in (("auto_convert", str.upper), ("audio_bitrate", str.lower), ("region", str.lower)):
+        for key, fold in (("auto_convert", str.upper), ("audio_bitrate", str.lower), ("region", str.lower), ("vip", str.upper)):
             if key not in settings:
                 continue
             choices = setting_choices(key)

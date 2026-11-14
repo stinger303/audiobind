@@ -262,14 +262,15 @@ def series_exact(row: dict, torrent: Torrent) -> bool:
     return any(sim(name, s) >= TITLE_MATCH and norm(n) == seq for s, n in torrent.series)
 
 
-def select_candidate(row: dict, torrents: list[Torrent]) -> tuple[Torrent | None, str]:
+def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False) -> tuple[Torrent | None, str]:
     """(the torrent to fetch, why) or (None, why not) for one wishlist row.
 
     A candidate must be an audio torrent you have not snatched, whose title scores at least
     TITLE_MATCH and - when the row names authors - credits one of them. Among those: files
     present first, then the exact series/sequence, then the closer title, then one that is
     already freeleech (no wedge needed), then MAM's relevance order. Nothing below the
-    threshold is ever forced.
+    threshold is ever forced. A VIP-only torrent (``vip`` field) is skipped unless ``vip`` says
+    the account has VIP membership; with ``vip`` it is an ordinary candidate.
     """
     if not torrents:
         return None, "no results"
@@ -278,6 +279,7 @@ def select_candidate(row: dict, torrents: list[Torrent]) -> tuple[Torrent | None
     ranked = []
     best_miss = (0.0, "")
     skipped_snatched = 0
+    skipped_vip = 0
     for index, torrent in enumerate(torrents):
         score = title_score(title, torrent.name)
         if score < TITLE_MATCH or not author_ok(authors, torrent.authors) or not torrent.is_audio:
@@ -287,10 +289,15 @@ def select_candidate(row: dict, torrents: list[Torrent]) -> tuple[Torrent | None
         if torrent.snatched:
             skipped_snatched += 1
             continue
+        if not vip and flag(torrent.raw.get("vip")):
+            skipped_vip += 1
+            continue
         free = not wedge_decision(torrent.raw)[0]
         key = (torrent.numfiles > 0, series_exact(row, torrent), score, free, -index)
         ranked.append((key, torrent, score))
     if not ranked:
+        if skipped_vip:
+            return None, f"only match(es) need VIP membership ({skipped_vip}) - skipped"
         if skipped_snatched:
             return None, f"only match(es) already snatched ({skipped_snatched}) - skipped"
         if best_miss[1]:
