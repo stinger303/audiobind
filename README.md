@@ -326,6 +326,12 @@ failed download or a qBittorrent refusal marks the book **error** and is never r
 own - a wedge is not refunded - so you decide with **Retry**. qBittorrent is logged into before
 anything is downloaded, so a qBittorrent that is down never costs a wedge.
 
+**VIP-only torrents.** MAM marks some torrents as downloadable only by VIP members, and the API
+cannot tell the watcher whether your account is one, so it is a setting: `MAM_VIP` (Settings >
+Watcher > **VIP member**, default **No**). With No, a VIP-only torrent is skipped and the book's
+note says "only match(es) need VIP membership"; with Yes it is an ordinary candidate. VIP-only
+torrents are also VIP freeleech, so downloading one never costs a wedge.
+
 **Dry run** applies: the watcher searches and notes what it *would* download, and downloads
 nothing. Settings > **Watcher** shows its status (last and next cycle, last error, backoff),
 **Run a cycle now** and **Pause watcher** (kept across restarts). MAM sessions are locked to
@@ -511,6 +517,7 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `MAM_PROXY` | *(unset)* | `http://host:port` or `https://host:port` proxy for every MAM request. Unset = direct. Fail-closed, never falls back to direct; a malformed value stops startup. See [Running MAM through a VPN](#running-mam-through-a-vpn) |
 | `MAM_HOME_WAN_IP` | *(unset)* | Your home public IP. When set, each watcher cycle first checks the IP MAM would see (one HTTPS request to `ipinfo.io`) and makes no MAM request if it equals this one, or cannot be checked |
 | `MAM_EXPECTED_EGRESS_IP` | *(empty = off)* | Optional. The one public IP MAM may see, normally your VPN's exit address. When set, each watcher cycle first checks the IP MAM would see and makes no MAM request unless it equals this, or if it cannot be checked. A MAM session is tied to one IP, so pinning it turns a silent session break into a loud refusal. Also editable in Settings > Watcher (no restart); a value that is not an IPv4/IPv6 address stops startup |
+| `MAM_VIP` | `false` (No) | Set `true` if your MyAnonamouse account has VIP status (bought with bonus points). With No, torrents that only VIP members can download are **skipped** (the book's note says so) instead of attempted. Also editable in Settings > Watcher ("VIP member", no restart) |
 | `WATCH_INTERVAL_MIN` | `60` | Minutes between watcher cycles (10-1440) |
 | `WATCH_MAX_PER_CYCLE` | `5` | Wishlist books one watcher cycle searches at most (1-20) |
 | `QBIT_URL` | `http://localhost:8083` | qBittorrent WebUI the watcher hands torrents to |

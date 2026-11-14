@@ -5,6 +5,21 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev5] - 2026-11-14
+
+### Added
+- **`MAM_VIP`** and **Settings > Watcher > "VIP member"** (No / Yes, default No, saved in the
+  database, effective on the next cycle). MAM marks some torrents VIP-only (`vip=1` in the search
+  results); only a VIP member can download them. VIP status cannot be read from the API
+  (`vip_expire` is `0` even for a VIP account), so it is a setting.
+
+### Fixed
+- **A non-VIP install no longer tries to download VIP-only torrents.** They are skipped, and when
+  nothing else qualifies the book's note reads "only match(es) need VIP membership (N) -
+  skipped". With VIP on, they are normal candidates; they are VIP freeleech, so the wedge decision
+  is unchanged (no wedge spent). `mam.select_candidate` gained `vip: bool = False`. Still one
+  request per book.
+
 ## [0.18.0-dev4] - 2026-11-14
 
 ### Fixed

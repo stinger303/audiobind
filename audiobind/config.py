@@ -143,6 +143,9 @@ class Config:
     #: optional allowlist: set = MAM must see exactly this address, or the watcher refuses to
     #: contact MAM. "" = this check is off. Also editable in Settings > Watcher.
     mam_expected_egress_ip: str = ""
+    #: MyAnonamouse VIP membership (not detectable from the API): False = VIP-only torrents are
+    #: skipped. Also editable in Settings > Watcher.
+    mam_vip: bool = False
 
     ignore_globs: list[str] = field(
         default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
@@ -185,6 +188,7 @@ class Config:
             mam_proxy=_proxy_value(_env("MAM_PROXY", "")),
             mam_home_wan_ip=_ip_value("MAM_HOME_WAN_IP", _env("MAM_HOME_WAN_IP", "")),
             mam_expected_egress_ip=_ip_value("MAM_EXPECTED_EGRESS_IP", _env("MAM_EXPECTED_EGRESS_IP", "")),
+            mam_vip=_env_bool("MAM_VIP", False),
         )
 
     def ensure_dirs(self) -> None:
@@ -224,7 +228,7 @@ CONFIG = Config.from_env()
 #: each scan and whenever the settings page saves.
 _EFFECTIVE: dict[str, object] = {}
 
-SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region", "expected_egress")
+SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region", "expected_egress", "vip")
 
 SETTING_MAP: dict[str, str] = {
     "auto_convert": "auto_convert",
@@ -234,6 +238,7 @@ SETTING_MAP: dict[str, str] = {
     "nice": "nice",
     "region": "region",
     "expected_egress": "mam_expected_egress_ip",
+    "vip": "mam_vip",
 }
 
 SETTING_TYPES: dict[str, type] = {
@@ -244,6 +249,7 @@ SETTING_TYPES: dict[str, type] = {
     "nice": int,
     "region": str,
     "expected_egress": str,  # free text, validated by valid_ip_or_empty (not a choice, not a number)
+    "vip": str,  # "YES" / "NO"; effective_val turns it into a bool
 }
 
 #: the values the settings page offers; an environment value outside these is added to the
@@ -252,6 +258,7 @@ SETTING_CHOICES: dict[str, tuple[str, ...]] = {
     "auto_convert": ("HIGH", "MEDIUM", "OFF"),
     "audio_bitrate": ("64k", "128k", "192k", "256k"),
     "region": ("us", "uk", "ca", "au", "de"),
+    "vip": ("NO", "YES"),
 }
 
 #: (min, max) for the numeric settings, widened to include the environment value
@@ -276,6 +283,7 @@ def setting_env_defaults() -> dict[str, object]:
         "nice": int(CONFIG.nice),
         "region": str(CONFIG.region).lower(),
         "expected_egress": str(CONFIG.mam_expected_egress_ip or ""),
+        "vip": "YES" if CONFIG.mam_vip else "NO",
     }
 
 
@@ -323,6 +331,8 @@ def effective_val(name: str):
         raw = _EFFECTIVE[setting_key]
         if setting_key == "runtime_delta":
             return raw / 100.0  # percentage -> float tolerance
+        if setting_key == "vip":
+            return str(raw).strip().upper() == "YES"
         return raw
     return getattr(CONFIG, name)
 
