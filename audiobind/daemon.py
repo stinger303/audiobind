@@ -117,8 +117,9 @@ def refresh_series(state: State) -> None:
 
 
 def restore_controls(state: State) -> None:
-    """Restore pause and dry-run at startup. DRY_RUN=true in the environment is a floor: it
-    starts dry whatever the saved switch says (the UI can turn it off afterwards)."""
+    """Restore pause and the two dry-run switches at startup. Each is independent: DRY_RUN
+    (library pipeline) and WATCH_DRY_RUN (MAM watcher) are floors for their own switch only:
+    true in the environment starts it on whatever was saved (the UI can turn it off after)."""
     if state.get_meta("paused", False):
         CONTROL.pause()  # a paused container stays paused across restarts
     saved = state.get_meta("dry_run")
@@ -130,6 +131,15 @@ def restore_controls(state: State) -> None:
         log.info("dry run: %s (saved switch)", "on" if saved else "off")
     else:
         log.info("dry run: off (saved switch)")
+    saved = state.get_meta("watcher_dry_run")
+    if CONFIG.watch_dry_run:
+        CONTROL.set_watcher_dry_run(True)
+        log.info("watcher dry run: on (WATCH_DRY_RUN=true in the environment)")
+    elif saved is not None:
+        CONTROL.set_watcher_dry_run(bool(saved))
+        log.info("watcher dry run: %s (saved switch)", "on" if saved else "off")
+    else:
+        log.info("watcher dry run: off (saved switch)")
 
 
 def run() -> None:

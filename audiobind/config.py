@@ -99,6 +99,8 @@ class Config:
 
     scan_interval_min: int = 30
     dry_run: bool = False
+    #: MAM watcher only: search and decide, never download (independent of dry_run)
+    watch_dry_run: bool = False
 
     web_enabled: bool = True
     web_port: int = 8080
@@ -169,6 +171,7 @@ class Config:
             max_runtime_delta=_env_float("MAX_RUNTIME_DELTA", 0.25),
             scan_interval_min=max(1, _env_int("SCAN_INTERVAL_MIN", 30)),
             dry_run=_env_bool("DRY_RUN", False),
+            watch_dry_run=_env_bool("WATCH_DRY_RUN", False),
             web_enabled=_env_bool("WEB_ENABLED", True),
             web_port=_env_int("WEB_PORT", 8080),
             notify_url=_env("NOTIFY_URL", ""),

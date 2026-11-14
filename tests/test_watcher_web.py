@@ -89,7 +89,7 @@ class TestWishlistTab(StateCase):
 
     def test_the_bar_when_on_paused_and_dry_run(self):
         with mock.patch.object(CONFIG, "mam_id", "x"), mock.patch.object(CONFIG, "qbit_user", "u"), \
-                mock.patch.object(CONFIG, "qbit_pass", "p"), mock.patch.object(CONTROL, "_dry_run", True):
+                mock.patch.object(CONFIG, "qbit_pass", "p"), mock.patch.object(CONTROL, "_watcher_dry_run", True):
             html = web.render_discover(self.state, "wishlist")
             self.assertIn("checks up to <b>5</b> wanted books every <b>60 min</b>", html)
             self.assertIn("dry run: decisions are noted, nothing is downloaded", html)

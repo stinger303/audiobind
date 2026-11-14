@@ -5,6 +5,22 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev8] - 2026-11-14
+
+### Changed
+- **The main-page Dry run no longer silences the MAM watcher.** One switch used to do two
+  unrelated jobs: stop the library pipeline writing files, and make the watcher search without
+  downloading. They are now two switches. The main-page **Dry run** button only previews the
+  library scan. The watcher has its own **Dry run** in Settings > Watcher (searches and reports,
+  never downloads), kept across restarts, and the two can be on or off in any combination.
+- New `WATCH_DRY_RUN` environment variable (default `false`). Like `DRY_RUN`, `true` always starts
+  that switch on whatever was saved; the UI can turn it off afterwards. Startup logs one line per
+  switch. `POST /api/control` accepts `{"action": "watcher_dry_run", "value": true|false}`;
+  `dry_run` keeps meaning the library only.
+- `GET /api/watcher` and the watcher's cycle summary report `watcher_dry_run` instead of `dry_run`.
+- **Upgrading:** if you relied on the main-page Dry run to keep the watcher from downloading,
+  turn on the watcher's Dry run (or set `WATCH_DRY_RUN=true`).
+
 ## [0.18.0-dev7] - 2026-11-14
 
 ### Added

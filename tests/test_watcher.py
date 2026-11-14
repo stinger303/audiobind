@@ -95,11 +95,14 @@ class WatcherCase(unittest.TestCase):
             mock.patch.object(CONFIG, "qbit_pass", "pw"),
             mock.patch.object(CONFIG, "watch_max_per_cycle", 5),
             mock.patch.object(CONFIG, "dry_run", False),
+            mock.patch.object(CONFIG, "watch_dry_run", False),
         ]
         for p in self.patches:
             p.start()
         self.saved_dry = CONTROL._dry_run
         CONTROL._dry_run = None
+        self.saved_wdry = CONTROL._watcher_dry_run
+        CONTROL._watcher_dry_run = None
         self.w = watcher.Watcher()
         FakeQbit.instances = []
         self.qbit_kwargs = {}
@@ -107,6 +110,7 @@ class WatcherCase(unittest.TestCase):
     def tearDown(self):
         self.w.stop()
         CONTROL._dry_run = self.saved_dry
+        CONTROL._watcher_dry_run = self.saved_wdry
         for p in reversed(self.patches):
             p.stop()
         self.state.close()
@@ -288,7 +292,7 @@ class TestCycle(WatcherCase):
 
 class TestDryRun(WatcherCase):
     def test_dry_run_logs_the_decision_and_downloads_nothing(self):
-        CONTROL.set_dry_run(True)
+        CONTROL.set_watcher_dry_run(True)
         self.want()
         self.mam(answer(entry(1001, "Project Hail Mary")))
         with self.assertLogs("audiobind", level="INFO") as logs:
@@ -301,10 +305,10 @@ class TestDryRun(WatcherCase):
         self.assertIn("would download MAM #1001", row["note"])
         self.assertIn("&fl", row["note"])
         self.assertTrue(any("[dry run]" in line and "would download" in line for line in logs.output))
-        self.assertEqual((summary["would_send"], summary["sent"], summary["dry_run"]), (1, 0, True))
+        self.assertEqual((summary["would_send"], summary["sent"], summary["watcher_dry_run"]), (1, 0, True))
 
     def test_dry_run_from_the_environment_applies_too(self):
-        CONFIG.dry_run = True
+        CONFIG.watch_dry_run = True
         self.want()
         self.mam(answer(entry(1001, "Project Hail Mary")))
         self.cycle()

@@ -2,7 +2,7 @@
 
 The daemon asks this object whether it may start another book, whether writes are allowed, and
 the web handlers flip those switches at runtime. Nothing here touches the filesystem -
-persistence lives in State.set_meta() ("paused", "dry_run"), so a restart keeps your choices.
+persistence lives in State.set_meta() ("paused", "dry_run", "watcher_dry_run"), so a restart keeps your choices.
 
 Three ways to intervene, and they are not the same thing:
 
@@ -33,6 +33,8 @@ class Control:
         self._proc: subprocess.Popen | None = None
         #: None = use the DRY_RUN env default; True/False = the user chose in the web UI
         self._dry_run: bool | None = None
+        #: the MAM watcher's own switch, never read by the pipeline; None = WATCH_DRY_RUN default
+        self._watcher_dry_run: bool | None = None
         self.current_unit: str = ""
         #: live encode progress: {"percent", "elapsed", "eta", "speed"}
         self.progress: dict = {}
@@ -146,6 +148,19 @@ class Control:
     def dry_run_source(self) -> str:
         return "default" if self._dry_run is None else "set in UI"
 
+    # ------------------------------------------------- watcher dry run (separate switch)
+    @property
+    def watcher_dry_run(self) -> bool:
+        """MAM acquisition only: search and decide, never download. Independent of dry_run."""
+        return CONFIG.watch_dry_run if self._watcher_dry_run is None else self._watcher_dry_run
+
+    def set_watcher_dry_run(self, value: bool) -> None:
+        self._watcher_dry_run = bool(value)
+
+    @property
+    def watcher_dry_run_source(self) -> str:
+        return "default" if self._watcher_dry_run is None else "set in UI"
+
     # ---------------------------------------------------------------- scan progress
     def begin_scan(self, total: int) -> None:
         with self._lock:
@@ -204,6 +219,8 @@ class Control:
             "scan_pending": self.scan_requested(),
             "dry_run": self.dry_run,
             "dry_run_source": self.dry_run_source,
+            "watcher_dry_run": self.watcher_dry_run,
+            "watcher_dry_run_source": self.watcher_dry_run_source,
             "running": self.running,
             "current_unit": self.current_unit,
             "progress": self.progress,

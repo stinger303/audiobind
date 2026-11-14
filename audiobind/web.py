@@ -686,6 +686,13 @@ function dry(on) {
     .then(() => setTimeout(() => location.reload(), 250))
     .catch(() => location.reload());
 }
+function abWatcherDry(on) {
+  fetch('/api/control', {method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({action:'watcher_dry_run', value: on})})
+    .then(r => r.json())
+    .then(() => location.reload())
+    .catch(() => location.reload());
+}
 // Retry now / Convert anyway / Use this ASIN, from a detail panel, a table row or a
 // shelf card: each of those carries data-path, so the nearest one names the book
 function abUnitAction(btn, action) {
@@ -3496,7 +3503,7 @@ def _watcher_bar(status: dict) -> str:
         last = (status.get("last_cycle") or {}).get("at")
         if last:
             bits.append(f"last cycle {_html(rel_age(last))}")
-        if status["dry_run"]:
+        if status["watcher_dry_run"]:
             bits.append('<span class="warn">dry run: decisions are noted, nothing is downloaded</span>')
         text = " &#183; ".join(bits)
     return f'<div class="ab-disc-bar" id="ab-watch-bar"><span>{text}</span>{link}</div>'
@@ -3594,7 +3601,7 @@ def render_watcher_section(state) -> str:
         state_html = '<span class="warn">Paused</span> &#8212; no cycle runs until you resume it'
     else:
         state_html = '<span class="ok">Enabled</span>' + (" &#8212; running a cycle now" if s["busy"] else "")
-    if s["configured"] and s["dry_run"]:
+    if s["configured"] and s["watcher_dry_run"]:
         state_html += ' &#183; <span class="warn">dry run: decisions are noted and logged, nothing is downloaded</span>'
     guard = s.get("egress_guard") or "off"
     if guard == "blocked":
@@ -3678,6 +3685,17 @@ def render_watcher_section(state) -> str:
     if s["configured"]:
         action, label = ("resume", "Resume watcher") if s["paused"] else ("pause", "Pause watcher")
         toggle = f'<button class="btn" id="ab-watch-toggle" onclick="abWatcher(\'{action}\')">{label}</button>'
+    wdry = bool(s["watcher_dry_run"])
+    dry_toggle = (
+        f'<button class="btn dry{" on" if wdry else ""}" id="ab-watch-dry" aria-pressed="{"true" if wdry else "false"}" '
+        f'title="Searches and reports what it would download, never downloads. Click to turn it {"off" if wdry else "on"}." '
+        f'onclick="abWatcherDry({"false" if wdry else "true"})">Dry run <span class="ab-switch"></span></button>'
+    )
+    dry_line = (
+        '<div class="ab-acct-who" id="ab-watch-dry-note">Watcher dry run is <b>' + ("on" if wdry else "off") +
+        "</b>: searches MAM and reports what it would download, never downloads. It is separate from "
+        "the library Dry run on the main page.</div>"
+    )
     expected_field = _setting_text(
         "expected_egress", "Only reach MAM from one IP", setting_effective("expected_egress"),
         is_custom(SETTING_MAP["expected_egress"]), setting_env("expected_egress"),
@@ -3696,7 +3714,8 @@ def render_watcher_section(state) -> str:
         "across restarts.</div>"
         f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
         + expected_field + vip_field +
-        f'<div class="ab-acct-row">{run_btn}{toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
+        f'<div class="ab-acct-row">{run_btn}{toggle}{dry_toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
+        + dry_line +
         "</section>"
     )
 
@@ -5958,6 +5977,11 @@ class Handler(BaseHTTPRequestHandler):
             desired = bool(payload.get("value", not CONTROL.dry_run))
             CONTROL.set_dry_run(desired)
             self.state.set_meta("dry_run", desired)
+        elif action == "watcher_dry_run":
+            # the watcher's own switch: never touches the pipeline's dry_run
+            desired = bool(payload.get("value", not CONTROL.watcher_dry_run))
+            CONTROL.set_watcher_dry_run(desired)
+            self.state.set_meta("watcher_dry_run", desired)
         elif action == "sort":
             column = str(payload.get("column", "scan"))
             direction = str(payload.get("direction", "desc")).lower()

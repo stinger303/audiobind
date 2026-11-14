@@ -349,7 +349,8 @@ Watcher > **VIP member**, default **No**). With No, a VIP-only torrent is skippe
 note says "only match(es) need VIP membership"; with Yes it is an ordinary candidate. VIP-only
 torrents are also VIP freeleech, so downloading one never costs a wedge.
 
-**Dry run** applies: the watcher searches and notes what it *would* download, and downloads
+The watcher has its own **Dry run** (Settings > Watcher, or `WATCH_DRY_RUN`), separate from the
+library preview on the main page: it searches and notes what it *would* download, and downloads
 nothing. Settings > **Watcher** shows its status (last and next cycle, last error, backoff),
 **Run a cycle now** and **Pause watcher** (kept across restarts). MAM sessions are locked to
 an IP address: create the `mam_id` session for the IP the container reaches MAM from.
@@ -524,6 +525,7 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `MAX_RUNTIME_DELTA` | `0.25` | Hold when runtime differs by more than this fraction |
 | `REGION` | `us` | Audible region (`us`, `ca`, `uk`, `au`, `fr`, `de`, `it`, `es`, `jp`, `in`) |
 | `DRY_RUN` | `false` | Decide and log, write nothing. `true` always starts dry; the UI switch can turn it off afterwards |
+| `WATCH_DRY_RUN` | `false` | The [watcher's](#the-wishlist-watcher-myanonamouse) own dry run, separate from `DRY_RUN`: search MAM and note what it would download, never download. `true` always starts the watcher dry; the Settings > Watcher switch can turn it off afterwards |
 | `WEB_ENABLED` | `true` | Status page |
 | `WEB_PORT` | `8080` | Status page port |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host names / IPs the web UI answers to (ports are ignored). **Add the LAN IP and hostname you browse to**, e.g. `192.168.1.10,tower,tower.local`; any other `Host` gets a 403. This blocks DNS-rebinding attacks from websites you visit. Keep `localhost,127.0.0.1` in the list for scripts on the server itself |
