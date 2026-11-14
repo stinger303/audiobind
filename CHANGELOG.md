@@ -5,6 +5,14 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev4] - 2026-11-14
+
+### Fixed
+- **The wishlist watcher searched the wrong MAM category and found nothing.** It sent
+  `tor[cat][]=14`, but `tor[cat][]` takes a leaf category id and MAM answers "Nothing returned"
+  for 14 on every query, so books that are plainly on MAM were reported "not found". It now
+  searches the audiobook main category (`tor[main_cat][]=13`). Still one request per book.
+
 ## [0.18.0-dev3] - 2026-11-14
 
 ### Added

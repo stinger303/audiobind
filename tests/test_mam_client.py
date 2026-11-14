@@ -265,9 +265,18 @@ class TestRequests(unittest.TestCase):
         self.assertEqual(form["tor[author]"], ["Andy Weir"])
         self.assertEqual(form["tor[searchIn]"], ["torrents"])
         self.assertEqual(form["tor[browse_lang][]"], ["1"])
-        self.assertEqual(form["tor[cat][]"], ["14"])
+        self.assertEqual(form["tor[main_cat][]"], ["13"])
+        self.assertNotIn("tor[cat][]", form)
         self.assertEqual(form["tor[sortType]"], ["relevance"])
         self.assertIn("perpage", form)
+
+    def test_search_form_uses_main_category_13_and_no_leaf_category(self):
+        mc, transport, _ = client((200, {}, FIXTURE.read_bytes()))
+        mc.search("Dungeon Crawler Carl")
+        pairs = urllib.parse.parse_qsl(transport.calls[0]["data"].decode())
+        self.assertIn(("tor[main_cat][]", "13"), pairs)
+        self.assertFalse([k for k, _ in pairs if k == "tor[cat][]"])
+        self.assertEqual(len(transport.calls), 1)
 
     def test_download_with_and_without_the_wedge(self):
         mc, transport, _ = client((200, {}, TORRENT), (200, {}, TORRENT))
