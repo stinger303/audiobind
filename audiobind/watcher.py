@@ -193,7 +193,8 @@ class Watcher:
 
     # ------------------------------------------------------------------ pause
     def paused(self, state=None) -> bool:
-        if self._paused is None and state is not None:
+        """The persisted switch (read fresh when a state is given; cached for the cycle loop)."""
+        if state is not None:
             self._paused = bool(state.get_meta(META_PAUSED, False))
         return bool(self._paused)
 

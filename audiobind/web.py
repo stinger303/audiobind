@@ -19,6 +19,7 @@ from . import auth as auth_mod
 from . import discover as discover_mod
 from . import overrides as overrides_mod
 from . import series as series_mod
+from . import watcher as watcher_mod
 from .advice import explain
 from .config import (
     CONFIG,
@@ -642,6 +643,19 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-disc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--ab-text4)}
 .ab-disc-bar b{color:var(--ab-text2);font-weight:500}
 .ab-disc-bar .ab-spacer{flex:1}
+.ab-disc-bar a{color:var(--ab-accent-bright);text-decoration:none}
+.ab-disc-pill.ab-wl-downloading{color:var(--ab-accent-bright);background:rgba(94,106,210,.14)}
+.ab-disc-pill.ab-wl-in_library{color:var(--ab-green);background:var(--ab-green-soft)}
+.ab-disc-pill.ab-wl-not_found{color:var(--ab-amber);background:var(--ab-amber-soft)}
+.ab-disc-pill.ab-wl-error{color:var(--ab-red);background:var(--ab-red-soft)}
+.ab-wl-note{font-size:11px;color:var(--ab-text3);margin-top:2px;line-height:1.4;overflow-wrap:anywhere}
+.ab-wl-note.ab-wl-bad{color:var(--ab-amber)}
+.ab-wl-acts{display:flex;gap:6px;flex:none}
+.ab-watch-grid{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:12px 0;font-size:12.5px}
+.ab-watch-grid dt{color:var(--ab-text3)}
+.ab-watch-grid dd{margin:0;color:var(--ab-text2);overflow-wrap:anywhere}
+.ab-watch-warn{border-color:rgba(242,163,60,.35);background:var(--ab-amber-soft);color:var(--ab-amber);margin:10px 0}
+.ab-watch-warn b{color:var(--ab-amber)}
 
 @media(max-width:1080px){.ab-rail{display:none}}
 @media(max-width:820px){.ab-hidemd{display:none}}
@@ -1393,6 +1407,7 @@ SETTINGS_PAGE = """<!doctype html>
       <button class="btn" onclick="abResetSettings()">Reset to defaults</button>
       <span class="ab-fb" id="ab-settings-fb"></span>
     </div>
+    {watcher_section}
     {account_section}
   </section>
 </main>
@@ -1400,6 +1415,7 @@ SETTINGS_PAGE = """<!doctype html>
 <script>
 {settings_script}
 {account_script}
+{watcher_script}
 </script>
 </body></html>"""
 
@@ -3145,6 +3161,24 @@ function abUnwant(btn) {
     })
     .catch(() => { abToast('could not reach the daemon'); btn.disabled = false; });
 }
+// Retry: a not-found / failed wishlist book goes back to wanted for the next watcher cycle
+function abRetry(btn) {
+  const row = btn.closest('[data-asin]');
+  if (!row) return;
+  btn.disabled = true;
+  abPost('/api/wishlist/retry', {asin: row.dataset.asin})
+    .then(out => {
+      if (!out.ok) { abToast(out.res.error || 'that did not work'); btn.disabled = false; return; }
+      const pill = row.querySelector('.ab-disc-pill');
+      if (pill) { pill.textContent = 'WANTED'; pill.className = 'ab-disc-pill ab-wl-wanted'; pill.title = ''; }
+      const note = row.querySelector('.ab-wl-note');
+      if (note) { note.textContent = (out.res.item && out.res.item.note) || ''; note.classList.remove('ab-wl-bad'); }
+      row.dataset.status = 'wanted';
+      btn.remove();
+      abToast('Back to wanted - the watcher searches for it in its next cycle');
+    })
+    .catch(() => { abToast('could not reach the daemon'); btn.disabled = false; });
+}
 // For you: the page shows the stored suggestions only. Opening it asks for a refresh, which
 // the server runs only when nothing is stored or it is over a week old; Refresh always asks.
 function abRecsLive(on) {
@@ -3385,42 +3419,240 @@ def _discover_recs_body(state) -> str:
     return intro + bar + "".join(panels)
 
 
+#: the wishlist state chips: (label, hover text)
+WISHLIST_CHIPS = {
+    "wanted": ("WANTED", "Waiting: the MAM watcher searches for it in a coming cycle."),
+    "downloading": ("DOWNLOADING", "Found on MAM and handed to qBittorrent; it becomes In library once converted."),
+    "in_library": ("IN LIBRARY", "A converted book in your library is this one."),
+    "not_found": ("NOT FOUND", "MAM had no good match in several searches. Retry searches again."),
+    "error": ("ERROR", "The download or the hand-off to qBittorrent failed - the note says why. "
+                       "Retry searches again."),
+}
+
+
+def _until(timestamp, now: float | None = None) -> str:
+    """"in 35m" / "in 2h" / "due now" (plain text); "" when unknown."""
+    try:
+        ts = float(timestamp or 0)
+    except (TypeError, ValueError):
+        return ""
+    if ts <= 0:
+        return ""
+    seconds = ts - (time.time() if now is None else float(now))
+    if seconds <= 60:
+        return "due now"
+    if seconds < 3600:
+        return f"in {int(seconds // 60)}m"
+    return f"in {int(seconds // 3600)}h {int(seconds % 3600 // 60)}m"
+
+
+def _watcher_bar(status: dict) -> str:
+    """One line above the wishlist: is anything going to look for these books?"""
+    link = '<span class="ab-spacer"></span><a href="/settings#watcher">Watcher settings</a>'
+    if not status["configured"]:
+        text = "The MAM watcher is <b>off</b> (MAM_ID is not set): nothing here is searched for or downloaded."
+    elif not status["enabled"]:
+        text = f'<span class="warn">The MAM watcher is disabled: {_html(status["reason"])}.</span>'
+    elif status["paused"]:
+        text = "The MAM watcher is <b>paused</b>: nothing is searched for until you resume it."
+    else:
+        bits = [f"The MAM watcher checks up to <b>{int(status['max_per_cycle'])}</b> wanted "
+                f"{_plural(int(status['max_per_cycle']), 'book', 'books')} every "
+                f"<b>{int(status['interval_min'])} min</b>"]
+        if status["busy"]:
+            bits.append("a cycle is running now")
+        elif status.get("next_cycle_at"):
+            bits.append(f"next cycle {_html(_until(status['next_cycle_at']))}")
+        last = (status.get("last_cycle") or {}).get("at")
+        if last:
+            bits.append(f"last cycle {_html(rel_age(last))}")
+        if status["dry_run"]:
+            bits.append('<span class="warn">dry run: decisions are noted, nothing is downloaded</span>')
+        text = " &#183; ".join(bits)
+    return f'<div class="ab-disc-bar" id="ab-watch-bar"><span>{text}</span>{link}</div>'
+
+
+def _wishlist_row_html(row: dict) -> str:
+    origins = {"search": "from Search", "for_you": "from For you", "series": "from Series", "api": "from the API"}
+    asin = row["asin"]
+    status = row.get("status") or "wanted"
+    facts = []
+    if row.get("hours"):
+        facts.append(f"{_num(row['hours']):.1f} hrs")
+    if row.get("series"):
+        seq = f" #{_html(row['sequence'])}" if row.get("sequence") else ""
+        facts.append(_html(row["series"]) + seq)
+    facts.append(f"ASIN {_html(asin)}")
+    facts.append(_html(f"added {rel_age(row['added_at'])} {origins.get(row.get('origin') or '', '')}".strip()))
+    checked = rel_age(row.get("checked_at"))
+    facts.append(_html(f"checked {checked}" if checked else "never checked"))
+    src = "/cover?asin=" + quote(asin, safe="")
+    by = f'<div class="ab-disc-a">By {_disc_names(row["authors"])}</div>' if row.get("authors") else ""
+    note = ""
+    if row.get("note"):
+        bad = " ab-wl-bad" if status in ("error", "not_found") else ""
+        note = f'<div class="ab-wl-note{bad}">{_html(row["note"])}</div>'
+    label, hover = WISHLIST_CHIPS.get(status, (status.upper(), ""))
+    retry = (
+        '<button title="Put this book back to wanted: the watcher searches for it again in its next cycle." '
+        'onclick="abRetry(this)">Retry</button>'
+        if status in ("not_found", "error") else ""
+    )
+    return (
+        f'<div class="ab-disc-row" data-asin="{_attr(asin)}" data-status="{_attr(status)}">'
+        f'<img src="{_attr(src)}" alt="" loading="lazy" onerror="abCoverFail(this)">'
+        f'<div class="ab-disc-meta"><div class="ab-disc-t" title="{_attr(row["title"])}">{_html(row["title"])}</div>'
+        f'{by}<div class="ab-disc-m">{" &#183; ".join(facts)}</div>{note}</div>'
+        f'<span class="ab-disc-pill ab-wl-{_attr(status)}" title="{_attr(hover)}">{_html(label)}</span>'
+        f'<span class="ab-wl-acts">{retry}'
+        '<button title="Take this book off your wishlist." onclick="abUnwant(this)">Remove</button></span></div>'
+    )
+
+
 def _discover_wishlist_body(state) -> str:
     rows = state.wishlist_all()
+    status = watcher_mod.WATCHER.status(state)
+    if status["enabled"]:
+        how = ("The MAM watcher searches for <b>wanted</b> books and hands a good match to qBittorrent; "
+               "a book turns <b>In library</b> once it is converted. ")
+    else:
+        how = "This list is the hand-off point: nothing here is searched for or downloaded while the watcher is off. "
     intro = (
-        '<p class="ab-disc-intro">The books you asked for with <b>Get this</b> or <b>Want</b>. '
-        "This list is the hand-off point: nothing here is searched for or downloaded yet. "
+        f'<p class="ab-disc-intro">The books you asked for with <b>Get this</b> or <b>Want</b>. {how}'
+        "<b>Retry</b> searches again for a book that was not found or failed; "
         "<b>Remove</b> takes a book off.</p>"
     )
+    bar = _watcher_bar(status)
     if not rows:
-        return intro + '<section class="ab-disc-panel"><div class="ab-disc-empty">Your wishlist is empty.</div></section>'
-    items = []
-    origins = {"search": "from Search", "for_you": "from For you", "series": "from Series", "api": "from the API"}
-    for row in rows:
-        asin = row["asin"]
-        facts = []
-        if row.get("hours"):
-            facts.append(f"{_num(row['hours']):.1f} hrs")
-        if row.get("series"):
-            seq = f" #{_html(row['sequence'])}" if row.get("sequence") else ""
-            facts.append(_html(row["series"]) + seq)
-        facts.append(f"ASIN {_html(asin)}")
-        facts.append(_html(f"added {rel_age(row['added_at'])} {origins.get(row.get('origin') or '', '')}".strip()))
-        src = "/cover?asin=" + quote(asin, safe="")
-        by = f'<div class="ab-disc-a">By {_disc_names(row["authors"])}</div>' if row.get("authors") else ""
-        items.append(
-            f'<div class="ab-disc-row" data-asin="{_attr(asin)}">'
-            f'<img src="{_attr(src)}" alt="" loading="lazy" onerror="abCoverFail(this)">'
-            f'<div class="ab-disc-meta"><div class="ab-disc-t">{_html(row["title"])}</div>{by}'
-            f'<div class="ab-disc-m">{" &#183; ".join(facts)}</div></div>'
-            f'<span class="ab-disc-pill">{_html(row["status"]).upper()}</span>'
-            '<button title="Take this book off your wishlist." onclick="abUnwant(this)">Remove</button></div>'
-        )
+        return (intro + bar + '<section class="ab-disc-panel"><div class="ab-disc-empty">'
+                "Your wishlist is empty.</div></section>")
     n = len(rows)
-    return intro + (
-        f'<section class="ab-disc-panel" aria-label="Wishlist"><h3>{n} {_plural(n, "book", "books")} wanted</h3>'
-        + "".join(items) + "</section>"
+    counts = state.wishlist_status_counts()
+    breakdown = " &#183; ".join(
+        f"{counts[key]} {WISHLIST_CHIPS[key][0].lower()}" for key in WISHLIST_CHIPS if key != "wanted" and counts.get(key)
     )
+    why = f'<span class="ab-disc-why">{breakdown}</span>' if breakdown else ""
+    return intro + bar + (
+        f'<section class="ab-disc-panel" aria-label="Wishlist"><h3>{n} {_plural(n, "book", "books")} wanted{why}</h3>'
+        + "".join(_wishlist_row_html(r) for r in rows) + "</section>"
+    )
+
+
+def render_watcher_section(state) -> str:
+    """Settings > Watcher: read-only status, Run a cycle now, Pause / Resume."""
+    s = watcher_mod.WATCHER.status(state)
+    warn = ""
+    if not s["configured"]:
+        state_html = "Off &#8212; MAM_ID is not set"
+    elif not s["enabled"]:
+        state_html = '<span class="warn">Disabled</span>'
+        warn = (
+            '<div class="ab-hintbox ab-watch-warn" role="alert"><b>The watcher is disabled.</b> '
+            f"{_html(s['reason'])}. Set QBIT_USER and QBIT_PASS (the qBittorrent WebUI login) "
+            "and restart the container.</div>"
+        )
+    elif s["paused"]:
+        state_html = '<span class="warn">Paused</span> &#8212; no cycle runs until you resume it'
+    else:
+        state_html = '<span class="ok">Enabled</span>' + (" &#8212; running a cycle now" if s["busy"] else "")
+    if s["configured"] and s["dry_run"]:
+        state_html += ' &#183; <span class="warn">dry run: decisions are noted and logged, nothing is downloaded</span>'
+    last = s["last_cycle"] or {}
+    if last.get("at"):
+        parts = [f"{int(last.get('searched') or 0)} searched", f"{int(last.get('sent') or 0)} sent to qBittorrent"]
+        if last.get("would_send"):
+            parts.append(f"{int(last['would_send'])} would be sent (dry run)")
+        parts.append(f"{int(last.get('not_found') or 0)} not found")
+        if last.get("errors"):
+            parts.append(f"{int(last['errors'])} error(s)")
+        last_html = f"{_html(rel_age(last['at']))} ({_html(str(last.get('trigger') or ''))}) &#8212; {_html(', '.join(parts))}"
+    else:
+        last_html = "never"
+    if s["next_cycle_at"]:
+        next_html = _html(_until(s["next_cycle_at"]))
+    elif s["configured"] and s["enabled"] and not s["paused"]:
+        next_html = "when the daemon is running"
+    else:
+        next_html = DASH
+    error = s["last_error"] or {}
+    error_html = (f'<span class="warn">{_html(str(error.get("message") or ""))}</span> &#183; {_html(rel_age(error.get("at")))}'
+                  if error.get("message") else "none")
+    rows = [
+        ("Status", state_html),
+        ("Schedule", f"every {int(s['interval_min'])} min, at most {int(s['max_per_cycle'])} "
+                     f"{_plural(int(s['max_per_cycle']), 'book', 'books')} per cycle"),
+        ("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(watcher_mod.qbit.CATEGORY)}</code> &#183; "
+                        + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>')),
+        ("Last cycle", last_html),
+        ("Next cycle", next_html),
+        ("Last error", error_html),
+    ]
+    if s["backoff_seconds"]:
+        rows.append(("MAM backoff", f'<span class="warn">no MAM request for {int(s["backoff_seconds"])}s</span>'))
+    grid = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
+    can_run = s["enabled"] and not s["paused"] and not s["busy"]
+    run_btn = (f'<button class="ab-save" id="ab-watch-run" onclick="abWatcher(\'run\')"{"" if can_run else " disabled"} '
+               'title="Run one cycle now in the background (same caps and pacing as a timed cycle).">'
+               "Run a cycle now</button>")
+    toggle = ""
+    if s["configured"]:
+        action, label = ("resume", "Resume watcher") if s["paused"] else ("pause", "Pause watcher")
+        toggle = f'<button class="btn" id="ab-watch-toggle" onclick="abWatcher(\'{action}\')">{label}</button>'
+    return (
+        '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
+        '<h2 class="ab-acct-head" id="ab-watch-head">Watcher</h2>'
+        '<div class="ab-acct-who">Searches MAM for the <b>wanted</b> books on your wishlist and hands a good '
+        "match to qBittorrent; the ingest folder takes it from there. Configured with environment variables "
+        "(<code>MAM_ID</code>, <code>WATCH_INTERVAL_MIN</code>, <code>WATCH_MAX_PER_CYCLE</code>, "
+        "<code>QBIT_URL</code>, <code>QBIT_USER</code>, <code>QBIT_PASS</code>); the pause switch is kept "
+        "across restarts.</div>"
+        f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
+        f'<div class="ab-acct-row">{run_btn}{toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
+        "</section>"
+    )
+
+
+WATCHER_SCRIPT = """
+// ---- Settings > Watcher: Run a cycle now (a worker thread on the server), Pause / Resume
+function abWatcher(action) {
+  const fb = document.getElementById('ab-watch-fb');
+  const run = document.getElementById('ab-watch-run');
+  fb.className = 'ab-fb';
+  fb.textContent = action === 'run' ? 'starting a cycle\\u2026' : 'saving\\u2026';
+  if (action === 'run' && run) run.disabled = true;
+  fetch('/api/watcher', {method:'POST', headers:{'Content-Type':'application/json'},
+                         body: JSON.stringify({action: action})})
+    .then(r => {
+      if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+      return r.json().then(res => ({ok: r.ok, res: res}));
+    })
+    .then(out => {
+      if (!out.ok) {
+        fb.className = 'ab-fb ab-bad';
+        fb.textContent = out.res.error || 'that did not work';
+        if (run) run.disabled = false;
+        return;
+      }
+      if (action === 'run') { fb.textContent = 'cycle running\\u2026'; setTimeout(abWatchPoll, 1500); }
+      else location.reload();
+    })
+    .catch(err => {
+      if (String(err && err.message) === 'signed out') return;
+      fb.className = 'ab-fb ab-bad';
+      fb.textContent = 'could not reach the daemon';
+      if (run) run.disabled = false;
+    });
+}
+function abWatchPoll() {
+  fetch('/api/watcher').then(r => {
+    if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+    return r.json();
+  }).then(s => {
+    if (s.busy) { setTimeout(abWatchPoll, 3000); return; }
+    location.reload();
+  }).catch(() => setTimeout(abWatchPoll, 6000));
+}
+"""
 
 
 def render_discover(state, tab: str = "search", title: str = "", author: str = "", result: dict | None = None) -> str:
@@ -3588,6 +3820,8 @@ def render_settings(state) -> str:
         settings_script=SETTINGS_SCRIPT,
         account_section=render_account_section(state),
         account_script=ACCOUNT_SCRIPT,
+        watcher_section=render_watcher_section(state),
+        watcher_script=WATCHER_SCRIPT,
     )
 
 
@@ -4851,6 +5085,9 @@ class Handler(BaseHTTPRequestHandler):
             rows = [discover_mod.public_row(r) for r in self.state.wishlist_all()]
             self._send(200, json.dumps({"count": len(rows), "items": rows}).encode(), "application/json")
             return
+        if path.rstrip("/") == "/api/watcher":
+            self._send(200, json.dumps(watcher_mod.WATCHER.status(self.state)).encode(), "application/json")
+            return
         if path.rstrip("/") == "/api/discover/search":
             result = discover_mod.search(self.state, params.get("title", ""), params.get("author", ""))
             payload = {**result, "count": len(result["results"])}
@@ -5425,6 +5662,48 @@ class Handler(BaseHTTPRequestHandler):
                 "count": self.state.wishlist_count()}
         self._send(200, json.dumps(body).encode(), "application/json")
 
+    def _handle_wishlist_retry(self) -> None:
+        """POST /api/wishlist/retry: a not_found / error row goes back to wanted."""
+        payload = self._read_json()
+        if payload is None:
+            return
+        asin = str(payload.get("asin", "")).strip().upper()
+        if not valid_asin(asin):
+            self._send(400, b'{"error":"that is not an ASIN"}', "application/json")
+            return
+        row = self.state.wishlist_get(asin)
+        if row is None:
+            self._send(404, b'{"error":"that book is not on your wishlist"}', "application/json")
+            return
+        if not self.state.wishlist_retry(asin):
+            body = {"error": f"only a book that was not found or failed can be retried (this one is {row['status']})"}
+            self._send(409, json.dumps(body).encode(), "application/json")
+            return
+        logging.getLogger("audiobind").info("wishlist: retry %s", asin)
+        row = self.state.wishlist_get(asin) or row
+        self._send(200, json.dumps({"ok": True, "asin": asin, "item": discover_mod.public_row(row)}).encode(),
+                   "application/json")
+
+    def _handle_watcher(self) -> None:
+        """POST /api/watcher: {"action": "run" | "pause" | "resume"}."""
+        payload = self._read_json()
+        if payload is None:
+            return
+        action = str(payload.get("action", "")).lower()
+        watcher = watcher_mod.WATCHER
+        if action == "run":
+            started, why = watcher.request_cycle(self.state)
+            if not started:
+                self._send(409, json.dumps({"error": why}).encode(), "application/json")
+                return
+        elif action in ("pause", "resume"):
+            watcher.set_paused(self.state, action == "pause")
+        else:
+            self._send(400, b'{"error":"unknown action"}', "application/json")
+            return
+        body = {"ok": True, "action": action, **watcher.status(self.state)}
+        self._send(200, json.dumps(body).encode(), "application/json")
+
     def _post_refusal(self) -> tuple[int, str] | None:
         """Cross-site request guard for every POST: (status, error) to refuse, else None.
 
@@ -5492,6 +5771,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/wishlist/remove":
             self._handle_wishlist(remove=True)
+            return
+        if path == "/api/wishlist/retry":
+            self._handle_wishlist_retry()
+            return
+        if path == "/api/watcher":
+            self._handle_watcher()
             return
         if path == "/api/discover/recommendations":
             payload = self._read_json()

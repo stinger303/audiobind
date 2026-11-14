@@ -268,8 +268,9 @@ author. Each result shows its cover, authors, narrators, runtime, series and rel
 Books already in your library are marked **In your library**: same ASIN, same title and
 author, or marked "I have this" on the Series page. **Get this** puts a book on your
 wishlist. That's all it does: nothing is downloaded, and no tracker is contacted. The
-wishlist is where a later version picks books up. The **Wishlist** tab lists it, and
-**Remove** takes a book off. The number on the Discover tab is the wishlist size. Search uses
+[wishlist watcher](#the-wishlist-watcher-myanonamouse) picks books up from there when it is
+on. The **Wishlist** tab lists it with each book's state and when it was last checked;
+**Retry** and **Remove** act on one book. The number on the Discover tab is the wishlist size. Search uses
 one catalog request at a time, with the same pacing as matching, and only the US store
 (`api.audible.com`).
 
@@ -296,6 +297,44 @@ wishlist until you press **Get this**.
 curl -H "$AUTH" localhost:8080/api/discover/recommendations          # stored result only
 curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
      -d '{"action":"refresh","force":true}' localhost:8080/api/discover/recommendations
+```
+
+### The wishlist watcher (MyAnonamouse)
+
+Off unless `MAM_ID` is set. With it set (and `QBIT_USER` / `QBIT_PASS` for the qBittorrent
+WebUI), a background thread works through the wishlist every `WATCH_INTERVAL_MIN` minutes:
+
+1. Books already in your library (a converted book with the same ASIN, or the same title and
+   author) are marked **In library** - this also runs after every scan, watcher or not.
+2. Up to `WATCH_MAX_PER_CYCLE` **wanted** books - never-checked first, oldest first, then the
+   least recently checked - are searched on MAM's Torrent Search JSON API (audiobooks,
+   English).
+3. No good match (title similarity 0.90+, an author match, audio files, not already snatched):
+   the book stays **wanted** with a "not found on MAM (checked ...)" note and is searched again
+   later; after 3 misses in a row it becomes **not found** until you press **Retry**. A poor
+   match is never forced.
+4. A match: the torrent is downloaded through MAM's Download Torrent API and handed to
+   qBittorrent (category `mam-audiobooks`, whose save path is your ingest folder). It is
+   downloaded **without** a freeleech wedge when it is already free, VIP freeleech or a
+   personal freeleech, and **with** a wedge (`&fl`) otherwise - the decision is written in the
+   book's note. The book becomes **downloading**, and **in library** once ingest converts it.
+
+The watcher only ever calls those two MAM endpoints (the ones MAM authorizes for automation),
+never parses HTML and never follows a redirect. It sends one request at a time, at least 3 s
+apart, and after any error it backs off (60 s, doubling to 30 minutes) and ends the cycle. A
+failed download or a qBittorrent refusal marks the book **error** and is never retried on its
+own - a wedge is not refunded - so you decide with **Retry**. qBittorrent is logged into before
+anything is downloaded, so a qBittorrent that is down never costs a wedge.
+
+**Dry run** applies: the watcher searches and notes what it *would* download, and downloads
+nothing. Settings > **Watcher** shows its status (last and next cycle, last error, backoff),
+**Run a cycle now** and **Pause watcher** (kept across restarts). MAM sessions are locked to
+an IP address: create the `mam_id` session for the IP the container reaches MAM from.
+
+```bash
+curl -H "$AUTH" localhost:8080/api/watcher                            # status, never a secret
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"action":"run"}' localhost:8080/api/watcher
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PRS1K"}' localhost:8080/api/wishlist/retry
 ```
 
 ### CLI
@@ -333,6 +372,11 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `TRUSTED_PROXY` | `false` | `true` only behind your own reverse proxy: `X-Forwarded-Host` is then checked against `ALLOWED_HOSTS` instead of `Host` |
 | `AUTH_TOKEN` | *(unset)* | **Deprecated - use the account instead (see [Signing in](#signing-in)).** A shared password for the web UI and API. It only applies while no account exists: you sign in with any username and the token as the password (session cookie, 7 days, `HttpOnly`, `SameSite=Strict`), and scripts send `Authorization: Bearer <token>` to `/api/...`. Five failed sign-ins from one IP lock it out for 10 minutes. While it is set, the first-run setup page is skipped. Once an account exists, the token no longer signs in |
 | `NOTIFY_URL` | | Optional webhook for a per-scan summary |
+| `MAM_ID` | *(unset)* | The MyAnonamouse `mam_id` session cookie for the [wishlist watcher](#the-wishlist-watcher-myanonamouse). Unset = the watcher is off: no thread, no network. A secret - never shown in the UI, the API or the log |
+| `WATCH_INTERVAL_MIN` | `60` | Minutes between watcher cycles (10-1440) |
+| `WATCH_MAX_PER_CYCLE` | `5` | Wishlist books one watcher cycle searches at most (1-20) |
+| `QBIT_URL` | `http://localhost:8083` | qBittorrent WebUI the watcher hands torrents to |
+| `QBIT_USER` / `QBIT_PASS` | *(unset)* | qBittorrent WebUI login. Without them the watcher stays disabled (a warning in the log and on Settings) |
 | `PUID` / `PGID` | `99` / `100` | Ownership of written files |
 
 ## Notes on correctness
