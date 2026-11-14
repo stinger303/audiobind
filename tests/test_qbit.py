@@ -43,11 +43,12 @@ class FakeQbit(BaseHTTPRequestHandler):
         if self.path == "/api/v2/auth/login":
             form = urllib.parse.parse_qs(body.decode())
             if form.get("username") == [self.USER] and form.get("password") == [self.PASSWORD]:
-                self._reply(204, b"", {"Set-Cookie": "SID=abc123; HttpOnly; path=/"})
+                status, cookie = self.server.login_reply
+                self._reply(status, b"", {"Set-Cookie": cookie} if cookie else {})
             else:
                 self._reply(200, b"Fails.")
             return
-        if "SID=abc123" not in (self.headers.get("Cookie") or ""):
+        if "=abc123" not in (self.headers.get("Cookie") or ""):
             self._reply(403, b"Forbidden")
             return
         if self.path == "/api/v2/torrents/add":
@@ -71,6 +72,7 @@ class QbitCase(unittest.TestCase):
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeQbit)
         self.server.calls = []
         self.server.add_answer = b"Ok."
+        self.server.login_reply = (204, "SID=abc123; HttpOnly; path=/")
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
 
@@ -93,6 +95,31 @@ class TestLogin(QbitCase):
         self.assertEqual(urllib.parse.parse_qs(call["body"].decode()),
                          {"username": ["admin"], "password": ["s3cret pass"]})
         self.assertTrue(any(ck.name == "SID" for ck in c.jar))
+
+    def test_qbt_sid_port_cookie_is_a_success(self):
+        self.server.login_reply = (204, "QBT_SID_8083=abc123; HttpOnly; SameSite=Lax; path=/")
+        c = self.client()
+        c.login()
+        self.assertTrue(c.logged_in)
+        self.assertTrue(any(ck.name == "QBT_SID_8083" for ck in c.jar))
+        c.add_torrent(TORRENT)  # the session works for the next call
+        self.assertIn("QBT_SID_8083=abc123", self.server.calls[-1]["headers"]["Cookie"])
+
+    def test_204_without_a_cookie_is_a_failure(self):
+        self.server.login_reply = (204, None)
+        with self.assertRaises(qbit.QbitError):
+            self.client().login()
+
+    def test_200_with_sid_still_works(self):
+        self.server.login_reply = (200, "SID=abc123; path=/")
+        c = self.client()
+        c.login()
+        self.assertTrue(c.logged_in)
+
+    def test_empty_cookie_value_is_a_failure(self):
+        self.server.login_reply = (204, "QBT_SID_8083=; path=/")
+        with self.assertRaises(qbit.QbitError):
+            self.client().login()
 
     def test_bad_password_is_an_error_that_never_shows_the_password(self):
         c = self.client(password="wrong-password-xyz")

@@ -219,7 +219,7 @@ The status page is also the control panel:
 | **Scan now** | skips the interval and starts a pass immediately |
 | **Pause after this book** | finishes the book in flight, then stops before starting another |
 | **Resume** | continues, and scans immediately |
-| **Dry run: ON / OFF** | switches between deciding-only and writing. Persisted, so a restart keeps your choice; `DRY_RUN` is only the default for a fresh install |
+| **Dry run: ON / OFF** | switches between deciding-only and writing. Persisted, so a restart keeps your choice; `DRY_RUN=true` always starts dry, whatever was saved (the switch can turn it off afterwards), while `DRY_RUN=false` leaves the saved choice in charge |
 
 Both toggles survive container restarts. Scripted equivalent:
 
@@ -505,7 +505,7 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `MANUAL_WORKERS` | `2` | Manual actions (Retry, Convert anyway, Use this ASIN, Re-check) allowed at once; more get "another action is already running" |
 | `MAX_RUNTIME_DELTA` | `0.25` | Hold when runtime differs by more than this fraction |
 | `REGION` | `us` | Audible region (`us`, `ca`, `uk`, `au`, `fr`, `de`, `it`, `es`, `jp`, `in`) |
-| `DRY_RUN` | `false` | Decide and log, write nothing |
+| `DRY_RUN` | `false` | Decide and log, write nothing. `true` always starts dry; the UI switch can turn it off afterwards |
 | `WEB_ENABLED` | `true` | Status page |
 | `WEB_PORT` | `8080` | Status page port |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host names / IPs the web UI answers to (ports are ignored). **Add the LAN IP and hostname you browse to**, e.g. `192.168.1.10,tower,tower.local`; any other `Host` gets a 403. This blocks DNS-rebinding attacks from websites you visit. Keep `localhost,127.0.0.1` in the list for scripts on the server itself |

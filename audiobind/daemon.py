@@ -116,14 +116,27 @@ def refresh_series(state: State) -> None:
         log.exception("series refresh could not be scheduled")
 
 
+def restore_controls(state: State) -> None:
+    """Restore pause and dry-run at startup. DRY_RUN=true in the environment is a floor: it
+    starts dry whatever the saved switch says (the UI can turn it off afterwards)."""
+    if state.get_meta("paused", False):
+        CONTROL.pause()  # a paused container stays paused across restarts
+    saved = state.get_meta("dry_run")
+    if CONFIG.dry_run:
+        CONTROL.set_dry_run(True)
+        log.info("dry run: on (DRY_RUN=true in the environment)")
+    elif saved is not None:
+        CONTROL.set_dry_run(bool(saved))
+        log.info("dry run: %s (saved switch)", "on" if saved else "off")
+    else:
+        log.info("dry run: off (saved switch)")
+
+
 def run() -> None:
     """Loop forever, honouring SCAN_INTERVAL_MIN."""
     state = State(CONFIG.state_dir)
     CONFIG.ensure_dirs()
-    if state.get_meta("paused", False):
-        CONTROL.pause()  # a paused container stays paused across restarts
-    if state.get_meta("dry_run") is not None:
-        CONTROL.set_dry_run(bool(state.get_meta("dry_run")))
+    restore_controls(state)
     log.info(
         "audiobind daemon: %s -> %s every %d min",
         CONFIG.library_root,
