@@ -7,6 +7,7 @@ import csv
 import getpass
 import json
 import logging
+import logging.handlers
 import sys
 from pathlib import Path
 
@@ -18,13 +19,53 @@ from .state import State
 from .units import discover_units
 
 
-def setup_logging(verbose: bool = False) -> None:
-    logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
-        format="%(asctime)s %(levelname)-7s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        stream=sys.stdout,
-    )
+LOG_FORMAT = "%(asctime)s %(levelname)-7s %(message)s"
+LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+LOG_MAX_BYTES = 5 * 1024 * 1024
+LOG_BACKUPS = 3
+
+
+def setup_logging(
+    verbose: bool = False,
+    log_file: str | None = None,
+    max_bytes: int = LOG_MAX_BYTES,
+    backups: int = LOG_BACKUPS,
+) -> None:
+    """Console (stdout) handler plus a rotating file handler (LOG_FILE, 5 MB x 3 backups).
+
+    ``log_file`` None = the configured LOG_FILE; "" = no file log. A file that cannot be opened
+    costs one console warning and the app carries on with stdout only.
+    """
+    level = logging.DEBUG if verbose else logging.INFO
+    if log_file is None:
+        log_file = CONFIG.log_file
+    formatter = logging.Formatter(LOG_FORMAT, LOG_DATEFMT)
+    root = logging.getLogger()
+    # replace our own handlers from an earlier call; never touch foreign ones
+    for handler in list(root.handlers):
+        if getattr(handler, "_audiobind", False):
+            root.removeHandler(handler)
+            handler.close()
+    console = logging.StreamHandler(sys.stdout)
+    console.setFormatter(formatter)
+    console._audiobind = True  # type: ignore[attr-defined]
+    root.addHandler(console)
+    root.setLevel(level)
+    if not log_file:
+        return
+    try:
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file, maxBytes=max_bytes, backupCount=backups, encoding="utf-8"
+        )
+    except OSError as exc:
+        logging.getLogger("audiobind").warning(
+            "log file %s cannot be opened (%s) - logging to stdout only", log_file, exc
+        )
+        return
+    file_handler.setFormatter(formatter)
+    file_handler._audiobind = True  # type: ignore[attr-defined]
+    root.addHandler(file_handler)
 
 
 def _find(units, wanted: str):

@@ -83,6 +83,8 @@ class Config:
     library_root: Path = Path("/library")
     output_root: Path = Path("/output")
     state_dir: Path = Path("/config")
+    #: rotating log file; "" = no file log (LOG_FILE unset = <state_dir>/audiobind.log)
+    log_file: str = "/config/audiobind.log"
     work_dir: Path = Path("/work") if Path("/work").is_dir() else Path("/config/work")
 
     audio_bitrate: str = "128k"
@@ -157,6 +159,8 @@ class Config:
             library_root=Path(_env("LIBRARY_ROOT", "/library")),
             output_root=Path(_env("OUTPUT_ROOT", "/output")),
             state_dir=Path(_env("STATE_DIR", "/config")),
+            # unset = the default file under STATE_DIR; set but empty = file log off
+            log_file=_env("LOG_FILE", str(Path(_env("STATE_DIR", "/config")) / "audiobind.log")),
             audio_bitrate=_env("AUDIO_BITRATE", "128k"),
             audio_channels=_env_int("AUDIO_CHANNELS", 1),
             sample_rate=_env_int("SAMPLE_RATE", 44100),

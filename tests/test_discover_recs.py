@@ -248,6 +248,12 @@ class TestCaching(RecsCase):
 
 
 class TestForYouPage(RecsCase):
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p.start()
+        self.addCleanup(p.stop)
+
     def render(self):
         with mock.patch.object(catalog, "query", side_effect=AssertionError("render must not query")):
             return web.render_discover(self.state, "for_you")

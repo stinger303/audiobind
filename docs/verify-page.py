@@ -34,7 +34,12 @@ import time                                                  # noqa: E402
 import urllib.parse                                          # noqa: E402
 
 from audiobind import catalog, discover, series, web         # noqa: E402
+from audiobind.config import CONFIG                          # noqa: E402
 from audiobind.state import State, UnitState                 # noqa: E402
+
+# Discover / Series / wishlist checks below are the MAM surfaces, which only render with MAM_ID set.
+# The watcher section turns it off again to prove a non-MAM install shows none of them.
+CONFIG.mam_id = "VERIFY-MAM"
 
 state = State(pathlib.Path(TMP))
 BOOKS = [
@@ -373,14 +378,27 @@ node_check("settings", settings_page, "settings.js")
 # nothing here can reach MAM or qBittorrent.
 print("wishlist watcher:")
 from audiobind import watcher                                # noqa: E402
-from audiobind.config import CONFIG                          # noqa: E402
 
 watcher.make_mam = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a MAM client"))
 watcher.make_qbit = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a qBittorrent client"))
-check("watcher: off by default (no MAM_ID)", not watcher.configured() and not watcher.WATCHER.alive)
+CONFIG.mam_id = ""
+check("watcher: off without MAM_ID", not watcher.configured() and not watcher.WATCHER.alive)
 off_settings = get("/settings")
-check("watcher: Settings section, off", 'id="watcher"' in off_settings and "Off &#8212; MAM_ID is not set" in off_settings
-      and 'id="ab-watch-run" onclick="abWatcher(\'run\')" disabled' in off_settings)
+check("watcher: Settings section, off, is one short block",
+      'id="watcher"' in off_settings and "MAM acquisition (optional)" in off_settings
+      and all(f"<code>{v}</code>" in off_settings for v in ("MAM_ID", "QBIT_URL", "QBIT_USER", "QBIT_PASS"))
+      and 'id="ab-watch-run"' not in off_settings and 'id="ab-watch-toggle"' not in off_settings)
+nomam_pages = get("/") + get("/discover") + get("/discover/for-you") + get("/discover/wishlist") + get("/series")
+check("no MAM: no wishlist tab, rail count, Get this or Want anywhere",
+      "/discover/wishlist" not in nomam_pages and 'id="ab-rail-wanted"' not in nomam_pages
+      and ">Get this</button>" not in nomam_pages and ">Want</button>" not in nomam_pages
+      and 'onclick="abSeriesWantAll(' not in nomam_pages and 'onclick="abSeriesWant(' not in nomam_pages)
+check("no MAM: the ingest folder is said to work either way",
+      "converted whether or not MAM is configured" in get("/"))
+status, _, refused = fetch("/api/watcher", json.dumps({"action": "run"}).encode(),
+                           {"Content-Type": "application/json", "Cookie": COOKIE})
+check("Run a cycle now is refused while the watcher is off", status == 409 and "MAM_ID" in refused)
+CONFIG.mam_id = "VERIFY-MAM"
 wl_rows = [("B0VERWANT1", "wanted", ""), ("B0VERDOWN1", "downloading", "sent to qBittorrent: MAM #1 'x'"),
            ("B0VERLIB01", "in_library", "in your library"), ("B0VERNF001", "not_found", "not found on MAM in 3 searches"),
            ("B0VERERR01", "error", 'download of MAM #9 failed <"boom">')]
@@ -393,7 +411,7 @@ check("wishlist: one chip per state", all(f'class="ab-disc-pill ab-wl-{s}"' in w
 check("wishlist: Retry only on not found / error", wl_page.count('onclick="abRetry(this)">Retry</button>') == 2)
 check("wishlist: notes escaped", 'failed &lt;"boom"&gt;' in wl_page and '<"boom">' not in wl_page)
 check("wishlist: last checked shown", "never checked" in wl_page and "checked just now" in wl_page)
-check("wishlist: watcher bar says it is off", "The MAM watcher is <b>off</b>" in wl_page)
+check("wishlist: tab present with MAM_ID set", 'href="/discover/wishlist"' in get("/discover"))
 check("wishlist: no unexpanded {placeholders}",
       not re.search(r"\{(version|styles|discover_script|discover_item|series_item|disc_tabs|disc_body)\}", wl_page))
 check("wishlist: no external URLs", "http://" not in wl_page and "https://" not in wl_page)
@@ -401,9 +419,6 @@ node_check("wishlist watcher", wl_page, "wishlist-watcher.js")
 status, _, retried = fetch("/api/wishlist/retry", json.dumps({"asin": "B0VERERR01"}).encode(),
                            {"Content-Type": "application/json", "Cookie": COOKIE})
 check("Retry puts an error row back to wanted", status == 200 and json.loads(retried)["item"]["status"] == "wanted")
-status, _, refused = fetch("/api/watcher", json.dumps({"action": "run"}).encode(),
-                           {"Content-Type": "application/json", "Cookie": COOKIE})
-check("Run a cycle now is refused while the watcher is off", status == 409 and "MAM_ID" in refused)
 CONFIG.mam_id, CONFIG.qbit_user, CONFIG.qbit_pass = "VERIFY-SECRET-COOKIE", "admin", "VERIFY-SECRET-PASS"
 on_settings = get("/settings")
 check("watcher: enabled section with Run and Pause", '<span class="ok">Enabled</span>' in on_settings

@@ -45,6 +45,12 @@ class StateCase(unittest.TestCase):
 
 
 class TestWishlistTab(StateCase):
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_every_state_has_its_chip_and_retry_only_where_it_applies(self):
         add(self.state, "B000000001")
         add(self.state, "B000000002", "downloading", note="sent to qBittorrent")
@@ -69,11 +75,12 @@ class TestWishlistTab(StateCase):
         self.assertIn("never checked", html)
         self.assertIn("checked just now", html)
 
-    def test_the_bar_says_the_watcher_is_off(self):
+    def test_without_mam_the_wishlist_tab_is_gone(self):
         add(self.state, "B000000001")
-        html = web.render_discover(self.state, "wishlist")
-        self.assertIn("The MAM watcher is <b>off</b>", html)
-        self.assertIn('href="/settings#watcher"', html)
+        with mock.patch.object(CONFIG, "mam_id", ""):
+            html = web.render_discover(self.state, "wishlist")
+        self.assertNotIn("/discover/wishlist", html)
+        self.assertNotIn("books wanted", html)
 
     def test_the_bar_warns_when_qbittorrent_is_not_configured(self):
         with mock.patch.object(CONFIG, "mam_id", "x"):
@@ -99,9 +106,10 @@ class TestSettingsSection(StateCase):
     def test_off(self):
         html = web.render_settings(self.state)
         self.assertIn('id="watcher"', html)
-        self.assertIn("Off &#8212; MAM_ID is not set", html)
-        self.assertIn('id="ab-watch-run" onclick="abWatcher(\'run\')" disabled', html)
-        self.assertNotIn("ab-watch-toggle", html, "no pause switch for a watcher that is off")
+        self.assertIn("MAM acquisition (optional)", html)
+        self.assertIn("<code>MAM_ID</code>", html)
+        self.assertNotIn('id="ab-watch-run"', html, "no dead controls for a watcher that is off")
+        self.assertNotIn('id="ab-watch-toggle"', html, "no pause switch for a watcher that is off")
 
     def test_missing_qbit_credentials_warn(self):
         with mock.patch.object(CONFIG, "mam_id", "x"):
