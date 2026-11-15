@@ -450,3 +450,33 @@ class BothTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CtocCapTests(unittest.TestCase):
+    def test_300_chapters_write_a_well_formed_ctoc(self):
+        chapters = [{"start": i, "end": i + 1, "title": f"C{i}"} for i in range(300)]
+        out = id3.chapter_frames(chapters)
+        pos, ctoc = 0, None
+        chaps = 0
+        while pos < len(out):
+            fid, size = out[pos:pos + 4], int.from_bytes(out[pos + 4:pos + 8], "big")
+            body = out[pos + 10:pos + 10 + size]
+            chaps += fid == b"CHAP"
+            if fid == b"CTOC":
+                ctoc = body
+            pos += 10 + size
+        self.assertEqual(pos, len(out))
+        self.assertEqual(chaps, 300)  # no chapter frame is dropped
+        self.assertEqual(ctoc[:4], b"toc\x00")
+        self.assertEqual(ctoc[4], 0x03)
+        self.assertEqual(ctoc[5], 255)  # not 300 & 0xFF == 44
+        children = ctoc[6:].split(b"\x00")[:-1]
+        self.assertEqual(len(children), 255)
+        self.assertEqual(children[0], b"ch1")
+        self.assertEqual(children[-1], b"ch255")
+
+    def test_exactly_255_and_few_are_unchanged(self):
+        for n in (1, 255):
+            out = id3.chapter_frames([{"start": i, "end": i + 1, "title": "t"} for i in range(n)])
+            ctoc = out[out.rindex(b"CTOC") + 10:]
+            self.assertEqual(ctoc[5], n)

@@ -21,8 +21,10 @@ class EgressError(Exception):
 
 def _fetch(url: str, proxy: str, timeout: float) -> str:
     """One GET, plain text. The single network call of the guard; tests replace it."""
-    handlers = [urllib.request.ProxyHandler({"http": proxy, "https": proxy})] if proxy else []
-    opener = urllib.request.build_opener(*handlers)
+    # explicit map always: {} means no proxy and never the environment's HTTP(S)_PROXY
+    mapping = {"http": proxy, "https": proxy} if proxy else {}
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler(mapping))
+    opener.addheaders = []
     request = urllib.request.Request(url, headers={"Accept": "text/plain"})
     with opener.open(request, timeout=timeout) as response:
         return response.read(MAX_ANSWER).decode("ascii", "replace")

@@ -97,6 +97,8 @@ class TestPostGuard(LiveServerCase):
 
         saved = (CONFIG.trusted_proxy, CONFIG.allowed_hosts)
         CONFIG.trusted_proxy, CONFIG.allowed_hosts = True, ["127.0.0.1", "books.example.net"]
+        self.addCleanup(setattr, CONFIG, "trusted_proxy_ips", CONFIG.trusted_proxy_ips)
+        CONFIG.trusted_proxy_ips = ["127.0.0.1"]
         self.addCleanup(setattr, CONFIG, "trusted_proxy", saved[0])
         self.addCleanup(setattr, CONFIG, "allowed_hosts", saved[1])
         status, _ = self.request(

@@ -404,14 +404,17 @@ _OPENERS_LOCK = threading.Lock()
 
 def _opener(proxy: str = ""):
     """The opener for ``proxy`` ("" = direct), built once and shared by search and download.
-    With a proxy only that proxy handler is installed (an https target goes through an HTTP
-    CONNECT tunnel); the environment's proxy variables are never consulted."""
+    An explicit ProxyHandler is always installed: the configured proxy for http and https (an
+    https target goes through an HTTP CONNECT tunnel), or an empty map (no proxy at all) when
+    there is none, so the environment's proxy variables are never consulted. ``addheaders`` is
+    emptied so urllib's own ``User-agent: Python-urllib/x`` is never sent; the only User-Agent
+    on the wire is MAM_USER_AGENT, when the owner set one."""
     with _OPENERS_LOCK:
         if proxy not in _OPENERS:
-            handlers: list = [_NoRedirect()]
-            if proxy:
-                handlers.insert(0, urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
-            _OPENERS[proxy] = urllib.request.build_opener(*handlers)
+            mapping = {"http": proxy, "https": proxy} if proxy else {}
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler(mapping), _NoRedirect())
+            opener.addheaders = []
+            _OPENERS[proxy] = opener
         return _OPENERS[proxy]
 
 

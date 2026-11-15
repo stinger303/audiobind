@@ -5,6 +5,61 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev5] - 2026-11-14
+
+Security-fix build from the 0.19.0-dev4 audit. Docker users: if you set `TRUSTED_PROXY=true`,
+**also set `TRUSTED_PROXY_IPS`** (see Security) or your proxy's forwarded headers stop being
+honoured.
+
+### Security
+- **MAM requests no longer send a Python User-Agent.** urllib's default `User-agent:
+  Python-urllib/x` was going out on every search and download, contradicting the documented
+  behaviour. No User-Agent is sent unless `MAM_USER_AGENT` is set, then exactly that one. The
+  same fix applies to the egress probe.
+- **The environment's `HTTP(S)_PROXY` is no longer consulted** by the MAM client or the egress
+  probe. Without `MAM_PROXY` the request goes direct; with it, only through that proxy.
+- **A residential IP address and a LAN layout were removed from the repository**: tests now use
+  documentation addresses, and the host-specific deploy/rollback scripts and the stored
+  container-args file are gone (a test keeps the address out). `docs/PUBLISHING.md` describes the
+  release steps generically.
+- **Forwarded headers are only trusted from listed proxies.** New `TRUSTED_PROXY_IPS`
+  (comma-separated IPs/CIDRs). `X-Forwarded-For`, `-Host` and `-Proto` are honoured only when
+  `TRUSTED_PROXY=true` **and** the connecting peer is in that list; `TRUSTED_PROXY=true` alone no
+  longer trusts anyone. **Migration:** add your reverse proxy's address, for example
+  `TRUSTED_PROXY_IPS=172.18.0.0/16`.
+- **The failed-sign-in limit holds under parallel requests.** Each attempt is counted before the
+  password is checked and cleared on success, and the password hashing is bounded to a couple of
+  concurrent runs. This covers the sign-in form, Bearer requests and Settings > Account.
+- **Concurrent connections are capped** (`MAX_CONNECTIONS`, default 64; extra connections get a
+  503), and request headers must arrive within 10 seconds in total.
+- **The manual-action cap works again**: a manual action released its slot twice.
+- **Sign out is POST-only** and goes through the same origin check as other POSTs.
+- **The session cookie gets `Secure`** when the request arrived over https through a trusted proxy
+  (`X-Forwarded-Proto: https`).
+- **Legacy `AUTH_TOKEN` sessions end when the token changes**, restarts included.
+- **The container refuses `PUID=0` / `PGID=0`** unless `ALLOW_ROOT=1` is set.
+- **Control characters in a title or override** can no longer break publishing or put a line
+  break in a folder name.
+- **The template and compose file no longer say an empty `AUTH_TOKEN` means no sign-in.** With it
+  empty the first visit opens the account setup page, which anyone who can reach the port can
+  complete until someone does: finish setup right after the first start.
+
+### Fixed
+- **A blocked egress guard no longer skips local bookkeeping.** The qBittorrent progress step
+  (`downloading` to `downloaded`) now runs before the guard and regardless of its verdict; it
+  makes no MAM request.
+- **`/healthz` is reachable without a session** once an account exists, for uptime monitors. It
+  only ever answers `ok` or `stale`. Nothing else became public.
+- **An audiobook with more than 255 chapters** no longer gets a malformed MP3 chapter list: the
+  table of contents lists the first 255.
+
+### Tests
+- The User-Agent and proxy tests assert what goes over a real local socket. Added: slot release
+  through the manual path, concurrent failed sign-ins, the connection cap and header deadline,
+  trusted-proxy peers, sign out, the `Secure` flag, token-bound sessions, `/healthz`, the
+  entrypoint's root refusal, the 300-chapter table of contents, control characters in names, the
+  guard-blocked bookkeeping, and a check that the residential address never returns.
+
 ## [0.19.0-dev4] - 2026-11-14
 
 ### Fixed

@@ -110,3 +110,47 @@ class TestConversionQueue(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EntrypointRefusesRoot(unittest.TestCase):
+    """0.19.0-dev5: PUID/PGID 0 is refused unless ALLOW_ROOT=1."""
+
+    def run_entry(self, **env):
+        import os
+        import pathlib
+        import stat
+        import subprocess
+        import tempfile
+
+        root = pathlib.Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = pathlib.Path(tmp) / "audiobind"
+            fake.write_text("#!/bin/sh\necho started\n")
+            fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+            full = {"PATH": f"{tmp}:{os.environ['PATH']}", "STATE_DIR": tmp, **env}
+            return subprocess.run(["sh", str(root / "entrypoint.sh")], env=full, capture_output=True, text=True)
+
+    def test_zero_is_refused(self):
+        for env in ({"PUID": "0"}, {"PGID": "0"}, {"PUID": "00", "PGID": "100"}, {"PUID": "0", "PGID": "0"}):
+            out = self.run_entry(**env)
+            self.assertEqual(out.returncode, 1, env)
+            self.assertIn("refusing to run as root", out.stderr)
+            self.assertNotIn("started", out.stdout)
+
+    def test_allow_root_is_explicit(self):
+        import os
+        if os.geteuid() == 0:
+            self.skipTest("as root the entrypoint would call gosu")
+        out = self.run_entry(PUID="0", ALLOW_ROOT="1")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("started", out.stdout)
+        self.assertEqual(self.run_entry(PUID="0", ALLOW_ROOT="yes").returncode, 1)
+
+    def test_non_numeric_is_refused_and_ordinary_ids_pass(self):
+        import os
+        self.assertEqual(self.run_entry(PUID="abc").returncode, 1)
+        if os.geteuid() != 0:
+            out = self.run_entry(PUID="99", PGID="100")
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertIn("started", out.stdout)
+            self.assertEqual(self.run_entry(PUID="007", PGID="100").returncode, 0)

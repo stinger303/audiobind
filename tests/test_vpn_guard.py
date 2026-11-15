@@ -4,8 +4,10 @@ Nothing here touches the network: the MAM transport, the proxy opener and the eg
 all fakes.
 """
 
+import http.server
 import json
 import logging
+import threading
 import pathlib
 import tempfile
 import time
@@ -67,6 +69,103 @@ class TestFingerprint(unittest.TestCase):
             cfg = Config.from_env()
         self.assertEqual((cfg.mam_user_agent, cfg.mam_proxy, cfg.mam_home_wan_ip), ("Custom/1", "", ""))
         self.assertNotIn("MAM_PROXY", repr(cfg))
+
+
+class _Capture(http.server.BaseHTTPRequestHandler):
+    seen: list = []
+
+    def do_GET(self):
+        type(self).seen.append({k.lower(): v for k, v in self.headers.items()})
+        self.send_response(200)
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, *args):
+        pass
+
+
+class TestWire(unittest.TestCase):
+    """What actually leaves the process: a real opener against a local socket."""
+
+    def setUp(self):
+        mam._OPENERS.clear()
+        self.addCleanup(mam._OPENERS.clear)
+        _Capture.seen = []
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Capture)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/"
+
+    def test_mam_opener_sends_no_user_agent(self):
+        opener = mam._opener("")
+        self.assertEqual(opener.addheaders, [])
+        opener.open(urllib.request.Request(self.url, headers={"Cookie": "mam_id=x"}), timeout=5).read()
+        self.assertEqual(len(_Capture.seen), 1)
+        self.assertNotIn("user-agent", _Capture.seen[0])
+        self.assertNotIn("python", json.dumps(_Capture.seen[0]).lower())
+
+    def test_owner_user_agent_reaches_the_wire_verbatim(self):
+        opener = mam._opener("")
+        opener.open(urllib.request.Request(self.url, headers={"User-Agent": "Custom/1"}), timeout=5).read()
+        self.assertEqual(_Capture.seen[0]["user-agent"], "Custom/1")
+
+    def test_egress_probe_sends_no_user_agent(self):
+        with mock.patch.dict("os.environ", {"HTTP_PROXY": "", "http_proxy": ""}):
+            egress._fetch(self.url, "", 5)
+        self.assertNotIn("user-agent", _Capture.seen[0])
+
+    def test_environment_proxy_is_not_consulted(self):
+        env = {"HTTPS_PROXY": "http://10.9.9.9:3128", "https_proxy": "http://10.9.9.9:3128",
+               "HTTP_PROXY": "http://10.9.9.9:3128", "http_proxy": "http://10.9.9.9:3128",
+               "ALL_PROXY": "http://10.9.9.9:3128"}
+        with mock.patch.dict("os.environ", env):
+            mam._OPENERS.clear()
+            opener = mam._opener("")
+            handlers = [h for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler)]
+            # an empty map leaves the handler inert (urllib does not register it); the default
+            # handler, which would carry the environment's proxy, must not be there
+            self.assertEqual([h.proxies for h in handlers], [])
+            self.assertFalse([h for h in opener.handlers if getattr(h, "proxies", None)])
+            # and on the wire: a local request is answered by the local server, not the proxy
+            opener.open(urllib.request.Request(self.url), timeout=5).read()
+            self.assertEqual(len(_Capture.seen), 1)
+            captured = {}
+            real = urllib.request.build_opener
+
+            def spy(*h):
+                captured["h"] = h
+                return real(*h)
+
+            with mock.patch.object(urllib.request, "build_opener", spy):
+                egress._fetch(self.url, "", 5)
+            self.assertEqual([h.proxies for h in captured["h"] if isinstance(h, urllib.request.ProxyHandler)], [{}])
+
+    def test_configured_proxy_still_wins(self):
+        opener = mam._opener("http://vpn:8888")
+        handlers = [h for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler)]
+        self.assertEqual([h.proxies for h in handlers], [{"http": "http://vpn:8888", "https": "http://vpn:8888"}])
+        self.assertEqual(opener.addheaders, [])
+
+
+class TestNoHomeAddressInRepo(unittest.TestCase):
+    def test_no_residential_address_or_lan_layout_is_committed(self):
+        root = pathlib.Path(__file__).resolve().parent.parent
+        needle = "67" + r"\.176\."  # assembled so this file does not contain the literal
+        import re
+        pattern = re.compile(needle)
+        hits = []
+        for path in list(root.rglob("*.py")) + list(root.rglob("*.md")) + list(root.rglob("*.sh")) \
+                + list(root.rglob("*.json")) + list(root.rglob("*.xml")) + list(root.rglob("*.yml")):
+            if ".git" in path.parts:
+                continue
+            if pattern.search(path.read_text(errors="replace")):
+                hits.append(str(path.relative_to(root)))
+        self.assertEqual(hits, [])
+        for gone in ("docs/live-args.json", "docs/rollback.sh"):
+            self.assertFalse((root / gone).exists(), gone)
+        self.assertEqual(list((root / "docs").glob("deploy-*.sh")), [])
 
 
 class TestProxy(unittest.TestCase):
@@ -142,7 +241,7 @@ class TestProxy(unittest.TestCase):
             self.assertIn("MAM_PROXY", str(ctx.exception))
 
     def test_malformed_home_ip_fails_at_config_load(self):
-        with mock.patch.dict("os.environ", {"MAM_HOME_WAN_IP": "67.176.81"}):
+        with mock.patch.dict("os.environ", {"MAM_HOME_WAN_IP": "203.0.113"}):
             with self.assertRaises(RuntimeError) as ctx:
                 Config.from_env()
         self.assertIn("MAM_HOME_WAN_IP", str(ctx.exception))
@@ -290,6 +389,39 @@ class TestGuardInTheWatcher(GuardCase):
         status = self.w.status(self.state)
         self.assertEqual(status["egress_guard"], "unknown")
         self.assertIn("could not be verified", status["egress_reason"])
+
+
+class TestBlockedGuardStillDoesLocalBookkeeping(GuardCase):
+    H = "b" * 40
+
+    def downloading(self):
+        self.state.wishlist_set_status("B000000001", "downloading", torrent_hash=self.H, note="sent to qBittorrent")
+
+    def run_progress(self, observed, progress):
+        FakeQbit.progress_map = progress
+        self.addCleanup(lambda: setattr(FakeQbit, "progress_map", {}))
+        return self.run_cycle(observed, answer(entry(1, "Project Hail Mary")))
+
+    def test_finished_torrent_reads_downloaded_while_the_guard_is_blocked(self):
+        self.downloading()
+        summary, _ = self.run_progress(HOME, {self.H: 1.0})
+        self.assertEqual(summary["egress_guard"], "blocked")
+        self.assertEqual(self.transport.calls, [], "still not one MAM request")
+        self.assertEqual(self.row()["status"], "downloaded")
+        self.assertEqual(summary["downloaded"], 1)
+        self.assertEqual(self.state.get_meta(watcher.META_LAST_CYCLE)["downloaded"], 1)
+
+    def test_same_when_the_ip_cannot_be_verified(self):
+        self.downloading()
+        summary, _ = self.run_progress(egress.EgressError("down"), {self.H: 1.0})
+        self.assertEqual(summary["egress_guard"], "unknown")
+        self.assertEqual(self.row()["status"], "downloaded")
+
+    def test_unfinished_stays_downloading_and_still_no_mam(self):
+        self.downloading()
+        summary, _ = self.run_progress(HOME, {self.H: 0.3})
+        self.assertEqual(self.row()["status"], "downloading")
+        self.assertEqual(self.transport.calls, [])
 
 
 class TestGuardOff(WatcherCase):
@@ -459,7 +591,7 @@ class TestExpectedEmptyKeepsDev2(GuardCase):
 
 class TestExpectedConfig(unittest.TestCase):
     def test_junk_is_rejected_naming_the_variable(self):
-        for value in ("213.152.187", "vpn.example", "1.2.3.4/32", "999.1.1.1"):
+        for value in ("198.51.100", "vpn.example", "1.2.3.4/32", "999.1.1.1"):
             with mock.patch.dict("os.environ", {"MAM_EXPECTED_EGRESS_IP": value}):
                 with self.assertRaises(RuntimeError, msg=value) as ctx:
                     Config.from_env()

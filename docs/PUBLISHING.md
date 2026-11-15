@@ -13,11 +13,11 @@ git tag -a v0.2.0 -m "v0.2.0"
 git push origin main --tags
 ```
 
-Pushing needs the deploy key - the default `~/.ssh` key is not authorized for
-this repo, so prefix the push (or the whole release) with:
+Pushing may need a deploy key that is authorized for this repo (the default key of your
+account may not be). Point git at it for the push only, with a path of your own:
 
 ```bash
-GIT_SSH_COMMAND='ssh -i /opt/data/ssh/github_audiobind -o IdentitiesOnly=yes' \
+GIT_SSH_COMMAND='ssh -i <path-to-deploy-key> -o IdentitiesOnly=yes' \
   git push origin main --tags
 ```
 

@@ -18,8 +18,11 @@ services:
       - DRY_RUN=false
       # the names/IPs you browse to; anything else is refused (DNS-rebinding defence)
       - ALLOWED_HOSTS=localhost,127.0.0.1,tower,tower.local   # add your server's LAN IP
-      # - AUTH_TOKEN=change-me      # optional sign-in for the UI; scripts send "Authorization: Bearer <token>"
-      # - TRUSTED_PROXY=true        # only behind your own reverse proxy (trusts X-Forwarded-Host)
+      # AUTH_TOKEN is deprecated - leave it unset. With it unset the first visit opens a setup page
+      # to create your account; until you finish it, anyone who can reach the port can claim it,
+      # so open the page and complete setup right after the first start.
+      # - TRUSTED_PROXY=true        # only behind your own reverse proxy ...
+      # - TRUSTED_PROXY_IPS=172.18.0.0/16   # ... and ONLY from these peers (needed as well)
     # hardening: read-only root fs (the app writes only to the volumes below and /tmp),
     # no capabilities beyond the three the entrypoint needs to drop to PUID/PGID
     read_only: true

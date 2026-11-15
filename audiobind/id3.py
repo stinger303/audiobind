@@ -40,6 +40,9 @@ def text_frame(frame_id: str, text: str) -> bytes:
         return frame(frame_id, b"\x01\xff\xfe" + text.encode("utf-16-le") + b"\x00\x00")
 
 
+MAX_CTOC_CHILDREN = 255
+
+
 def _ms(seconds) -> int:
     return max(0, min(int(round(float(seconds) * 1000)), 0xFFFFFFFE))
 
@@ -59,8 +62,11 @@ def chapter_frames(chapters: list[dict]) -> bytes:
     # Flags 0x03 = top-level (bit 1) + ordered (bit 0). Players treat a CTOC without the
     # top-level bit as a nested table and ignore it as the chapter list; 0x00 (the
     # prototype's value) therefore hides the chapters.
-    toc = b"toc\x00" + b"\x03" + struct.pack(">B", len(ids) & 0xFF)
-    for element in ids:
+    # The count is one byte: list the first MAX_CTOC_CHILDREN and stop (a wrapped count would
+    # claim 0 children while every id was still written). Every CHAP frame is still written.
+    listed = ids[:MAX_CTOC_CHILDREN]
+    toc = b"toc\x00" + b"\x03" + struct.pack(">B", len(listed))
+    for element in listed:
         toc += element.encode("latin-1") + b"\x00"
     return out + frame("CTOC", toc)
 

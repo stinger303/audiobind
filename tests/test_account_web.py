@@ -270,7 +270,7 @@ class LoginTests(AccountCase):
     def test_logout(self):
         _, headers, _ = self.login()
         jar = self.jar(headers)
-        status, headers, _ = self.raw("/logout", headers=jar)
+        status, headers, _ = self.raw("/logout", b"", headers=jar)
         self.assertEqual(status, 303)
         self.assertEqual(headers["Location"], "/login")
         self.assertEqual(self.raw("/api/state", headers=jar)[0], 401)
@@ -538,3 +538,87 @@ class RenderTests(AccountCase):
         section = web.render_account_section(self.state)
         self.assertNotIn("ab-setting-label", section)
         self.assertIn('class="ab-acct-form"', section)
+
+
+class LogoutIsPostOnly(AccountCase):
+    def setUp(self):
+        super().setUp()
+        self.state.create_credentials(USER, auth_mod.hash_password(PASSWORD))
+
+    def test_get_does_not_sign_out(self):
+        _, headers, _ = self.login()
+        jar = self.jar(headers)
+        status, out, _ = self.raw("/logout", headers=jar)
+        self.assertEqual(status, 405)
+        self.assertNotIn("Set-Cookie", out)
+        self.assertEqual(self.raw("/api/state", headers=jar)[0], 200)
+
+    def test_cross_site_post_is_refused_and_the_session_survives(self):
+        _, headers, _ = self.login()
+        jar = self.jar(headers)
+        for origin in ("https://evil.example", "null"):
+            status, _, _ = self.raw("/logout", b"", headers={**jar, "Origin": origin})
+            self.assertEqual(status, 403, origin)
+        self.assertEqual(self.raw("/api/state", headers=jar)[0], 200)
+
+    def test_same_origin_post_signs_out(self):
+        _, headers, _ = self.login()
+        jar = self.jar(headers)
+        status, _, _ = self.raw("/logout", b"", headers={**jar, "Origin": self.base})
+        self.assertEqual(status, 303)
+        self.assertEqual(self.raw("/api/state", headers=jar)[0], 401)
+
+
+class HealthzAndCookies(AccountCase):
+    def setUp(self):
+        super().setUp()
+        self.state.create_credentials(USER, auth_mod.hash_password(PASSWORD))
+        self.saved_proxy = (CONFIG.trusted_proxy, CONFIG.trusted_proxy_ips)
+        self.addCleanup(lambda: (setattr(CONFIG, "trusted_proxy", self.saved_proxy[0]),
+                                 setattr(CONFIG, "trusted_proxy_ips", self.saved_proxy[1])))
+
+    def test_healthz_needs_no_session_and_exposes_only_ok_or_stale(self):
+        self.state.heartbeat()
+        status, _, body = self.raw("/healthz")
+        self.assertIn(status, (200, 503))
+        self.assertIn(body, (b"ok", b"stale"))
+        self.assertEqual(self.raw("/healthz/")[0], status)
+
+    def test_nothing_else_is_exempt(self):
+        for path in ("/healthzz", "/healthz/x", "/api/state", "/", "/settings", "/api/watcher"):
+            status, _, _ = self.raw(path)
+            self.assertIn(status, (303, 401), path)
+
+    def test_cookie_is_not_secure_over_plain_http(self):
+        _, headers, _ = self.login()
+        self.assertNotIn("Secure", headers["Set-Cookie"])
+
+    def test_secure_behind_a_trusted_https_proxy_only(self):
+        CONFIG.trusted_proxy, CONFIG.trusted_proxy_ips = True, ["127.0.0.1"]
+        _, headers, _ = self.form("/login", {"username": USER, "password": PASSWORD},
+                                  {"X-Forwarded-Proto": "https"})
+        self.assertTrue(all("Secure" in c for c in headers.get_all("Set-Cookie")), headers.get_all("Set-Cookie"))
+        # an untrusted peer cannot make us claim https
+        CONFIG.trusted_proxy_ips = ["10.0.0.0/8"]
+        _, headers, _ = self.form("/login", {"username": USER, "password": PASSWORD},
+                                  {"X-Forwarded-Proto": "https"})
+        self.assertNotIn("Secure", headers["Set-Cookie"])
+
+
+class LegacyTokenSessions(AccountCase):
+    def test_a_token_change_ends_legacy_sessions(self):
+        CONFIG.auth_token = "first-token-value"
+        _, headers, _ = self.form("/login", {"token": "first-token-value"})
+        jar = self.jar(headers)
+        self.assertEqual(self.raw("/api/state", headers=jar)[0], 200)
+        CONFIG.auth_token = "second-token-value"
+        self.assertEqual(self.raw("/api/state", headers=jar)[0], 401)
+        auth_mod.SESSIONS.attach(self.state)  # a restart reloads from the DB
+        self.assertEqual(self.raw("/api/state", headers=jar)[0], 401)
+
+    def test_legacy_version_is_a_hash_of_the_token(self):
+        a, b = auth_mod.legacy_version("alpha"), auth_mod.legacy_version("beta")
+        self.assertNotEqual(a, b)
+        self.assertEqual(a, auth_mod.legacy_version("alpha"))
+        self.assertEqual(auth_mod.legacy_version(""), 0)
+        self.assertGreater(a, 1000)

@@ -369,7 +369,7 @@ check("settings: change-password and change-username forms",
       'data-acct="password"' in settings_page and 'data-acct="username"' in settings_page
       and settings_page.count('name="current"') == 2)
 check("settings: reset-password hint", "docker exec -it audiobind audiobind reset-password" in settings_page)
-check("settings: sign-out link", 'href="/logout"' in settings_page)
+check("settings: sign-out is a POST form to /logout", 'method="post" action="/logout"' in settings_page)
 check("settings: output format select with the three choices and the player note",
       'data-setting="output_format"' in settings_page and '<option value="M4B + MP3"' in settings_page
       and '<option value="MP3"' in settings_page and "Audiobookshelf" in settings_page)

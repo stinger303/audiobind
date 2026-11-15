@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import errno
+import ipaddress
 import json
 import logging
 import os
 import shutil
+import socket
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1536,7 +1539,11 @@ def signout_html(state=None) -> str:
     """The rail's sign-out link - shown whenever signing in is in force."""
     if not CONFIG.auth_token and not (state is not None and state.has_credentials()):
         return ""
-    return '<br><a href="/logout" style="color:var(--ab-text3)">sign out</a>'
+    return (
+        '<br><form method="post" action="/logout" style="display:inline;margin:0">'
+        '<button type="submit" style="background:none;border:0;padding:0;font:inherit;cursor:pointer;'
+        'text-decoration:underline;color:var(--ab-text3)">sign out</button></form>'
+    )
 
 
 def render_account_section(state) -> str:
@@ -4798,11 +4805,6 @@ def run_manual(state, unit, force: bool = False, slot=None) -> None:
             slot.release()
 
 
-        CONTROL.dequeue(unit.rel_path)
-        if slot is not None:
-            slot.release()
-
-
 def _os_error_code(exc: OSError) -> str:
     """A client-safe label for an OSError: its errno name, never the message (which
     carries container paths). The full error goes to the log."""
@@ -4907,11 +4909,113 @@ SECURITY_HEADERS = (
 MAX_BODY = 64 * 1024
 
 
+def peer_is_trusted(peer: str, allowed: list[str]) -> bool:
+    """Is ``peer`` (an address string) inside one of the IPs / CIDRs in ``allowed``?
+    Bad entries and an unparsable peer are never a match."""
+    try:
+        address = ipaddress.ip_address(str(peer).split("%", 1)[0])
+    except ValueError:
+        return False
+    if getattr(address, "ipv4_mapped", None):
+        address = address.ipv4_mapped
+    for entry in allowed:
+        try:
+            if address in ipaddress.ip_network(str(entry).strip(), strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+class BoundedServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer with a cap on concurrent connections. Over the cap the peer gets a
+    503 and the socket is closed at once - nothing queues, so a flood of idle or slow
+    connections cannot starve the UI of threads."""
+
+    daemon_threads = True
+
+    def __init__(self, address, handler, max_connections: int = 64):
+        self.max_connections = max(1, int(max_connections))
+        self._slots = threading.BoundedSemaphore(self.max_connections)
+        self._open = 0
+        self._open_lock = threading.Lock()
+        self.peak_open = 0
+        super().__init__(address, handler)
+
+    def open_connections(self) -> int:
+        with self._open_lock:
+            return self._open
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            try:
+                request.settimeout(1)
+                request.sendall(
+                    b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nContent-Length: 0\r\n"
+                    b"Connection: close\r\n\r\n"
+                )
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        with self._open_lock:
+            self._open += 1
+            self.peak_open = max(self.peak_open, self._open)
+        try:
+            super().process_request(request, client_address)
+        except BaseException:  # the thread never started: its finally will not run
+            self._release()
+            raise
+
+    def handle_error(self, request, client_address) -> None:
+        if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
+            return  # a peer that left, or one cut at the header deadline: not worth a traceback
+        super().handle_error(request, client_address)
+
+    def _release(self) -> None:
+        with self._open_lock:
+            self._open -= 1
+        self._slots.release()
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._release()
+
+
 class Handler(BaseHTTPRequestHandler):
     state = None
     server_version = f"audiobind/{__version__}"
     #: a client that stops sending (slowloris, Content-Length larger than the body) is cut off
     timeout = 15
+    #: total seconds allowed to deliver the request line and headers (``timeout`` is per recv,
+    #: so a peer sending one byte every few seconds would otherwise hold a thread for ever)
+    HEADER_DEADLINE = 10.0
+    _header_timer = None
+
+    def _header_deadline_hit(self) -> None:
+        try:
+            self.connection.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def handle_one_request(self) -> None:
+        timer = threading.Timer(self.HEADER_DEADLINE, self._header_deadline_hit)
+        timer.daemon = True
+        self._header_timer = timer
+        timer.start()
+        try:
+            super().handle_one_request()
+        finally:
+            timer.cancel()
+
+    def parse_request(self) -> bool:
+        try:
+            return super().parse_request()
+        finally:  # the headers are in (or the request was refused): the deadline has done its job
+            if self._header_timer is not None:
+                self._header_timer.cancel()
 
     def end_headers(self) -> None:
         for name, value in SECURITY_HEADERS:
@@ -4950,10 +5054,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _proxy_trusted(self) -> bool:
+        """True when X-Forwarded-* may be believed: TRUSTED_PROXY is on AND this connection's
+        peer address is one of TRUSTED_PROXY_IPS. Anyone else's forwarded headers are ignored."""
+        return CONFIG.trusted_proxy and peer_is_trusted(
+            self.client_address[0] if self.client_address else "", CONFIG.trusted_proxy_ips)
+
     def _request_host(self) -> str:
         """The host this request was addressed to: X-Forwarded-Host behind a trusted proxy,
         else Host. Empty when there is none (HTTP/1.0 without a Host header)."""
-        if CONFIG.trusted_proxy:
+        if self._proxy_trusted():
             forwarded = (self.headers.get("X-Forwarded-Host") or "").split(",", 1)[0].strip()
             if forwarded:
                 return forwarded
@@ -4986,17 +5096,31 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- sign-in: the account (or the legacy AUTH_TOKEN) ---------------------------------
 
+    #: the one other path reachable without signing in, once an account exists too: an uptime
+    #: monitor must not need a session. It exposes nothing but "ok" / "stale".
+    HEALTH_PATH = "/healthz"
     #: reachable without signing in: the login page itself and the icon it shows
     AUTH_EXEMPT = ("/login", "/logout", "/favicon.svg", "/icon.svg")
     #: before the first account exists (and with no AUTH_TOKEN) nothing else is reachable:
     #: only these, plus the setup page and the health probe
-    SETUP_EXEMPT = AUTH_EXEMPT + ("/setup", "/healthz")
+    SETUP_EXEMPT = AUTH_EXEMPT + ("/setup", HEALTH_PATH)
     #: _auth_status code for "no account yet - go to /setup"
     SETUP_NEEDED = 428
 
+    def _session_version(self, creds) -> int:
+        """What a session is stamped with: the account's version, or - before an account exists -
+        a number bound to the legacy AUTH_TOKEN's hash."""
+        return creds.version if creds else auth_mod.legacy_version(CONFIG.auth_token)
+
+    def _https(self) -> bool:
+        """The browser reached us over https: only knowable through a trusted proxy that says so."""
+        if not self._proxy_trusted():
+            return False
+        return (self.headers.get("X-Forwarded-Proto") or "").split(",", 1)[0].strip().lower() == "https"
+
     def _client_ip(self) -> str:
         """Source address for the failed-login limit (the proxy's last hop when trusted)."""
-        if CONFIG.trusted_proxy:
+        if self._proxy_trusted():
             hops = [h.strip() for h in (self.headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
             if hops:
                 return hops[-1][:64]
@@ -5024,9 +5148,9 @@ class Handler(BaseHTTPRequestHandler):
         creds = self.state.get_credentials()
         if creds is None and not CONFIG.auth_token:
             return 0 if clean in self.SETUP_EXEMPT else self.SETUP_NEEDED
-        if clean in self.AUTH_EXEMPT:
-            return 0
-        version = creds.version if creds else 0
+        if clean in self.AUTH_EXEMPT or clean == self.HEALTH_PATH:
+            return 0  # the public liveness probe: it only ever says "ok" or "stale"
+        version = self._session_version(creds)
         sid = auth_mod.cookie_value(self.headers.get("Cookie"))
         if sid and auth_mod.SESSIONS.valid(sid, version):
             return 0
@@ -5034,11 +5158,13 @@ class Handler(BaseHTTPRequestHandler):
         scheme, _, given = header.partition(" ")
         if path.startswith("/api/") and scheme.lower() == "bearer" and given.strip():
             ip = self._client_ip()
-            if auth_mod.LIMITER.blocked(ip):
+            if creds is not None and auth_mod.BEARERS.hit(given.strip(), creds.version):
+                return 0  # a password already proven: no PBKDF2, nothing to count
+            if not auth_mod.LIMITER.attempt(ip):  # counted before verifying, cleared on success
                 return 429
             if self._bearer_ok(given.strip(), creds):
+                auth_mod.LIMITER.reset(ip)
                 return 0
-            auth_mod.LIMITER.record(ip)
             logging.getLogger("audiobind").warning("wrong API credentials from %s", ip)
         return 401
 
@@ -5122,7 +5248,7 @@ class Handler(BaseHTTPRequestHandler):
                 page = render_login(message, username, legacy=creds is None)
                 self._send(code, page.encode(), "text/html; charset=utf-8", headers)
 
-        if auth_mod.LIMITER.blocked(ip):
+        if not auth_mod.LIMITER.attempt(ip):  # counted before verifying, cleared on success
             message, wait = self._locked_out_message(ip)
             reply(429, message, {"Retry-After": str(wait)})
             return
@@ -5136,18 +5262,17 @@ class Handler(BaseHTTPRequestHandler):
             # a pre-0.16 token-only form or script ({"token": ...}) keeps working until an account exists
             ok = auth_mod.token_matches(fields.get("token", ""), CONFIG.auth_token)
         if not ok:
-            auth_mod.LIMITER.record(ip)
             logging.getLogger("audiobind").warning("failed sign-in from %s", ip)
             reply(401, "That username or password is not right.")
             return
         auth_mod.LIMITER.reset(ip)
-        version = creds.version if creds else 0
+        version = self._session_version(creds)
         remember = fields.get("remember", "").strip().lower() in ("1", "on", "true", "yes")
         ttl = auth_mod.REMEMBER_TTL if remember else auth_mod.SESSION_TTL
         sid = auth_mod.SESSIONS.create(version, ttl=ttl)
-        cookies = [auth_mod.session_cookie(sid, ttl)]
+        cookies = [auth_mod.session_cookie(sid, ttl, self._https())]
         if username:
-            cookies.append(auth_mod.username_cookie(username))
+            cookies.append(auth_mod.username_cookie(username, self._https()))
         cookie = {"Set-Cookie": cookies}
         logging.getLogger("audiobind").info("signed in from %s", ip)
         if wants_json:
@@ -5194,7 +5319,7 @@ class Handler(BaseHTTPRequestHandler):
         if not version:  # another setup won the race
             refuse_existing()
             return
-        cookie = {"Set-Cookie": auth_mod.session_cookie(auth_mod.SESSIONS.create(version))}
+        cookie = {"Set-Cookie": auth_mod.session_cookie(auth_mod.SESSIONS.create(version), secure=self._https())}
         logging.getLogger("audiobind").info("account created from %s", self._client_ip())
         if wants_json:
             self._send(200, b'{"ok":true}', "application/json", cookie)
@@ -5214,22 +5339,23 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, b'{"error":"unknown action"}', "application/json")
             return
         ip = self._client_ip()
-        if auth_mod.LIMITER.blocked(ip):
-            message, wait = self._locked_out_message(ip)
-            self._send(429, json.dumps({"error": message}).encode(), "application/json", {"Retry-After": str(wait)})
-            return
         creds = self.state.get_credentials()
         if (creds is None) != (action == "create"):
             message = "an account already exists" if creds else "there is no account yet - create one first"
             self._send(409, json.dumps({"error": message}).encode(), "application/json")
+            return
+        if not auth_mod.LIMITER.attempt(ip):  # counted before verifying, cleared on success
+            message, wait = self._locked_out_message(ip)
+            self._send(429, json.dumps({"error": message}).encode(), "application/json", {"Retry-After": str(wait)})
             return
         current = str(payload.get("current") or "")
         if creds is None:
             current_ok = auth_mod.token_matches(current, CONFIG.auth_token)
         else:
             current_ok = auth_mod.verify_password(current, creds)
+        if current_ok:
+            auth_mod.LIMITER.reset(ip)
         if not current_ok:
-            auth_mod.LIMITER.record(ip)
             logging.getLogger("audiobind").warning("wrong current password on Settings from %s", ip)
             what = "access token" if creds is None else "current password"
             self._send(403, json.dumps({"error": f"The {what} is not right."}).encode(), "application/json")
@@ -5244,7 +5370,7 @@ class Handler(BaseHTTPRequestHandler):
         if problem:
             self._send(400, json.dumps({"error": problem}).encode(), "application/json")
             return
-        old_version = creds.version if creds else 0
+        old_version = self._session_version(creds)
         if action == "password":
             version = self.state.set_password(auth_mod.hash_password(new_password))
         elif action == "username":
@@ -5267,11 +5393,18 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def _handle_logout(self) -> None:
+        """POST only, through the same origin check as every other POST (a cross-site GET or
+        form cannot sign anyone out)."""
+        refusal = self._origin_refusal()
+        if refusal is not None:
+            code, message = refusal
+            self._send(code, json.dumps({"error": message}).encode(), "application/json")
+            return
         sid = auth_mod.cookie_value(self.headers.get("Cookie"))
         if sid:
             auth_mod.SESSIONS.revoke(sid)
         target = "/setup" if self._setup_pending() else "/login"
-        self._send(303, b"", "text/plain", {"Set-Cookie": auth_mod.expired_cookie(), "Location": target})
+        self._send(303, b"", "text/plain", {"Set-Cookie": auth_mod.expired_cookie(self._https()), "Location": target})
 
     def do_GET(self):  # noqa: N802
         if self._host_refused():
@@ -5299,7 +5432,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(303, b"", "text/plain", {"Location": "/"})
             return
         if path.rstrip("/") == "/logout":
-            self._handle_logout()
+            self._send(405, b'{"error":"sign out with POST"}', "application/json", {"Allow": "POST"})
             return
         if path in ("/favicon.svg", "/icon.svg"):
             icon = ICON_PATH
@@ -6040,7 +6173,7 @@ class Handler(BaseHTTPRequestHandler):
         if source is None:
             return None
         claimed = urlsplit(source.strip()).netloc.lower() if source.strip() not in ("", "null") else ""
-        forwarded = (self.headers.get("X-Forwarded-Host") or "").split(",") if CONFIG.trusted_proxy else []
+        forwarded = (self.headers.get("X-Forwarded-Host") or "").split(",") if self._proxy_trusted() else []
         allowed = {h.strip().lower() for h in (self.headers.get("Host") or "", *forwarded) if h.strip()}
         if not claimed or claimed not in allowed:
             return 403, "cross-site request refused"
@@ -6157,7 +6290,7 @@ def serve(state):
     Handler.state = state
     auth_mod.SESSIONS.attach(state)
     warn_default_hosts()
-    server = ThreadingHTTPServer(("0.0.0.0", CONFIG.web_port), Handler)
+    server = BoundedServer(("0.0.0.0", CONFIG.web_port), Handler, CONFIG.max_connections)
     if CONFIG.web_port == 0:
         CONFIG.web_port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True, name="web").start()

@@ -46,3 +46,12 @@ class TestHelpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSafeNameControlChars(unittest.TestCase):
+    def test_control_characters_become_a_space(self):
+        self.assertEqual(safe_name("Dune\x00Messiah"), "Dune Messiah")
+        self.assertEqual(safe_name("Line\none\r\ntwo\ttab\x7fend"), "Line one two tab end")
+        self.assertEqual(safe_name("\x00\x01\x1f"), "Unknown")
+        for ch in map(chr, list(range(32)) + [127]):
+            self.assertNotIn(ch, safe_name(f"a{ch}b"))

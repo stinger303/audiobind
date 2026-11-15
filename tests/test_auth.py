@@ -1,6 +1,7 @@
 """v0.15.1: optional AUTH_TOKEN login (cookie session + Bearer for the API)."""
 
 import json
+import threading
 import os
 import unittest
 import urllib.error
@@ -218,7 +219,7 @@ class AuthLiveTests(LiveServerCase):
         _, headers, _ = self.login()
         sid = auth_mod.cookie_value(headers["Set-Cookie"].split(";", 1)[0])
         jar = {"Cookie": f"audiobind_session={sid}"}
-        status, headers, _ = self.raw("/logout", headers=jar)
+        status, headers, _ = self.raw("/logout", b"", headers=jar)
         self.assertEqual(status, 303)
         self.assertIn("Max-Age=0", headers["Set-Cookie"])
         self.assertEqual(self.raw("/api/state", headers=jar)[0], 401)
@@ -271,3 +272,59 @@ class AuthLiveTests(LiveServerCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLockoutIsNotRacy(unittest.TestCase):
+    def test_concurrent_failures_each_count(self):
+        import threading
+        limiter = auth_mod.FailLimiter(limit=5, window=600)
+        allowed = []
+        gate = threading.Barrier(10)
+
+        def guess():
+            gate.wait()
+            allowed.append(limiter.attempt("1.2.3.4"))  # counted before any verification
+
+        threads = [threading.Thread(target=guess) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(sum(allowed), 5, "only the budget's worth of guesses get to verify")
+        self.assertTrue(limiter.blocked("1.2.3.4"))
+
+    def test_correct_password_under_the_limit_succeeds_and_clears(self):
+        limiter = auth_mod.FailLimiter(limit=5, window=600)
+        creds = auth_mod.hash_password("right horse", iterations=10)
+        for _ in range(3):
+            self.assertTrue(limiter.attempt("ip"))  # three wrong guesses
+        self.assertTrue(limiter.attempt("ip"))
+        self.assertTrue(auth_mod.verify_password("right horse", creds))
+        limiter.reset("ip")
+        self.assertFalse(limiter.blocked("ip"))
+        for _ in range(5):
+            self.assertTrue(limiter.attempt("ip"))
+        self.assertFalse(limiter.attempt("ip"))
+
+    def test_pbkdf2_runs_are_bounded(self):
+        import threading
+        import time
+        live, peak, lock = [0], [0], threading.Lock()
+
+        def slow(*a, **k):
+            with lock:
+                live[0] += 1
+                peak[0] = max(peak[0], live[0])
+            time.sleep(0.05)
+            with lock:
+                live[0] -= 1
+            return b"\0" * 32
+
+        with mock.patch.object(auth_mod.hashlib, "pbkdf2_hmac", slow):
+            threads = [threading.Thread(target=auth_mod._pbkdf2, args=("p", b"salt", 1)) for _ in range(8)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        self.assertLessEqual(peak[0], 2)
+        self.assertEqual(live[0], 0)

@@ -138,3 +138,37 @@ class ManualBoundsLive(LiveServerCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RunManualSlotTests(unittest.TestCase):
+    """run_manual releases its slot exactly once, however the unit ends."""
+
+    def _unit(self, name):
+        return mock.Mock(state_key=f"ingest:{name}", rel_path=name)
+
+    def test_two_units_return_the_semaphore_to_its_start(self):
+        slots = threading.BoundedSemaphore(2)
+        def count_and_restore():
+            taken = 0
+            while slots.acquire(blocking=False):
+                taken += 1
+            for _ in range(taken):
+                slots.release()
+            return taken
+
+        CONTROL._queue.clear()
+        try:
+            for outcome in (None, RuntimeError("boom")):
+                with mock.patch.object(web, "process_unit", side_effect=outcome):
+                    a, b = self._unit("A"), self._unit("B")
+                    for u in (a, b):
+                        self.assertTrue(slots.acquire(blocking=False))
+                        CONTROL.try_enqueue(u.state_key)
+                    self.assertEqual(count_and_restore(), 0)
+                    web.run_manual(None, a, slot=slots)
+                    self.assertEqual(count_and_restore(), 1, "one finish frees exactly one slot")
+                    web.run_manual(None, b, slot=slots)  # must not raise ValueError
+                    self.assertEqual(count_and_restore(), 2)
+                    self.assertEqual(CONTROL.queue_snapshot()["count"], 0)
+        finally:
+            CONTROL._queue.clear()

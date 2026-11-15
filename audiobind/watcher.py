@@ -268,6 +268,13 @@ class Watcher:
             summary["resolved"] = len(resolve_library(state))
         except Exception:  # noqa: BLE001 - a library-match problem must not stop the search
             log.exception("wishlist watcher: library match failed")
+        # Local bookkeeping first: this talks to qBittorrent only, never MAM, so the egress guard
+        # (which protects MAM requests) has no say. A VPN that is down is exactly when someone
+        # is looking at the page and wants finished torrents to read "downloaded".
+        try:
+            summary["downloaded"] = self._mark_downloaded(state)
+        except Exception:  # noqa: BLE001 - a progress check must never end the cycle
+            log.exception("wishlist watcher: download progress check failed")
         verdict, reason, observed = self._egress_guard(state)
         summary["egress_guard"] = verdict
         if observed:
@@ -302,10 +309,6 @@ class Watcher:
             if qb is not None:
                 qb.logout()
             state.set_meta(META_BACKOFF, {"until": client.backoff.until, "failures": client.backoff.failures})
-        try:
-            summary["downloaded"] = self._mark_downloaded(state)
-        except Exception:  # noqa: BLE001 - a progress check must never end the cycle
-            log.exception("wishlist watcher: download progress check failed")
         summary["seconds"] = round(time.time() - started, 1)
         state.set_meta(META_LAST_CYCLE, summary)
         if summary["error"]:

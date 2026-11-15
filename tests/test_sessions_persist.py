@@ -180,7 +180,7 @@ class RememberWebTests(AccountCase):
     def test_logout_revokes_session_and_keeps_username_cookie(self):
         _, headers, _ = self.login()
         cookie = jar(**{SESSION: self.sid_of(headers)})
-        status, out, _ = self.raw("/logout", headers=cookie)
+        status, out, _ = self.raw("/logout", b"", headers=cookie)
         self.assertEqual(status, 303)
         cookies = set_cookies(out)
         self.assertTrue(any(c.startswith(SESSION + "=;") and "Max-Age=0" in c for c in cookies))

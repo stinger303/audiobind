@@ -69,8 +69,13 @@ class PasswordHash:
     digest: str = field(repr=False)  # hex
 
 
+#: at most this many PBKDF2 runs at once, so a burst of sign-in attempts cannot burn every core
+PBKDF2_SLOTS = threading.BoundedSemaphore(2)
+
+
 def _pbkdf2(password: str, salt: bytes, iterations: int) -> bytes:
-    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8", "replace"), salt, iterations)
+    with PBKDF2_SLOTS:
+        return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8", "replace"), salt, iterations)
 
 
 def hash_password(password: str, iterations: int | None = None) -> PasswordHash:
@@ -328,6 +333,17 @@ class FailLimiter:
         with self._lock:
             return len(self._recent(key, self.clock())) >= self.limit
 
+    def attempt(self, key: str) -> bool:
+        """Check the budget and count this attempt in one step, BEFORE the password is
+        verified. False = locked out (nothing is counted). On success call ``reset``.
+        Because the count is taken up front, N concurrent guesses are N failures."""
+        now = self.clock()
+        with self._lock:
+            if len(self._recent(key, now)) >= self.limit:
+                return False
+            self._record_locked(key, now)
+            return True
+
     def retry_after(self, key: str) -> int:
         """Seconds until the oldest counted failure ages out (0 when not blocked)."""
         now = self.clock()
@@ -337,15 +353,18 @@ class FailLimiter:
                 return 0
             return max(1, int(self.window - (now - stamps[0])) + 1)
 
+    def _record_locked(self, key: str, now: float) -> None:
+        if key not in self._fails and len(self._fails) >= MAX_TRACKED_IPS:
+            for k in list(self._fails):
+                self._recent(k, now)
+            if len(self._fails) >= MAX_TRACKED_IPS:
+                self._fails.pop(next(iter(self._fails)))
+        self._fails.setdefault(key, []).append(now)
+
     def record(self, key: str) -> None:
         now = self.clock()
         with self._lock:
-            if key not in self._fails and len(self._fails) >= MAX_TRACKED_IPS:
-                for k in list(self._fails):
-                    self._recent(k, now)
-                if len(self._fails) >= MAX_TRACKED_IPS:
-                    self._fails.pop(next(iter(self._fails)))
-            self._fails.setdefault(key, []).append(now)
+            self._record_locked(key, now)
 
     def reset(self, key: str) -> None:
         with self._lock:
@@ -370,18 +389,30 @@ def cookie_value(header: str | None, name: str = COOKIE_NAME) -> str:
     return ""
 
 
-def session_cookie(sid: str, ttl: int | float = SESSION_TTL) -> str:
-    return f"{COOKIE_NAME}={sid}; Path=/; Max-Age={int(ttl)}; HttpOnly; SameSite=Strict"
+def legacy_version(token: str) -> int:
+    """The "credential version" a session carries while no account exists and the legacy
+    AUTH_TOKEN signs people in: a number derived from a hash of the token, so changing the
+    token (restart included) ends every session made under the old one. 0 without a token."""
+    if not token:
+        return 0
+    digest = hashlib.sha256(b"audiobind-legacy-token\0" + token.encode("utf-8", "replace")).digest()
+    return int.from_bytes(digest[:6], "big") | 1 << 47  # positive, never a small account version
 
 
-def expired_cookie() -> str:
-    return f"{COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
+def session_cookie(sid: str, ttl: int | float = SESSION_TTL, secure: bool = False) -> str:
+    return f"{COOKIE_NAME}={sid}; Path=/; Max-Age={int(ttl)}; HttpOnly; SameSite=Strict" + (
+        "; Secure" if secure else "")
 
 
-def username_cookie(username: str) -> str:
+def expired_cookie(secure: bool = False) -> str:
+    return f"{COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict" + ("; Secure" if secure else "")
+
+
+def username_cookie(username: str, secure: bool = False) -> str:
     """The remembered username: only ever read back to prefill the login field."""
     value = quote(username, safe="")
-    return f"{USER_COOKIE_NAME}={value}; Path=/; Max-Age={USER_COOKIE_TTL}; HttpOnly; SameSite=Strict"
+    return f"{USER_COOKIE_NAME}={value}; Path=/; Max-Age={USER_COOKIE_TTL}; HttpOnly; SameSite=Strict" + (
+        "; Secure" if secure else "")
 
 
 def remembered_username(header: str | None) -> str:

@@ -82,6 +82,7 @@ class HostGuardLiveTests(LiveServerCase):
         super().setUp()
         self.port = CONFIG.web_port
         self.saved_hosts = (CONFIG.allowed_hosts, CONFIG.trusted_proxy)
+        self.saved_ips = CONFIG.trusted_proxy_ips
         src = self.lib / "Author" / "Book"
         os.makedirs(src)
         (src / "01.mp3").write_bytes(b"audio")
@@ -89,6 +90,7 @@ class HostGuardLiveTests(LiveServerCase):
 
     def tearDown(self):
         CONFIG.allowed_hosts, CONFIG.trusted_proxy = self.saved_hosts
+        CONFIG.trusted_proxy_ips = self.saved_ips
         CONTROL.resume()
         CONTROL.clear_scan()
         super().tearDown()
@@ -137,6 +139,7 @@ class HostGuardLiveTests(LiveServerCase):
 
     def test_forwarded_host_honoured_with_trusted_proxy(self):
         CONFIG.allowed_hosts, CONFIG.trusted_proxy = ["books.example.net"], True
+        CONFIG.trusted_proxy_ips = ["127.0.0.1"]
         status, _ = self.request(
             "/api/state", None, {"Host": "backend:8080", "X-Forwarded-Host": "books.example.net"}, raw=True
         )
@@ -145,6 +148,43 @@ class HostGuardLiveTests(LiveServerCase):
             "/api/state", None, {"Host": "backend:8080", "X-Forwarded-Host": "evil.example"}, raw=True
         )
         self.assertEqual(status, 403)
+
+    def test_forwarded_headers_from_a_peer_outside_the_list_are_ignored(self):
+        CONFIG.allowed_hosts, CONFIG.trusted_proxy = ["books.example.net"], True
+        for ips in ([], ["10.0.0.0/8"], ["bogus"]):
+            CONFIG.trusted_proxy_ips = ips  # the test client connects from 127.0.0.1
+            status, _ = self.request(
+                "/api/state", None, {"Host": "backend:8080", "X-Forwarded-Host": "books.example.net"}, raw=True
+            )
+            self.assertEqual(status, 403, ips)
+
+    def test_forwarded_headers_from_a_peer_inside_the_list_are_honoured(self):
+        CONFIG.allowed_hosts, CONFIG.trusted_proxy = ["books.example.net"], True
+        for ips in (["127.0.0.1"], ["127.0.0.0/8"], ["10.0.0.0/8", "127.0.0.1/32"]):
+            CONFIG.trusted_proxy_ips = ips
+            status, _ = self.request(
+                "/api/state", None, {"Host": "backend:8080", "X-Forwarded-Host": "books.example.net"}, raw=True
+            )
+            self.assertEqual(status, 200, ips)
+
+    def test_forwarded_for_only_keys_the_lockout_for_a_trusted_peer(self):
+        handler = web.Handler.__new__(web.Handler)
+        handler.client_address = ("127.0.0.1", 5555)
+        handler.headers = {"X-Forwarded-For": "9.9.9.9"}
+        CONFIG.trusted_proxy = True
+        CONFIG.trusted_proxy_ips = []
+        self.assertEqual(handler._client_ip(), "127.0.0.1")
+        CONFIG.trusted_proxy_ips = ["127.0.0.1"]
+        self.assertEqual(handler._client_ip(), "9.9.9.9")
+        CONFIG.trusted_proxy = False
+        self.assertEqual(handler._client_ip(), "127.0.0.1")
+
+    def test_peer_is_trusted(self):
+        self.assertTrue(web.peer_is_trusted("172.18.0.2", ["172.18.0.0/16"]))
+        self.assertTrue(web.peer_is_trusted("::ffff:172.18.0.2", ["172.18.0.2"]))
+        self.assertFalse(web.peer_is_trusted("172.19.0.2", ["172.18.0.0/16"]))
+        self.assertFalse(web.peer_is_trusted("", ["0.0.0.0/0"]))
+        self.assertFalse(web.peer_is_trusted("1.2.3.4", []))
 
     def test_forwarded_origin_not_trusted_without_proxy_setting(self):
         # Origin naming the forwarded host must not pass the POST guard unless TRUSTED_PROXY

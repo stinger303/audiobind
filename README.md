@@ -177,6 +177,10 @@ Then you get the status page. Books are discovered on the first scan (within `SC
 
 ### Signing in
 
+On the first start nobody has an account yet, so the first visit opens a setup page - and until someone finishes it, anyone who can reach the port can create the account. Open the page and complete setup right after starting the container.
+
+`/healthz` is the one public endpoint: it needs no sign-in, so an uptime monitor can poll it, and it only ever answers `ok` (200) or `stale` (503).
+
 * **Browser:** username and password on the sign-in page. A session lasts 7 days
   (`HttpOnly`, `SameSite=Strict` cookie). Tick **Keep me signed in for 30 days** to make that
   browser's session last 30 days instead (it is unticked by default; leave it off on a shared
@@ -564,7 +568,10 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `WEB_ENABLED` | `true` | Status page |
 | `WEB_PORT` | `8080` | Status page port |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host names / IPs the web UI answers to (ports are ignored). **Add the LAN IP and hostname you browse to**, e.g. `192.168.1.10,tower,tower.local`; any other `Host` gets a 403. This blocks DNS-rebinding attacks from websites you visit. Keep `localhost,127.0.0.1` in the list for scripts on the server itself |
-| `TRUSTED_PROXY` | `false` | `true` only behind your own reverse proxy: `X-Forwarded-Host` is then checked against `ALLOWED_HOSTS` instead of `Host` |
+| `TRUSTED_PROXY` | `false` | `true` only behind your own reverse proxy: `X-Forwarded-Host` / `-For` / `-Proto` are then believed, **but only from the peers listed in `TRUSTED_PROXY_IPS`** (since 0.19.0-dev5 `TRUSTED_PROXY=true` alone trusts nobody). `X-Forwarded-Host` is checked against `ALLOWED_HOSTS` instead of `Host`; `X-Forwarded-Proto: https` adds `Secure` to the session cookie |
+| `TRUSTED_PROXY_IPS` | *(empty)* | Comma-separated IPs / CIDRs of your reverse proxy, e.g. `172.18.0.0/16`. Forwarded headers from any other peer are ignored. **Migrating:** if you set `TRUSTED_PROXY=true` before, add this too or the proxy's headers stop being honoured |
+| `MAX_CONNECTIONS` | `64` | Concurrent web connections served at once; more get a `503` and are closed. Request headers must arrive within 10 s |
+| `ALLOW_ROOT` | *(unset)* | The entrypoint refuses `PUID=0` / `PGID=0` unless this is `1` |
 | `AUTH_TOKEN` | *(unset)* | **Deprecated - use the account instead (see [Signing in](#signing-in)).** A shared password for the web UI and API. It only applies while no account exists: you sign in with any username and the token as the password (session cookie, 7 days, `HttpOnly`, `SameSite=Strict`), and scripts send `Authorization: Bearer <token>` to `/api/...`. Five failed sign-ins from one IP lock it out for 10 minutes. While it is set, the first-run setup page is skipped. Once an account exists, the token no longer signs in |
 | `NOTIFY_URL` | | Optional webhook for a per-scan summary |
 | `MAM_ID` | *(unset)* | **The switch for the [wishlist watcher](#the-wishlist-watcher-myanonamouse).** The MyAnonamouse `mam_id` session cookie. Unset = the watcher is off: no thread, no network. A secret - never shown in the UI, the API or the log |

@@ -80,8 +80,7 @@ scope one at a time.
 From the UX research digest (/opt/data/audiobind-designs/ux-research-2026-11.md).
 Order fixed by owner: sequence below, then re-look at the remainder. Every step:
 mockup -> owner pixel approval -> Claude Code build -> verify -> banked deploy;
-rollback = prior image tag on Tower + docs/rollback.sh (written and tested
-BEFORE the first deploy in this series); each feature one commit.
+rollback = prior image tag on the host (kept outside the repo; it is host-specific); each feature one commit.
 
 1. **Release "queue hygiene":** P2 auto-lock on human-confirmed fields (S) +
    P5/P6 table semantics kit (tabular-nums, em-dash cells, relative-time

@@ -128,7 +128,8 @@ def truncate_utf8(text: str, max_bytes: int = MAX_COMPONENT_BYTES) -> str:
 
 def safe_name(text: str | None, fallback: str = "Unknown") -> str:
     """Make a string safe as a single path component (at most 200 UTF-8 bytes)."""
-    out = re.sub(r'[\\/:*?"<>|]+', "-", (text or "").strip())
+    out = re.sub(r"[\x00-\x1f\x7f]", " ", text or "")  # a NUL would raise, a newline would split a name
+    out = re.sub(r'[\\/:*?"<>|]+', "-", out.strip())
     out = re.sub(r"\s+", " ", out).strip(" .-")
     out = truncate_utf8(out).strip(" .-")
     return out or fallback

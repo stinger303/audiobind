@@ -125,6 +125,11 @@ class Config:
     allowed_hosts_set: bool = False
     #: honour X-Forwarded-Host (only behind a reverse proxy you control)
     trusted_proxy: bool = False
+    #: the peer addresses (IPs or CIDRs) whose X-Forwarded-* headers are believed. TRUSTED_PROXY
+    #: alone is not enough: with this empty no peer is trusted
+    trusted_proxy_ips: list[str] = field(default_factory=list)
+    #: concurrent web connections served at once; more get a 503 and are closed
+    max_connections: int = 64
     #: manual Retry / Convert anyway / Use this ASIN / Re-check actions allowed at once
     manual_workers: int = 2
     #: deprecated shared secret for the web UI and API: only signs in while no account exists
@@ -186,8 +191,10 @@ class Config:
             allowed_hosts=_env_list("ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS),
             allowed_hosts_set=bool(_env("ALLOWED_HOSTS", "")),
             trusted_proxy=_env_bool("TRUSTED_PROXY", False),
+            trusted_proxy_ips=_env_list("TRUSTED_PROXY_IPS", ""),
             auth_token=_env("AUTH_TOKEN", ""),
             manual_workers=max(1, _env_int("MANUAL_WORKERS", 2)),
+            max_connections=max(1, _env_int("MAX_CONNECTIONS", 64)),
             mam_id=_env("MAM_ID", ""),
             watch_interval_min=_env_int("WATCH_INTERVAL_MIN", 60),
             watch_max_per_cycle=_env_int("WATCH_MAX_PER_CYCLE", 5),
