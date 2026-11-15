@@ -114,7 +114,7 @@ class TestCycles(WatcherCase):
         summary = self.cycle()
         self.assertEqual(len(self.transport.calls), 1)
         self.assertFalse(any("download.php" in url for _, url in self.transport.calls))
-        self.assertEqual(FakeQbit.instances, [])
+        self.assertEqual([q for q in FakeQbit.instances if q.logged_in or q.added], [])
         self.assertEqual((summary["would_send"], summary["sent"], summary["watcher_dry_run"]), (1, 0, True))
 
     def test_watcher_live_downloads_even_with_the_pipeline_dry(self):

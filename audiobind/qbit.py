@@ -214,6 +214,19 @@ class QbitClient:
                 continue
         return count
 
+    def snatch_state(self, category: str) -> dict[str, tuple[float, float]]:
+        """Read-only: ``{info hash: (progress, ratio)}`` for every torrent in ``category``, in ONE request."""
+        out: dict[str, tuple[float, float]] = {}
+        for item in self._info({"category": category}):
+            if not isinstance(item, dict):
+                continue
+            digest = str(item.get("hash") or "").lower()
+            try:
+                out[digest] = (float(item.get("progress")), float(item.get("ratio")))
+            except (TypeError, ValueError):
+                continue
+        return out
+
     def progress(self, hashes) -> dict[str, float]:
         """Read-only: ``{info hash: progress 0..1}`` for the given hashes, in ONE request. A
         torrent qBittorrent no longer has is simply absent from the result."""

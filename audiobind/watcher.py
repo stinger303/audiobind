@@ -40,6 +40,10 @@ from .config import (
     watch_interval_min,
     watch_max_incomplete,
     watch_max_per_cycle,
+    watch_max_unsatisfied,
+    wedge_per_cycle,
+    wedge_per_day,
+    wedge_reserve,
 )
 from .control import CONTROL
 from .state import (
@@ -172,6 +176,36 @@ class _QbitDown(Exception):
     """qBittorrent cannot take a torrent: end the cycle before anything is downloaded."""
 
 
+class Budget:
+    """What the account can afford this cycle: read from ONE qBittorrent request plus the ledger, never
+    the tracker. Fails closed - when qBittorrent cannot be read, no freeleech credit is spent."""
+
+    def __init__(self, unsatisfied: int = 0, spent_day: int = 0, unknown: bool = False) -> None:
+        self.unsatisfied = unsatisfied
+        self.spent_day = spent_day
+        self.spent_cycle = 0
+        self.unknown = unknown
+
+    @property
+    def at_limit(self) -> bool:
+        limit = watch_max_unsatisfied()
+        return limit > 0 and not self.unknown and self.unsatisfied >= limit
+
+    def may_spend(self) -> tuple[bool, str]:
+        """(allowed, why not). The reserve is enforced against the ledger only: the site's own wedge
+        count is not read."""
+        if self.unknown:
+            return False, "qBittorrent is unreachable, so the wedge budget cannot be checked"
+        reserve, per_day, per_cycle = wedge_reserve(), wedge_per_day(), wedge_per_cycle()
+        if reserve > 0 and per_day > 0 and self.spent_day >= per_day - reserve:
+            return False, "keeping %d freeleech %s in reserve" % (reserve, "credit" if reserve == 1 else "credits")
+        if per_cycle > 0 and self.spent_cycle >= per_cycle:
+            return False, "%d %s already spent this cycle" % (self.spent_cycle, "wedge" if self.spent_cycle == 1 else "wedges")
+        if per_day > 0 and self.spent_day >= per_day:
+            return False, "%d %s spent in the last 24 hours" % (self.spent_day, "wedge" if self.spent_day == 1 else "wedges")
+        return True, ""
+
+
 class Watcher:
     def __init__(self) -> None:
         self._cycle_lock = threading.Lock()
@@ -296,7 +330,7 @@ class Watcher:
             return {"skipped": "paused"}
         started = time.time()
         summary = {"at": started, "trigger": trigger, "watcher_dry_run": CONTROL.watcher_dry_run, "searched": 0, "sent": 0,
-                   "would_send": 0, "not_found": 0, "errors": 0, "resolved": 0, "error": ""}
+                   "would_send": 0, "not_found": 0, "skipped_budget": 0, "errors": 0, "resolved": 0, "error": ""}
         try:
             summary["resolved"] = len(resolve_library(state))
         except Exception:  # noqa: BLE001 - a library-match problem must not stop the search
@@ -316,17 +350,19 @@ class Watcher:
             return self._refuse(state, summary, reason, trigger)
         client = self.client()
         holder: dict = {}
+        budget = self._budget(state, holder)
         try:
             wait = client.backoff.remaining()
             if wait > 0:
                 summary["error"] = f"tracker backoff - next request allowed in {int(wait) + 1}s; nothing searched"
             else:
-                rows = [] if self._holding(summary) else state.wishlist_due(watch_max_per_cycle())
+                rows = [] if self._holding(summary) or self._unsatisfied_hold(summary, budget) \
+                    else state.wishlist_due(watch_max_per_cycle())
                 for row in rows:
                     if self._stop.is_set() or self.paused():
                         break
                     try:
-                        outcome = self._one(state, client, row, summary["watcher_dry_run"], holder)
+                        outcome = self._one(state, client, row, summary["watcher_dry_run"], holder, budget)
                     except tracker.TrackerError as exc:
                         summary["error"] = str(exc)
                         break
@@ -348,11 +384,13 @@ class Watcher:
             state.set_meta(META_LAST_ERROR, {"at": time.time(), "message": summary["error"]})
             log.warning("wishlist watcher: %s", summary["error"])
         self.next_at = time.time() + watch_interval_min() * 60
+        skipped = summary["skipped_budget"]
         log.info(
             "wishlist watcher: %s cycle%s - %d searched, %d sent to qBittorrent, %d would be sent (dry run), "
-            "%d not found, %d error(s), %d now in the library",
+            "%d not found%s, %d error(s), %d now in the library",
             trigger, " [dry run]" if summary["watcher_dry_run"] else "", summary["searched"], summary["sent"],
-            summary["would_send"], summary["not_found"], summary["errors"], summary["resolved"],
+            summary["would_send"], summary["not_found"],
+            ", %d skipped for the wedge budget" % skipped if skipped else "", summary["errors"], summary["resolved"],
         )
         return summary
 
@@ -376,6 +414,39 @@ class Watcher:
         summary["held"] = count
         log.info("wishlist watcher: %d torrent(s) in category %r still incomplete, limit %d - holding this cycle, nothing added",
                  count, qbit_category(), limit)
+        return True
+
+    def _budget(self, state, holder: dict) -> Budget:
+        """The account budget for this cycle: one qBittorrent read plus the ledger. A qBittorrent that
+        cannot be read marks the budget unknown (no credit is spent; rows that need none go on)."""
+        spent_day = state.wedges_spent_since(time.time() - 86400)
+        hashes = set(state.wishlist_snatch_hashes())
+        client = make_qbit()
+        try:
+            snatches = client.snatch_state(qbit_category())
+        except Exception as exc:  # noqa: BLE001 - whatever went wrong, the budget cannot be trusted
+            log.warning("wishlist watcher: could not read snatch state from qBittorrent (%s) - no freeleech "
+                        "credit will be spent this cycle", exc)
+            return Budget(spent_day=spent_day, unknown=True)
+        finally:
+            try:
+                client.logout()
+            except Exception:  # noqa: BLE001 - best effort
+                pass
+        unsatisfied = sum(
+            1 for h in hashes
+            if h in snatches and (snatches[h][0] < 1.0 or snatches[h][1] < 1.0)
+        )
+        return Budget(unsatisfied=unsatisfied, spent_day=spent_day)
+
+    def _unsatisfied_hold(self, summary: dict, budget: Budget) -> bool:
+        """True when WATCH_MAX_UNSATISFIED snatches are still unsatisfied (progress or ratio below 1):
+        nothing is searched or added this cycle. Independent of _holding()."""
+        if not budget.at_limit or summary.get("watcher_dry_run"):
+            return False
+        summary["held_unsatisfied"] = budget.unsatisfied
+        log.info("wishlist watcher: %d snatch(es) still unsatisfied, limit %d - holding this cycle, nothing added",
+                 budget.unsatisfied, watch_max_unsatisfied())
         return True
 
     def _mark_downloaded(self, state) -> int:
@@ -447,7 +518,8 @@ class Watcher:
             holder["qbit"] = client
         return holder["qbit"]
 
-    def _one(self, state, client: tracker.TrackerClient, row: dict, dry_run: bool, holder: dict) -> str:
+    def _one(self, state, client: tracker.TrackerClient, row: dict, dry_run: bool, holder: dict,
+             budget: Budget | None = None) -> str:
         """Search one row and act on it. Returns the summary key of what happened."""
         asin, title = row["asin"], row["title"]
         author = row["authors"][0] if row.get("authors") else ""
@@ -468,10 +540,21 @@ class Watcher:
 
         use_credit, credit_why = tracker.freeleech_decision(pick.raw, client.can_spend)
         decision = f"{why}; {credit_why}"
+        # only a torrent that would cost a credit consults the budget; one that is already free never does
+        allowed, refusal = (budget or Budget()).may_spend() if use_credit else (True, "")
         if dry_run:
+            if not allowed:
+                state.wishlist_record_check(asin, f"dry run ({when}): would NOT spend a credit - {refusal}", miss=False)
+                log.info("wishlist watcher [dry run]: %s (%s) - would not spend a credit: %s", asin, title, refusal)
+                return "skipped_budget"
             state.wishlist_record_check(asin, f"dry run ({when}): would download {decision}", miss=False)
-            log.info("wishlist watcher [dry run]: %s (%s) - would download %s", asin, title, decision)
+            log.info("wishlist watcher [dry run]: %s (%s) - would download %s%s", asin, title, decision,
+                     " (would spend 1 wedge)" if use_credit else "")
             return "would_send"
+        if not allowed:
+            state.wishlist_record_check(asin, f"not downloaded ({when}): {refusal}", miss=False)
+            log.info("wishlist watcher: %s (%s) - no credit spent: %s", asin, title, refusal)
+            return "skipped_budget"
 
         current = state.wishlist_get(asin)
         if not current or current["status"] != WISHLIST_WANTED:
@@ -497,15 +580,38 @@ class Watcher:
                       "Press Retry to search again."),
             )
             holder["row_error"] = True
+            if use_credit:  # the tracker already took the credit, whatever qBittorrent says
+                state.mark_wedge_spent(pick.tid, time.time())
+                if budget is not None:
+                    budget.spent_cycle += 1
             raise _QbitDown(f"qBittorrent did not take a torrent ({exc})") from None
         state.wishlist_set_status(
             asin, WISHLIST_DOWNLOADING, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
             torrent_hash=digest, note=f"sent to qBittorrent {when}: {decision}",
         )
+        if use_credit:
+            state.mark_wedge_spent(pick.tid, time.time())
+            if budget is not None:
+                budget.spent_cycle += 1
         log.info("wishlist watcher: %s (%s) sent to qBittorrent (hash %s)", asin, title, digest or "unknown")
         return "sent"
 
     # ------------------------------------------------------------------ status
+    @staticmethod
+    def wedge_status(state) -> dict:
+        """The wedge line's facts: ledger only, no network."""
+        per_day = wedge_per_day()
+        spent = state.wedges_spent_since(time.time() - 86400)
+        return {
+            "can_spend": bool(_setting("tracker_freeleech_param")),
+            "spent_day": spent,
+            "per_day": per_day,
+            "left": max(0, per_day - spent) if per_day else None,
+            "reserve": wedge_reserve(),
+            "per_cycle": wedge_per_cycle(),
+            "max_unsatisfied": watch_max_unsatisfied(),
+        }
+
     def status(self, state) -> dict:
         """What the Settings page and GET /api/watcher show. Never a secret."""
         reason = disabled_reason()
@@ -550,6 +656,7 @@ class Watcher:
             "qbit_url": qbit_url(),
             "qbit_category": qbit_category(),
             "max_incomplete": watch_max_incomplete(),
+            "wedges": self.wedge_status(state),
             "qbit_credentials": bool(_setting("qbit_user") and _setting("qbit_pass")),
             "last_cycle": last if isinstance(last, dict) else {},
             "next_cycle_at": self.next_at if self.alive and not paused else None,

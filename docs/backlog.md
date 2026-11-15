@@ -5,6 +5,19 @@ Ideas folded in from a side-by-side test of **Listenarr** (grabber) and
 2026-11-08. Items are research, not commitments — pull them into a version
 scope one at a time.
 
+## 0.21.0 — account-protection budgets (SHIPPED in 0.21.0-dev1)
+
+1. **Snatch-slot / wedge budgeting** — SHIPPED in 0.21.0-dev1. The watcher
+   budgets freeleech credits (`WEDGE_MAX_PER_CYCLE`, `WEDGE_MAX_PER_DAY`,
+   `WEDGE_RESERVE`) from a ledger on the wishlist table, and holds a cycle at
+   `WATCH_MAX_UNSATISFIED` unsatisfied snatches (progress or ratio below 1,
+   read from one qBittorrent request). Fails closed when qBittorrent cannot be
+   read. **Deliberately not built:** reading the site's live wedge count. There
+   is no documented endpoint, and guessing one would bring back the site
+   coupling the `TRACKER_*` work removed, so the reserve is a rolling floor on
+   the ledger (`spent today >= per-day cap - reserve`), not a balance check.
+   (No entry for this was in the backlog before the build; it is recorded here.)
+
 ## 0.20.0 candidates — noted 2026-11-15 (from a first install on a fresh box)
 
 1. **Acquisition settings in the GUI** — lands 0.20.0. `TRACKER_URL`,

@@ -277,6 +277,11 @@ class Config:
     watch_max_per_cycle: int = 5
     #: no torrent is added in a cycle while this many in ``qbit_category`` are still downloading (0 = off)
     watch_max_incomplete: int = 10
+    #: account-protection budgets (0 = no limit; reserve 0 = none). Set by the operator, never inferred
+    wedge_reserve: int = 1
+    wedge_per_cycle: int = 1
+    wedge_per_day: int = 3
+    watch_max_unsatisfied: int = 0
     qbit_url: str = "http://localhost:8083"
     #: the qBittorrent category torrents are added to (its save path is the ingest folder)
     qbit_category: str = "audiobooks"
@@ -360,6 +365,10 @@ class Config:
             watch_interval_min=_env_int("WATCH_INTERVAL_MIN", 60),
             watch_max_per_cycle=_env_int("WATCH_MAX_PER_CYCLE", 5),
             watch_max_incomplete=max(0, _env_int("WATCH_MAX_INCOMPLETE", 10)),
+            wedge_reserve=_env_int("WEDGE_RESERVE", 1),
+            wedge_per_cycle=_env_int("WEDGE_MAX_PER_CYCLE", 1),
+            wedge_per_day=_env_int("WEDGE_MAX_PER_DAY", 3),
+            watch_max_unsatisfied=_env_int("WATCH_MAX_UNSATISFIED", 0),
             qbit_url=_env("QBIT_URL", "http://localhost:8083").rstrip("/") or "http://localhost:8083",
             qbit_category=_env("QBIT_CATEGORY", "audiobooks") or "audiobooks",
             qbit_user=_env("QBIT_USER", ""),
@@ -411,7 +420,8 @@ CONFIG = Config.from_env()
 _EFFECTIVE: dict[str, object] = {}
 
 SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region", "expected_egress", "vip",
-                "watch_interval", "watch_per_cycle", "output_format")
+                "watch_interval", "watch_per_cycle", "output_format",
+                "wedge_reserve", "wedge_per_cycle", "wedge_per_day", "watch_max_unsatisfied")
 
 SETTING_MAP: dict[str, str] = {
     "auto_convert": "auto_convert",
@@ -424,6 +434,10 @@ SETTING_MAP: dict[str, str] = {
     "vip": "tracker_vip",
     "watch_interval": "watch_interval_min",
     "watch_per_cycle": "watch_max_per_cycle",
+    "wedge_reserve": "wedge_reserve",
+    "wedge_per_cycle": "wedge_per_cycle",
+    "wedge_per_day": "wedge_per_day",
+    "watch_max_unsatisfied": "watch_max_unsatisfied",
     "output_format": "output_format",
 }
 
@@ -439,6 +453,10 @@ SETTING_TYPES: dict[str, type] = {
     "vip": str,  # "YES" / "NO"; effective_val turns it into a bool
     "watch_interval": int,  # minutes, clamped to WATCH_INTERVAL_BOUNDS at use
     "watch_per_cycle": int,  # books, clamped to WATCH_MAX_PER_CYCLE_BOUNDS at use
+    "wedge_reserve": int,  # wedges kept unspent, clamped to WEDGE_BOUNDS at use
+    "wedge_per_cycle": int,  # 0 = no limit
+    "wedge_per_day": int,  # 0 = no limit
+    "watch_max_unsatisfied": int,  # 0 = no limit
 }
 
 #: the values the settings page offers; an environment value outside these is added to the
@@ -458,10 +476,15 @@ SETTING_BOUNDS: dict[str, tuple[int, int]] = {
     "nice": (0, 19),
     "watch_interval": (10, 1440),  # == WATCH_INTERVAL_BOUNDS
     "watch_per_cycle": (1, 20),  # == WATCH_MAX_PER_CYCLE_BOUNDS
+    "wedge_reserve": (0, 50),
+    "wedge_per_cycle": (0, 10),
+    "wedge_per_day": (0, 50),
+    "watch_max_unsatisfied": (0, 500),
 }
 
 #: settings whose bounds are politeness limits: never widened to fit an env value
-FIXED_BOUNDS = frozenset({"watch_interval", "watch_per_cycle"})
+FIXED_BOUNDS = frozenset({"watch_interval", "watch_per_cycle", "wedge_reserve", "wedge_per_cycle", "wedge_per_day",
+                          "watch_max_unsatisfied"})
 
 
 def setting_env_defaults() -> dict[str, object]:
@@ -482,6 +505,10 @@ def setting_env_defaults() -> dict[str, object]:
         "vip": "YES" if CONFIG.tracker_vip else "NO",
         "watch_interval": watch_interval_min_env(),
         "watch_per_cycle": watch_max_per_cycle_env(),
+        "wedge_reserve": _budget_env("wedge_reserve"),
+        "wedge_per_cycle": _budget_env("wedge_per_cycle"),
+        "wedge_per_day": _budget_env("wedge_per_day"),
+        "watch_max_unsatisfied": _budget_env("watch_max_unsatisfied"),
     }
 
 
@@ -595,6 +622,38 @@ def watch_interval_min() -> int:
 def watch_max_per_cycle() -> int:
     """Wishlist rows one watcher cycle may search at most (WATCH_MAX_PER_CYCLE)."""
     return _clamp(effective_val("watch_max_per_cycle"), WATCH_MAX_PER_CYCLE_BOUNDS, 5)
+
+
+#: account-protection budgets: setting key -> (default, bounds). 0 = no limit (reserve: none)
+BUDGET_DEFAULTS = {"wedge_reserve": 1, "wedge_per_cycle": 1, "wedge_per_day": 3, "watch_max_unsatisfied": 0}
+
+
+def _budget_env(key: str) -> int:
+    return _clamp(getattr(CONFIG, SETTING_MAP[key]), SETTING_BOUNDS[key], BUDGET_DEFAULTS[key])
+
+
+def _budget(key: str) -> int:
+    return _clamp(effective_val(SETTING_MAP[key]), SETTING_BOUNDS[key], BUDGET_DEFAULTS[key])
+
+
+def wedge_reserve() -> int:
+    """Freeleech credits to keep unspent (WEDGE_RESERVE; 0 = no reserve)."""
+    return _budget("wedge_reserve")
+
+
+def wedge_per_cycle() -> int:
+    """Most credits one cycle may spend (WEDGE_MAX_PER_CYCLE; 0 = no limit)."""
+    return _budget("wedge_per_cycle")
+
+
+def wedge_per_day() -> int:
+    """Most credits spent in any 24 hours (WEDGE_MAX_PER_DAY; 0 = no limit)."""
+    return _budget("wedge_per_day")
+
+
+def watch_max_unsatisfied() -> int:
+    """Unsatisfied snatches at which a cycle adds nothing (WATCH_MAX_UNSATISFIED; 0 = no limit)."""
+    return _budget("watch_max_unsatisfied")
 
 
 def watch_max_incomplete() -> int:

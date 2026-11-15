@@ -60,6 +60,10 @@ class TestEnvDefaultsAreLive(EnvCase):
                 "vip": "YES" if CONFIG.tracker_vip else "NO",
                 "watch_interval": config.watch_interval_min_env(),
                 "watch_per_cycle": config.watch_max_per_cycle_env(),
+                "wedge_reserve": 1,
+                "wedge_per_cycle": 1,
+                "wedge_per_day": 3,
+                "watch_max_unsatisfied": 0,
             },
         )
 

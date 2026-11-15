@@ -7,6 +7,31 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [Unreleased]
+
+### Added
+- **The watcher budgets the account instead of only obeying the site's moment-to-moment answers.** A
+  freeleech wedge is never refunded and a tracker account has a limited number of unsatisfied
+  snatches, so four new live settings (Settings > Watcher, no restart; `0` = no limit, and for the
+  reserve, none): `WEDGE_MAX_PER_CYCLE` (default 1), `WEDGE_MAX_PER_DAY` (default 3), `WEDGE_RESERVE`
+  (default 1) and `WATCH_MAX_UNSATISFIED` (default 0). The operator sets them; nothing is inferred.
+- **A wedge ledger.** Two additive columns on the wishlist table record each credit the watcher
+  spends and when. The per-day cap and the reserve are counted from that ledger only - the site's own
+  wedge count is deliberately not read, since no documented endpoint exists to read it.
+- **Unsatisfied snatches are counted from qBittorrent.** One read of the category per cycle: a torrent
+  the watcher added that is below 100% or below a 1.0 ratio is unsatisfied; one qBittorrent no longer
+  has is not. At `WATCH_MAX_UNSATISFIED` the cycle holds like the incomplete-download guard does,
+  independently of it.
+- **The watcher panel says where the wedges stand**, e.g. "Wedges: 1 spent in the last 24 hours, 2 left
+  of today's allowance, 1 kept in reserve." With no freeleech parameter it says no credits are ever spent.
+
+### Changed
+- **The budget fails closed.** If qBittorrent cannot be read, no credit is spent that cycle; books that
+  are already free still go through. A torrent that is already free never consults the budget. A row a
+  budget refuses is left wanted with the reason in its note, and the cycle log gains "N skipped for the
+  wedge budget" when there are any. A dry run reports what it would have spent and never writes the ledger.
+- A cycle now makes one read-only qBittorrent request even when there is nothing to send.
+
 ## [0.20.0] - 2026-11-15
 
 First-run polish from a real fresh install.

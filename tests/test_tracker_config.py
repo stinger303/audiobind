@@ -6,6 +6,7 @@ Nothing here reaches a network: the transport is a fake.
 
 import json
 import pathlib
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -244,7 +245,8 @@ class TestSettingsPage(unittest.TestCase):
         with tracker_cfg("x"), mock.patch.object(CONFIG, "qbit_user", "u"), mock.patch.object(CONFIG, "qbit_pass", "p"):
             pages = web.render_settings(self.state) + web.render_discover(self.state, "wishlist")
         for word in ("".join(("my", "anonamouse")), "wedge", "VIP"):
-            visible = pages.lower().replace("tracker_vip", "").replace('data-setting="vip"', "").replace('data-field="vip"', "")
+            visible = re.sub(r"wedge_(?:reserve|per_cycle|per_day)", "", pages.lower())  # setting keys, never shown
+            visible = visible.replace("tracker_vip", "").replace('data-setting="vip"', "").replace('data-field="vip"', "")
             self.assertNotIn(word.lower(), visible, word)
 
 

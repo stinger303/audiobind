@@ -66,6 +66,24 @@ IP guards) still work under their old variable names when the new name is empty 
 at startup, never the value); the new name wins when both are set. The paths, cookie name, search body and
 category have no old name - set them.
 
+**Account budgets** (all in **Settings > Watcher**, applied from the next cycle; `0` = no limit, and for
+the reserve, none). A freeleech credit is never refunded, so the watcher budgets the account:
+
+| Setting | Variable | Default | Range | Meaning |
+|---|---|---|---|---|
+| Freeleech credits per cycle | `WEDGE_MAX_PER_CYCLE` | `1` | 0-10 | Most credits one cycle may spend |
+| Freeleech credits per day | `WEDGE_MAX_PER_DAY` | `3` | 0-50 | Most credits spent in any 24 hours |
+| Freeleech credits kept in reserve | `WEDGE_RESERVE` | `1` | 0-50 | Keep this many of today's allowance unspent, in case you want them |
+| Unsatisfied snatches allowed | `WATCH_MAX_UNSATISFIED` | `0` | 0-500 | A cycle adds nothing while this many torrents the watcher added are below 100% or below a 1.0 ratio |
+
+The numbers come from one read-only qBittorrent request per cycle plus a ledger of the credits the
+watcher spent; the tracker is never asked. The site's own wedge count is not read, so the reserve is
+enforced against the ledger: the watcher stops spending once the last 24 hours reach the daily cap minus
+the reserve. **If qBittorrent cannot be read, no credit is spent that cycle** (books that are already
+free still go through, and a torrent that is already free never touches the budget). A refused book
+stays wanted with the reason in its note. A torrent qBittorrent no longer has counts as satisfied. A
+dry run says what it would have spent and never writes the ledger.
+
 With the settings in place, a background thread works through the wishlist every
 `WATCH_INTERVAL_MIN` minutes (the interval and the books-per-cycle cap are editable in
 **Settings > Watcher**; the env vars are the defaults, and a saved value applies from the next

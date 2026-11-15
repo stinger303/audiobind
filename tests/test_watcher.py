@@ -99,6 +99,14 @@ class FakeQbit:
             raise qbit.QbitError("connection refused")
         return {h: self.progress_map[h] for h in hashes if h in self.progress_map}
 
+    snatch_map = {}
+    fail_snatch = False
+
+    def snatch_state(self, category):
+        if self.fail_snatch:
+            raise qbit.QbitError("connection refused")
+        return dict(self.snatch_map)
+
     def logout(self):
         self.logged_out = True
 
@@ -167,9 +175,10 @@ class TestCycle(WatcherCase):
         self.assertEqual(row["status"], "downloading")
         self.assertEqual((row["tracker_tid"], row["torrent_hash"]), ("1001", "f" * 40))
         self.assertIn("freeleech credit", row["note"], "the freeleech decision is audited in the note")
-        self.assertEqual(FakeQbit.instances[0].added[0][0], TORRENT)
-        self.assertEqual(FakeQbit.instances[0].added[0][2], "audiobooks")
-        self.assertTrue(FakeQbit.instances[0].logged_out)
+        adder = next(q for q in FakeQbit.instances if q.added)
+        self.assertEqual(adder.added[0][0], TORRENT)
+        self.assertEqual(adder.added[0][2], "audiobooks")
+        self.assertTrue(adder.logged_out)
         self.assertEqual((summary["searched"], summary["sent"]), (1, 1))
 
     def test_already_free_downloads_without_a_credit(self):
@@ -202,7 +211,8 @@ class TestCycle(WatcherCase):
         self.fake_tracker(NOTHING)
         self.cycle()
         self.assertIn("no results", self.row()["note"])
-        self.assertEqual(FakeQbit.instances, [], "nothing to send: qBittorrent is never contacted")
+        self.assertEqual([q for q in FakeQbit.instances if q.logged_in or q.added], [],
+                         "nothing to send: no torrent is added (the budget read is the only qBittorrent contact)")
 
     def test_cap_per_cycle_and_oldest_first(self):
         for n in range(7):
@@ -317,7 +327,8 @@ class TestDryRun(WatcherCase):
         with self.assertLogs("audiobind", level="INFO") as logs:
             summary = self.cycle()
         self.assertEqual(len(self.transport.calls), 1, "searched only - no download request")
-        self.assertEqual(FakeQbit.instances, [], "qBittorrent is never contacted in dry run")
+        self.assertEqual([q for q in FakeQbit.instances if q.logged_in or q.added], [],
+                         "nothing is added in dry run (the budget read is the only qBittorrent contact)")
         row = self.row()
         self.assertEqual(row["status"], "wanted")
         self.assertIn("dry run", row["note"])

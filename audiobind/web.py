@@ -36,6 +36,10 @@ from .config import (
     FIXED_BOUNDS,
     watch_interval_min,
     watch_max_per_cycle,
+    watch_max_unsatisfied,
+    wedge_per_cycle,
+    wedge_per_day,
+    wedge_reserve,
     setting_choices,
     setting_effective,
     setting_env,
@@ -1767,7 +1771,11 @@ function abSaveSettings() {
         }
       });
       if (Object.prototype.hasOwnProperty.call(settings, 'watch_interval') ||
-          Object.prototype.hasOwnProperty.call(settings, 'watch_per_cycle')) {
+          Object.prototype.hasOwnProperty.call(settings, 'watch_per_cycle') ||
+          Object.prototype.hasOwnProperty.call(settings, 'wedge_reserve') ||
+          Object.prototype.hasOwnProperty.call(settings, 'wedge_per_cycle') ||
+          Object.prototype.hasOwnProperty.call(settings, 'wedge_per_day') ||
+          Object.prototype.hasOwnProperty.call(settings, 'watch_max_unsatisfied')) {
         // the Watcher status line and any clamped value are rendered by the server: show them
         setTimeout(() => { location.reload(); }, 700);
       }
@@ -3607,6 +3615,19 @@ def _until(timestamp, now: float | None = None) -> str:
     return f"in {int(seconds // 3600)}h {int(seconds % 3600 // 60)}m"
 
 
+def _wedge_sentence(w: dict) -> str:
+    """The wedge budget in one sentence (ledger only; shown only when a freeleech parameter is set)."""
+    if not w.get("can_spend"):
+        return "No freeleech parameter set, so no credits are ever spent."
+    spent = int(w.get("spent_day") or 0)
+    text = f"Freeleech credits: {spent} spent in the last 24 hours"
+    if w.get("left") is not None:
+        text += f", {int(w['left'])} left of today's allowance"
+    if w.get("reserve"):
+        text += f", {int(w['reserve'])} kept in reserve"
+    return text + "."
+
+
 def _watcher_bar(status: dict) -> str:
     """One line above the wishlist: is anything going to look for these books?"""
     link = '<span class="ab-spacer"></span><a href="/settings#watcher">Watcher settings</a>'
@@ -3634,6 +3655,7 @@ def _watcher_bar(status: dict) -> str:
         last = (status.get("last_cycle") or {}).get("at")
         if last:
             bits.append(f"last cycle {_html(rel_age(last))}")
+        bits.append(_html(_wedge_sentence(status.get("wedges") or {})))
         if status["watcher_dry_run"]:
             bits.append('<span class="warn">dry run: decisions are noted, nothing is downloaded</span>')
         text = " &#183; ".join(bits)
@@ -3856,6 +3878,15 @@ def render_watcher_section(state) -> str:
             "watch_per_cycle", "Books per cycle", watch_max_per_cycle(), plo, phi, "books",
             is_custom(SETTING_MAP["watch_per_cycle"]), setting_env("watch_per_cycle"))
     )
+    for key, label, value, suffix in (
+        ("wedge_per_cycle", "Freeleech credits per cycle", wedge_per_cycle(), "credits"),
+        ("wedge_per_day", "Freeleech credits per day", wedge_per_day(), "credits"),
+        ("wedge_reserve", "Freeleech credits kept in reserve", wedge_reserve(), "credits"),
+        ("watch_max_unsatisfied", "Unsatisfied snatches allowed", watch_max_unsatisfied(), "torrents"),
+    ):
+        lo, hi = setting_bounds(key)
+        schedule_fields += _setting_number(
+            key, label, value, lo, hi, suffix, is_custom(SETTING_MAP[key]), setting_env(key), WEDGE_HINTS[key])
     return (
         '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
         '<h2 class="ab-acct-head" id="ab-watch-head">Watcher</h2>'
@@ -4313,6 +4344,16 @@ OUTPUT_FORMAT_HINT = (
     "future conversions only."
 )
 
+WEDGE_HINTS = {
+    "wedge_per_cycle": "Most freeleech credits one cycle may spend. 0 = no limit.",
+    "wedge_per_day": "Most freeleech credits spent in any 24 hours. 0 = no limit.",
+    "wedge_reserve": ("Keep this many of today's allowance unspent, in case you want them. 0 = no reserve. "
+                      "Counted from what Audiobind itself spent, never read from the site."),
+    "watch_max_unsatisfied": ("Add nothing while this many torrents Audiobind added are still downloading or "
+                              "below a 1.0 ratio, so unsatisfied snatches stay under the account's limit. "
+                              "0 = no limit."),
+}
+
 VIP_HINT = (
     "Whether your account holds the tracker's top membership tier. When this is No, torrents "
     "restricted to that tier are skipped instead of attempted. (Environment variable TRACKER_VIP.)"
@@ -4357,12 +4398,14 @@ def _setting_range(
 
 
 def _setting_number(
-    key: str, label: str, value: int, vmin: int, vmax: int, suffix: str, custom: bool, env_val
+    key: str, label: str, value: int, vmin: int, vmax: int, suffix: str, custom: bool, env_val, hint: str = ""
 ) -> str:
     mark = _custom_mark(key, custom, env_val)
+    hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
     return (
         f'<div class="ab-setting" data-setting="{key}">'
         f'<span class="ab-setting-label">{_html(label)}{mark}</span>'
+        f"{hint_html}"
         '<div class="ab-range-wrap">'
         f'<input type="number" class="ab-in" min="{vmin}" max="{vmax}" value="{value}" step="1" '
         f'data-initial="{value}">'
@@ -6276,7 +6319,8 @@ class Handler(BaseHTTPRequestHandler):
                 validated[key] = fold(match)
 
         # numbers: whole numbers inside the bounds (widened to fit the env value)
-        for key in ("runtime_delta", "scan_interval", "nice", "watch_interval", "watch_per_cycle"):
+        for key in ("runtime_delta", "scan_interval", "nice", "watch_interval", "watch_per_cycle",
+                    "wedge_reserve", "wedge_per_cycle", "wedge_per_day", "watch_max_unsatisfied"):
             if key not in settings:
                 continue
             lo, hi = setting_bounds(key)

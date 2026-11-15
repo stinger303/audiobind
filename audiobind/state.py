@@ -261,6 +261,9 @@ class State:
             ("torrent_hash", "TEXT NOT NULL DEFAULT ''"),
             # 0.18.0-dev12: an optional title the watcher searches instead of the catalog title
             ("search_title", "TEXT"),
+            # 0.21.0-dev1: the freeleech credit ledger (additive; a credit is never refunded)
+            ("wedge_spent", "INTEGER NOT NULL DEFAULT 0"),
+            ("wedge_at", "REAL"),
         ):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE wishlist ADD COLUMN {name} {ddl}")
@@ -910,6 +913,31 @@ class State:
                 params.append(now)
             self.connection.execute(f"UPDATE wishlist SET {', '.join(sets)} WHERE asin = ?", (*params, asin))
         return True
+
+    def wedges_spent_since(self, when: float) -> int:
+        """Freeleech credits the watcher has spent since ``when`` (epoch seconds), from the ledger."""
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT COALESCE(SUM(wedge_spent), 0) FROM wishlist WHERE wedge_spent > 0 AND wedge_at >= ?",
+                (float(when),),
+            ).fetchone()
+        return int(row[0] or 0)
+
+    def mark_wedge_spent(self, tid: str, at: float) -> None:
+        """Record one credit spent on tracker torrent ``tid`` (call after the row carries that tracker_tid)."""
+        with self._lock, self._txn():
+            self.connection.execute(
+                "UPDATE wishlist SET wedge_spent = 1, wedge_at = ? WHERE tracker_tid = ?",
+                (float(at), str(tid)),
+            )
+
+    def wishlist_snatch_hashes(self) -> list[str]:
+        """Info hashes (lower case) of every torrent the watcher added."""
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT torrent_hash FROM wishlist WHERE torrent_hash IS NOT NULL AND torrent_hash != ''"
+            ).fetchall()
+        return [r[0].strip().lower() for r in rows if r[0].strip()]
 
     def wishlist_record_check(self, asin: str, note: str, miss: bool) -> int | None:
         """A search that changed nothing about a "wanted" row: store when it was checked and
