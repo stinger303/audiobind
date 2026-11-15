@@ -360,7 +360,7 @@ class Watcher:
         asin, title = row["asin"], row["title"]
         author = row["authors"][0] if row.get("authors") else ""
         holder["searched"] = True
-        torrents = client.search(title, author)  # a MamError ends the cycle; the row is untouched
+        torrents = client.search(row.get("search_title") or title, author)  # a MamError ends the cycle; the row is untouched
         pick, why = mam.select_candidate(row, torrents, vip=bool(_setting("mam_vip")))
         when = _stamp()
         if pick is None:

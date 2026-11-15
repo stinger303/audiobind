@@ -654,6 +654,9 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-wl-note{font-size:11px;color:var(--ab-text3);margin-top:2px;line-height:1.4;overflow-wrap:anywhere}
 .ab-wl-note.ab-wl-bad{color:var(--ab-amber)}
 .ab-wl-acts{display:flex;gap:6px;flex:none}
+.ab-wl-search{font-size:11.5px;color:var(--ab-text2);margin-top:2px;overflow-wrap:anywhere}
+.ab-wl-edit{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.ab-wl-edit input{flex:1 1 260px;min-width:160px}
 .ab-watch-grid{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:12px 0;font-size:12.5px}
 .ab-watch-grid dt{color:var(--ab-text3)}
 .ab-watch-grid dd{margin:0;color:var(--ab-text2);overflow-wrap:anywhere}
@@ -3204,6 +3207,67 @@ function abRetry(btn) {
     })
     .catch(() => { abToast('could not reach the daemon'); btn.disabled = false; });
 }
+// Edit title: the watcher searches this title for the row (blank = the catalog title again)
+function abEditTitle(btn) {
+  const row = btn.closest('[data-asin]');
+  if (!row || row.querySelector('.ab-wl-edit')) return;
+  const form = document.createElement('div');
+  form.className = 'ab-wl-edit';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'ab-in';
+  input.value = row.dataset.search || '';
+  input.placeholder = 'Title to search MAM for (blank = catalog title)';
+  input.setAttribute('aria-label', 'Title to search MAM for');
+  const save = document.createElement('button');
+  save.className = 'btn primary';
+  save.textContent = 'Save';
+  const cancel = document.createElement('button');
+  cancel.className = 'btn';
+  cancel.textContent = 'Cancel';
+  form.append(input, save, cancel);
+  row.querySelector('.ab-disc-meta').appendChild(form);
+  input.focus();
+  input.select();
+  cancel.onclick = () => form.remove();
+  input.onkeydown = e => {
+    if (e.key === 'Enter') save.click();
+    else if (e.key === 'Escape') cancel.click();
+  };
+  save.onclick = () => {
+    save.disabled = true;
+    abPost('/api/wishlist/title', {asin: row.dataset.asin, title: input.value})
+      .then(out => {
+        if (!out.ok) { abToast(out.res.error || 'that did not work'); save.disabled = false; return; }
+        const item = out.res.item || {};
+        const meta = row.querySelector('.ab-disc-meta');
+        let mark = row.querySelector('.ab-wl-search');
+        const custom = item.search_title || '';
+        if (custom) {
+          if (!mark) {
+            mark = document.createElement('div');
+            mark.className = 'ab-wl-search';
+            meta.querySelector('.ab-disc-t').after(mark);
+          }
+          mark.textContent = 'searching for \u201c' + custom + '\u201d';
+        } else if (mark) {
+          mark.remove();
+        }
+        row.dataset.search = custom;
+        const pill = row.querySelector('.ab-disc-pill');
+        if (pill) { pill.textContent = 'WANTED'; pill.className = 'ab-disc-pill ab-wl-wanted'; pill.title = ''; }
+        const note = row.querySelector('.ab-wl-note');
+        if (note) note.remove();
+        const retry = row.querySelector('.ab-wl-retry');
+        if (retry) retry.remove();
+        row.dataset.status = 'wanted';
+        form.remove();
+        abToast(custom ? 'Saved - the watcher searches for that title in its next cycle'
+                       : 'Back to the catalog title - the watcher searches for it in its next cycle');
+      })
+      .catch(() => { abToast('could not reach the daemon'); save.disabled = false; });
+  };
+}
 // For you: the page shows the stored suggestions only. Opening it asks for a refresh, which
 // the server runs only when nothing is stored or it is over a week old; Refresh always asks.
 function abRecsLive(on) {
@@ -3535,16 +3599,24 @@ def _wishlist_row_html(row: dict) -> str:
     label, hover = WISHLIST_CHIPS.get(status, (status.upper(), ""))
     retry = (
         '<button title="Put this book back to wanted: the watcher searches for it again in its next cycle." '
-        'onclick="abRetry(this)">Retry</button>'
+        'class="ab-wl-retry" onclick="abRetry(this)">Retry</button>'
         if status in ("not_found", "error") else ""
     )
+    custom = row.get("search_title") or ""
+    searching = f'<div class="ab-wl-search">searching for &#8220;{_html(custom)}&#8221;</div>' if custom else ""
+    edit = (
+        '<button title="Change the title the watcher searches MAM for (the title shown here stays)." '
+        'onclick="abEditTitle(this)">Edit title</button>'
+        if status != "in_library" else ""
+    )
     return (
-        f'<div class="ab-disc-row" data-asin="{_attr(asin)}" data-status="{_attr(status)}">'
+        f'<div class="ab-disc-row" data-asin="{_attr(asin)}" data-status="{_attr(status)}" '
+        f'data-search="{_attr(custom or row["title"])}">'
         f'<img src="{_attr(src)}" alt="" loading="lazy" onerror="abCoverFail(this)">'
         f'<div class="ab-disc-meta"><div class="ab-disc-t" title="{_attr(row["title"])}">{_html(row["title"])}</div>'
-        f'{by}<div class="ab-disc-m">{" &#183; ".join(facts)}</div>{note}</div>'
+        f'{searching}{by}<div class="ab-disc-m">{" &#183; ".join(facts)}</div>{note}</div>'
         f'<span class="ab-disc-pill ab-wl-{_attr(status)}" title="{_attr(hover)}">{_html(label)}</span>'
-        f'<span class="ab-wl-acts">{retry}'
+        f'<span class="ab-wl-acts">{retry}{edit}'
         '<button title="Take this book off your wishlist." onclick="abUnwant(this)">Remove</button></span></div>'
     )
 
@@ -5878,6 +5950,31 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"ok": True, "asin": asin, "item": discover_mod.public_row(row)}).encode(),
                    "application/json")
 
+    def _handle_wishlist_title(self) -> None:
+        """POST /api/wishlist/title: {"asin", "title"} sets the title the watcher searches for;
+        blank clears it. Either way the row goes back to wanted."""
+        payload = self._read_json()
+        if payload is None:
+            return
+        asin = str(payload.get("asin", "")).strip().upper()
+        if not valid_asin(asin):
+            self._send(400, b'{"error":"that is not an ASIN"}', "application/json")
+            return
+        title = payload.get("title", "")
+        if title is None:
+            title = ""
+        if not isinstance(title, str) or len(title) > 300:
+            self._send(400, b'{"error":"the title must be text of at most 300 characters"}', "application/json")
+            return
+        row = self.state.wishlist_set_search_title(asin, title)
+        if row is None:
+            self._send(404, b'{"error":"that book is not on your wishlist"}', "application/json")
+            return
+        logging.getLogger("audiobind").info("wishlist: search title for %s %s", asin,
+                                            "set" if row["search_title"] else "cleared")
+        self._send(200, json.dumps({"ok": True, "asin": asin, "item": discover_mod.public_row(row)}).encode(),
+                   "application/json")
+
     def _handle_watcher(self) -> None:
         """POST /api/watcher: {"action": "run" | "pause" | "resume"}."""
         payload = self._read_json()
@@ -5968,6 +6065,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/wishlist/retry":
             self._handle_wishlist_retry()
+            return
+        if path == "/api/wishlist/title":
+            self._handle_wishlist_title()
             return
         if path == "/api/watcher":
             self._handle_watcher()

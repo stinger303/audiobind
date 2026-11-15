@@ -282,7 +282,15 @@ wishlist. That's all it does: nothing is downloaded, and no tracker is contacted
 on. The **Wishlist** tab (`/wishlist`, right below Discover books in the rail, MAM only) lists it with
 each book's state and when it was last checked; **Retry** and **Remove** act on one book. The number
 on the Wishlist tab is the wishlist size. A book that lands in your library leaves the wishlist (a
-want-list holds nothing you already have), so only books you still want are listed. Search uses
+want-list holds nothing you already have), so only books you still want are listed.
+
+**Edit title** gives a book its own *search title*. The watcher searches MAM for that title
+instead of the catalog one, and the match has to clear the same 0.90 title score against it. Use
+it when a book comes back *not found* with a note like `closest was 'The Missing' (0.85, needs
+0.90)`: the catalog calls it `Missing`, MAM calls it `The Missing`, so type the MAM title. Saving
+puts the book back to *wanted* with its note and miss count cleared, so the next cycle searches
+it at once; the row keeps its catalog title and shows `searching for "..."` while an override is
+set. Saving a blank title clears the override. Search uses
 one catalog request at a time, with the same pacing as matching, and only the US store
 (`api.audible.com`).
 
@@ -373,6 +381,7 @@ an IP address: create the `mam_id` session for the IP the container reaches MAM 
 curl -H "$AUTH" localhost:8080/api/watcher                            # status, never a secret
 curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"action":"run"}' localhost:8080/api/watcher
 curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PRS1K"}' localhost:8080/api/wishlist/retry
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PRS1K","title":"The Missing"}' localhost:8080/api/wishlist/title   # blank title clears it
 ```
 
 ### Running MAM through a VPN

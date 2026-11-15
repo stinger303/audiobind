@@ -274,7 +274,7 @@ def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False) -> t
     """
     if not torrents:
         return None, "no results"
-    title = str(row.get("title") or "")
+    title = str(row.get("search_title") or row.get("title") or "")
     authors = [str(a) for a in (row.get("authors") or []) if str(a or "").strip()]
     ranked = []
     best_miss = (0.0, "")

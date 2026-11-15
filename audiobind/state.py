@@ -245,6 +245,8 @@ class State:
             ("misses", "INTEGER NOT NULL DEFAULT 0"),
             ("mam_tid", "TEXT NOT NULL DEFAULT ''"),
             ("torrent_hash", "TEXT NOT NULL DEFAULT ''"),
+            # 0.18.0-dev12: an optional title the watcher searches instead of the catalog title
+            ("search_title", "TEXT"),
         ):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE wishlist ADD COLUMN {name} {ddl}")
@@ -748,6 +750,7 @@ class State:
             "misses": int(row["misses"] or 0),
             "mam_tid": row["mam_tid"] or "",
             "torrent_hash": row["torrent_hash"] or "",
+            "search_title": row["search_title"] or "",
         }
 
     def wishlist_add(self, item: dict) -> bool:
@@ -864,6 +867,23 @@ class State:
                 (str(note), now, now, misses, asin),
             )
         return misses
+
+    def wishlist_set_search_title(self, asin: str, title: str) -> dict | None:
+        """Set (or, when ``title`` is blank, clear) the title the watcher searches for. Either way
+        the row goes back to "wanted" with the note and misses cleared, so the next cycle searches
+        it at once. The display title is never touched. Returns the row, or None when it is gone."""
+        title = " ".join(str(title or "").split())
+        now = time.time()
+        with self._lock, self._txn():
+            row = self.connection.execute("SELECT asin FROM wishlist WHERE asin = ?", (asin,)).fetchone()
+            if row is None:
+                return None
+            self.connection.execute(
+                "UPDATE wishlist SET search_title = ?, status = ?, note = '', misses = 0, checked_at = 0, "
+                "updated_at = ? WHERE asin = ?",
+                (title or None, WISHLIST_WANTED, now, asin),
+            )
+        return self.wishlist_get(asin)
 
     def wishlist_retry(self, asin: str) -> bool:
         """Retry: a "not_found" or "error" row goes back to "wanted" (and to the front of the

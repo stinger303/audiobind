@@ -230,7 +230,8 @@ class TestWatcherApi(LiveServerCase):
             self.assertIn(key, item)
 
     def test_posts_have_the_cross_site_guard(self):
-        for path, body in (("/api/watcher", {"action": "pause"}), ("/api/wishlist/retry", {"asin": "B000000001"})):
+        for path, body in (("/api/watcher", {"action": "pause"}), ("/api/wishlist/retry", {"asin": "B000000001"}),
+                           ("/api/wishlist/title", {"asin": "B000000001", "title": "x"})):
             status, _ = self.request(path, json.dumps(body).encode(), headers={"Content-Type": "text/plain"})
             self.assertEqual(status, 415, path)
             status, _ = self.request(path, body, headers={"Content-Type": "application/json",
@@ -258,7 +259,7 @@ class TestWatcherRoutesNeedSignIn(LiveServerCase):
         return response.status
 
     def test_signed_out_is_refused(self):
-        for route in ("/api/watcher", "/api/wishlist/retry"):
+        for route in ("/api/watcher", "/api/wishlist/retry", "/api/wishlist/title"):
             self.assertNotIn(route, web.Handler.AUTH_EXEMPT)
         self.assertEqual(self.raw("GET", "/api/watcher"), 401)
         self.assertEqual(self.raw("POST", "/api/watcher", {"action": "pause"}), 401)

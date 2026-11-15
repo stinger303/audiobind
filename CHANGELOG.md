@@ -5,6 +5,25 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev12] - 2026-11-14
+
+### Added
+- **A wishlist row can carry its own search title.** The new **Edit title** action (next to Retry /
+  Remove, on every row) opens an inline input pre-filled with the effective search title. The
+  watcher searches `search_title or title`, and the 0.90 title score compares the override against
+  the MAM result, so a book whose catalog title near-missed (`Missing` vs `The Missing`, 0.85) can
+  be re-titled to the MAM title and land. The row keeps showing the catalog title and notes
+  `searching for "..."` while an override is set.
+- `POST /api/wishlist/title` with `{"asin", "title"}` (same auth and cross-site guard as the other
+  wishlist endpoints) returns the row's public shape, now including `search_title`. A blank or
+  whitespace-only title clears the override.
+
+### Changed
+- Saving or clearing a search title puts the row back to `wanted` with the note and miss count
+  cleared, so the next cycle searches it immediately. The display title never changes.
+- The state DB gains a nullable `wishlist.search_title` column through the usual add-column
+  migration; an existing database upgrades in place and loses nothing.
+
 ## [0.18.0-dev11] - 2026-11-14
 
 ### Added
