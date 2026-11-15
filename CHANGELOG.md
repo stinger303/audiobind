@@ -7,7 +7,11 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
-## [Unreleased]
+## [0.19.0] - 2026-11-15
+
+The first public release since 0.18.0: a first-run checklist, Audiobookshelf folder names with a
+previewed migration, honest delete semantics for torrent-sourced books, and the fixes from the 0.19
+release audit.
 
 ### Changed
 - **Sign-in lockout also has a global budget, and counts IPv6 per /64.** On top of the unchanged 5
