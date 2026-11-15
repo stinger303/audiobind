@@ -251,6 +251,16 @@ class ArgvTests(unittest.TestCase):
         self.assertNotIn("/w/cover.jpg", cmd)
         self.assertEqual(cmd[cmd.index("-id3v2_version") + 1], "3")
 
+    def test_no_map_before_the_last_input(self):
+        """ffmpeg binds an output option to any input that follows it, so every -i must come first."""
+        for fmt, cover in (("mp3", True), ("mp3", False), ("m4b", True), ("m4b", False)):
+            cmd = self.cmd(fmt, has_cover=cover)
+            inputs = [i for i, arg in enumerate(cmd) if arg == "-i"]
+            maps = [i for i, arg in enumerate(cmd) if arg == "-map"]
+            self.assertEqual(len(inputs), (2 if cover else 1) + (fmt == "m4b"), (fmt, cover))
+            self.assertTrue(maps, (fmt, cover))
+            self.assertGreater(min(maps), max(inputs), (fmt, cover, cmd))
+
     def test_mp3_inputs_are_whitelisted(self):
         cmd = self.cmd("mp3")
         for i, arg in enumerate(cmd):

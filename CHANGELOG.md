@@ -5,6 +5,20 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev2] - 2026-11-14
+
+### Fixed
+- **MP3 argv put `-map 0:a:0` before the cover `-i`.** ffmpeg binds an output option that precedes
+  a later input to that input and refuses ("cannot be applied to input url"). The mp3 command
+  now lists every input first, then the maps. The m4b argv is unchanged.
+
+### Changed
+- The CTOC flags byte (0x03, top-level + ordered) is now documented in `id3.py`.
+
+### Tests
+- New structural test: no `-map` may appear before the last `-i`, for mp3 with and without a
+  cover and for m4b. Not yet verified: a real ffmpeg run of the mp3 path.
+
 ## [0.19.0-dev1] - 2026-11-14
 
 ### Added

@@ -55,7 +55,10 @@ def chapter_frames(chapters: list[dict]) -> bytes:
         body += struct.pack(">IIII", _ms(chapter["start"]), _ms(chapter["end"]), NO_OFFSET, NO_OFFSET)
         body += text_frame("TIT2", str(chapter.get("title") or element))
         out += frame("CHAP", body)
-    # flags 0x03: top-level + ordered
+    # CTOC body: element id "toc" NUL, flags byte, child count, then each child id NUL-terminated.
+    # Flags 0x03 = top-level (bit 1) + ordered (bit 0). Players treat a CTOC without the
+    # top-level bit as a nested table and ignore it as the chapter list; 0x00 (the
+    # prototype's value) therefore hides the chapters.
     toc = b"toc\x00" + b"\x03" + struct.pack(">B", len(ids) & 0xFF)
     for element in ids:
         toc += element.encode("latin-1") + b"\x00"

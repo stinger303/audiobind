@@ -408,9 +408,13 @@ def build_command(
         str(concat_file),
     ]
     if fmt == "mp3":
+        # every -i first, then every -map: ffmpeg binds an output option that sits before a
+        # later -i to that input and refuses ("cannot be applied to input url")
+        if has_cover:
+            command += [*PROTOCOL_WHITELIST, "-i", str(cover_file)]
         command += ["-map", "0:a:0"]
         if has_cover:
-            command += [*PROTOCOL_WHITELIST, "-i", str(cover_file), "-map", "1:v:0", "-c:v", "mjpeg"]
+            command += ["-map", "1:v:0", "-c:v", "mjpeg"]
             command += ["-id3v2_version", "3", "-metadata:s:v", "title=Album cover"]
             command += ["-metadata:s:v", "comment=Cover (front)"]
         else:
