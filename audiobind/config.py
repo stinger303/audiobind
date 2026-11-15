@@ -235,7 +235,8 @@ CONFIG = Config.from_env()
 #: each scan and whenever the settings page saves.
 _EFFECTIVE: dict[str, object] = {}
 
-SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region", "expected_egress", "vip")
+SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region", "expected_egress", "vip",
+                "watch_interval", "watch_per_cycle")
 
 SETTING_MAP: dict[str, str] = {
     "auto_convert": "auto_convert",
@@ -246,6 +247,8 @@ SETTING_MAP: dict[str, str] = {
     "region": "region",
     "expected_egress": "mam_expected_egress_ip",
     "vip": "mam_vip",
+    "watch_interval": "watch_interval_min",
+    "watch_per_cycle": "watch_max_per_cycle",
 }
 
 SETTING_TYPES: dict[str, type] = {
@@ -257,6 +260,8 @@ SETTING_TYPES: dict[str, type] = {
     "region": str,
     "expected_egress": str,  # free text, validated by valid_ip_or_empty (not a choice, not a number)
     "vip": str,  # "YES" / "NO"; effective_val turns it into a bool
+    "watch_interval": int,  # minutes, clamped to WATCH_INTERVAL_BOUNDS at use
+    "watch_per_cycle": int,  # books, clamped to WATCH_MAX_PER_CYCLE_BOUNDS at use
 }
 
 #: the values the settings page offers; an environment value outside these is added to the
@@ -273,7 +278,12 @@ SETTING_BOUNDS: dict[str, tuple[int, int]] = {
     "runtime_delta": (5, 50),
     "scan_interval": (1, 1440),
     "nice": (0, 19),
+    "watch_interval": (10, 1440),  # == WATCH_INTERVAL_BOUNDS
+    "watch_per_cycle": (1, 20),  # == WATCH_MAX_PER_CYCLE_BOUNDS
 }
+
+#: settings whose bounds are politeness limits: never widened to fit an env value
+FIXED_BOUNDS = frozenset({"watch_interval", "watch_per_cycle"})
 
 
 def setting_env_defaults() -> dict[str, object]:
@@ -291,6 +301,8 @@ def setting_env_defaults() -> dict[str, object]:
         "region": str(CONFIG.region).lower(),
         "expected_egress": str(CONFIG.mam_expected_egress_ip or ""),
         "vip": "YES" if CONFIG.mam_vip else "NO",
+        "watch_interval": watch_interval_min_env(),
+        "watch_per_cycle": watch_max_per_cycle_env(),
     }
 
 
@@ -314,6 +326,8 @@ def setting_choices(key: str) -> list[str]:
 def setting_bounds(key: str) -> tuple[int, int]:
     """(min, max) for a numeric setting, widened so the environment value always fits."""
     lo, hi = SETTING_BOUNDS[key]
+    if key in FIXED_BOUNDS:
+        return lo, hi
     try:
         env = int(setting_env(key))  # type: ignore[call-overload]
     except (TypeError, ValueError):
@@ -383,6 +397,15 @@ def _clamp(value, bounds: tuple[int, int], default: int) -> int:
         number = default
     lo, hi = bounds
     return max(lo, min(hi, number))
+
+
+def watch_interval_min_env() -> int:
+    """The env default, as the clamp would use it (so the page never shows an unusable value)."""
+    return _clamp(CONFIG.watch_interval_min, WATCH_INTERVAL_BOUNDS, 60)
+
+
+def watch_max_per_cycle_env() -> int:
+    return _clamp(CONFIG.watch_max_per_cycle, WATCH_MAX_PER_CYCLE_BOUNDS, 5)
 
 
 def watch_interval_min() -> int:

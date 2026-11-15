@@ -29,6 +29,9 @@ from .config import (
     is_custom,
     set_effective,
     setting_bounds,
+    FIXED_BOUNDS,
+    watch_interval_min,
+    watch_max_per_cycle,
     setting_choices,
     setting_effective,
     setting_env,
@@ -1698,6 +1701,11 @@ function abSaveSettings() {
           el.dataset.initial = el.value;
         }
       });
+      if (Object.prototype.hasOwnProperty.call(settings, 'watch_interval') ||
+          Object.prototype.hasOwnProperty.call(settings, 'watch_per_cycle')) {
+        // the Watcher status line and any clamped value are rendered by the server: show them
+        setTimeout(() => { location.reload(); }, 700);
+      }
       document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {
         const key = mark.dataset.field;
         mark.hidden = res.body.custom.indexOf(key) === -1;
@@ -3698,17 +3706,28 @@ def render_watcher_section(state) -> str:
     vip_field = _setting_select(
         "vip", "VIP member", setting_effective("vip"), setting_choices("vip"),
         is_custom(SETTING_MAP["vip"]), setting_env("vip"), hint=VIP_HINT, titlecase=True)
+    wlo, whi = setting_bounds("watch_interval")
+    plo, phi = setting_bounds("watch_per_cycle")
+    schedule_fields = (
+        _setting_number(
+            "watch_interval", "Check the wishlist every", watch_interval_min(), wlo, whi, "minutes",
+            is_custom(SETTING_MAP["watch_interval"]), setting_env("watch_interval"))
+        + _setting_number(
+            "watch_per_cycle", "Books per cycle", watch_max_per_cycle(), plo, phi, "books",
+            is_custom(SETTING_MAP["watch_per_cycle"]), setting_env("watch_per_cycle"))
+    )
     return (
         '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
         '<h2 class="ab-acct-head" id="ab-watch-head">Watcher</h2>'
         '<div class="ab-acct-who">Searches MAM for the <b>wanted</b> books on your wishlist and hands a good '
         "match to qBittorrent; the ingest folder takes it from there. Configured with environment variables "
-        "(<code>MAM_ID</code>, <code>WATCH_INTERVAL_MIN</code>, <code>WATCH_MAX_PER_CYCLE</code>, "
-        "<code>QBIT_URL</code>, <code>QBIT_USER</code>, <code>QBIT_PASS</code>, <code>MAM_PROXY</code>, "
-        "<code>MAM_USER_AGENT</code>, <code>MAM_HOME_WAN_IP</code>, <code>MAM_EXPECTED_EGRESS_IP</code>, <code>MAM_VIP</code>); the pause switch is kept "
-        "across restarts.</div>"
+        "(<code>MAM_ID</code>, <code>QBIT_URL</code>, <code>QBIT_USER</code>, <code>QBIT_PASS</code>, <code>MAM_PROXY</code>, "
+        "<code>MAM_USER_AGENT</code>, <code>MAM_HOME_WAN_IP</code>, <code>MAM_EXPECTED_EGRESS_IP</code>, <code>MAM_VIP</code>). "
+        "How often it checks and how many books it takes per cycle are set below (the environment variables "
+        "<code>WATCH_INTERVAL_MIN</code> and <code>WATCH_MAX_PER_CYCLE</code> are their defaults) and apply "
+        "from the next cycle, no restart. The pause switch is kept across restarts.</div>"
         f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
-        + expected_field + vip_field +
+        + schedule_fields + expected_field + vip_field +
         f'<div class="ab-acct-row">{run_btn}{toggle}{dry_toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
         + dry_line +
         "</section>"
@@ -5722,13 +5741,15 @@ class Handler(BaseHTTPRequestHandler):
                 validated[key] = fold(match)
 
         # numbers: whole numbers inside the bounds (widened to fit the env value)
-        for key in ("runtime_delta", "scan_interval", "nice"):
+        for key in ("runtime_delta", "scan_interval", "nice", "watch_interval", "watch_per_cycle"):
             if key not in settings:
                 continue
             lo, hi = setting_bounds(key)
             try:
                 v = int(settings[key])
-                if v < lo or v > hi:
+                if key in FIXED_BOUNDS:
+                    v = max(lo, min(hi, v))  # politeness limits: pulled back, never stored raw
+                elif v < lo or v > hi:
                     raise ValueError
                 validated[key] = v
             except (ValueError, TypeError):

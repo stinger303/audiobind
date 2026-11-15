@@ -57,6 +57,8 @@ class TestEnvDefaultsAreLive(EnvCase):
                 "region": CONFIG.region,
                 "expected_egress": "",
                 "vip": "YES" if CONFIG.mam_vip else "NO",
+                "watch_interval": config.watch_interval_min_env(),
+                "watch_per_cycle": config.watch_max_per_cycle_env(),
             },
         )
 

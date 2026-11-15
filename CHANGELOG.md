@@ -5,6 +5,23 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0-dev11] - 2026-11-14
+
+### Added
+- **The watcher schedule is editable in Settings > Watcher.** "Check the wishlist every" (10-1440
+  minutes) and "Books per cycle" (1-20) sit above Run a cycle now, with the usual "custom (was N
+  from env)" mark. `WATCH_INTERVAL_MIN` and `WATCH_MAX_PER_CYCLE` remain the defaults and are
+  shown when nothing is saved. A saved value applies from the next cycle, no restart: every cycle
+  reads the effective value. With MAM unconfigured the Watcher block, and so both fields, stays
+  absent.
+
+### Changed
+- The politeness clamp stays the enforcement: a saved value past a bound (0 or 99 books, 1 minute)
+  is pulled back to the bound (1 / 20 / 10) and that is what is stored, never the raw number. The
+  field bounds equal the clamp bounds and are not widened by an unusual env value.
+- Saving either field reloads the page so the Watcher status line ("every N min, at most M books
+  per cycle") shows what the next cycle will do.
+
 ## [0.18.0-dev10] - 2026-11-14
 
 ### Added

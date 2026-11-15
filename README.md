@@ -331,7 +331,9 @@ MAM acquisition (below) is optional; everything else works the same without it.
 Optional, and off unless `MAM_ID` is set.
 
 Off unless `MAM_ID` is set. With it set (and `QBIT_USER` / `QBIT_PASS` for the qBittorrent
-WebUI), a background thread works through the wishlist every `WATCH_INTERVAL_MIN` minutes:
+WebUI), a background thread works through the wishlist every `WATCH_INTERVAL_MIN` minutes (the
+interval and the books-per-cycle cap are editable in **Settings > Watcher**; the env vars are the
+defaults, and a saved value applies from the next cycle with no restart):
 
 1. Books already in your library (a converted book with the same ASIN, or the same title and
    author) are taken off the wishlist - this also runs after every scan, watcher or not.
