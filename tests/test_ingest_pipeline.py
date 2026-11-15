@@ -67,12 +67,14 @@ class PipelineCase(IngestConfigCase):
         for dirpath, _dirs, _files in os.walk(self.ingest_root):
             os.chmod(dirpath, 0o555)
 
-    def fake_encode(self, unit, match, book, work_dir, out_path, log=print, copy_audio=False, plan=None):
+    def fake_encode(self, unit, match, book, work_dir, out_path, log=print, copy_audio=False, plan=None, **kw):
         """Same contract as encode.encode: build in work_dir, then move into out_path."""
         self.encode_calls.append({"unit": unit, "work_dir": work_dir, "out_path": out_path})
         work_dir.mkdir(parents=True, exist_ok=True)
         temp = work_dir / "output.m4b"
         temp.write_bytes(b"m4b")
+        if kw.get("publish") is False:  # the pipeline publishes after every format has verified
+            return EncodeResult(path=temp, duration=7200.0, size=3, chapters=2, chapters_source="test")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(temp), str(out_path))
         return EncodeResult(path=out_path, duration=7200.0, size=3, chapters=2, chapters_source="test")

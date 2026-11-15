@@ -1,4 +1,4 @@
-"""Merge a unit into one m4b: chapters, tags, cover, verification."""
+"""Merge a unit into one m4b (or mp3): chapters, tags, cover, verification."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import catalog
+from . import catalog, id3
 from .config import CONFIG, effective_val
 from .control import CONTROL, Stopped
 from .probe import PROTOCOL_WHITELIST, has_embedded_cover, probe, probe_chapters, probe_streams
@@ -29,6 +29,7 @@ class EncodeResult:
     size: int
     chapters: int
     chapters_source: str
+    cover: Path | None = None  # the downloaded cover, copied beside the book on publish
 
 
 #: never encode below the configured floor, never chase a source above this ceiling
@@ -321,45 +322,69 @@ def clean_description(html: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-def encode(
-    unit: BookUnit,
-    match,
-    book: dict,
-    work_dir: Path,
-    out_path: Path,
-    log=print,
+#: output formats the encoder can build; "M4B + MP3" is two encodes, see pipeline.formats_for
+FORMATS = ("m4b", "mp3")
+
+#: bitrates (kbps) an mp3 can carry; lame would round anything else anyway
+MP3_BITRATES = (32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
+
+
+def mp3_bitrate(kbps: int) -> int:
+    """The valid mp3 bitrate closest to ``kbps`` (64k/128k/192k/256k are all valid already)."""
+    return min(MP3_BITRATES, key=lambda b: (abs(b - kbps), b))
+
+
+def formats_for(setting: str) -> list[str]:
+    """The files to publish for an ``output_format`` setting, archival m4b first."""
+    value = str(setting or "M4B").strip().upper().replace(" ", "")
+    if value == "MP3":
+        return ["mp3"]
+    if value in ("M4B+MP3", "MP3+M4B"):
+        return ["m4b", "mp3"]
+    return ["m4b"]
+
+
+def mp3_tags(tags: dict, sequence: str = "") -> dict:
+    """ffmpeg ``-metadata`` keys (ID3v2.3 frames) from the tag dict the m4b gets."""
+    mapping = {
+        "title": "title",
+        "artist": "artist",
+        "album_artist": "album_artist",
+        "album": "album",
+        "genre": "genre",
+        "comment": "comment",
+        "composer": "composer",
+        "date": "date",
+        "publisher": "publisher",
+    }
+    out = {}
+    for src, dst in mapping.items():
+        value = re.sub(r"[\x00-\x09\x0b-\x1f\x7f]", " ", str(tags.get(src) or "")).strip()
+        if value:
+            out[dst] = value
+    if str(sequence or "").strip().isdigit():
+        out["track"] = str(int(sequence))
+    return out
+
+
+def build_command(
+    fmt: str,
+    concat_file,
+    cover_file,
+    metadata_file,
+    temp_out,
+    has_cover: bool,
     copy_audio: bool = False,
-    plan: ChapterPlan | None = None,
-) -> EncodeResult:
-    """Run ffmpeg. Raises RuntimeError when the result fails verification.
+    bitrate: int = 128,
+    tags: dict | None = None,
+) -> list:
+    """The ffmpeg argv (without the nice prefix) for one output file.
 
-    ``plan`` is the chapter plan the caller already built (``plan_chapters``); it is only
-    worked out here when the caller did not pass one.
+    m4b: ffmetadata input carries tags and chapters. mp3: chapters cannot ride along (ffmpeg
+    drops them), so tags are ``-metadata`` args and the chapters are written afterwards by
+    ``id3.write_chapters``; the cover becomes an APIC frame.
     """
-    work_dir.mkdir(parents=True, exist_ok=True)
-    if plan is None:
-        plan = plan_chapters(unit, match.asin)
-    total_duration = plan.total
-    chapters, source = plan.chapters, plan.source
-    log(f"  chapters: {len(chapters)} from {source}")
-
-    unsafe = unsafe_path_reason(unit)
-    if unsafe:  # process_unit holds these first; never let one reach the concat list
-        raise RuntimeError(unsafe)
-    concat_file = work_dir / "concat.txt"
-    with concat_file.open("w", encoding="utf-8") as handle:
-        for path in unit.files:
-            handle.write("file '" + str(path).replace("'", "'\\''") + "'\n")
-
-    metadata_file = work_dir / "meta.txt"
-    write_ffmetadata(metadata_file, book, match, chapters)
-
-    cover_file = work_dir / "cover.jpg"
-    has_cover = catalog.download(catalog.cover_url(book, match.asin), str(cover_file))
-    log(f"  cover: {'ok' if has_cover else 'not found'}")
-
-    temp_out = work_dir / "output.m4b"
-    command = _nice_prefix() + [
+    command = [
         FFMPEG,
         "-y",
         "-hide_banner",
@@ -382,6 +407,32 @@ def encode(
         "-i",
         str(concat_file),
     ]
+    if fmt == "mp3":
+        command += ["-map", "0:a:0"]
+        if has_cover:
+            command += [*PROTOCOL_WHITELIST, "-i", str(cover_file), "-map", "1:v:0", "-c:v", "mjpeg"]
+            command += ["-id3v2_version", "3", "-metadata:s:v", "title=Album cover"]
+            command += ["-metadata:s:v", "comment=Cover (front)"]
+        else:
+            command += ["-id3v2_version", "3"]
+        # nothing from the concat input (its own tags, chapters) may leak into the book
+        command += ["-map_metadata", "-1", "-map_chapters", "-1"]
+        for key, value in (tags or {}).items():
+            command += ["-metadata", f"{key}={value}"]
+        command += [
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            f"{mp3_bitrate(bitrate)}k",
+            "-ac",
+            str(CONFIG.audio_channels),
+            "-ar",
+            str(CONFIG.sample_rate),
+            "-f",
+            "mp3",
+            str(temp_out),
+        ]
+        return command
     if has_cover:
         command += [*PROTOCOL_WHITELIST, "-i", str(cover_file)]
     command += [*PROTOCOL_WHITELIST, "-i", str(metadata_file), "-map", "0:a:0"]
@@ -389,15 +440,8 @@ def encode(
         command += ["-map", "1:v:0", "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
     command += _metadata_map_args(has_cover)
     if copy_audio:
-        # already AAC in an MP4 container: keep the samples, only rewrite the wrapper
-        log("  audio: copied (source is already AAC) - no re-encode, no quality loss")
         command += ["-c:a", "copy"]
     else:
-        source_bytes = sum(os.path.getsize(f) for f in unit.files if os.path.exists(f))
-        source_kbps = (source_bytes * 8 / total_duration / 1000) if total_duration else 0
-        eff_bitrate = effective_val("audio_bitrate")
-        bitrate = choose_bitrate(source_kbps, eff_bitrate)
-        log(f"  audio: aac {bitrate}k (source {source_kbps:.0f}k, floor {eff_bitrate})")
         command += [
             "-c:a",
             "aac",
@@ -416,6 +460,80 @@ def encode(
         "mp4",
         str(temp_out),
     ]
+    return command
+
+
+def encode(
+    unit: BookUnit,
+    match,
+    book: dict,
+    work_dir: Path,
+    out_path: Path,
+    log=print,
+    copy_audio: bool = False,
+    plan: ChapterPlan | None = None,
+    fmt: str = "m4b",
+    publish: bool = True,
+    sequence: str = "",
+) -> EncodeResult:
+    """Run ffmpeg. Raises RuntimeError when the result fails verification.
+
+    ``fmt`` is "m4b" (default, unchanged) or "mp3" (one file, chapters written as ID3 CHAP
+    frames). With ``publish=False`` the verified file stays in ``work_dir`` and
+    ``result.path`` points at it; ``publish_result`` moves it into place later.
+
+    ``plan`` is the chapter plan the caller already built (``plan_chapters``); it is only
+    worked out here when the caller did not pass one.
+    """
+    work_dir.mkdir(parents=True, exist_ok=True)
+    if plan is None:
+        plan = plan_chapters(unit, match.asin)
+    total_duration = plan.total
+    chapters, source = plan.chapters, plan.source
+    log(f"  chapters: {len(chapters)} from {source}")
+
+    unsafe = unsafe_path_reason(unit)
+    if unsafe:  # process_unit holds these first; never let one reach the concat list
+        raise RuntimeError(unsafe)
+    concat_file = work_dir / "concat.txt"
+    with concat_file.open("w", encoding="utf-8") as handle:
+        for path in unit.files:
+            handle.write("file '" + str(path).replace("'", "'\\''") + "'\n")
+
+    metadata_file = work_dir / "meta.txt"
+    tags = write_ffmetadata(metadata_file, book, match, chapters)
+
+    cover_file = work_dir / "cover.jpg"
+    has_cover = catalog.download(catalog.cover_url(book, match.asin), str(cover_file))
+    log(f"  cover: {'ok' if has_cover else 'not found'}")
+
+    temp_out = work_dir / f"output.{fmt}"
+    mp3 = fmt == "mp3"
+    if mp3:
+        copy_audio = False  # a remux keeps AAC samples; an mp3 is always an encode
+    bitrate = 128
+    if copy_audio:
+        # already AAC in an MP4 container: keep the samples, only rewrite the wrapper
+        log("  audio: copied (source is already AAC) - no re-encode, no quality loss")
+    else:
+        source_bytes = sum(os.path.getsize(f) for f in unit.files if os.path.exists(f))
+        source_kbps = (source_bytes * 8 / total_duration / 1000) if total_duration else 0
+        eff_bitrate = effective_val("audio_bitrate")
+        bitrate = choose_bitrate(source_kbps, eff_bitrate)
+        if mp3:
+            bitrate = mp3_bitrate(bitrate)
+        log(f"  audio: {'mp3' if mp3 else 'aac'} {bitrate}k (source {source_kbps:.0f}k, floor {eff_bitrate})")
+    command = _nice_prefix() + build_command(
+        fmt,
+        concat_file,
+        cover_file,
+        metadata_file,
+        temp_out,
+        has_cover,
+        copy_audio=copy_audio,
+        bitrate=bitrate,
+        tags=mp3_tags(tags, sequence) if mp3 else None,
+    )
 
     # Popen (not run) so the status page can abort mid-book and show a progress bar
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -467,13 +585,16 @@ def encode(
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed: {(errors[0] if errors else '')[-800:]}")
 
+    if mp3:
+        # ffmpeg drops chapters for mp3, so they are written into its ID3 tag here
+        how = id3.write_chapters(temp_out, chapters)
+        log(f"  chapters: {len(chapters)} written as ID3 CHAP frames ({how})")
     duration = float(probe(temp_out).duration)
     chapter_count = len(probe_chapters(temp_out))
     streams = probe_streams(temp_out)
-    audio_ok = any(s.get("codec_name") == "aac" for s in streams)
-
-    if not audio_ok:
-        raise RuntimeError("output has no AAC audio stream")
+    want_codec = "mp3" if mp3 else "aac"
+    if not any(s.get("codec_name") == want_codec for s in streams):
+        raise RuntimeError(f"output has no {want_codec.upper()} audio stream")
     if abs(duration - total_duration) > max(120, total_duration * 0.02):
         hint = ""
         for line in (errors[0] if errors else "").splitlines():
@@ -490,18 +611,28 @@ def encode(
     if has_cover and not has_embedded_cover(temp_out):
         raise RuntimeError("cover art is missing from the output")
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(temp_out), str(out_path))
-    if has_cover:
-        shutil.copy2(cover_file, out_path.parent / "cover.jpg")
-
-    return EncodeResult(
-        path=out_path,
+    result = EncodeResult(
+        path=temp_out,
         duration=duration,
-        size=out_path.stat().st_size,
+        size=temp_out.stat().st_size,
         chapters=chapter_count,
         chapters_source=source,
+        cover=cover_file if has_cover else None,
     )
+    if publish:
+        publish_result(result, out_path)
+    return result
+
+
+def publish_result(result: EncodeResult, out_path: Path) -> EncodeResult:
+    """Move a verified encode into the library (and drop cover.jpg beside it)."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(result.path), str(out_path))
+    if result.cover is not None:
+        shutil.copy2(result.cover, out_path.parent / "cover.jpg")
+    result.path = out_path
+    result.size = out_path.stat().st_size
+    return result
 
 
 def write_abs_metadata(path: Path, book: dict, match, chapters: list[dict], duration: float) -> dict:

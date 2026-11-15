@@ -21,9 +21,9 @@ def destination(series: str, authors: list[str], title: str, sequence: str = "")
     return CONFIG.output_root / author / book_title
 
 
-def m4b_path(series: str, authors: list[str], title: str, sequence: str = "") -> Path:
+def m4b_path(series: str, authors: list[str], title: str, sequence: str = "", ext: str = "m4b") -> Path:
     directory = destination(series, authors, title, sequence)
-    path = directory / f"{safe_name(title or 'Unknown')}.m4b"
+    path = directory / f"{safe_name(title or 'Unknown')}.{ext}"
     # belt and braces: whatever the metadata says, the book is written inside OUTPUT_ROOT
     root = Path(CONFIG.output_root).resolve()
     resolved = path.resolve()

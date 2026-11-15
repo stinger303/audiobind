@@ -88,7 +88,7 @@ def _from_output(output: str) -> tuple[str, str]:
         parts = path.relative_to(CONFIG.output_root).parts
     except ValueError:
         parts = path.parts[-4:]
-    if len(parts) != 4 or not parts[3].lower().endswith(".m4b"):
+    if len(parts) != 4 or not parts[3].lower().endswith((".m4b", ".mp3")):
         return "", ""
     match = re.match(r"^(.+?) - ", parts[2])
     if not match:

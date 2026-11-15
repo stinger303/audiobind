@@ -169,14 +169,18 @@ def convert_unit(audit: Audit, log=print):
     authors = [a.get("name") for a in (book.get("authors") or []) if a.get("name")] or match.product.authors
     title = book.get("title") or match.product.title
 
-    out_path = library.m4b_path(series, authors, title, sequence)
+    formats = encode.formats_for(effective_val("output_format"))
+    # the first format is the book's main file: the unit's output and the "already published" test
+    paths = {fmt: library.m4b_path(series, authors, title, sequence, ext=fmt) for fmt in formats}
+    out_path = paths[formats[0]]
     audit.out_path = str(out_path)
     if out_path.exists():
         audit.already_published = True
         log(f"  already published: {out_path}")
         return None
     if CONTROL.dry_run:
-        log(f"  [dry-run] would write {out_path}")
+        for path in paths.values():
+            log(f"  [dry-run] would write {path}")
         return None  # nothing was written, so it is not "converted"
 
     work_dir = CONFIG.work_dir / f"{abs(hash(unit.state_key)) % 10**8:08x}"
@@ -191,13 +195,34 @@ def convert_unit(audit: Audit, log=print):
         try:
             # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
             plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None)
-            result = encode.encode(
-                unit, match, book, work_dir, out_path, log=log, copy_audio=(audit.action == "remux"), plan=plan
-            )
+            results = {}
+            for fmt in formats:
+                log(f"  encoding {fmt.upper()}")
+                # nothing is published until every format has encoded and verified: a failed
+                # second encode fails the unit and leaves the library untouched, never an
+                # m4b without the mp3 the owner asked for
+                results[fmt] = encode.encode(
+                    unit,
+                    match,
+                    book,
+                    work_dir / fmt,
+                    paths[fmt],
+                    log=log,
+                    copy_audio=(audit.action == "remux" and fmt == "m4b"),
+                    plan=plan,
+                    fmt=fmt,
+                    publish=False,
+                    sequence=sequence,
+                )
+            for fmt in formats:  # the m4b (archival copy) goes first
+                encode.publish_result(results[fmt], paths[fmt])
+            result = results[formats[0]]
             encode.write_abs_metadata(
                 out_path.parent / "metadata.json", book, match, plan.chapters, result.duration
             )
-            log(f"  published {out_path} ({result.size / 1e6:.0f} MB, {result.chapters} chapters)")
+            for fmt in formats:
+                res = results[fmt]
+                log(f"  published {paths[fmt]} ({res.size / 1e6:.0f} MB, {res.chapters} chapters)")
             return result
         finally:
             # a stopped encode leaves only the work directory, which is deleted here, so the

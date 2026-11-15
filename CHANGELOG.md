@@ -5,6 +5,30 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev1] - 2026-11-14
+
+### Added
+- **Output format: M4B, MP3 or both.** A new Settings choice (`OUTPUT_FORMAT`, default `M4B`, so
+  existing installs change nothing). `MP3` publishes one `.mp3` per book (not one per chapter)
+  encoded with libmp3lame at the same bitrate rules and channel settings, with the usual
+  tags and the cover as an APIC frame. `M4B + MP3` publishes both in the same book folder, the
+  m4b first; the unit's output is the m4b.
+- **MP3 chapters.** ffmpeg silently drops chapters when it writes an mp3, so Audiobind now
+  writes them itself (`audiobind/id3.py`): CHAP frames, one per chapter, plus a CTOC frame are
+  appended to the ID3v2.3 tag ffmpeg wrote, every existing frame kept byte for byte. A file with
+  no tag gets a fresh v2.3 tag; a v2.4, unsynchronised or extended-header tag is replaced by a
+  fresh one rather than corrupted. ffprobe-based players (Audiobookshelf, Plex) read these
+  chapters; Apple's Music/iTunes does not.
+- Verification runs for mp3 as for m4b: an mp3 audio stream, duration within the usual tolerance,
+  the chapter count, and the cover. A failing file is never published.
+
+### Behaviour
+- With `M4B + MP3`, both files are encoded and verified in the work directory first and published
+  only when both pass. If the second encode fails, the unit fails and nothing is published: the
+  library never holds an m4b without the mp3 that was asked for, and the retry starts clean.
+- The series shelf recognises an `.mp3` output path as well as `.m4b`.
+- `docs/verify-page.py` and the unit tests cover the new setting and the tag writer without ffmpeg.
+
 ## [0.18.0] - 2026-11-14
 
 The first public release since 0.15.1. It folds every banked build from `0.16.0-dev1`

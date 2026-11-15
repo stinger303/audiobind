@@ -94,6 +94,8 @@ class Config:
 
     #: which confidence tiers convert without asking ("high", "medium" or "off")
     auto_convert: str = "high"
+    #: what each book is published as: "M4B", "MP3" or "M4B + MP3"
+    output_format: str = "M4B"
     #: reject a match when the file runtime differs from the catalog by more than this
     max_runtime_delta: float = 0.25
 
@@ -168,6 +170,7 @@ class Config:
             sample_rate=_env_int("SAMPLE_RATE", 44100),
             jobs=max(1, _env_int("JOBS", 1)),
             auto_convert=_env("AUTO_CONVERT", "high").lower(),
+            output_format=_env("OUTPUT_FORMAT", "M4B").strip().upper() or "M4B",
             max_runtime_delta=_env_float("MAX_RUNTIME_DELTA", 0.25),
             scan_interval_min=max(1, _env_int("SCAN_INTERVAL_MIN", 30)),
             dry_run=_env_bool("DRY_RUN", False),
@@ -236,7 +239,7 @@ CONFIG = Config.from_env()
 _EFFECTIVE: dict[str, object] = {}
 
 SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region", "expected_egress", "vip",
-                "watch_interval", "watch_per_cycle")
+                "watch_interval", "watch_per_cycle", "output_format")
 
 SETTING_MAP: dict[str, str] = {
     "auto_convert": "auto_convert",
@@ -249,10 +252,12 @@ SETTING_MAP: dict[str, str] = {
     "vip": "mam_vip",
     "watch_interval": "watch_interval_min",
     "watch_per_cycle": "watch_max_per_cycle",
+    "output_format": "output_format",
 }
 
 SETTING_TYPES: dict[str, type] = {
     "auto_convert": str,
+    "output_format": str,
     "audio_bitrate": str,
     "runtime_delta": int,  # percentage (5-50), divided by 100 at use
     "scan_interval": int,
@@ -268,6 +273,7 @@ SETTING_TYPES: dict[str, type] = {
 #: choices (and accepted on save) so the page can always show and keep what is really running
 SETTING_CHOICES: dict[str, tuple[str, ...]] = {
     "auto_convert": ("HIGH", "MEDIUM", "OFF"),
+    "output_format": ("M4B", "MP3", "M4B + MP3"),
     "audio_bitrate": ("64k", "128k", "192k", "256k"),
     "region": ("us", "uk", "ca", "au", "de"),
     "vip": ("NO", "YES"),
@@ -294,6 +300,7 @@ def setting_env_defaults() -> dict[str, object]:
     """
     return {
         "auto_convert": str(CONFIG.auto_convert or "high").upper(),
+        "output_format": str(CONFIG.output_format or "M4B").upper(),
         "audio_bitrate": str(CONFIG.audio_bitrate).lower(),
         "runtime_delta": int(round(CONFIG.max_runtime_delta * 100)),
         "scan_interval": int(CONFIG.scan_interval_min),

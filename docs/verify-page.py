@@ -370,6 +370,9 @@ check("settings: change-password and change-username forms",
       and settings_page.count('name="current"') == 2)
 check("settings: reset-password hint", "docker exec -it audiobind audiobind reset-password" in settings_page)
 check("settings: sign-out link", 'href="/logout"' in settings_page)
+check("settings: output format select with the three choices and the player note",
+      'data-setting="output_format"' in settings_page and '<option value="M4B + MP3"' in settings_page
+      and '<option value="MP3"' in settings_page and "Audiobookshelf" in settings_page)
 check("settings: no CDN references", "http://" not in settings_page and "https://" not in settings_page)
 node_check("settings", settings_page, "settings.js")
 

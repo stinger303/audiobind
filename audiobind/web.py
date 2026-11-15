@@ -3919,6 +3919,17 @@ def render_settings(state) -> str:
 
     controls_parts.append(
         _setting_select(
+            "output_format",
+            "Output format",
+            setting_effective("output_format"),
+            setting_choices("output_format"),
+            custom("output_format"),
+            setting_env("output_format"),
+            hint=OUTPUT_FORMAT_HINT,
+        )
+    )
+    controls_parts.append(
+        _setting_select(
             "auto_convert",
             "Auto-convert tier",
             setting_effective("auto_convert"),
@@ -4046,6 +4057,14 @@ def _setting_select(
         "</div>"
     )
 
+
+OUTPUT_FORMAT_HINT = (
+    "What each book is published as, always one file per book. M4B: one .m4b with chapters, "
+    "tags and cover (the default). MP3: one .mp3 with chapters, tags and cover embedded. "
+    "M4B + MP3: both files in the same folder, the m4b first. MP3 chapter marks are read by "
+    "ffprobe-based players (Audiobookshelf, Plex) but not by Apple's Music/iTunes. Applies to "
+    "future conversions only."
+)
 
 VIP_HINT = (
     "MyAnonamouse VIP membership (bought with bonus points). When this is No, torrents that only "
@@ -5801,7 +5820,7 @@ class Handler(BaseHTTPRequestHandler):
         validated = {}
 
         # selects: one of the offered choices (which include an unusual env value)
-        for key, fold in (("auto_convert", str.upper), ("audio_bitrate", str.lower), ("region", str.lower), ("vip", str.upper)):
+        for key, fold in (("auto_convert", str.upper), ("output_format", str.upper), ("audio_bitrate", str.lower), ("region", str.lower), ("vip", str.upper)):
             if key not in settings:
                 continue
             choices = setting_choices(key)

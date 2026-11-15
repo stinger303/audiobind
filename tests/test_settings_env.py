@@ -50,6 +50,7 @@ class TestEnvDefaultsAreLive(EnvCase):
             config.setting_env_defaults(),
             {
                 "auto_convert": "MEDIUM",
+                "output_format": CONFIG.output_format.upper(),
                 "audio_bitrate": CONFIG.audio_bitrate.lower(),
                 "runtime_delta": 40,
                 "scan_interval": 2,

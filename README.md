@@ -518,6 +518,17 @@ update drops a setting. Settings > Watcher shows what MAM sees, when it was last
 whether the guard is armed. The same values are in `GET /api/watcher` (`egress_ip`,
 `egress_checked_at`, `egress_guard`, `egress_reason`, `egress_home_ip`, `egress_expected`).
 
+### Output format
+
+Every book is one file. By default that is an `.m4b`. Set `OUTPUT_FORMAT` (or Settings > Output
+format) to `MP3` for one `.mp3` per book with the chapters, tags and cover embedded, or to
+`M4B + MP3` for both in the same folder (the m4b is the archival copy and is the book's main
+file). A book is published only after every file has been verified; if the second encode of
+`M4B + MP3` fails, nothing is published and the book is retried.
+
+Player note: MP3 chapter marks are ID3 CHAP frames. ffprobe-based players (Audiobookshelf,
+Plex) read them; Apple's Music/iTunes does not, so use the m4b there.
+
 ### CLI
 
 ```bash
@@ -539,6 +550,7 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `LOG_FILE` | `<STATE_DIR>/audiobind.log` | Rotating log file (5 MB x 3 backups) written alongside stdout, so it survives a container recreate. Set to an empty string to turn the file log off. An unwritable path logs one warning and carries on with stdout only |
 | `AUTO_CONVERT` | `high` | `high`, `medium` or `off` |
 | `SCAN_INTERVAL_MIN` | `30` | Poll interval |
+| `OUTPUT_FORMAT` | `M4B` | `M4B`, `MP3` or `M4B + MP3`: what each book is published as (also in Settings). See [Output format](#output-format) |
 | `AUDIO_BITRATE` | `128k` | Minimum AAC bitrate. A source that is already richer keeps its own bitrate (256k mp3 stays 256k); everything is capped at 320k |
 | `AUDIO_CHANNELS` | `1` | 1 = mono |
 | `SAMPLE_RATE` | `44100` | Output sample rate |
