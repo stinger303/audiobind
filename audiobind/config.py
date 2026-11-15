@@ -141,6 +141,13 @@ def _tracker_method(raw: str) -> str:
     return raw
 
 
+def _tracker_encoding(raw: str) -> str:
+    raw = raw.strip().lower() or "json"
+    if raw not in ("json", "form"):
+        raise RuntimeError("TRACKER_SEARCH_ENCODING is not valid: use json or form")
+    return raw
+
+
 def _tracker_session(raw: str) -> str:
     """The session cookie's value: printable characters without ``;`` (a header cannot carry
     more). The value is never echoed in the error."""
@@ -257,6 +264,8 @@ class Config:
     #: No default: the watcher is off until it is set. ``tracker_search_category`` is the value
     #: {{category}} stands for (empty = every member that is only {{category}} is left out).
     tracker_search_body: str = ""
+    #: how a POST sends that document: ``json`` (a JSON body) or ``form`` (urlencoded key=value pairs)
+    tracker_search_encoding: str = "json"
     tracker_search_category: str = ""
     tracker_download_path: str = ""
     tracker_download_param: str = "tid"
@@ -339,6 +348,7 @@ class Config:
             tracker_search_path=_tracker_path("TRACKER_SEARCH_PATH", _env("TRACKER_SEARCH_PATH", "")),
             tracker_search_method=_tracker_method(_env("TRACKER_SEARCH_METHOD", "")),
             tracker_search_body=_tracker_body(_env("TRACKER_SEARCH_BODY", "")),
+            tracker_search_encoding=_tracker_encoding(_env("TRACKER_SEARCH_ENCODING", "")),
             tracker_search_category=_env("TRACKER_SEARCH_CATEGORY", ""),
             tracker_download_path=_tracker_path("TRACKER_DOWNLOAD_PATH", _env("TRACKER_DOWNLOAD_PATH", "")),
             tracker_download_param=_tracker_name(

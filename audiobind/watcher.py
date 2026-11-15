@@ -121,7 +121,7 @@ def make_tracker() -> tracker.TrackerClient:
         _setting("tracker_url"), _setting("tracker_search_path"), _setting("tracker_download_path"),
         search_method=_setting("tracker_search_method"), download_param=_setting("tracker_download_param"),
         freeleech_param=_setting("tracker_freeleech_param"), search_category=_setting("tracker_search_category"),
-        search_body=_setting("tracker_search_body"))
+        search_body=_setting("tracker_search_body"), search_encoding=_setting("tracker_search_encoding"))
     return tracker.TrackerClient(_setting("tracker_session"), endpoints, _setting("tracker_cookie_name"),
                                  proxy=_setting("tracker_proxy"), user_agent=_setting("tracker_user_agent"))
 

@@ -405,6 +405,7 @@ names what is still missing.
 | `TRACKER_URL` | *(unset)* | **Required.** Base URL, e.g. `https://tracker.example`. No path, query or login; a malformed value stops startup |
 | `TRACKER_SEARCH_PATH` | *(unset)* | **Required.** Path of the JSON search endpoint |
 | `TRACKER_SEARCH_METHOD` | `POST` | `POST` or `GET` |
+| `TRACKER_SEARCH_ENCODING` | `json` | `json` or `form`: how a `POST` sends the search body (see below) |
 | `TRACKER_SEARCH_BODY` | *(unset)* | **Required, no default.** The search request as a JSON object with `{{title}}`, `{{author}}` and `{{category}}` placeholders (see below) |
 | `TRACKER_SEARCH_CATEGORY` | *(unset)* | The value `{{category}}` stands for, if the site needs one |
 | `TRACKER_DOWNLOAD_PATH` | *(unset)* | **Required.** Path of the torrent download endpoint |
@@ -418,9 +419,21 @@ names what is still missing.
 title and first author, `{{category}}` with `TRACKER_SEARCH_CATEGORY`. Values are JSON-escaped, so a
 quote in a title cannot break the document. **Empty-value rule:** an object member or list item whose
 value is nothing but placeholders and comes out empty (a book without an author, an unset category) is
-left out of the document; a string that mixes text and placeholders is trimmed. With `POST` the
-document is sent as a JSON body; with `GET` the same document becomes query parameters (a list repeats
-its key, a nested object becomes `key[sub]`). Anything else the site needs - a page size, a
+left out of the document; a string that mixes text and placeholders is trimmed. With `POST` and
+`TRACKER_SEARCH_ENCODING=json` (the default) the document is sent as a JSON body. With
+`TRACKER_SEARCH_ENCODING=form` it is sent as `application/x-www-form-urlencoded` fields, as is a
+`GET` (as query parameters): a string is sent as-is, a list repeats its key once per item, a nested
+object becomes `key[sub]`, booleans are `true` / `false`, numbers their decimal form and `null` is
+dropped. Keys are not re-encoded beyond normal urlencoding, so `tor[text]` is sent as `tor%5Btext%5D`.
+A form example (a fictional site):
+
+```
+TRACKER_SEARCH_ENCODING=form
+TRACKER_SEARCH_BODY={"tor[text]": "{{title}}", "tor[author]": "{{author}}", "tor[searchIn]": "torrents", "tor[browse_lang][]": ["english"], "perpage": 25}
+```
+
+sends `tor%5Btext%5D=Dune&tor%5Bauthor%5D=Frank+Herbert&tor%5BsearchIn%5D=torrents&tor%5Bbrowse_lang%5D%5B%5D=english&perpage=25`
+(a book without an author sends no `tor[author]` at all). Anything else the site needs - a page size, a
 language filter, a sort order - goes into your template as a literal member.
 
 The six settings that existed before this naming (session, membership, proxy, user agent and the two

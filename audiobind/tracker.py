@@ -83,11 +83,13 @@ class Endpoints:
     search_category: str = ""
     #: the JSON document template with {{title}} / {{author}} / {{category}} placeholders
     search_body: str = ""
+    #: "json" (a JSON body) or "form" (application/x-www-form-urlencoded); POST only
+    search_encoding: str = "json"
 
     @classmethod
     def build(cls, base_url: str, search_path: str, download_path: str, *, search_method: str = "POST",
               download_param: str = "tid", freeleech_param: str = "", search_category: str = "",
-              search_body: str = "") -> Endpoints:
+              search_body: str = "", search_encoding: str = "json") -> Endpoints:
         base = str(base_url or "").strip().rstrip("/")
         return cls(
             search_url=base + str(search_path or "").strip() if base and search_path else "",
@@ -97,6 +99,7 @@ class Endpoints:
             freeleech_param=str(freeleech_param or "").strip(),
             search_category=str(search_category or "").strip(),
             search_body=str(search_body or "").strip(),
+            search_encoding=(str(search_encoding or "").strip().lower() or "json"),
         )
 
 
@@ -207,7 +210,7 @@ def build_search_document(template: str, title: str, author: str = "", category:
 
 
 def document_params(document: dict) -> list[tuple[str, str]]:
-    """The same document as query parameters (GET): a list repeats its key, a nested object becomes
+    """The same document as key=value pairs (GET query, or a form-encoded POST): a list repeats its key, a nested object becomes
     ``key[sub]``, true / false are written as such, null is left out."""
     out: list[tuple[str, str]] = []
 
@@ -709,6 +712,12 @@ class TrackerClient:
             query = urllib.parse.urlencode(document_params(document))
             body = self._request("GET", f"{self.endpoints.search_url}?{query}", None,
                                  {"Accept": "application/json"})
+        elif self.endpoints.search_encoding == "form":
+            body = self._request(
+                "POST", self.endpoints.search_url,
+                urllib.parse.urlencode(document_params(document)).encode(),
+                {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+            )
         else:
             body = self._request(
                 "POST", self.endpoints.search_url, json.dumps(document).encode(),

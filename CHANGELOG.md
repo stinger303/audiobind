@@ -5,6 +5,17 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev9] - 2026-11-14
+
+The search document can be sent form-encoded, not only as JSON.
+
+### Added
+- **`TRACKER_SEARCH_ENCODING`** (`json` default, or `form`). `json` is unchanged. `form` sends the
+  template as `application/x-www-form-urlencoded` `key=value` pairs: a list repeats its key, a nested
+  object becomes `key[sub]`, booleans are `true` / `false`, numbers their decimal form, `null` is
+  dropped, and the empty-value rule still omits a key that comes out empty. An unknown value stops
+  startup with a message naming the variable.
+
 ## [0.19.0-dev8] - 2026-11-14
 
 Finishes the rename: the search request and the qBittorrent category are settings now, nothing in the

@@ -19,7 +19,7 @@ from tests.test_watcher import TORRENT, FakeQbit, WatcherCase, answer, entry
 from tests.tracker_cfg import COOKIE, DOWNLOAD_URL, SEARCH_URL, SETTINGS, tracker_cfg
 
 ALL_NEW = {"TRACKER_URL", "TRACKER_SEARCH_PATH", "TRACKER_SEARCH_METHOD", "TRACKER_SEARCH_CATEGORY",
-           "TRACKER_SEARCH_BODY", "TRACKER_DOWNLOAD_PATH", "TRACKER_DOWNLOAD_PARAM",
+           "TRACKER_SEARCH_BODY", "TRACKER_SEARCH_ENCODING", "TRACKER_DOWNLOAD_PATH", "TRACKER_DOWNLOAD_PARAM",
            "TRACKER_FREELEECH_PARAM", "TRACKER_COOKIE_NAME", "TRACKER_SESSION", "TRACKER_VIP", "TRACKER_PROXY",
            "TRACKER_USER_AGENT", "TRACKER_HOME_IP", "TRACKER_EXPECTED_EGRESS_IP"}
 
@@ -62,7 +62,7 @@ class TestDefaults(unittest.TestCase):
     def test_every_documented_variable_is_read(self):
         env = {"TRACKER_URL": "https://tracker.example/", "TRACKER_SEARCH_PATH": "/s", "TRACKER_SEARCH_METHOD": "get",
                "TRACKER_SEARCH_CATEGORY": "13", "TRACKER_SEARCH_BODY": '{"q": "{{title}}"}',
-               "TRACKER_DOWNLOAD_PATH": "/d", "TRACKER_DOWNLOAD_PARAM": "id", "TRACKER_FREELEECH_PARAM": "fl",
+               "TRACKER_SEARCH_ENCODING": "form", "TRACKER_DOWNLOAD_PATH": "/d", "TRACKER_DOWNLOAD_PARAM": "id", "TRACKER_FREELEECH_PARAM": "fl",
                "TRACKER_COOKIE_NAME": "sid", "TRACKER_SESSION": " abc ", "TRACKER_VIP": "yes",
                "TRACKER_PROXY": "http://vpn:8888", "TRACKER_USER_AGENT": "UA/1", "TRACKER_HOME_IP": "203.0.113.7",
                "TRACKER_EXPECTED_EGRESS_IP": "198.51.100.7"}
@@ -71,6 +71,7 @@ class TestDefaults(unittest.TestCase):
         self.assertEqual((cfg.tracker_url, cfg.tracker_search_method, cfg.tracker_download_param, cfg.tracker_session),
                          ("https://tracker.example", "GET", "id", "abc"))
         self.assertTrue(cfg.tracker_vip)
+        self.assertEqual(cfg.tracker_search_encoding, "form")
 
 
 class TestValidation(unittest.TestCase):
@@ -97,6 +98,11 @@ class TestValidation(unittest.TestCase):
         self.assertRejected({"TRACKER_DOWNLOAD_PARAM": "a&b"}, "TRACKER_DOWNLOAD_PARAM")
         self.assertRejected({"TRACKER_FREELEECH_PARAM": "fl&x=1"}, "TRACKER_FREELEECH_PARAM")
         self.assertRejected({"TRACKER_SEARCH_BODY": "{not json"}, "TRACKER_SEARCH_BODY")
+
+    def test_search_encoding_defaults_to_json_and_refuses_unknown_values(self):
+        self.assertEqual(from_env({}).tracker_search_encoding, "json")
+        self.assertEqual(from_env({"TRACKER_SEARCH_ENCODING": " Form "}).tracker_search_encoding, "form")
+        self.assertRejected({"TRACKER_SEARCH_ENCODING": "xml"}, "TRACKER_SEARCH_ENCODING")
 
     def test_a_session_that_cannot_be_a_cookie_value_is_refused_without_echoing_it(self):
         message = self.assertRejected({"TRACKER_SESSION": "secret value; other=1"}, "TRACKER_SESSION")

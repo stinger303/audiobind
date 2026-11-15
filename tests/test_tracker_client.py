@@ -386,6 +386,47 @@ class TestSearchBody(unittest.TestCase):
             self.assertNotIn(word, source)
 
 
+class TestFormEncoding(unittest.TestCase):
+    FORM = ('{"tor[text]": "{{title}}", "tor[author]": "{{author}}", "tor[searchIn]": "torrents", '
+            '"tor[browse_lang][]": ["english"], "perpage": 25}')
+    OLD_CLIENT_BODY = ("tor%5Btext%5D=Dune&tor%5Bauthor%5D=Frank+Herbert&tor%5BsearchIn%5D=torrents"
+                       "&tor%5Bbrowse_lang%5D%5B%5D=english&perpage=25")
+
+    def post(self, title="Dune", author="Frank Herbert", template=None, **kw):
+        eps = endpoints(search_body=template or self.FORM, search_encoding="form", search_category="", **kw)
+        mc, transport, _ = client((200, {}, FIXTURE.read_bytes()), endpoints=eps)
+        mc.search(title, author)
+        return transport.calls[0]
+
+    def test_a_form_template_sends_exactly_what_the_old_client_sent(self):
+        call = self.post()
+        self.assertEqual(call["method"], "POST")
+        self.assertEqual(call["headers"]["Content-Type"], "application/x-www-form-urlencoded")
+        self.assertEqual(call["data"].decode(), self.OLD_CLIENT_BODY)
+
+    def test_nested_list_bool_number_and_null(self):
+        body = '{"tor": {"text": "{{title}}", "n": 3, "x": null}, "l": ["a", "b"], "t": true, "f": false, "p": 1.5}'
+        self.assertEqual(self.post(template=body)["data"].decode(),
+                         "tor%5Btext%5D=Dune&tor%5Bn%5D=3&l=a&l=b&t=true&f=false&p=1.5")
+
+    def test_an_empty_author_omits_its_key(self):
+        data = self.post(author="")["data"].decode()
+        self.assertNotIn("author", data)
+        self.assertEqual(data, "tor%5Btext%5D=Dune&tor%5BsearchIn%5D=torrents"
+                               "&tor%5Bbrowse_lang%5D%5B%5D=english&perpage=25")
+        self.assertNotIn("=&", data)
+
+    def test_an_empty_title_omits_its_key(self):
+        self.assertNotIn("tor%5Btext%5D", self.post(title="")["data"].decode())
+
+    def test_json_is_still_the_default_and_unchanged(self):
+        mc, transport, _ = client((200, {}, FIXTURE.read_bytes()), endpoints=endpoints())
+        mc.search("Dune", "Frank Herbert")
+        call = transport.calls[0]
+        self.assertEqual(call["headers"]["Content-Type"], "application/json")
+        self.assertEqual(json.loads(call["data"]), {"q": "Dune Frank Herbert", "category": "13"})
+
+
 class TestConfiguredEndpoints(unittest.TestCase):
     def test_get_search_puts_the_form_in_the_query_and_only_that_url_is_authorized(self):
         eps = endpoints(search_method="GET")
