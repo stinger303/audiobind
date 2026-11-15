@@ -5,6 +5,21 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev4] - 2026-11-14
+
+### Fixed
+- **The title floor compares against the best contiguous run of words, not the whole name.** A
+  long, typo'd folder such as `Steeleart Reckoners Brandon Sanderson` scored 0.38 against the
+  right book (*Steelheart*) and would have been refused; its best window `Steeleart` scores 0.95.
+  The floor (still 0.60) now takes the maximum `sim` over every run of consecutive
+  whitespace-separated words of the wanted title (the whole string is one of them). The held note
+  quotes that window score. The wrong matches stay refused; HIGH/MEDIUM/LOW thresholds, knockoff
+  rules, the Audnex tie-break and the runtime check are untouched; existing rows are not rewritten.
+
+### Tests
+- Steelheart regression, the three Patterson cases and `Partials` still refused, single-word
+  titles unchanged, the note quotes the window score.
+
 ## [0.19.0-dev3] - 2026-11-14
 
 ### Fixed

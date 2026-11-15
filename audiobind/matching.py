@@ -53,9 +53,29 @@ class Match:
         return self.product.asin if self.product else ""
 
 
-#: the best candidate's title must resemble the wanted title at least this much (the same
+#: the best candidate's title must resemble the best token window of the wanted title at least this much (the same
 #: ``sim`` the scorer uses) or the unit is no match at all - never a LOW match with another book's title
 TITLE_FLOOR = 0.60
+
+def window_sim(wanted: str, candidate: str) -> float:
+    """Best ``sim`` of ``candidate`` against any run of consecutive tokens of ``wanted``.
+
+    The windows include the whole string, so this is never below ``sim(wanted, candidate)``; it
+    keeps a long or mangled folder name from dragging a correct title under TITLE_FLOOR.
+    """
+    tokens = (wanted or "").split()
+    return max(
+        (sim(" ".join(tokens[i:j]), candidate)
+         for i in range(len(tokens)) for j in range(i + 1, len(tokens) + 1)),
+        default=0.0,
+    )
+
+
+def floor_sim(wanted: str, product: Product) -> float:
+    """The title score TITLE_FLOOR is applied to: best window, title or title + subtitle."""
+    return max(window_sim(wanted, product.title),
+               window_sim(wanted, f"{product.title} {product.subtitle}".strip()))
+
 
 #: the scorer's multiplier for a product whose catalog language is not English
 LANGUAGE_PENALTY = 0.85
@@ -278,11 +298,12 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
     ranked = sorted(scored.values(), key=lambda s: s["score"], reverse=True)
     best, margin = _pick_and_margin(ranked)
 
-    if best["title_sim"] < TITLE_FLOOR:
+    floor_score = floor_sim(title, best["product"])
+    if floor_score < TITLE_FLOOR:
         return Match(
             author_from_series=author_from_series, query_title=title, query_author=author,
             rejected=(f"no catalog match: closest was '{best['product'].title}' "
-                      f"(title {best['title_sim']:.2f}, needs {TITLE_FLOOR:.2f})"),
+                      f"(title {floor_score:.2f}, needs {TITLE_FLOOR:.2f})"),
         )
 
     match = Match(

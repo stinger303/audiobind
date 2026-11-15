@@ -1,4 +1,4 @@
-"""0.19.0-dev3: a catalog candidate whose title does not resemble the wanted one is no match."""
+"""0.19.0-dev3/dev4: a catalog candidate whose title does not resemble the wanted one is no match."""
 
 import unittest
 from unittest import mock
@@ -40,6 +40,31 @@ class TestFloor(unittest.TestCase):
         self.assertGreaterEqual(m.title_sim, 0.60)
         self.assertIsNotNone(m.product)
         self.assertEqual(m.rejected, "")
+
+    def test_a_long_mangled_folder_name_still_matches_the_right_book(self):
+        m = run("Steeleart Reckoners Brandon Sanderson", prod("B0STEEL001", "Steelheart", "Brandon Sanderson"),
+                "Brandon Sanderson")
+        self.assertEqual(m.asin, "B0STEEL001")
+        self.assertEqual(m.rejected, "")
+
+    def test_partials_is_still_refused(self):
+        m = run("Partials", prod("B0PARTIAL2", "The Partial Kingdom Part 2", "Dan Wells"), "Dan Wells")
+        self.assertIsNone(m.product)
+        self.assertIn("closest was 'The Partial Kingdom Part 2'", m.rejected)
+
+    def test_other_patterson_folder_names_are_refused(self):
+        for wanted, wrong in (("Private 01 - Private", "Step on a Crack"),
+                              ("Private 02 - Private London", "The Country Road Murders")):
+            self.assertIsNone(run(wanted, prod("B0WRONG002", wrong)).product, wanted)
+
+    def test_single_token_is_the_whole_string(self):
+        for wanted, cand in (("Private", "Step on a Crack"), ("Steelheart", "Steelheart")):
+            self.assertEqual(matching.window_sim(wanted, cand), matching.sim(wanted, cand))
+
+    def test_note_quotes_the_window_score(self):
+        want = matching.window_sim("Private 01 - Private", "Step on a Crack")
+        m = run("Private 01 - Private", prod("B0WRONG003", "Step on a Crack"))
+        self.assertIn(f"(title {want:.2f}, needs 0.60)", m.rejected)
 
     def test_the_floor_is_the_matchers_own_scorer(self):
         self.assertEqual(matching.TITLE_FLOOR, 0.60)
