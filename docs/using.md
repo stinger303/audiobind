@@ -32,7 +32,7 @@ password (see [Signing in](install.md#signing-in)). Keep the port on your LAN al
 
 ### Series
 
-The **Series** tab (`/series`) lists every series where you have two or more books.
+The **Series** tab (`/series`) lists every series you have a book of that Audible lists with two or more books, whether you own one or all of them.
 Each one is checked against the Audible series order and shows what you're missing. The
 amber number on the tab is the total missing across every series whose size Audible
 reported. **I have this** marks a book you own without a rip, so it stops counting as

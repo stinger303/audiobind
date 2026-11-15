@@ -33,8 +33,9 @@ books at once.
 2. **Verifies against the Audible catalog** - title, author, narrator, series, ASIN.
 3. **Proves completeness** - total runtime is compared with the catalog runtime. A set that is an
    hour short gets reported, not merged.
-4. **Merges and converts** - one `.m4b`, AAC mono (128 kbps floor), real chapter marks from Audnex, cover
-   art and full tags embedded.
+4. **Merges and converts** - one `.m4b`, AAC stereo at a 128 kbps floor (a richer source keeps its own
+   bitrate; `AUDIO_CHANNELS=1` halves the file size), real chapter marks from Audnex, cover art and full
+   tags embedded.
 5. **Files it** as `Author/Book/Book.m4b` or `Author/Series/3 - Title/Title.m4b`, with an
    Audiobookshelf-compatible `metadata.json`.
 

@@ -46,7 +46,7 @@ class IngestWebCase(LiveServerCase):
     def row_html(self, html, key):
         """The table row and its detail panel for one book."""
         attr = web._attr(key)
-        start = html.index(f'<tr class="urow" onclick="toggleRow(this)" data-path="{attr}"')
+        start = html.index(f'<tr class="urow" onclick="toggleRow(this, event)" data-path="{attr}"')
         end = html.index("</td></tr>", html.index(f'<tr class="drow" data-path="{attr}"', start))
         return html[start:end]
 

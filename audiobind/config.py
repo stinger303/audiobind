@@ -205,7 +205,7 @@ class Config:
     work_dir: Path = Path("/work") if Path("/work").is_dir() else Path("/config/work")
 
     audio_bitrate: str = "128k"
-    audio_channels: int = 1
+    audio_channels: int = 2
     sample_rate: int = 44100
     jobs: int = 1
 
@@ -320,7 +320,7 @@ class Config:
             # unset = the default file under STATE_DIR; set but empty = file log off
             log_file=_env("LOG_FILE", str(Path(_env("STATE_DIR", "/config")) / "audiobind.log")),
             audio_bitrate=_env("AUDIO_BITRATE", "128k"),
-            audio_channels=_env_int("AUDIO_CHANNELS", 1),
+            audio_channels=_env_int("AUDIO_CHANNELS", 2),
             sample_rate=_env_int("SAMPLE_RATE", 44100),
             jobs=max(1, _env_int("JOBS", 1)),
             auto_convert=_env("AUTO_CONVERT", "high").lower(),

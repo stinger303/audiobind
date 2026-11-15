@@ -5,6 +5,26 @@ Ideas folded in from a side-by-side test of **Listenarr** (grabber) and
 2026-11-08. Items are research, not commitments — pull them into a version
 scope one at a time.
 
+## 0.20.0 candidates — noted 2026-11-15 (from a first install on a fresh box)
+
+1. **Acquisition settings in the GUI** — lands 0.20.0. `TRACKER_URL`,
+   `TRACKER_SEARCH_PATH`, `TRACKER_SEARCH_BODY`, `TRACKER_DOWNLOAD_PATH`,
+   `TRACKER_COOKIE_NAME`, `TRACKER_SESSION`, `QBIT_URL`, `QBIT_USER` and
+   `QBIT_PASS` are env-only, so Settings > Watcher tells the user to restart
+   the container — the hardest configuration in the app is the only one that
+   needs a container edit. Add them to `SETTING_KEYS`, applied live via
+   `set_effective()` with no restart. The session cookie and the qBittorrent
+   password are write-only: render "set"/unset plus Clear, never echo the
+   value. Add a Test button that performs one search and reports the answer.
+
+2. **Generic download client** — lands 0.20.0. The watcher only speaks
+   qBittorrent's WebUI API (`/api/v2/auth/login`, `/api/v2/torrents/add`,
+   `/api/v2/torrents/info`), so relabelling the setting "BitTorrent client"
+   would lie to anyone running Transmission or Deluge. Add a client adapter
+   seam (qBittorrent first, adapters after) rather than pretending the label
+   is generic. The ingest folder already accepts any client's output — that
+   stays the documented generic path.
+
 ## v0.13 candidates (from Chaptarr / Listenarr) — decided 2026-11-08
 
 1. **Chapter preservation on M4B conversion** (Chaptarr) — SHIPPED in v0.13.0.

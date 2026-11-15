@@ -7,10 +7,15 @@ Three sources, read in this order of trust, say which series a book belongs to:
 * the published output path, ``<author>/<series>/<NN> - <title>/<title>.m4b``;
 * the source folder, ``Lee Child - Jack Reacher/14 - 61 Hours`` - the weakest guess.
 
-Books are grouped by (series, author). Every series with at least two of your books gets
-its full listing from the Audible catalog, once a day at most, in a background thread - a
-page view only ever reads the last stored listing. When the listing can't be fetched the
-shelf says so and never guesses a total.
+Books are grouped by (series, author). Every series you hold at least one book of gets its
+full listing from the Audible catalog, once a day at most, in a background thread - a page
+view only ever reads the last stored listing. The shelf then gates on the catalog's size, not
+on how many you own: a series with two or more numbered entries gets a card even when you
+hold a single book (the case you most want to hear about), and a series the catalog lists
+with exactly one entry is a one-off and gets none. Until the listing is fetched the card
+shows "fetching series size" and the shelf never guesses a total; when the listing can't be
+fetched, or the catalog has no such series, only a series you hold two or more books of stays.
+Series with two or more of your books sort before the single-book ones.
 
 Gap rules: only whole-number sequences count. Novellas with no number and "between the
 numbers" entries like 23.6 are listed apart and never counted as missing. A sequence is
@@ -39,7 +44,8 @@ log = logging.getLogger("audiobind")
 #: a good listing is re-fetched after a day; a failed or empty one is retried sooner
 TTL_OK_SECONDS = 24 * 3600
 TTL_FAIL_SECONDS = 2 * 3600
-#: a series needs this many of your books before the shelf shows it (and Audible is asked)
+#: owning this many books keeps a series on the shelf without a usable catalog listing, and
+#: sorts it ahead of the single-book series
 MIN_OWNED = 2
 
 _INT_RE = re.compile(r"^\s*0*(\d{1,4})(?:\.0+)?\s*$")
@@ -388,6 +394,8 @@ def compute(group: dict, record: dict | None, marks: set[str]) -> dict:
         "fetched_at": None,
         "source": source_of(record),
         "last_error": "",
+        "catalog_numbered": 0,
+        "catalog_entries": 0,
     }
     payload = (record or {}).get("payload") or {}
     entries = payload.get("entries") or []
@@ -403,6 +411,8 @@ def compute(group: dict, record: dict | None, marks: set[str]) -> dict:
         number = seq_number(entry.get("sequence"))
         if number is not None:
             numbered.setdefault(number, entry)
+    view["catalog_numbered"] = len(numbered)
+    view["catalog_entries"] = len(entries)
     by_asin = {e["asin"]: n for n, e in numbered.items()}
     by_title = {norm(e.get("title")): n for n, e in numbered.items() if norm(e.get("title"))}
 
@@ -466,13 +476,25 @@ def compute(group: dict, record: dict | None, marks: set[str]) -> dict:
     return view
 
 
+def on_shelf(view: dict) -> bool:
+    """Whether a series earns a card: the catalog's size decides, never a guess."""
+    if view["source"] == SOURCE_PENDING:
+        return True  # not fetched yet: show it as "fetching series size"
+    if view["known"]:
+        if view["catalog_entries"] == 1:
+            return False  # a genuine one-off is not a series worth a card
+        return view["catalog_numbered"] >= 2 or view["owned"] >= MIN_OWNED
+    return view["owned"] >= MIN_OWNED  # not found / unreachable: only a real multi-book series
+
+
 def _order(view: dict) -> tuple:
-    """Series with gaps first (most missing first), then complete ones, then unknown sizes."""
+    """Multi-book series first; in each group: gaps (most missing first), complete, unknown."""
+    lead = 0 if view["owned"] >= MIN_OWNED else 1
     if not view["known"]:
-        return (2, 0, norm(view["name"]))
+        return (lead, 2, 0, norm(view["name"]))
     if view["missing"]:
-        return (0, -len(view["missing"]), norm(view["name"]))
-    return (1, 0, norm(view["name"]))
+        return (lead, 0, -len(view["missing"]), norm(view["name"]))
+    return (lead, 1, 0, norm(view["name"]))
 
 
 def aggregate(state, refresh: bool = True) -> dict:
@@ -483,8 +505,8 @@ def aggregate(state, refresh: bool = True) -> dict:
     groups = group_rows(state.series_rows())
     cache = state.series_cache_all()
     marks = state.owned_marks()
-    shelf = [g for g in groups.values() if len(g["books"]) >= MIN_OWNED]
-    views = [compute(g, cache.get(g["key"]), marks) for g in shelf]
+    shelf = list(groups.values())
+    views = [v for v in (compute(g, cache.get(g["key"]), marks) for g in shelf) if on_shelf(v)]
     views.sort(key=_order)
 
     used: set[str] = set()

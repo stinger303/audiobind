@@ -129,21 +129,22 @@ class TestGapComputation(StateCase):
 
 
 class TestGrouping(StateCase):
-    def test_groups_by_series_and_author_and_drops_one_book_series(self):
+    def test_groups_by_series_and_author_and_a_one_book_series_sorts_last(self):
         self.owned(1, 2, 3)
         self.owned(1, 2, name="Riyria Revelations", author="Michael J. Sullivan")
-        self.owned(4, name="Harry Hole", author="Jo Nesbo")  # a single book: no shelf card
+        self.owned(4, name="Harry Hole", author="Jo Nesbo")  # a single book: a card (fetching size), sorted after the multi-book ones
         # same series name, different author: a separate series
         self.owned(1, 2, name="Jack Reacher", author="Someone Else")
         shelf = series.aggregate(self.state)
-        names = sorted((v["name"], v["author"], v["owned"]) for v in shelf["series"])
+        names = [(v["name"], v["author"], v["owned"]) for v in shelf["series"]]
+        self.assertEqual(names[-1], ("Harry Hole", "Jo Nesbo", 1))
         self.assertEqual(
-            names,
+            sorted(names[:-1]),
             [("Jack Reacher", "Lee Child", 3), ("Jack Reacher", "Someone Else", 2),
              ("Riyria Revelations", "Michael J. Sullivan", 2)],
         )
         slugs = {v["slug"] for v in shelf["series"]}
-        self.assertEqual(len(slugs), 3)
+        self.assertEqual(len(slugs), 4)
         self.assertIn("jack-reacher", slugs)
 
     def test_series_title_variants_share_one_group(self):

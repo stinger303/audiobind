@@ -286,6 +286,12 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-tbl tbody td{padding:0 8px;overflow:hidden;border-bottom:1px solid var(--ab-border-subtle);vertical-align:middle;white-space:nowrap;}
 .ab-tbl tbody tr{height:auto;min-height:44px;transition:background .1s}
 .ab-tbl tbody tr:hover{background:rgba(255,255,255,.025)}
+.ab-tbl tbody tr.urow{cursor:pointer}
+.ab-tbl tbody tr.urow:focus-visible{outline:2px solid var(--ab-accent-bright);outline-offset:-2px}
+.ab-covrow{display:flex;align-items:center}
+.ab-tbl .ab-rowcaret{display:inline-block;width:10px;margin-right:4px;color:var(--ab-text4);font-size:10px;
+  transition:transform .15s;flex:none;}
+.ab-tbl tr.urow[aria-expanded="true"] .ab-rowcaret{transform:rotate(90deg)}
 .ab-tbl tbody tr.ab-sel{background:rgba(94,106,210,.08)}
 .ab-covcell{padding:0 6px 0 10px!important}
 .ab-covwrap{position:relative;width:30px;height:30px;border-radius:6px;
@@ -852,6 +858,7 @@ function abFocusAsin(row) {
   if (!panel || !panel.classList.contains('drow')) return false;
   panel.hidden = false;
   row.classList.add('ab-sel');
+  abRowSync(row);
   const input = panel.querySelector('input[data-asin]');
   if (input) {
     input.scrollIntoView({block: 'center', behavior: 'smooth'});
@@ -1007,6 +1014,7 @@ function abMenuPick(item) {
     if (!panel || !panel.classList.contains('drow')) return;
     panel.hidden = false;
     row.classList.add('ab-sel');
+    abRowSync(row);
     panel.scrollIntoView({block: 'nearest', behavior: 'smooth'});
   } else if (act === 'asin') {
     abEditAsin(row);
@@ -1060,17 +1068,34 @@ function openSet() {
   return s;
 }
 function saveOpen() {}
-function toggleRow(row) {
+function abRowSync(row) {
   const panel = row.nextElementSibling;
   if (!panel || !panel.classList.contains('drow')) return;
+  row.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+}
+function toggleRow(row, ev) {
+  const panel = row.nextElementSibling;
+  if (!panel || !panel.classList.contains('drow')) return;
+  // a click on the kebab, a button or a link does its own job and must not also toggle the row
+  const hit = ev && ev.target && ev.target.closest ? ev.target.closest('a,button,input,select,textarea') : null;
+  if (hit && row.contains(hit)) return;
   panel.hidden = !panel.hidden;
   row.classList.toggle('ab-sel', !panel.hidden);
+  abRowSync(row);
+}
+function abRowKey(ev, row) {
+  if (ev.target !== row || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  ev.preventDefault();
+  toggleRow(row, ev);
 }
 document.addEventListener('DOMContentLoaded', () => {
   // a manual Retry now / Use this ASIN that still needs a decision re-opens its panel
   document.querySelectorAll('tr.drow[data-reopen]').forEach(panel => {
     panel.hidden = false;
-    if (panel.previousElementSibling) panel.previousElementSibling.classList.add('ab-sel');
+    if (panel.previousElementSibling) {
+      panel.previousElementSibling.classList.add('ab-sel');
+      abRowSync(panel.previousElementSibling);
+    }
   });
 });
 const SEARCH_KEY = 'audiobind_query';
@@ -1125,6 +1150,7 @@ function abApplyView() {
     const wanted = open.has(panel.dataset.path) && !row.hidden;
     panel.hidden = !wanted;
     row.classList.toggle('ab-sel', wanted);
+    abRowSync(row);
   });
   const empty = document.getElementById('ab-empty');
   if (empty) empty.hidden = shown !== 0 || pairs.length === 0;
@@ -3065,8 +3091,8 @@ def render_series(state) -> str:
             if watcher_mod.configured() else ""
         )
         intro = (
-            '<p class="ab-series-intro">Every series with two or more of your books, checked '
-            "against the Audible series order. " + want_help +
+            '<p class="ab-series-intro">Every series your books belong to that Audible lists '
+            "with two or more books, checked against the Audible series order. " + want_help +
             "<b>I have this</b> marks a book you own without a rip, so it stops counting as "
             "missing. A series total only ever comes from the Audible catalog &#8212; when it "
             "has no listing, the total says unknown.</p>"
@@ -3080,8 +3106,8 @@ def render_series(state) -> str:
         body = f'{intro}<section class="ab-series-shelf" aria-label="Your series">{cards}</section>{panels}'
     else:
         body = (
-            '<div class="ab-series-empty">No series on your shelf yet. Once two or more of your '
-            "books belong to the same series, it shows up here &mdash; with what you have and "
+            '<div class="ab-series-empty">No series on your shelf yet. Once one of your books belongs '
+            "to a series Audible lists with two or more books, it shows up here &mdash; with what you have and "
             "what you're missing.</div>"
         )
     return SERIES_PAGE.format(
@@ -4743,9 +4769,11 @@ def render(state, status: str = "", query: str = "") -> str:
         row_src_badge = INGEST_BADGE if is_ingest_row(unit) else ""
         # f-strings only: titles and paths come from folder names and the catalog
         return (
-            f'<tr class="urow" onclick="toggleRow(this)" data-path="{_attr(unit.path)}" '
+            f'<tr class="urow" onclick="toggleRow(this, event)" data-path="{_attr(unit.path)}" '
+            'tabindex="0" role="button" aria-expanded="false" onkeydown="abRowKey(event,this)" '
             f'data-search="{_attr(haystack)}" {data}>'
-            f'<td class="ab-covcell">{cover_html(unit)}</td>'
+            f'<td class="ab-covcell"><div class="ab-covrow"><span class="ab-rowcaret" aria-hidden="true">&#9656;</span>'
+            f'{cover_html(unit)}</div></td>'
             f'<td class="ab-bookcell"><span class="ab-btitle">{_html(unit.title or unit.path)}{badge}'
             f"{row_src_badge}</span>"
             f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span>{reason_html}</td>'

@@ -7,6 +7,36 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [Unreleased]
+
+First-run polish from a real fresh install (0.20.0-dev1).
+
+### Changed
+- **The deprecated access token no longer greets a new user.** The template's `AUTH_TOKEN` field moves
+  behind the Advanced toggle and its description now leads with the upgrade case: an install that
+  still signs in with a token keeps working, and a new install leaves it empty and creates its
+  account on the setup page. The variable, its masking and the sign-in behaviour are unchanged.
+- **Audio channels default to 2 (stereo), not 1.** Defaulting to mono silently discarded the source
+  channel layout, which contradicted "a richer source keeps its own bitrate". `AUDIO_CHANNELS` (the
+  config default, the template, `docker-compose.yml` and `docs/configuration.md`) now defaults to
+  `2`; `AUDIO_CHANNELS=1` still wins when set, and still halves the file size.
+- **The Unraid template is pinned to the release tag** (`ghcr.io/stinger303/audiobind:0.19.0`, not
+  `:latest`). Unraid reuses a matching local tag instead of pulling, so an install made once kept an
+  old build on every reinstall. `docs/PUBLISHING.md` now has a release step that bumps the
+  template's tag and `<Changes>`.
+- **The Series shelf shows a series you own one book of.** The shelf used to need two of your books;
+  it now gates on the Audible catalog: a series whose listing has two or more numbered entries gets
+  a card whatever you hold, so the series you own one book of and did not know was a series
+  appears. A series the catalog lists with exactly one entry is a one-off and gets no "1 of 1
+  owned" card. Until a listing is fetched the card says "fetching series size" and never guesses
+  a total. When the catalog has no listing, or cannot be reached, only a series you hold two or
+  more books of stays. Series with two or more of your books sort before single-book ones.
+  Every series you hold now queues a catalog lookup (at most one a day each).
+- **A book row looks and acts expandable.** The row has a pointer cursor and a chevron that turns
+  to point down when its details are open. It is reachable by keyboard (`tabindex`, `role="button"`,
+  `aria-expanded`); Enter and Space toggle it. The kebab menu, buttons and links in the row still
+  do only their own job.
+
 ## [0.19.0] - 2026-11-15
 
 The first public release since 0.18.0: a first-run checklist, Audiobookshelf folder names with a

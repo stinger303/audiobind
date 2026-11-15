@@ -13,6 +13,12 @@ git tag -a v0.2.0 -m "v0.2.0"
 git push origin main --tags
 ```
 
+After tagging, bump `templates/audiobind.xml`: set the `<Repository>` tag to the new version
+(`ghcr.io/stinger303/audiobind:0.2.0`) and add the version to `<Changes>`. The template ships
+pinned, never `:latest`, because Unraid reuses a matching local tag instead of pulling, so a
+`:latest` install keeps whatever build it first fetched. Pinning means the template is what
+announces a release.
+
 Pushing may need a deploy key that is authorized for this repo (the default key of your
 account may not be). Point git at it for the push only, with a path of your own:
 
