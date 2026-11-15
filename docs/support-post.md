@@ -4,60 +4,25 @@ Title: **Audiobind - merge, verify and tag audiobook libraries**
 
 ---
 
-**Audiobind** fixes an audiobook library instead of making you curate it by hand.
+I built this for my own mess: one book spread over 195 files, another across nine "discs", and a
+folder that turned out to be fourteen books at once.
 
-Point it at a folder of audiobooks and a folder to write to. On a timer it works out what each
-book actually is, merges the ones spread over dozens of files into a single tagged `.m4b`, and
-files the result into a clean `Author/Title` library.
+Audiobind points at your audiobook folder, works out what each book actually is, checks it against
+the Audible catalog, and merges the parts into one properly tagged `.m4b` with real chapter marks
+and cover art. Then it files it as `Author/Book/Book.m4b`, or `Author/Series/3 - Title/Title.m4b`,
+with an Audiobookshelf `metadata.json` beside it.
 
-### The problem it solves
+It's deliberately cautious. It compares runtime against the catalog, so a set that's an hour short
+gets reported instead of merged, and anything it isn't sure about goes to a Review list and waits
+for you. Your source files are never changed — mount the library read-only and it can't touch them
+at all.
 
-Every audiobook collection eventually looks like this:
+Works with Audiobookshelf, Plex, Emby, Jellyfin and Apple Books.
 
-```
-Michael Lewis- Moneyball/
-  Moneyball/1-01 1A.mp3 ... 195 files
-  Moneyball [Disc 2]/
-  Moneyball [Disc 3]/
-George Orwell - 1984/Disc1 ... Disc9
-Vince Flynn Novels 14 books Complete Collection/  (33 files, 172 hours)
-```
+There's an optional wishlist watcher for a private tracker plus qBittorrent, but you don't need it.
+It converts whatever lands in the ingest folder, from any downloader or a plain copy.
 
-One book in eight folders, another book spread over nine discs, and a folder containing fourteen
-books at once.
+First run is short: set a library path and an output path, create an account, hit Scan.
 
-### What it does
-
-1. **Groups parts into books** - `Part 1..3`, `Disc 1..9`, and CamelCase names like
-   `StoneColdUnabridgedPart2` collapse into one unit.
-2. **Verifies against the Audible catalog** - title, author, narrator, series, ASIN.
-3. **Proves completeness** - total runtime is compared with the catalog runtime. A set that is an
-   hour short gets reported, not merged.
-4. **Merges and converts** - one `.m4b`, AAC stereo at a 128 kbps floor (a richer source keeps its own
-   bitrate; `AUDIO_CHANNELS=1` halves the file size), real chapter marks from Audnex, cover art and full
-   tags embedded.
-5. **Files it** as `Author/Book/Book.m4b` or `Author/Series/3 - Title/Title.m4b`, with an
-   Audiobookshelf-compatible `metadata.json`.
-
-### What it will not do
-
-* Conversion never modifies or deletes your source files. Only the explicit Delete button can remove a source folder (after a confirmation dialog); mount the library read-only to rule even that out.
-* It will not convert anything it is unsure about. Partial matches, ambiguous titles, and books
-  whose runtime disagrees with the catalog by more than 25% (usually the wrong edition) are
-  marked for review on the status page.
-
-### Install
-
-Community Applications: search for **Audiobind**. Manual template:
-`https://raw.githubusercontent.com/stinger303/audiobind/main/templates/audiobind.xml`
-
-Set the library path, the output path, and leave `AUTO_CONVERT` on `high` for the
-first run so you can check the results before letting it run unattended.
-
-### Notes
-
-* Internet access is required for the catalog lookups (Audible search + Audnex, both free and
-  keyless). No account or API key needed.
-* Output is AAC with a 128 kbps floor: a source richer than that keeps its own bitrate rather than
-  being downsampled, and a file that is already AAC `.m4b` is remuxed untouched.
-* Bug reports and feature requests: please reply here, or open an issue on GitHub.
+Install from Community Applications once this is through review — until then the template link in
+the repo works. Bug reports and feature requests: reply here.
