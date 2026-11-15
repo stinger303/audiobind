@@ -76,7 +76,7 @@ class FakeQbit:
             raise qbit.QbitError("connection refused")
         self.logged_in = True
 
-    def add_torrent(self, torrent, filename="x", category=qbit.CATEGORY):
+    def add_torrent(self, torrent, filename="x", category="audiobooks"):
         if self.fail_add:
             raise qbit.QbitError("qBittorrent refused the torrent (HTTP 200, Fails.)")
         self.added.append((torrent, filename, category))
@@ -84,6 +84,15 @@ class FakeQbit:
 
     progress_map = {}
     fail_progress = False
+    incomplete_count = 0
+    fail_incomplete = False
+    incomplete_calls = []
+
+    def incomplete(self, category, done):
+        FakeQbit.incomplete_calls.append((category, done))
+        if self.fail_incomplete:
+            raise qbit.QbitError("connection refused")
+        return self.incomplete_count
 
     def progress(self, hashes):
         if self.fail_progress:
@@ -103,6 +112,7 @@ class WatcherCase(unittest.TestCase):
             mock.patch.object(CONFIG, "qbit_user", "admin"),
             mock.patch.object(CONFIG, "qbit_pass", "pw"),
             mock.patch.object(CONFIG, "watch_max_per_cycle", 5),
+            mock.patch.object(CONFIG, "watch_max_incomplete", 0),  # the cycle tests below predate the guard
             mock.patch.object(CONFIG, "dry_run", False),
             mock.patch.object(CONFIG, "watch_dry_run", False),
         ]
@@ -158,7 +168,7 @@ class TestCycle(WatcherCase):
         self.assertEqual((row["tracker_tid"], row["torrent_hash"]), ("1001", "f" * 40))
         self.assertIn("freeleech credit", row["note"], "the freeleech decision is audited in the note")
         self.assertEqual(FakeQbit.instances[0].added[0][0], TORRENT)
-        self.assertEqual(FakeQbit.instances[0].added[0][2], "mam-audiobooks")
+        self.assertEqual(FakeQbit.instances[0].added[0][2], "audiobooks")
         self.assertTrue(FakeQbit.instances[0].logged_out)
         self.assertEqual((summary["searched"], summary["sent"]), (1, 1))
 
@@ -334,7 +344,7 @@ class TestLibraryMatch(WatcherCase):
         self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
         self.cycle()
         self.assertEqual(self.row()["status"], "downloading")
-        self.convert("ingest:Project Hail Mary [MAM]", "Project Hail Mary", "Andy Weir", asin="B000000001")
+        self.convert("ingest:Project Hail Mary [TRACKER]", "Project Hail Mary", "Andy Weir", asin="B000000001")
         self.assertEqual(watcher.resolve_library(self.state), ["B000000001"])
         self.assertIsNone(self.state.wishlist_get("B000000001"), "a book you have leaves the wishlist")
         self.assertEqual(watcher.resolve_library(self.state), [], "idempotent")
@@ -528,3 +538,74 @@ class TestDownloaded(WatcherCase):
                                   author="Andy Weir", asin="B000000001", output="/output/x.m4b"))
         watcher.resolve_library(self.state)
         self.assertIsNone(self.row())
+
+
+class TestIncompleteLimit(WatcherCase):
+    def setUp(self):
+        super().setUp()
+        FakeQbit.incomplete_calls = []
+        self.addCleanup(lambda: setattr(FakeQbit, "incomplete_count", 0))
+        self.addCleanup(lambda: setattr(FakeQbit, "fail_incomplete", False))
+        p = mock.patch.object(CONFIG, "qbit_category", "books")
+        p.start()
+        self.addCleanup(p.stop)
+
+    def run_with(self, incomplete, limit=10, fail=False):
+        self.want()
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
+        FakeQbit.incomplete_count, FakeQbit.fail_incomplete = incomplete, fail
+        with mock.patch.object(CONFIG, "watch_max_incomplete", limit), \
+                self.assertLogs("audiobind", level="INFO") as logs:
+            summary = self.cycle()
+        return summary, [m for m in logs.output if "incomplete" in m]
+
+    def test_under_the_limit_adds_as_before(self):
+        summary, lines = self.run_with(9)
+        self.assertEqual((summary["sent"], self.row()["status"]), (1, "downloading"))
+        self.assertEqual(lines, [])
+        self.assertEqual(FakeQbit.incomplete_calls, [("books", watcher.DONE_PROGRESS)])
+        self.assertEqual(FakeQbit.instances[-1].added[0][2], "books", "QBIT_CATEGORY is the category added to")
+
+    def test_at_the_limit_nothing_is_searched_or_added_and_one_line_is_logged(self):
+        summary, lines = self.run_with(10)
+        self.assertEqual((summary["sent"], summary["searched"], summary["held"]), (0, 0, 10))
+        self.assertEqual(self.row()["status"], "wanted")
+        self.assertEqual(self.transport.calls, [])
+        self.assertEqual(len(lines), 1)
+        self.assertIn("10 torrent(s)", lines[0])
+        self.assertIn("limit 10", lines[0])
+        self.assertIn("holding", lines[0])
+
+    def test_zero_disables_the_check(self):
+        summary, lines = self.run_with(500, limit=0)
+        self.assertEqual(summary["sent"], 1)
+        self.assertEqual(FakeQbit.incomplete_calls, [])
+
+    def test_a_qbittorrent_error_leaves_the_cycle_as_it_is_today(self):
+        self.want()
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
+        FakeQbit.fail_incomplete = True
+        with mock.patch.object(CONFIG, "watch_max_incomplete", 10), self.assertLogs("audiobind", level="WARNING") as logs:
+            summary = self.cycle()
+        self.assertEqual(summary["sent"], 1)
+        self.assertEqual(len([m for m in logs.output if "incomplete" in m]), 1)
+
+    def test_a_hold_never_blocks_the_downloaded_flip_or_the_library_match(self):
+        self.want(asin="B000000002", title="Other Book")
+        self.state.wishlist_set_status("B000000002", "downloading", expect="wanted", torrent_hash="a" * 40)
+        FakeQbit.progress_map = {"a" * 40: 1.0}
+        self.addCleanup(lambda: setattr(FakeQbit, "progress_map", {}))
+        FakeQbit.incomplete_count = 99
+        self.fake_tracker()
+        with mock.patch.object(CONFIG, "watch_max_incomplete", 10):
+            summary = self.cycle()
+        self.assertEqual((summary["downloaded"], summary["held"]), (1, 99))
+        self.assertEqual(self.row("B000000002")["status"], "downloaded")
+
+    def test_a_dry_run_does_not_ask(self):
+        self.want()
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")))
+        with mock.patch.object(CONFIG, "watch_max_incomplete", 10), mock.patch.object(CONFIG, "watch_dry_run", True):
+            summary = self.cycle()
+        self.assertEqual(summary["would_send"], 1)
+        self.assertEqual(FakeQbit.incomplete_calls, [])

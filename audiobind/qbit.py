@@ -9,8 +9,8 @@ and ``/api/v2/auth/logout``. Quirks of the 5.x build this is written against:
 * every POST needs a ``Referer`` matching the WebUI origin, or CSRF protection refuses it;
 * ``paused`` was renamed ``stopped`` in 5.0 - both are sent as false.
 
-The torrent goes in category ``mam-audiobooks`` (its save path is the ingest folder), with
-no automatic-torrent-management override.
+The torrent goes in the category the caller names (``QBIT_CATEGORY``; its save path is the
+ingest folder), with no automatic-torrent-management override.
 """
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-CATEGORY = "mam-audiobooks"
 TIMEOUT = 20.0
 MAX_ANSWER = 64 * 1024
 
@@ -163,7 +162,7 @@ class QbitClient:
             raise QbitError(f"qBittorrent login failed (HTTP {status}) - check QBIT_USER / QBIT_PASS")
         self.logged_in = True
 
-    def add_torrent(self, torrent: bytes, filename: str = "tracker.torrent", category: str = CATEGORY) -> str:
+    def add_torrent(self, torrent: bytes, filename: str = "tracker.torrent", category: str = "audiobooks") -> str:
         """Hand one .torrent over. Returns its info hash (from the answer when qBittorrent sends
         one, else computed from the file), "" if neither is available."""
         if not self.logged_in:
@@ -185,15 +184,10 @@ class QbitClient:
                             f"{', ' + text[:80].decode('utf-8', 'replace') if text else ''}) - already added?")
         return _answer_hash(text) or info_hash(torrent)
 
-    def progress(self, hashes) -> dict[str, float]:
-        """Read-only: ``{info hash: progress 0..1}`` for the given hashes, in ONE request. A
-        torrent qBittorrent no longer has is simply absent from the result."""
-        wanted = [str(h).lower() for h in hashes if h]
-        if not wanted:
-            return {}
+    def _info(self, query: dict) -> list:
+        """``/api/v2/torrents/info`` for ``query``: the decoded JSON list (one request, one re-login on 403)."""
         if not self.logged_in:
             self.login()
-        query = {"hashes": "|".join(wanted)}
         status, answer = self._get("/api/v2/torrents/info", query)
         if status == 403:  # the session expired: one fresh login, one retry
             self.logged_in = False
@@ -205,8 +199,30 @@ class QbitClient:
             data = json.loads(answer.decode("utf-8", "replace"))
         except ValueError:
             raise QbitError("qBittorrent answered the torrent list with something unreadable") from None
+        return data if isinstance(data, list) else []
+
+    def incomplete(self, category: str, done: float) -> int:
+        """Read-only: how many torrents in ``category`` are below progress ``done``, in ONE request."""
+        count = 0
+        for item in self._info({"category": category}):
+            if not isinstance(item, dict):
+                continue
+            try:
+                if float(item.get("progress")) < done:
+                    count += 1
+            except (TypeError, ValueError):
+                continue
+        return count
+
+    def progress(self, hashes) -> dict[str, float]:
+        """Read-only: ``{info hash: progress 0..1}`` for the given hashes, in ONE request. A
+        torrent qBittorrent no longer has is simply absent from the result."""
+        wanted = [str(h).lower() for h in hashes if h]
+        if not wanted:
+            return {}
+        data = self._info({"hashes": "|".join(wanted)})
         out: dict[str, float] = {}
-        for item in data if isinstance(data, list) else []:
+        for item in data:
             if not isinstance(item, dict):
                 continue
             digest = str(item.get("hash") or "").lower()

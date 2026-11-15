@@ -31,7 +31,7 @@ class TestFloor(unittest.TestCase):
             self.assertIn("needs 0.60)", m.rejected)
 
     def test_extra_words_in_the_folder_name_still_match(self):
-        m = run("Project Hail Mary [MAM]", prod("B08G9PRS1K", "Project Hail Mary", "Andy Weir"), "Andy Weir")
+        m = run("Project Hail Mary [TRACKER]", prod("B08G9PRS1K", "Project Hail Mary", "Andy Weir"), "Andy Weir")
         self.assertEqual(m.asin, "B08G9PRS1K")
         self.assertEqual(m.rejected, "")
 

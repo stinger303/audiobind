@@ -8,7 +8,7 @@
       "author_info": "{\"5512\": \"Andy Weir\"}",
       "narrator_info": "{\"881\": \"Ray Porter\"}",
       "series_info": "",
-      "cat": "<a href=\"/tor/browse.php?tor[cat][]=49\">Audiobooks - Science Fiction</a>",
+      "cat": "<a href=\"/browse?cat=49\">Audiobooks - Science Fiction</a>",
       "catname": "Audiobooks - Science Fiction",
       "size": "934.2 MiB",
       "added": "2021-05-04 12:00:00",

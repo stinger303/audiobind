@@ -150,14 +150,14 @@ class TestAdd(QbitCase):
     def test_add_posts_the_torrent_with_the_right_form_fields(self):
         c = self.client()
         c.login()
-        digest = c.add_torrent(TORRENT, "1001.torrent")
+        digest = c.add_torrent(TORRENT, "1001.torrent", "my-category")
         call = self.server.calls[-1]
         self.assertEqual(call["path"], "/api/v2/torrents/add")
         self.assertEqual(call["headers"]["Referer"], self.url)
         self.assertIn("SID=abc123", call["headers"]["Cookie"])
         parts = call["parts"]
         self.assertEqual(parts["torrents"], ("1001.torrent", "application/x-bittorrent", TORRENT))
-        self.assertEqual(parts["category"][2], b"mam-audiobooks")
+        self.assertEqual(parts["category"][2], b"my-category")
         self.assertEqual(parts["paused"][2], b"false")
         self.assertEqual(parts["stopped"][2], b"false")
         self.assertNotIn("autoTMM", parts, "no automatic-torrent-management override")
@@ -233,3 +233,19 @@ class TestProgress(QbitCase):
             qbit.QbitClient("http://127.0.0.1:1", "a", "b").progress(["a" * 40])
         with self.assertRaises(qbit.QbitError):  # no do_GET on the fake: 501
             self.client().progress(["a" * 40])
+
+
+class TestIncomplete(QbitCase):
+    def test_incomplete_counts_the_category_below_the_threshold_in_one_get(self):
+        listing = json.dumps([{"progress": 1.0}, {"progress": 0.4}, {"progress": 0.9995}, {"progress": 0.0},
+                              {"progress": None}, "junk"]).encode()
+        gets = []
+
+        def do_GET(handler):  # noqa: N802
+            gets.append(handler.path)
+            handler._reply(200, listing)
+
+        FakeQbit.do_GET = do_GET
+        self.addCleanup(lambda: delattr(FakeQbit, "do_GET"))
+        self.assertEqual(self.client().incomplete("my cat", 0.999), 2)
+        self.assertEqual(gets, ["/api/v2/torrents/info?category=my+cat"])

@@ -396,7 +396,7 @@ Wishlist acquisition (below) is optional; everything else works the same without
 
 Optional, and off by default. Audiobind does not know which site it talks to: you tell it the
 site's URL, the path of its JSON search endpoint, the path of its torrent download endpoint and
-the name and value of its session cookie. Until all five are set (and `QBIT_USER` / `QBIT_PASS`
+the JSON document its search expects, and the name and value of its session cookie. Until all six are set (and `QBIT_USER` / `QBIT_PASS`
 for the qBittorrent WebUI) the watcher is off: no thread, no network, and Settings > Watcher
 names what is still missing.
 
@@ -405,17 +405,27 @@ names what is still missing.
 | `TRACKER_URL` | *(unset)* | **Required.** Base URL, e.g. `https://tracker.example`. No path, query or login; a malformed value stops startup |
 | `TRACKER_SEARCH_PATH` | *(unset)* | **Required.** Path of the JSON search endpoint |
 | `TRACKER_SEARCH_METHOD` | `POST` | `POST` or `GET` |
-| `TRACKER_SEARCH_CATEGORY` | *(unset)* | The category value to send, if the site needs one. Empty = none is sent |
-| `TRACKER_SEARCH_CATEGORY_PARAM` | *(unset)* | The request field that carries it, e.g. `tor[main_cat][]` |
+| `TRACKER_SEARCH_BODY` | *(unset)* | **Required, no default.** The search request as a JSON object with `{{title}}`, `{{author}}` and `{{category}}` placeholders (see below) |
+| `TRACKER_SEARCH_CATEGORY` | *(unset)* | The value `{{category}}` stands for, if the site needs one |
 | `TRACKER_DOWNLOAD_PATH` | *(unset)* | **Required.** Path of the torrent download endpoint |
 | `TRACKER_DOWNLOAD_PARAM` | `tid` | Query parameter carrying the torrent id |
 | `TRACKER_FREELEECH_PARAM` | *(unset)* | Query parameter that spends a freeleech credit, e.g. `fl`. Empty = never sent |
 | `TRACKER_COOKIE_NAME` | *(unset)* | **Required.** The session cookie's name |
 | `TRACKER_SESSION` | *(unset)* | **Required.** The session cookie's value. A secret - never shown in the UI, the API or the log |
 
+`TRACKER_SEARCH_BODY` is the document sent to the search endpoint, for example
+`{"q": "{{title}} {{author}}"}`. `{{title}}` and `{{author}}` are replaced with the wanted book's
+title and first author, `{{category}}` with `TRACKER_SEARCH_CATEGORY`. Values are JSON-escaped, so a
+quote in a title cannot break the document. **Empty-value rule:** an object member or list item whose
+value is nothing but placeholders and comes out empty (a book without an author, an unset category) is
+left out of the document; a string that mixes text and placeholders is trimmed. With `POST` the
+document is sent as a JSON body; with `GET` the same document becomes query parameters (a list repeats
+its key, a nested object becomes `key[sub]`). Anything else the site needs - a page size, a
+language filter, a sort order - goes into your template as a literal member.
+
 The six settings that existed before this naming (session, membership, proxy, user agent and the two
 IP guards) still work under their old variable names when the new name is empty (one deprecation line in the log
-at startup, never the value); the new name wins when both are set. The paths, cookie name and
+at startup, never the value); the new name wins when both are set. The paths, cookie name, search body and
 category have no old name - set them.
 
 With the settings in place, a background thread works through the wishlist every
@@ -426,14 +436,16 @@ cycle with no restart):
 1. Books already in your library (a converted book with the same ASIN, or the same title and
    author) are removed from the wishlist - this also runs after every scan, watcher or not.
 2. Up to `WATCH_MAX_PER_CYCLE` **wanted** books - never-checked first, oldest first, then the
-   least recently checked - are searched on the tracker's JSON search endpoint (audiobooks,
-   English).
+   least recently checked - are searched on the tracker's JSON search endpoint. Before any
+   search, if `WATCH_MAX_INCOMPLETE` (default 10) torrents in your qBittorrent category are still
+   downloading, the cycle holds: nothing is searched or added, and one line says so. `0` turns this
+   off. It never delays the **downloaded** flip or the library match.
 3. No good match (title similarity 0.90+, an author match, audio files, not already snatched):
    the book stays **wanted** with a "not found on the tracker (checked ...)" note and is searched
    again later; after 3 misses in a row it becomes **not found** until you press **Retry**. A poor
    match is never forced.
 4. A match: the torrent is downloaded through the download endpoint and handed to
-   qBittorrent (category `mam-audiobooks`, whose save path is your ingest folder). It is
+   qBittorrent (category `QBIT_CATEGORY`, default `audiobooks`, whose save path is your ingest folder). It is
    downloaded **without** a freeleech credit when it is already free, freeleech for your account
    or a personal freeleech, and **with** one (`TRACKER_FREELEECH_PARAM`) otherwise - the decision
    is written in the book's note. The book becomes **downloading**, then **downloaded** once the
@@ -654,7 +666,9 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `TRACKER_*` | *(unset)* | **The [wishlist watcher's](#the-wishlist-watcher-private-tracker) settings** - the site's URL, paths and cookie, the proxy, the egress guard. All are listed with their defaults in that section. Unset = the watcher is off: no thread, no network |
 | `WATCH_INTERVAL_MIN` | `60` | Minutes between watcher cycles (10-1440) |
 | `WATCH_MAX_PER_CYCLE` | `5` | Wishlist books one watcher cycle searches at most (1-20) |
+| `WATCH_MAX_INCOMPLETE` | `10` | A cycle adds no torrent while this many in `QBIT_CATEGORY` are still below 99.9 % (`0` = no limit) |
 | `QBIT_URL` | `http://localhost:8083` | qBittorrent WebUI the watcher hands torrents to |
+| `QBIT_CATEGORY` | `audiobooks` | The qBittorrent category torrents are added to; its save path is your ingest folder |
 | `QBIT_USER` / `QBIT_PASS` | *(unset)* | qBittorrent WebUI login. Without them the watcher stays disabled (a warning in the log and on Settings) |
 | `PUID` / `PGID` | `99` / `100` | Ownership of written files |
 

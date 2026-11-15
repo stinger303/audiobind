@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass, field
@@ -150,6 +151,21 @@ def _tracker_session(raw: str) -> str:
     return raw
 
 
+def _tracker_body(raw: str) -> str:
+    """TRACKER_SEARCH_BODY, checked at load: a JSON object (placeholders live inside its strings)."""
+    raw = str(raw or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise RuntimeError("TRACKER_SEARCH_BODY is not valid: it must be a JSON object, "
+                           'e.g. {"q": "{{title}} {{author}}"}') from None
+    if not isinstance(parsed, dict):
+        raise RuntimeError("TRACKER_SEARCH_BODY is not valid: it must be a JSON object")
+    return raw
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(_env(name, str(default)))
@@ -237,9 +253,11 @@ class Config:
     tracker_url: str = ""
     tracker_search_path: str = ""
     tracker_search_method: str = "POST"
-    #: the category value to send and the request field that carries it (both empty = none sent)
+    #: the search request's JSON document with {{title}} / {{author}} / {{category}} placeholders.
+    #: No default: the watcher is off until it is set. ``tracker_search_category`` is the value
+    #: {{category}} stands for (empty = every member that is only {{category}} is left out).
+    tracker_search_body: str = ""
     tracker_search_category: str = ""
-    tracker_search_category_param: str = ""
     tracker_download_path: str = ""
     tracker_download_param: str = "tid"
     #: the query parameter that spends a freeleech credit; empty = the client never sends one
@@ -248,7 +266,11 @@ class Config:
     tracker_session: str = field(default="", repr=False)
     watch_interval_min: int = 60
     watch_max_per_cycle: int = 5
+    #: no torrent is added in a cycle while this many in ``qbit_category`` are still downloading (0 = off)
+    watch_max_incomplete: int = 10
     qbit_url: str = "http://localhost:8083"
+    #: the qBittorrent category torrents are added to (its save path is the ingest folder)
+    qbit_category: str = "audiobooks"
     qbit_user: str = ""
     qbit_pass: str = field(default="", repr=False)
     #: how tracker requests leave the container. ``tracker_user_agent`` "" = no User-Agent is
@@ -316,9 +338,8 @@ class Config:
             tracker_url=_tracker_url(_env("TRACKER_URL", "")),
             tracker_search_path=_tracker_path("TRACKER_SEARCH_PATH", _env("TRACKER_SEARCH_PATH", "")),
             tracker_search_method=_tracker_method(_env("TRACKER_SEARCH_METHOD", "")),
+            tracker_search_body=_tracker_body(_env("TRACKER_SEARCH_BODY", "")),
             tracker_search_category=_env("TRACKER_SEARCH_CATEGORY", ""),
-            tracker_search_category_param=_tracker_name(
-                "TRACKER_SEARCH_CATEGORY_PARAM", _env("TRACKER_SEARCH_CATEGORY_PARAM", "")),
             tracker_download_path=_tracker_path("TRACKER_DOWNLOAD_PATH", _env("TRACKER_DOWNLOAD_PATH", "")),
             tracker_download_param=_tracker_name(
                 "TRACKER_DOWNLOAD_PARAM", _env("TRACKER_DOWNLOAD_PARAM", "")) or "tid",
@@ -328,7 +349,9 @@ class Config:
             tracker_session=_tracker_session(session),
             watch_interval_min=_env_int("WATCH_INTERVAL_MIN", 60),
             watch_max_per_cycle=_env_int("WATCH_MAX_PER_CYCLE", 5),
+            watch_max_incomplete=max(0, _env_int("WATCH_MAX_INCOMPLETE", 10)),
             qbit_url=_env("QBIT_URL", "http://localhost:8083").rstrip("/") or "http://localhost:8083",
+            qbit_category=_env("QBIT_CATEGORY", "audiobooks") or "audiobooks",
             qbit_user=_env("QBIT_USER", ""),
             qbit_pass=os.environ.get("QBIT_PASS", ""),  # a password keeps its spaces
             tracker_user_agent=agent,
@@ -564,6 +587,14 @@ def watch_max_per_cycle() -> int:
     return _clamp(effective_val("watch_max_per_cycle"), WATCH_MAX_PER_CYCLE_BOUNDS, 5)
 
 
+def watch_max_incomplete() -> int:
+    """Torrents of the qBittorrent category still downloading at which a cycle adds none (0 = off)."""
+    try:
+        return max(0, int(effective_val("watch_max_incomplete")))
+    except (TypeError, ValueError):
+        return 10
+
+
 def effective_auto_tiers() -> set[str]:
     """Return the auto-convert tiers using the effective override or env default."""
     tier = str(effective_val("auto_convert") or "high").lower()
@@ -583,6 +614,7 @@ def deprecated_env_lines(config: Config | None = None) -> list[str]:
 WATCHER_REQUIRED = (
     ("TRACKER_URL", "tracker_url"),
     ("TRACKER_SEARCH_PATH", "tracker_search_path"),
+    ("TRACKER_SEARCH_BODY", "tracker_search_body"),
     ("TRACKER_DOWNLOAD_PATH", "tracker_download_path"),
     ("TRACKER_COOKIE_NAME", "tracker_cookie_name"),
     ("TRACKER_SESSION", "tracker_session"),

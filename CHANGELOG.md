@@ -5,6 +5,32 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev8] - 2026-11-14
+
+Finishes the rename: the search request and the qBittorrent category are settings now, nothing in the
+code speaks one site's dialect. Plus two ideas adopted from a comparable tool.
+
+### Changed
+- **`TRACKER_SEARCH_BODY` replaces the built-in search request.** A JSON object with `{{title}}`,
+  `{{author}}` and `{{category}}` placeholders (the category from `TRACKER_SEARCH_CATEGORY`), no
+  default: the watcher stays off until it is set, and Settings > Watcher names it. Values are
+  substituted into the parsed JSON, so quotes in a title cannot break the document. An object
+  member or list item that is only placeholders and comes out empty (no author, no category) is left
+  out. `POST` sends the document as a JSON body, `GET` as query parameters. The fixed
+  English-language filter, sort order and page size are gone from the client; a site that needs them
+  puts them in its template. `TRACKER_SEARCH_CATEGORY_PARAM` is removed (the template carries the key).
+- **`QBIT_CATEGORY`** (default `audiobooks`) is the qBittorrent category torrents are added to; it
+  replaces the hardcoded category and is shown on Settings > Watcher. Set it to your existing category.
+- Example torrent names in the backlog, tests and verify page are neutral.
+
+### Added
+- **`WATCH_MAX_INCOMPLETE`** (default 10, `0` = off): a cycle that finds that many torrents of the
+  qBittorrent category still below 99.9 % searches and adds nothing and logs one line. The
+  `downloaded` flip and the library match are never held; a qBittorrent error while counting is
+  logged once and the cycle carries on as before.
+- **Format preference:** between candidates that already qualify, an m4b/m4a source is picked over an
+  mp3. Series match, title score and the freeleech preference all rank above it.
+
 ## [0.19.0-dev7] - 2026-11-14
 
 The acquisition client no longer knows which site it talks to. The site's URL, endpoints, session

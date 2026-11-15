@@ -10,6 +10,8 @@ SEARCH_URL = BASE + "/search.json"
 DOWNLOAD_URL = BASE + "/download.php"
 COOKIE = "session_cookie"
 
+BODY = '{"q": "{{title}} {{author}}", "category": "{{category}}"}'
+
 SETTINGS = {
     "tracker_url": BASE,
     "tracker_search_path": "/search.json",
@@ -17,7 +19,7 @@ SETTINGS = {
     "tracker_cookie_name": COOKIE,
     "tracker_freeleech_param": "fl",
     "tracker_search_category": "13",
-    "tracker_search_category_param": "tor[main_cat][]",
+    "tracker_search_body": BODY,
 }
 
 
@@ -28,7 +30,7 @@ def tracker_cfg(session: str = "x") -> mock._patch:
 
 def endpoints(**overrides) -> tracker.Endpoints:
     args = dict(search_method="POST", download_param="tid", freeleech_param="fl",
-                search_category="13", search_category_param="tor[main_cat][]")
+                search_category="13", search_body=BODY)
     args.update(overrides)
     return tracker.Endpoints.build(BASE, "/search.json", "/download.php", **args)
 

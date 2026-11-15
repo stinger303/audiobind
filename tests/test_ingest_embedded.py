@@ -131,7 +131,7 @@ class TestEmbeddedFallback(PipelineCase):
         # the folder name finds a book (any tier above NONE): tags are never even read
         self.add_torrent()
         self.scan()
-        key = "ingest:" + "Andy Weir - Project Hail Mary (2021) [MAM]"
+        key = "ingest:" + "Andy Weir - Project Hail Mary (2021) [TRACKER]"
         self.assertEqual(self.detail(key)["match"]["name_source"], "folder")
         self.assertEqual(self.state.get(key).status, "converted")
         self.tag_probe.assert_not_called()
@@ -141,7 +141,7 @@ class TestEmbeddedFallback(PipelineCase):
                        hours=2.0, language="english")
         self.add_torrent()
         self.scan(products=(weak,))
-        key = "ingest:" + "Andy Weir - Project Hail Mary (2021) [MAM]"
+        key = "ingest:" + "Andy Weir - Project Hail Mary (2021) [TRACKER]"
         row = self.state.get(key)
         self.assertNotEqual(row.confidence, "NONE")
         self.assertEqual(self.detail(key)["match"]["name_source"], "folder")

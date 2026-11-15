@@ -29,7 +29,7 @@ try:
 except ImportError:
     from tests.live import LiveServerCase
 
-TORRENT = "Andy Weir - Project Hail Mary (2021) [MAM]"
+TORRENT = "Andy Weir - Project Hail Mary (2021) [TRACKER]"
 KEY = "ingest:" + TORRENT
 PHM = Product(asin="B08G9PRS1K", title="Project Hail Mary", authors=["Andy Weir"], hours=2.0, language="english")
 

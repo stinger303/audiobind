@@ -19,7 +19,7 @@ from tests.test_watcher import TORRENT, FakeQbit, WatcherCase, answer, entry
 from tests.tracker_cfg import COOKIE, DOWNLOAD_URL, SEARCH_URL, SETTINGS, tracker_cfg
 
 ALL_NEW = {"TRACKER_URL", "TRACKER_SEARCH_PATH", "TRACKER_SEARCH_METHOD", "TRACKER_SEARCH_CATEGORY",
-           "TRACKER_SEARCH_CATEGORY_PARAM", "TRACKER_DOWNLOAD_PATH", "TRACKER_DOWNLOAD_PARAM",
+           "TRACKER_SEARCH_BODY", "TRACKER_DOWNLOAD_PATH", "TRACKER_DOWNLOAD_PARAM",
            "TRACKER_FREELEECH_PARAM", "TRACKER_COOKIE_NAME", "TRACKER_SESSION", "TRACKER_VIP", "TRACKER_PROXY",
            "TRACKER_USER_AGENT", "TRACKER_HOME_IP", "TRACKER_EXPECTED_EGRESS_IP"}
 
@@ -33,12 +33,27 @@ def from_env(env: dict) -> Config:
 class TestDefaults(unittest.TestCase):
     def test_everything_is_empty_by_default_and_the_watcher_is_off(self):
         cfg = from_env({})
-        for name in ("tracker_url", "tracker_search_path", "tracker_search_category", "tracker_search_category_param",
+        for name in ("tracker_url", "tracker_search_path", "tracker_search_category", "tracker_search_body",
                      "tracker_download_path", "tracker_freeleech_param", "tracker_cookie_name", "tracker_session",
                      "tracker_proxy", "tracker_user_agent", "tracker_home_ip", "tracker_expected_egress_ip"):
             self.assertEqual(getattr(cfg, name), "", name)
         self.assertEqual((cfg.tracker_search_method, cfg.tracker_download_param, cfg.tracker_vip), ("POST", "tid", False))
         self.assertEqual(cfg.deprecated_used, [])
+
+    def test_the_search_body_has_no_default_and_must_be_a_json_object(self):
+        self.assertEqual(from_env({}).tracker_search_body, "")
+        self.assertEqual(from_env({"TRACKER_SEARCH_BODY": ' {"q": "{{title}}"} '}).tracker_search_body, '{"q": "{{title}}"}')
+        for bad in ("not json", "[1]", '"x"'):
+            with self.assertRaises(RuntimeError) as ctx:
+                from_env({"TRACKER_SEARCH_BODY": bad})
+            self.assertIn("TRACKER_SEARCH_BODY", str(ctx.exception))
+
+    def test_the_qbit_category_and_the_incomplete_limit_defaults(self):
+        cfg = from_env({})
+        self.assertEqual((cfg.qbit_category, cfg.watch_max_incomplete), ("audiobooks", 10))
+        cfg = from_env({"QBIT_CATEGORY": "books", "WATCH_MAX_INCOMPLETE": "0"})
+        self.assertEqual((cfg.qbit_category, cfg.watch_max_incomplete), ("books", 0))
+        self.assertEqual(from_env({"WATCH_MAX_INCOMPLETE": "-3"}).watch_max_incomplete, 0)
 
     def test_the_freeleech_parameter_is_empty_unless_configured(self):
         self.assertEqual(from_env({}).tracker_freeleech_param, "")
@@ -46,7 +61,7 @@ class TestDefaults(unittest.TestCase):
 
     def test_every_documented_variable_is_read(self):
         env = {"TRACKER_URL": "https://tracker.example/", "TRACKER_SEARCH_PATH": "/s", "TRACKER_SEARCH_METHOD": "get",
-               "TRACKER_SEARCH_CATEGORY": "13", "TRACKER_SEARCH_CATEGORY_PARAM": "tor[main_cat][]",
+               "TRACKER_SEARCH_CATEGORY": "13", "TRACKER_SEARCH_BODY": '{"q": "{{title}}"}',
                "TRACKER_DOWNLOAD_PATH": "/d", "TRACKER_DOWNLOAD_PARAM": "id", "TRACKER_FREELEECH_PARAM": "fl",
                "TRACKER_COOKIE_NAME": "sid", "TRACKER_SESSION": " abc ", "TRACKER_VIP": "yes",
                "TRACKER_PROXY": "http://vpn:8888", "TRACKER_USER_AGENT": "UA/1", "TRACKER_HOME_IP": "203.0.113.7",
@@ -81,7 +96,7 @@ class TestValidation(unittest.TestCase):
         self.assertRejected({"TRACKER_COOKIE_NAME": "a;b"}, "TRACKER_COOKIE_NAME")
         self.assertRejected({"TRACKER_DOWNLOAD_PARAM": "a&b"}, "TRACKER_DOWNLOAD_PARAM")
         self.assertRejected({"TRACKER_FREELEECH_PARAM": "fl&x=1"}, "TRACKER_FREELEECH_PARAM")
-        self.assertRejected({"TRACKER_SEARCH_CATEGORY_PARAM": "a b"}, "TRACKER_SEARCH_CATEGORY_PARAM")
+        self.assertRejected({"TRACKER_SEARCH_BODY": "{not json"}, "TRACKER_SEARCH_BODY")
 
     def test_a_session_that_cannot_be_a_cookie_value_is_refused_without_echoing_it(self):
         message = self.assertRejected({"TRACKER_SESSION": "secret value; other=1"}, "TRACKER_SESSION")
@@ -163,15 +178,17 @@ class TestDeprecatedAliases(unittest.TestCase):
 
 class TestWatcherMinimum(unittest.TestCase):
     def test_missing_settings_are_named(self):
-        with mock.patch.multiple(CONFIG, tracker_url="", tracker_search_path="", tracker_download_path="",
-                                 tracker_cookie_name="", tracker_session=""):
+        with mock.patch.multiple(CONFIG, tracker_url="", tracker_search_path="", tracker_search_body="",
+                                 tracker_download_path="", tracker_cookie_name="", tracker_session=""):
             self.assertFalse(watcher.configured())
             self.assertEqual(watcher.missing_settings(), [
-                "TRACKER_URL", "TRACKER_SEARCH_PATH", "TRACKER_DOWNLOAD_PATH", "TRACKER_COOKIE_NAME", "TRACKER_SESSION"])
+                "TRACKER_URL", "TRACKER_SEARCH_PATH", "TRACKER_SEARCH_BODY", "TRACKER_DOWNLOAD_PATH",
+                "TRACKER_COOKIE_NAME", "TRACKER_SESSION"])
             self.assertIn("TRACKER_URL", watcher.disabled_reason())
 
     def test_each_one_is_needed(self):
         for attr, var in (("tracker_url", "TRACKER_URL"), ("tracker_search_path", "TRACKER_SEARCH_PATH"),
+                          ("tracker_search_body", "TRACKER_SEARCH_BODY"),
                           ("tracker_download_path", "TRACKER_DOWNLOAD_PATH"),
                           ("tracker_cookie_name", "TRACKER_COOKIE_NAME"), ("tracker_session", "TRACKER_SESSION")):
             with self.subTest(var), tracker_cfg("x"), mock.patch.object(CONFIG, attr, ""):
@@ -179,7 +196,7 @@ class TestWatcherMinimum(unittest.TestCase):
                 self.assertFalse(watcher.configured())
                 self.assertIn(var, watcher.disabled_reason())
 
-    def test_all_five_turn_it_on(self):
+    def test_all_six_turn_it_on(self):
         with tracker_cfg("x"):
             self.assertTrue(watcher.configured())
             self.assertEqual(watcher.missing_settings(), [])
@@ -196,7 +213,8 @@ class TestSettingsPage(unittest.TestCase):
     def test_off_names_what_is_missing(self):
         with mock.patch.multiple(CONFIG, **{**{k: "" for k in SETTINGS}, "tracker_session": "", "tracker_search_method": "POST"}):
             html = web.render_settings(self.state)
-        for var in ("TRACKER_URL", "TRACKER_SEARCH_PATH", "TRACKER_DOWNLOAD_PATH", "TRACKER_COOKIE_NAME", "TRACKER_SESSION"):
+        for var in ("TRACKER_URL", "TRACKER_SEARCH_PATH", "TRACKER_SEARCH_BODY", "TRACKER_DOWNLOAD_PATH",
+                    "TRACKER_COOKIE_NAME", "TRACKER_SESSION"):
             self.assertIn(f"<code>{var}</code>", html)
 
     def test_a_partly_configured_install_lists_only_what_is_missing(self):
@@ -246,8 +264,7 @@ class TestEndToEnd(WatcherCase):
         self.assertEqual((m1, u1), ("POST", SEARCH_URL))
         self.assertTrue(h1["Cookie"].startswith(f"{COOKIE}="))
         self.assertNotIn("User-Agent", h1)
-        form = urllib.parse.parse_qsl(d1.decode())
-        self.assertIn(("tor[main_cat][]", "13"), form)
+        self.assertEqual(json.loads(d1.decode())["category"], "13")
         self.assertEqual((m2, u2), ("GET", f"{DOWNLOAD_URL}?tid=1001&fl"))
         row = self.row()
         self.assertEqual((row["status"], row["tracker_tid"]), ("downloading", "1001"))

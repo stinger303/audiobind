@@ -3672,7 +3672,7 @@ def render_watcher_section(state) -> str:
             "private tracker you configure and hand them to qBittorrent. It is off, and you do not need it: "
             "Audiobind converts whatever lands in the ingest folder, from any downloader or a plain "
             "copy. Still to set: " + ", ".join(f"<code>{_html(m)}</code>" for m in s["missing"]) +
-            " (the site's URL, its search and download paths, and its session cookie's name and value), "
+            " (the site's URL, its search and download paths, the search request body, and its session cookie's name and value), "
             "plus <code>QBIT_URL</code>, <code>QBIT_USER</code> and <code>QBIT_PASS</code>; then restart "
             "the container.</div></section>"
         )
@@ -3752,8 +3752,10 @@ def render_watcher_section(state) -> str:
         ("Status", state_html),
         ("Schedule", f"every {int(s['interval_min'])} min, at most {int(s['max_per_cycle'])} "
                      f"{_plural(int(s['max_per_cycle']), 'book', 'books')} per cycle"),
+        ("Download limit", (f"adds nothing while {int(s['max_incomplete'])} torrent(s) are still downloading"
+                            if s["max_incomplete"] else "off")),
         ("Tracker", f"{_html(s['tracker_host'])}" if s.get("tracker_host") else DASH),
-        ("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(watcher_mod.qbit.CATEGORY)}</code> &#183; "
+        ("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(s['qbit_category'])}</code> &#183; "
                         + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>')),
         ("Connection", sees),
         ("Guard", guard_html),
@@ -3806,10 +3808,10 @@ def render_watcher_section(state) -> str:
         '<div class="ab-acct-who">Searches the tracker for the <b>wanted</b> books on your wishlist and hands a good '
         "match to qBittorrent; the ingest folder takes it from there. Configured with environment variables "
         "(<code>TRACKER_URL</code>, <code>TRACKER_SEARCH_PATH</code>, <code>TRACKER_DOWNLOAD_PATH</code>, "
-        "<code>TRACKER_COOKIE_NAME</code>, <code>TRACKER_SESSION</code>, <code>QBIT_URL</code>, <code>QBIT_USER</code>, "
+        "<code>TRACKER_SEARCH_BODY</code>, <code>TRACKER_COOKIE_NAME</code>, <code>TRACKER_SESSION</code>, <code>QBIT_URL</code>, <code>QBIT_CATEGORY</code>, <code>QBIT_USER</code>, "
         "<code>QBIT_PASS</code>, <code>TRACKER_PROXY</code>, <code>TRACKER_USER_AGENT</code>, <code>TRACKER_HOME_IP</code>, "
         "<code>TRACKER_EXPECTED_EGRESS_IP</code>, <code>TRACKER_VIP</code>, and the optional category / freeleech "
-        "parameters). "
+        "parameters). <code>WATCH_MAX_INCOMPLETE</code> holds a cycle while that many torrents are still downloading. "
         "How often it checks and how many books it takes per cycle are set below (the environment variables "
         "<code>WATCH_INTERVAL_MIN</code> and <code>WATCH_MAX_PER_CYCLE</code> are their defaults) and apply "
         "from the next cycle, no restart. The pause switch is kept across restarts.</div>"

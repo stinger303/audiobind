@@ -1,13 +1,16 @@
 """Phase 3: the wishlist watcher - wanted books from a private tracker, through qBittorrent, into ingest.
 
 Off unless the tracker settings are complete (TRACKER_URL, TRACKER_SEARCH_PATH,
-TRACKER_DOWNLOAD_PATH, TRACKER_COOKIE_NAME, TRACKER_SESSION): otherwise no thread starts and
+TRACKER_SEARCH_BODY, TRACKER_DOWNLOAD_PATH, TRACKER_COOKIE_NAME, TRACKER_SESSION): otherwise no thread starts and
 nothing touches the network.
 
 One cycle, every WATCH_INTERVAL_MIN (or on "Run a cycle now"):
 
 1. Wishlist rows already in the library are marked ``in_library`` (no network).
-2. Up to WATCH_MAX_PER_CYCLE ``wanted`` rows - never-checked first, oldest added first, then
+2. Unless WATCH_MAX_INCOMPLETE (0 = off) torrents in the qBittorrent category are still
+   downloading - then the cycle holds: nothing is searched or added, one line is logged. Steps 1
+   and the ``downloaded`` flip never wait for it.
+   Up to WATCH_MAX_PER_CYCLE ``wanted`` rows - never-checked first, oldest added first, then
    the least recently checked - are each searched on the tracker (tracker.TrackerClient: one request at a
    time, >= 3 s apart, backoff on any failure).
 3. No result good enough (tracker.select_candidate): the row stays ``wanted`` with a "not found
@@ -31,7 +34,13 @@ import threading
 import time
 
 from . import egress, qbit, tracker
-from .config import WATCHER_REQUIRED, effective_val, watch_interval_min, watch_max_per_cycle
+from .config import (
+    WATCHER_REQUIRED,
+    effective_val,
+    watch_interval_min,
+    watch_max_incomplete,
+    watch_max_per_cycle,
+)
 from .control import CONTROL
 from .state import (
     WISHLIST_DOWNLOADED,
@@ -98,6 +107,10 @@ def disabled_reason() -> str:
     return ""
 
 
+def qbit_category() -> str:
+    return _setting("qbit_category") or "audiobooks"
+
+
 def qbit_url() -> str:
     return _setting("qbit_url") or "http://localhost:8083"
 
@@ -108,7 +121,7 @@ def make_tracker() -> tracker.TrackerClient:
         _setting("tracker_url"), _setting("tracker_search_path"), _setting("tracker_download_path"),
         search_method=_setting("tracker_search_method"), download_param=_setting("tracker_download_param"),
         freeleech_param=_setting("tracker_freeleech_param"), search_category=_setting("tracker_search_category"),
-        search_category_param=_setting("tracker_search_category_param"))
+        search_body=_setting("tracker_search_body"))
     return tracker.TrackerClient(_setting("tracker_session"), endpoints, _setting("tracker_cookie_name"),
                                  proxy=_setting("tracker_proxy"), user_agent=_setting("tracker_user_agent"))
 
@@ -308,7 +321,7 @@ class Watcher:
             if wait > 0:
                 summary["error"] = f"tracker backoff - next request allowed in {int(wait) + 1}s; nothing searched"
             else:
-                rows = state.wishlist_due(watch_max_per_cycle())
+                rows = [] if self._holding(summary) else state.wishlist_due(watch_max_per_cycle())
                 for row in rows:
                     if self._stop.is_set() or self.paused():
                         break
@@ -342,6 +355,28 @@ class Watcher:
             summary["would_send"], summary["not_found"], summary["errors"], summary["resolved"],
         )
         return summary
+
+    def _holding(self, summary: dict) -> bool:
+        """True when WATCH_MAX_INCOMPLETE torrents of the category are still below DONE_PROGRESS: the
+        cycle then searches and adds nothing (one log line). A dry run adds nothing anyway, 0 turns
+        the check off, and a qBittorrent failure is logged once and the cycle goes on as before."""
+        limit = watch_max_incomplete()
+        if limit <= 0 or summary.get("watcher_dry_run"):
+            return False
+        client = make_qbit()
+        try:
+            count = client.incomplete(qbit_category(), DONE_PROGRESS)
+        except qbit.QbitError as exc:
+            log.warning("wishlist watcher: could not count incomplete torrents in qBittorrent (%s) - no limit applied this cycle", exc)
+            return False
+        finally:
+            client.logout()
+        if count < limit:
+            return False
+        summary["held"] = count
+        log.info("wishlist watcher: %d torrent(s) in category %r still incomplete, limit %d - holding this cycle, nothing added",
+                 count, qbit_category(), limit)
+        return True
 
     def _mark_downloaded(self, state) -> int:
         """After the search phase: ``downloading`` rows whose torrent is finished become
@@ -454,7 +489,7 @@ class Watcher:
             holder["row_error"] = True
             raise
         try:
-            digest = qb.add_torrent(torrent, f"tracker-{pick.tid}.torrent")
+            digest = qb.add_torrent(torrent, f"tracker-{pick.tid}.torrent", qbit_category())
         except qbit.QbitError as exc:
             state.wishlist_set_status(
                 asin, WISHLIST_ERROR, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
@@ -513,6 +548,8 @@ class Watcher:
             "interval_min": watch_interval_min(),
             "max_per_cycle": watch_max_per_cycle(),
             "qbit_url": qbit_url(),
+            "qbit_category": qbit_category(),
+            "max_incomplete": watch_max_incomplete(),
             "qbit_credentials": bool(_setting("qbit_user") and _setting("qbit_pass")),
             "last_cycle": last if isinstance(last, dict) else {},
             "next_cycle_at": self.next_at if self.alive and not paused else None,

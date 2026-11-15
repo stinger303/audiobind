@@ -81,12 +81,13 @@ class Endpoints:
     download_param: str = "tid"
     freeleech_param: str = ""
     search_category: str = ""
-    search_category_param: str = ""
+    #: the JSON document template with {{title}} / {{author}} / {{category}} placeholders
+    search_body: str = ""
 
     @classmethod
     def build(cls, base_url: str, search_path: str, download_path: str, *, search_method: str = "POST",
               download_param: str = "tid", freeleech_param: str = "", search_category: str = "",
-              search_category_param: str = "") -> Endpoints:
+              search_body: str = "") -> Endpoints:
         base = str(base_url or "").strip().rstrip("/")
         return cls(
             search_url=base + str(search_path or "").strip() if base and search_path else "",
@@ -95,7 +96,7 @@ class Endpoints:
             download_param=str(download_param or "").strip() or "tid",
             freeleech_param=str(freeleech_param or "").strip(),
             search_category=str(search_category or "").strip(),
-            search_category_param=str(search_category_param or "").strip(),
+            search_body=str(search_body or "").strip(),
         )
 
 
@@ -158,16 +159,86 @@ def download_url(endpoints: Endpoints, tid, use_freeleech: bool) -> str:
     return url
 
 
+# ---------------------------------------------------------------------------- search request
+_PLACEHOLDER_RE = re.compile(r"\{\{(title|author|category)\}\}")
+_ONLY_PLACEHOLDERS_RE = re.compile(r"^\s*(?:\{\{(?:title|author|category)\}\}\s*)+$")
+_OMIT = object()
+
+
+def _fill(node, values: dict):
+    """One template node with its placeholders substituted. Substituting into parsed JSON strings
+    (never into the raw text) means a title with quotes or backslashes can never break the document.
+    A string that is nothing but placeholders and comes out empty is _OMIT: its object member / list
+    item is left out. A string that mixes literal text with placeholders is trimmed and its runs of
+    whitespace collapsed, so "{{title}} {{author}}" with no author is just the title."""
+    if isinstance(node, str):
+        if not _PLACEHOLDER_RE.search(node):
+            return node
+        text = _PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], node)
+        if _ONLY_PLACEHOLDERS_RE.match(node):
+            return text.strip() or _OMIT
+        return " ".join(text.split())
+    if isinstance(node, dict):
+        out = {}
+        for key, value in node.items():
+            filled = _fill(value, values)
+            if filled is not _OMIT:
+                out[key] = filled
+        return out
+    if isinstance(node, list):
+        return [item for item in (_fill(item, values) for item in node) if item is not _OMIT]
+    return node
+
+
+def build_search_document(template: str, title: str, author: str = "", category: str = "") -> dict:
+    """TRACKER_SEARCH_BODY with {{title}}, {{author}} and {{category}} filled in (the category
+    from TRACKER_SEARCH_CATEGORY). Rule for empty values: an object member or list item whose value is
+    only placeholders, all empty, is omitted - so an unset category (or a row without an author) drops
+    its key instead of sending an empty value. An unparseable template raises TrackerError."""
+    try:
+        parsed = json.loads(template)
+    except (TypeError, ValueError):
+        raise TrackerError("TRACKER_SEARCH_BODY is not valid JSON") from None
+    if not isinstance(parsed, dict):
+        raise TrackerError("TRACKER_SEARCH_BODY must be a JSON object")
+    values = {"title": " ".join(str(title or "").split()), "author": " ".join(str(author or "").split()),
+              "category": str(category or "").strip()}
+    return _fill(parsed, values)
+
+
+def document_params(document: dict) -> list[tuple[str, str]]:
+    """The same document as query parameters (GET): a list repeats its key, a nested object becomes
+    ``key[sub]``, true / false are written as such, null is left out."""
+    out: list[tuple[str, str]] = []
+
+    def add(key: str, value) -> None:
+        if value is None:
+            return
+        if isinstance(value, dict):
+            for sub, item in value.items():
+                add(f"{key}[{sub}]", item)
+        elif isinstance(value, list):
+            for item in value:
+                add(key, item)
+        elif isinstance(value, bool):
+            out.append((key, "true" if value else "false"))
+        else:
+            out.append((key, str(value)))
+
+    for key, value in document.items():
+        add(str(key), value)
+    return out
+
+
 # ---------------------------------------------------------------------------- search results
-#: the fixed part of the search request (the category is configured, see Endpoints)
-SEARCH_LANG_ENGLISH = "1"
-PER_PAGE = 25
 #: a body bigger than this is not a search answer or a .torrent; it is not read further
 MAX_BODY = 8 * 1024 * 1024
 
 #: file types an audiobook torrent carries. A result must show one of them (or a category
 #: name that says audiobook) before it can be picked - defence in depth, so a category filter
 #: that matches the wrong section can never get an e-book downloaded with a freeleech credit
+#: the formats preferred over mp3 when two candidates otherwise rank the same
+M4_TYPES = {"m4b", "m4a"}
 AUDIO_TYPES = {"m4b", "mp3", "m4a", "aac", "flac", "ogg", "opus", "wma", "wav", "aax", "mp4"}
 
 
@@ -197,6 +268,11 @@ class Torrent:
         if types & AUDIO_TYPES:
             return True
         return "audiobook" in self.category.lower().replace(" ", "")
+
+    @property
+    def is_m4(self) -> bool:
+        """An m4b / m4a source (chapters and one file per book) - preferred over mp3 as the last tie-break."""
+        return bool(set(re.split(r"[\s,;/|]+", self.filetype.lower())) & M4_TYPES)
 
 
 def _json_field(value):
@@ -351,7 +427,8 @@ def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False, can_
     A candidate must be an audio torrent you have not snatched, whose title scores at least
     TITLE_MATCH and - when the row names authors - credits one of them. Among those: files
     present first, then the exact series/sequence, then the closer title, then one that is
-    already freeleech (no credit needed), then the tracker's relevance order. Nothing below the
+    already freeleech (no credit needed), then an m4b/m4a source over mp3 (only between candidates
+    the rules above leave tied), then the tracker's relevance order. Nothing below the
     threshold is ever forced. A torrent restricted to a membership tier is skipped unless ``vip``
     says the account has it; with ``vip`` it is an ordinary candidate.
     """
@@ -376,7 +453,7 @@ def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False, can_
             skipped_vip += 1
             continue
         free = not freeleech_decision(torrent.raw, can_spend)[0]
-        key = (torrent.numfiles > 0, series_exact(row, torrent), score, free, -index)
+        key = (torrent.numfiles > 0, series_exact(row, torrent), score, free, torrent.is_m4, -index)
         ranked.append((key, torrent, score))
     if not ranked:
         if skipped_vip:
@@ -619,31 +696,23 @@ class TrackerClient:
         delay = self.backoff.fail()
         return TrackerError(f"{why}; backing off {delay:.0f}s", 200)
 
-    def search_form(self, title: str, author: str = "") -> list[tuple[str, str]]:
-        """The search request's fields: audiobooks, English, by relevance (+ the configured category)."""
-        form = [
-            ("tor[text]", str(title or "")),
-            ("tor[searchIn]", "torrents"),
-            ("tor[browse_lang][]", SEARCH_LANG_ENGLISH),
-            ("tor[sortType]", "relevance"),
-            ("perpage", str(PER_PAGE)),
-        ]
-        if self.endpoints.search_category and self.endpoints.search_category_param:
-            form.insert(3, (self.endpoints.search_category_param, self.endpoints.search_category))
-        if author:
-            form.insert(1, ("tor[author]", str(author)))
-        return form
+    def search_document(self, title: str, author: str = "") -> dict:
+        """The search request's document: the configured template, filled in for this row."""
+        return build_search_document(self.endpoints.search_body, title, author, self.endpoints.search_category)
 
     def search(self, title: str, author: str = "") -> list[Torrent]:
-        """The search endpoint: JSON, by relevance."""
-        query = urllib.parse.urlencode(self.search_form(title, author))
+        """The search endpoint: the configured document in, JSON out."""
+        if not self.endpoints.search_body:
+            raise TrackerError("the search request is not configured (TRACKER_SEARCH_BODY)")
+        document = self.search_document(title, author)
         if self.endpoints.search_method == "GET":
+            query = urllib.parse.urlencode(document_params(document))
             body = self._request("GET", f"{self.endpoints.search_url}?{query}", None,
                                  {"Accept": "application/json"})
         else:
             body = self._request(
-                "POST", self.endpoints.search_url, query.encode(),
-                {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+                "POST", self.endpoints.search_url, json.dumps(document).encode(),
+                {"Content-Type": "application/json", "Accept": "application/json"},
             )
         try:
             payload = json.loads(body.decode("utf-8", "replace"))

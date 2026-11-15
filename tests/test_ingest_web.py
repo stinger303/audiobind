@@ -19,7 +19,7 @@ try:
 except ImportError:
     from tests.test_ingest_discovery import touch, tree_snapshot
 
-TORRENT = "Andy Weir - Project Hail Mary (2021) [MAM]"
+TORRENT = "Andy Weir - Project Hail Mary (2021) [TRACKER]"
 KEY = "ingest:" + TORRENT
 REFUSAL = "delete is for library sources; remove the torrent in qBittorrent"
 

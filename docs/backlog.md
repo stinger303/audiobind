@@ -151,15 +151,15 @@ shaped versions of the idea:
    series with sequence badges, reading the series data the matcher already
    persists.
 
-## MAM acquisition pipeline + wishlist/discovery — planned 2026-11-10 (owner approved)
+## Tracker acquisition pipeline + wishlist/discovery — planned 2026-11-10 (owner approved)
 
-Phase plan agreed with owner. Trigger stays human (a MAM bookmark or a
+Phase plan agreed with owner. Trigger stays human (a tracker bookmark or a
 wishlist click); everything after the trigger is automatic. Ratio safety is
 the tracker's server-side "require freeleech" preference (owner configured 2026-11-10:
 Require mode, size-above 1 MiB, auto-apply left empty) — never rely on
 client-side freeleech application (Prowlarr regression history). Prowlarr is
 deliberately NOT part of this: bookmarks RSS feeds qBittorrent natively, and
-the wishlist watcher talks to MAM's official API directly.
+the wishlist watcher talks to the tracker's official API directly.
 
 ### Phase 1 — ingest plumbing (Audiobind v0.16 "ingest")
 
@@ -182,9 +182,9 @@ the wishlist watcher talks to MAM's official API directly.
 ### Phase 1 acceptance test (before trusting the chain)
 
 Bookmark one audiobook -> freeleech auto-applies -> RSS -> qBittorrent auto-
-download -> appears as ingest row -> converts -> published. Verify on MAM
+download -> appears as ingest row -> converts -> published. Verify on the tracker
 stats that zero download bytes counted (the require-freeleech feature is marked
-in-development by MAM itself; a blocked download is the expected failure
+in-development by the tracker itself; a blocked download is the expected failure
 mode, a ratio hit is the bug).
 
 ### Phase 2 — discovery: search + recommendations (Audiobind)
@@ -204,14 +204,14 @@ mode, a ratio hit is the bug).
 ### Phase 3 — wishlist watcher (separate component, builds nothing fragile)
 
 - Wishlist page in Audiobind: the "books to get" list, each row showing
-  status (wanted / found on MAM / bookmarked / downloaded+published).
-- Watcher loop: for each wanted title, search MAM's official API through the
+  status (wanted / found on the tracker / bookmarked / downloaded+published).
+- Watcher loop: for each wanted title, search the tracker's official API through the
   VPN (join `network: container:gluetun`, same netns pattern as
-  qBittorrent/firefox — MAM sessions are IP-locked), auto-bookmark the best
+  qBittorrent/firefox — tracker sessions are IP-locked), auto-bookmark the best
   edition, and stop there: the Phase 1 conveyor (bookmark -> RSS ->
-  download -> convert) does the rest. Research step first: confirm the MAM
+  download -> convert) does the rest. Research step first: confirm the tracker
   API supports bookmarking and what rate limits apply; if it does not,
-  watcher degrades to a "found on MAM — click to bookmark" list, still
+  watcher degrades to a "found on the tracker — click to bookmark" list, still
   useful.
 - A downloaded wishlist row resolves automatically when the book appears in
   the published library (ASIN match).

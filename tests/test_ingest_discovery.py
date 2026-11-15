@@ -155,8 +155,8 @@ class TestSourceMigration(unittest.TestCase):
 class TestIngestDiscovery(IngestConfigCase):
     def build(self):
         r = self.ingest_root
-        touch(str(r / "Brandon Sanderson - The Way of Kings (2010) [MAM v5] {B003ZWFO7E}" / "01.mp3"))
-        touch(str(r / "Brandon Sanderson - The Way of Kings (2010) [MAM v5] {B003ZWFO7E}" / "02.mp3"))
+        touch(str(r / "Brandon Sanderson - The Way of Kings (2010) [TRACKER] {B003ZWFO7E}" / "01.mp3"))
+        touch(str(r / "Brandon Sanderson - The Way of Kings (2010) [TRACKER] {B003ZWFO7E}" / "02.mp3"))
         touch(str(r / "Andy Weir - Project Hail Mary" / "CD1" / "a.mp3"))
         touch(str(r / "Andy Weir - Project Hail Mary" / "CD2" / "b.mp3"))
         touch(str(r / "Andy Weir - Project Hail Mary" / "cover.jpg"), b"jpg")
@@ -174,7 +174,7 @@ class TestIngestDiscovery(IngestConfigCase):
             rels,
             [
                 "Andy Weir - Project Hail Mary",
-                "Brandon Sanderson - The Way of Kings (2010) [MAM v5] {B003ZWFO7E}",
+                "Brandon Sanderson - The Way of Kings (2010) [TRACKER] {B003ZWFO7E}",
                 "Single File Torrent.m4b",
             ],
         )
@@ -199,7 +199,7 @@ class TestIngestDiscovery(IngestConfigCase):
     def test_messy_torrent_names_use_the_existing_parser(self):
         self.build()
         units = {u.rel_path: u for u in discover_ingest_units(self.ingest_root, CONFIG.ignore_globs)}
-        wok = units["Brandon Sanderson - The Way of Kings (2010) [MAM v5] {B003ZWFO7E}"]
+        wok = units["Brandon Sanderson - The Way of Kings (2010) [TRACKER] {B003ZWFO7E}"]
         self.assertEqual(wok.author_guess, "Brandon Sanderson")
         self.assertTrue(wok.title_guess.startswith("The Way of Kings"))
 

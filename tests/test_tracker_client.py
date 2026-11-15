@@ -260,24 +260,8 @@ class TestRequests(unittest.TestCase):
         call = transport.calls[0]
         self.assertEqual((call["method"], call["url"]), ("POST", "https://tracker.example/search.json"))
         self.assertEqual(call["headers"]["Cookie"], "session_cookie=cookie-value")
-        self.assertEqual(call["headers"]["Content-Type"], "application/x-www-form-urlencoded")
-        form = urllib.parse.parse_qs(call["data"].decode())
-        self.assertEqual(form["tor[text]"], ["Project Hail Mary"])
-        self.assertEqual(form["tor[author]"], ["Andy Weir"])
-        self.assertEqual(form["tor[searchIn]"], ["torrents"])
-        self.assertEqual(form["tor[browse_lang][]"], ["1"])
-        self.assertEqual(form["tor[main_cat][]"], ["13"])
-        self.assertNotIn("tor[cat][]", form)
-        self.assertEqual(form["tor[sortType]"], ["relevance"])
-        self.assertIn("perpage", form)
-
-    def test_search_form_uses_main_category_13_and_no_leaf_category(self):
-        mc, transport, _ = client((200, {}, FIXTURE.read_bytes()))
-        mc.search("Dungeon Crawler Carl")
-        pairs = urllib.parse.parse_qsl(transport.calls[0]["data"].decode())
-        self.assertIn(("tor[main_cat][]", "13"), pairs)
-        self.assertFalse([k for k, _ in pairs if k == "tor[cat][]"])
-        self.assertEqual(len(transport.calls), 1)
+        self.assertEqual(call["headers"]["Content-Type"], "application/json")
+        self.assertEqual(json.loads(call["data"]), {"q": "Project Hail Mary Andy Weir", "category": "13"})
 
     def test_download_with_and_without_the_credit(self):
         mc, transport, _ = client((200, {}, TORRENT), (200, {}, TORRENT))
@@ -360,6 +344,48 @@ class TestAlternativeSpellings(unittest.TestCase):
         self.assertEqual((row.name, row.authors, row.series, row.numfiles, row.filetype), ("", [], [], 0, ""))
 
 
+class TestSearchBody(unittest.TestCase):
+    TEMPLATE = '{"q": "{{title}} {{author}}", "who": "{{author}}", "cat": ["{{category}}"], "fixed": 25}'
+
+    def build(self, title="Dune", author="Frank Herbert", category="7"):
+        return tracker.build_search_document(self.TEMPLATE, title, author, category)
+
+    def test_both_placeholders_and_a_category_produce_the_exact_document(self):
+        self.assertEqual(self.build(), {"q": "Dune Frank Herbert", "who": "Frank Herbert", "cat": ["7"], "fixed": 25})
+
+    def test_a_missing_author_never_breaks_the_document(self):
+        doc = self.build(author="")
+        self.assertEqual(doc, {"q": "Dune", "cat": ["7"], "fixed": 25})
+        json.loads(json.dumps(doc))
+
+    def test_an_unset_category_drops_its_list_item(self):
+        self.assertEqual(self.build(category="")["cat"], [])
+
+    def test_quotes_and_backslashes_in_a_title_stay_inside_the_string(self):
+        doc = self.build(title='He said "go" \\ {{author}}', author="")
+        self.assertEqual(doc["q"], 'He said "go" \\ {{author}}')
+        self.assertEqual(json.loads(json.dumps(doc)), doc)
+
+    def test_an_unset_body_is_an_error_and_sends_nothing(self):
+        mc, transport, _ = client(endpoints=endpoints(search_body=""))
+        with self.assertRaises(tracker.TrackerError) as ctx:
+            mc.search("Dune")
+        self.assertIn("TRACKER_SEARCH_BODY", str(ctx.exception))
+        self.assertEqual(transport.calls, [])
+
+    def test_get_encodes_the_same_document(self):
+        doc = self.build()
+        self.assertEqual(tracker.document_params(doc),
+                         [("q", "Dune Frank Herbert"), ("who", "Frank Herbert"), ("cat", "7"), ("fixed", "25")])
+        self.assertEqual(tracker.document_params({"a": {"b": True, "c": None}, "d": ["x", "y"]}),
+                         [("a[b]", "true"), ("d", "x"), ("d", "y")])
+
+    def test_no_site_dialect_is_left_in_the_client(self):
+        source = pathlib.Path(tracker.__file__).read_text()
+        for word in ("tor[", "searchIn", "browse_lang", "sortType", "perpage", "PER_PAGE"):
+            self.assertNotIn(word, source)
+
+
 class TestConfiguredEndpoints(unittest.TestCase):
     def test_get_search_puts_the_form_in_the_query_and_only_that_url_is_authorized(self):
         eps = endpoints(search_method="GET")
@@ -369,21 +395,15 @@ class TestConfiguredEndpoints(unittest.TestCase):
         self.assertEqual(call["method"], "GET")
         self.assertTrue(call["url"].startswith(SEARCH_URL + "?"))
         self.assertIsNone(call["data"])
-        self.assertIn("tor%5Btext%5D=Dune", call["url"])
+        self.assertEqual(urllib.parse.parse_qsl(call["url"].split("?", 1)[1]),
+                         [("q", "Dune Frank Herbert"), ("category", "13")])
         self.assertTrue(tracker.authorized_url(call["url"], eps))
         self.assertFalse(tracker.authorized_url(call["url"], endpoints()), "a POST install never sends a query search")
 
-    def test_no_category_configured_sends_none(self):
-        mc, transport, _ = client((200, {}, FIXTURE.read_bytes()),
-                                  endpoints=endpoints(search_category="", search_category_param=""))
+    def test_no_category_configured_leaves_its_key_out(self):
+        mc, transport, _ = client((200, {}, FIXTURE.read_bytes()), endpoints=endpoints(search_category=""))
         mc.search("Dune")
-        self.assertFalse([k for k, _ in urllib.parse.parse_qsl(transport.calls[0]["data"].decode()) if "cat" in k])
-
-    def test_a_category_without_a_field_name_is_not_sent(self):
-        mc, transport, _ = client((200, {}, FIXTURE.read_bytes()),
-                                  endpoints=endpoints(search_category="13", search_category_param=""))
-        mc.search("Dune")
-        self.assertNotIn("13", [v for _, v in urllib.parse.parse_qsl(transport.calls[0]["data"].decode())])
+        self.assertEqual(json.loads(transport.calls[0]["data"]), {"q": "Dune"})
 
     def test_the_freeleech_parameter_is_never_sent_unless_configured(self):
         eps = endpoints(freeleech_param="")
@@ -408,3 +428,34 @@ class TestConfiguredEndpoints(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _t(tid, name, filetype, free=False, author="Andy Weir"):
+    return tracker.Torrent(tid=tid, name=name, authors=[author], numfiles=3, filetype=filetype,
+                           raw={"free": free})
+
+
+class TestFormatPreference(unittest.TestCase):
+    ROW = {"title": "Project Hail Mary", "authors": ["Andy Weir"]}
+
+    def pick(self, *torrents):
+        return tracker.select_candidate(self.ROW, list(torrents))[0]
+
+    def test_m4b_beats_mp3_when_both_qualify(self):
+        mp3, m4b = _t("1", "Project Hail Mary", "mp3"), _t("2", "Project Hail Mary", "m4b")
+        self.assertEqual(self.pick(mp3, m4b).tid, "2")
+        self.assertEqual(self.pick(m4b, mp3).tid, "2")
+        self.assertEqual(self.pick(mp3, _t("3", "Project Hail Mary", "m4a")).tid, "3")
+
+    def test_only_mp3_is_still_chosen(self):
+        self.assertEqual(self.pick(_t("1", "Project Hail Mary", "mp3")).tid, "1")
+
+    def test_freeleech_still_wins_over_format(self):
+        free_mp3 = _t("1", "Project Hail Mary", "mp3", free=True)
+        paid_m4b = _t("2", "Project Hail Mary", "m4b")
+        self.assertEqual(self.pick(paid_m4b, free_mp3).tid, "1")
+
+    def test_a_knockoff_m4b_never_beats_a_real_mp3(self):
+        knockoff = _t("1", "Summary of Project Hail Mary Study Guide", "m4b")
+        self.assertEqual(self.pick(knockoff, _t("2", "Project Hail Mary", "mp3")).tid, "2")
+        self.assertIsNone(self.pick(knockoff))

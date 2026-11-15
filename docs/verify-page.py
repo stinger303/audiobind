@@ -41,6 +41,7 @@ from audiobind.state import State, UnitState                 # noqa: E402
 # tracker settings are complete. The watcher section turns it off again to prove an install
 # without a tracker shows none of them.
 TRACKER_SETTINGS = {"tracker_url": "https://tracker.example", "tracker_search_path": "/search.json",
+                    "tracker_search_body": "{\"q\": \"{{title}} {{author}}\"}",
                     "tracker_download_path": "/download.php", "tracker_cookie_name": "session_cookie"}
 for _name, _value in TRACKER_SETTINGS.items():
     setattr(CONFIG, _name, _value)
@@ -53,7 +54,7 @@ BOOKS = [
     ('Odd/A "Quoted" Book', "held", "MEDIUM", 'A "Quoted" Book', "Someone & Co", 3.0),
     ("Long/" + "x" * 60, "failed", "NONE", "A Very Long Title " * 4, "Nobody", 44.5),
     # an ingest row: a torrent folder from INGEST_DIR, with a brace in its name on purpose
-    ("ingest:Andy Weir - Project Hail Mary [MAM] {B08G9PRS1K}", "review", "LOW", "Project Hail Mary",
+    ("ingest:Andy Weir - Project Hail Mary [TRACKER] {B08G9PRS1K}", "review", "LOW", "Project Hail Mary",
      "Andy Weir", 16.2),
 ]
 INGEST_KEY = BOOKS[-1][0]
@@ -179,7 +180,7 @@ check("ingest badge on the row and its shelf card (and nowhere else)", badges ==
 check("ingest badge uses a numeric ref", "&#8675; ingest" in html)
 check("ingest detail shows the container source dir",
       'Ingest source (read-only, still seeding): <span class="dim"><code>'
-      "/ingest/Andy Weir - Project Hail Mary [MAM] {B08G9PRS1K}</code>" in html)
+      "/ingest/Andy Weir - Project Hail Mary [TRACKER] {B08G9PRS1K}</code>" in html)
 markers = html.count('data-source="ingest"')
 check("ingest Delete controls marked (kebab + panel) and no library row marked", markers == 2, f"found {markers}")
 check("detail panels rendered", html.count('class="dd"') == len(BOOKS) + len(SERIES_BOOKS))
