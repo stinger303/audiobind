@@ -10,6 +10,14 @@ All notable changes to this project are documented here. This project follows
 ## [Unreleased]
 
 ### Changed
+- **New conversions follow the Audiobookshelf folder convention.** `Author/Series/Book/` or
+  `Author/Book/`. Every author is now in the author folder, joined with ` & ` (only the first was
+  used before). A series book is always filed under its series folder: `<seq> - <title>` with a
+  sequence, plain `<title>` without one (a series book with no sequence used to fall back to
+  `Author/Title/`, which Audiobookshelf reads as a standalone). The sequence is no longer zero
+  padded (`3 - Title`, not `03 - Title`). File names, path sanitising and the `OUTPUT_ROOT`
+  containment check are unchanged; no narrator braces or ASIN brackets are added (the tags carry
+  them). Existing books are not moved by a scan.
 - **Delete works on ingest books; the torrent keeps seeding.** Delete on a torrent-sourced book
   used to be refused outright, even though the converted `.m4b`/`.mp3` in the output folder is
   Audiobind's own file. It now opens the normal confirm modal ("Remove from Audiobind?", button
@@ -20,6 +28,17 @@ All notable changes to this project are documented here. This project follows
   library delete is unchanged.
 
 ### Added
+- **Settings > Library: Match Audiobookshelf layout.** Moves books converted under the old naming
+  into the new layout, on request only. **Preview** (`POST /api/library/abs-layout`
+  `{"dry_run": true}`) returns every planned move and every skipped book with its reason, and writes
+  nothing. **Apply** (`{"dry_run": false, "confirm": true}`, behind the confirm modal) moves each
+  book folder (a same-filesystem rename, else `shutil.move`), renames just the file when only the
+  file name differs, updates the row's output, removes folders left empty, and records every
+  from/to in `STATE_DIR/abs-layout-<UTC timestamp>.json`. Never overwrites: skipped when the
+  target exists, the source is missing or outside `OUTPUT_ROOT`, another row shares the folder, or
+  the folder holds another book's audio. One failure is reported and the run carries on; refused
+  while a book is encoding. The card warns that Audiobookshelf may treat a renamed folder as a new
+  book and lose its listening progress.
 - **Removed ingest books stay removed.** A new `dismissed` table remembers the state key of each
   ingest book you removed, and the scan skips it before it is checked, prefetched or converted, so
   the still-seeding torrent is not converted all over again. A dismissal is forgotten once its

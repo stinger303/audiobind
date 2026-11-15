@@ -396,6 +396,11 @@ check("settings: output format select with the three choices and the player note
       and '<option value="MP3"' in settings_page and "Audiobookshelf" in settings_page)
 check("settings: no CDN references", "http://" not in settings_page and "https://" not in settings_page)
 node_check("settings", settings_page, "settings.js")
+check("settings: Library card with the layout warning, Preview, Apply and the confirm modal",
+      'id="library"' in settings_page and "Match Audiobookshelf layout" in settings_page
+      and "may treat a renamed folder as a new book and lose its listening progress" in settings_page
+      and 'onclick="abAbsPreview()"' in settings_page and 'onclick="abAbsAsk()"' in settings_page
+      and 'id="ab-modal"' in settings_page)
 
 # ---- the wishlist watcher (0.18.0-dev1): state chips, Retry, Settings > Watcher. The web server
 # never starts the watcher (only the daemon does) and the tracker client factory is replaced, so

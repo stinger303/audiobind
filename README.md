@@ -75,8 +75,9 @@ matters to you.
    onto the real timeline, embedded cover, full tag set. The bitrate never drops below the
    configured floor (128 kbps by default) and a richer source keeps its own bitrate. A file that
    is already AAC in an MP4 container is remuxed with `-c:a copy` - no re-encode at all.
-5. **File it.** `Author/Title/Title.m4b` or `Author/Series/03 - Title/Title.m4b`, plus a
-   `cover.jpg` and an Audiobookshelf-compatible `metadata.json`.
+5. **File it.** In the Audiobookshelf layout: `Author/Title/Title.m4b` or
+   `Author/Series/3 - Title/Title.m4b`, plus a `cover.jpg` and an Audiobookshelf-compatible
+   `metadata.json`. See [Folder layout](docs/configuration.md#folder-layout).
 
 ### It is deliberately conservative
 

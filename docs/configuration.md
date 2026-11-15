@@ -51,3 +51,53 @@ file). A book is published only after every file has been verified; if the secon
 
 Player note: MP3 chapter marks are ID3 CHAP frames. ffprobe-based players (Audiobookshelf,
 Plex) read them; Apple's Music/iTunes does not, so use the m4b there.
+
+## Folder layout
+
+Books are filed under `OUTPUT_ROOT` the way Audiobookshelf expects:
+
+| Book | Folder |
+|---|---|
+| standalone | `Author/Title/Title.m4b` |
+| in a series, with a sequence | `Author/Series/3 - Title/Title.m4b` |
+| in a series, no sequence | `Author/Series/Title/Title.m4b` |
+| several authors | `Terry Pratchett & Neil Gaiman/Good Omens/Good Omens.m4b` |
+
+Every author is in the folder name, joined with ` & `; a book with none is filed under
+`Unknown`. The sequence is used as the catalog (or your override) gives it - `1`, `12`, `2.5` -
+with no zero padding. Narrator, ASIN, series and sequence are all in the file's tags, so the
+folder names carry no `{narrator}` braces or `[ASIN]` brackets. Characters that cannot be in a
+file name are replaced, and nothing in the metadata can place a file outside `OUTPUT_ROOT`.
+
+### Match Audiobookshelf layout (Settings > Library)
+
+Books converted before 0.19.0-dev14 keep their old folders (for example `Author/Series/03 - Title/`,
+only the first author, or a series book without a sequence filed as `Author/Title/`). New
+conversions never move them. **Settings > Library > Match Audiobookshelf layout** moves them on
+request:
+
+- **Preview** lists every move (old -> new) and every book it will leave alone, with the reason.
+  Nothing is written.
+- **Apply** asks for confirmation, then moves each book's folder (or, when only the file name is
+  wrong, renames the file) and points the book's row at the new file.
+
+> This moves and renames folders inside /output. Audiobookshelf may treat a renamed folder as a
+> new book and lose its listening progress.
+
+Each target is worked out from the metadata the book was converted with. A book is skipped, never
+overwritten, when its new folder already exists, its published file is missing or outside
+`OUTPUT_ROOT`, another Audiobind book is filed in the same folder, or the folder also holds audio
+that belongs to other books. Folders left empty by a move are removed. A failure on one book is
+reported and the run carries on. Every move is recorded in `STATE_DIR/abs-layout-<UTC time>.json`
+(`from`/`to` for each folder and renamed file) so it can be undone by hand. The action is refused
+while a book is being encoded, and a scan never runs it.
+
+Scripted equivalent (`dry_run` defaults to true; the real run needs `"confirm": true`):
+
+```bash
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"dry_run":true}' localhost:8080/api/library/abs-layout
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"dry_run":false,"confirm":true}' localhost:8080/api/library/abs-layout
+```
+
+A forced re-check (Retry now) of a converted book that is still in the old layout files a second
+copy in the new layout, because its new path does not exist yet: run the layout action first.

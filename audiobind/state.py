@@ -337,6 +337,19 @@ class State:
         )
         self.connection.commit()
 
+    def set_output(self, path: str, output: str, detail: str | None = None) -> bool:
+        """Point a row at its moved output file (and optionally its rewritten detail JSON) without
+        touching anything else - not updated_at, not the locks. Returns True when a row changed."""
+        with self._lock:
+            if detail is None:
+                cursor = self.connection.execute("UPDATE units SET output = ? WHERE path = ?", (output, path))
+            else:
+                cursor = self.connection.execute(
+                    "UPDATE units SET output = ?, detail = ? WHERE path = ?", (output, detail, path)
+                )
+            self.connection.commit()
+            return cursor.rowcount > 0
+
     def all(self, status: str | None = None) -> list[UnitState]:
         query = "SELECT * FROM units" + (" WHERE status = ?" if status else "") + " ORDER BY updated_at DESC"
         with self._lock:

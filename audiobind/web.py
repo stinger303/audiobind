@@ -17,6 +17,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from . import __version__, matching
+from . import abs_layout
 from . import ingest as ingest_mod
 from . import auth as auth_mod
 from . import discover as discover_mod
@@ -44,7 +45,7 @@ from .config import (
 from .control import CONTROL
 from .covers import resolve as resolve_cover
 from .covers import valid_asin
-from .pipeline import process_unit
+from .pipeline import CONVERT_LOCK, process_unit
 from .state import LOCKABLE_FIELDS, SOURCE_INGEST, key_source
 from .units import files_under, find_unit, foreign_audio, owned_paths
 
@@ -530,6 +531,11 @@ input[type=number].ab-in{max-width:100px}
 .ab-acct-lbl{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--ab-text3)}
 .ab-acct-lbl .ab-in{max-width:300px}
 .ab-acct-row{display:flex;align-items:center;gap:10px;margin-top:2px}
+.ab-abs-panel{margin-top:12px}
+.ab-abs-line{font-size:12px;color:var(--ab-text2);padding:4px 0;border-top:1px solid var(--ab-border);overflow-wrap:anywhere}
+.ab-abs-line code{font-size:11.5px}
+.ab-abs-why{display:block;color:var(--ab-text4);font-size:11.5px}
+.ab-abs-bad .ab-abs-why{color:#f2686b}
 .ab-overflow{font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text4);padding:8px 24px;flex:none;}
 #ab-toast{position:fixed;right:18px;bottom:18px;z-index:50;max-width:420px;
   background:var(--ab-surface2);border:1px solid rgba(242,163,60,.4);border-radius:8px;
@@ -1432,15 +1438,29 @@ SETTINGS_PAGE = """<!doctype html>
       <button class="btn" onclick="abResetSettings()">Reset to defaults</button>
       <span class="ab-fb" id="ab-settings-fb"></span>
     </div>
+    {library_section}
     {watcher_section}
     {account_section}
   </section>
 </main>
 <div id="ab-toast" role="status" aria-live="polite"></div>
+
+<div id="ab-modal" class="ab-modal" hidden>
+  <div class="ab-modal-backdrop" onclick="abModalCancel()"></div>
+  <div class="ab-modal-dialog" role="dialog" aria-labelledby="ab-modal-title">
+    <h3 id="ab-modal-title"></h3>
+    <p id="ab-modal-warning"></p>
+    <div class="ab-modal-actions">
+      <button class="btn danger" id="ab-modal-confirm" onclick="abModalConfirm()">Move and rename</button>
+      <button class="btn" id="ab-modal-cancel" onclick="abModalCancel()">Cancel</button>
+    </div>
+  </div>
+</div>
 <script>
 {settings_script}
 {account_script}
 {watcher_script}
+{library_script}
 </script>
 </body></html>"""
 
@@ -3831,6 +3851,180 @@ def render_watcher_section(state) -> str:
     )
 
 
+ABS_LAYOUT_WARNING = (
+    "This moves and renames folders inside /output. Audiobookshelf may treat a renamed folder as "
+    "a new book and lose its listening progress."
+)
+
+
+def render_library_section() -> str:
+    """Settings > Library: "Match Audiobookshelf layout" - preview, then apply behind a confirm."""
+    return (
+        '<section class="ab-acct" id="library" aria-labelledby="ab-lib-head">'
+        '<h2 class="ab-acct-head" id="ab-lib-head">Library</h2>'
+        '<div class="ab-acct-title">Match Audiobookshelf layout</div>'
+        '<div class="ab-acct-who">New conversions are filed the way Audiobookshelf expects: '
+        "<code>Author/Series/1 - Title/</code> or <code>Author/Title/</code>, with several authors "
+        "joined by <code>&amp;</code>. Books converted before that keep their old folders until you "
+        "move them here. Preview first: nothing changes until you press Apply. Books whose new folder "
+        "already exists, or whose folder holds another book's audio, are skipped. Every move is recorded "
+        "in an <code>abs-layout-&lt;time&gt;.json</code> journal beside the database.</div>"
+        f'<div class="ab-hintbox ab-watch-warn" role="alert"><b>Heads up.</b> {_html(ABS_LAYOUT_WARNING)}</div>'
+        '<div class="ab-acct-row">'
+        '<button class="btn" id="ab-abs-preview" onclick="abAbsPreview()">Preview</button>'
+        '<button class="ab-save" id="ab-abs-apply" onclick="abAbsAsk()">Apply</button>'
+        '<span class="ab-fb" id="ab-abs-fb"></span></div>'
+        '<div id="ab-abs-plan" hidden></div>'
+        "</section>"
+    )
+
+
+LIBRARY_SCRIPT = """
+// ---- Settings > Library: Match Audiobookshelf layout (preview, then apply behind the confirm modal)
+function abAbsRel(path, root) {
+  path = String(path || '');
+  if (root && path.indexOf(root.replace(/\\/+$/, '') + '/') === 0) return path.slice(root.replace(/\\/+$/, '').length + 1);
+  return path;
+}
+function abAbsPost(body) {
+  return fetch('/api/library/abs-layout', {method:'POST', headers:{'Content-Type':'application/json'},
+                                          body: JSON.stringify(body)})
+    .then(r => {
+      if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+      return r.json().then(res => ({ok: r.ok, res: res}));
+    });
+}
+function abAbsLine(cls, from, to, note) {
+  const row = document.createElement('div');
+  row.className = 'ab-abs-line ' + cls;
+  const a = document.createElement('code'); a.textContent = from; row.appendChild(a);
+  if (to) {
+    row.appendChild(document.createTextNode(' \\u2192 '));
+    const b = document.createElement('code'); b.textContent = to; row.appendChild(b);
+  }
+  if (note) {
+    const n = document.createElement('span'); n.className = 'ab-abs-why'; n.textContent = note; row.appendChild(n);
+  }
+  return row;
+}
+function abAbsRender(res) {
+  const box = document.getElementById('ab-abs-plan');
+  const root = res.output_root || '';
+  box.textContent = '';
+  const moves = res.moves || res.moved || [];
+  const failed = res.failed || [];
+  const skipped = res.skipped || [];
+  const panel = document.createElement('section');
+  panel.className = 'ab-disc-panel ab-abs-panel';
+  const head = document.createElement('h3');
+  const verb = res.dry_run ? 'would be renamed' : 'renamed';
+  head.textContent = moves.length + ' book(s) ' + verb;
+  const why = document.createElement('span');
+  why.className = 'ab-disc-why';
+  why.textContent = ' \\u00b7 ' + (res.unchanged || 0) + ' already in place \\u00b7 ' + skipped.length + ' skipped' +
+                    (failed.length ? ' \\u00b7 ' + failed.length + ' failed' : '');
+  head.appendChild(why);
+  panel.appendChild(head);
+  if (!moves.length && !failed.length && !skipped.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ab-disc-empty';
+    empty.textContent = 'Every converted book already matches the Audiobookshelf layout.';
+    panel.appendChild(empty);
+  }
+  moves.forEach(m => panel.appendChild(abAbsLine('', abAbsRel(m.from, root), abAbsRel(m.to, root), '')));
+  if (failed.length) {
+    const h = document.createElement('h4'); h.textContent = 'Failed'; panel.appendChild(h);
+    failed.forEach(f => panel.appendChild(abAbsLine('ab-abs-bad', abAbsRel(f.from, root), abAbsRel(f.to, root), f.error)));
+  }
+  if (skipped.length) {
+    const h = document.createElement('h4'); h.textContent = 'Skipped'; panel.appendChild(h);
+    skipped.forEach(s => panel.appendChild(abAbsLine('ab-abs-skip', abAbsRel(s.from, root), '', s.reason)));
+  }
+  if (res.journal) {
+    const j = document.createElement('div');
+    j.className = 'ab-acct-who';
+    j.textContent = 'Undo journal: ' + res.journal;
+    panel.appendChild(j);
+  }
+  box.appendChild(panel);
+  box.hidden = false;
+}
+function abAbsPreview() {
+  const fb = document.getElementById('ab-abs-fb');
+  const btn = document.getElementById('ab-abs-preview');
+  fb.className = 'ab-fb';
+  fb.textContent = 'working out the plan\\u2026';
+  btn.disabled = true;
+  abAbsPost({dry_run: true}).then(out => {
+    btn.disabled = false;
+    if (!out.ok) { fb.className = 'ab-fb ab-bad'; fb.textContent = out.res.error || 'that did not work'; return; }
+    fb.textContent = 'preview only - nothing was changed';
+    abAbsRender(out.res);
+  }).catch(err => {
+    btn.disabled = false;
+    if (String(err && err.message) === 'signed out') return;
+    fb.className = 'ab-fb ab-bad';
+    fb.textContent = 'could not reach the daemon';
+  });
+}
+let abAbsTrigger = null;
+function abAbsAsk() {
+  abAbsTrigger = document.getElementById('ab-abs-apply');
+  document.getElementById('ab-modal-title').textContent = 'Match the Audiobookshelf layout?';
+  document.getElementById('ab-modal-warning').textContent = """ + json.dumps(ABS_LAYOUT_WARNING) + """ +
+    ' Books whose new folder already exists are skipped, never overwritten. Run Preview first to see every move.';
+  document.getElementById('ab-modal-confirm').textContent = 'Move and rename';
+  document.getElementById('ab-modal').hidden = false;
+  document.getElementById('ab-modal-cancel').focus();
+}
+function abModalCancel() {
+  document.getElementById('ab-modal').hidden = true;
+  if (abAbsTrigger) abAbsTrigger.focus();
+}
+function abModalConfirm() {
+  const btn = document.getElementById('ab-modal-confirm');
+  const fb = document.getElementById('ab-abs-fb');
+  const apply = document.getElementById('ab-abs-apply');
+  btn.disabled = true;
+  apply.disabled = true;
+  btn.textContent = 'moving\\u2026';
+  fb.className = 'ab-fb';
+  fb.textContent = 'moving books\\u2026';
+  const done = () => { btn.disabled = false; apply.disabled = false; document.getElementById('ab-modal').hidden = true; };
+  abAbsPost({dry_run: false, confirm: true}).then(out => {
+    done();
+    if (!out.ok && !out.res.dry_run && out.res.renamed === undefined) {
+      fb.className = 'ab-fb ab-bad';
+      fb.textContent = out.res.error || 'that did not work';
+      abToastSettings(out.res.error || 'The layout change did not run.');
+      return;
+    }
+    const n = out.res.renamed || 0, bad = out.res.failed_count || 0;
+    if (bad) {
+      fb.className = 'ab-fb ab-bad';
+      fb.textContent = n + ' renamed, ' + bad + ' failed';
+      abToastSettings('Renamed ' + n + ' book(s); ' + bad + ' could not be moved - see the list below.');
+    } else {
+      fb.className = 'ab-fb ab-good';
+      fb.textContent = n + ' renamed';
+      abToastSettings('Renamed ' + n + ' book(s) to the Audiobookshelf layout.');
+    }
+    abAbsRender(out.res);
+  }).catch(err => {
+    done();
+    if (String(err && err.message) === 'signed out') return;
+    fb.className = 'ab-fb ab-bad';
+    fb.textContent = 'could not reach the daemon';
+    abToastSettings('Could not reach the daemon - nothing is known to have moved. Preview again to check.');
+  });
+}
+window.addEventListener('keydown', function(e) {
+  const modal = document.getElementById('ab-modal');
+  if (e.key === 'Escape' && modal && !modal.hidden) abModalCancel();
+});
+"""
+
+
 WATCHER_SCRIPT = """
 // ---- Settings > Watcher: Run a cycle now (a worker thread on the server), Pause / Resume
 function abWatcher(action) {
@@ -4057,6 +4251,8 @@ def render_settings(state) -> str:
         account_script=ACCOUNT_SCRIPT,
         watcher_section=render_watcher_section(state),
         watcher_script=WATCHER_SCRIPT,
+        library_section=render_library_section(),
+        library_script=LIBRARY_SCRIPT,
     )
 
 
@@ -6170,6 +6366,55 @@ class Handler(BaseHTTPRequestHandler):
         body = {"ok": True, "action": action, **watcher.status(self.state)}
         self._send(200, json.dumps(body).encode(), "application/json")
 
+    def _handle_abs_layout(self) -> None:
+        """POST /api/library/abs-layout: {"dry_run": bool, "confirm": bool}.
+
+        Settings > Library "Match Audiobookshelf layout". A dry run (the default) only reads and
+        returns the plan; the real run needs confirm: true and moves folders inside OUTPUT_ROOT.
+        """
+        payload = self._read_json()
+        if payload is None:
+            return
+        if payload.get("dry_run", True) is not False:
+            result = abs_layout.plan(self.state)
+            body = {
+                "ok": True,
+                "dry_run": True,
+                "output_root": str(CONFIG.output_root),
+                "moves": [m.public() for m in result["moves"]],
+                "skipped": result["skipped"],
+                "unchanged": result["unchanged"],
+            }
+            self._send(200, json.dumps(body).encode(), "application/json")
+            return
+        if payload.get("confirm") is not True:
+            self._send(400, b'{"error":"confirmation required"}', "application/json")
+            return
+        # never while a book is being encoded: the encoder may be writing into these folders
+        if not CONVERT_LOCK.acquire(blocking=False):
+            self._send(409, b'{"error":"a book is being converted - try again when it finishes"}',
+                       "application/json")
+            return
+        try:
+            result = abs_layout.apply(self.state)
+        except OSError as exc:
+            logging.getLogger("audiobind").error("Audiobookshelf layout: run stopped: %s", exc)
+            self._send(500, json.dumps({"error": f"could not start: {exc.strerror or exc}"}).encode(),
+                       "application/json")
+            return
+        finally:
+            CONVERT_LOCK.release()
+        body = {
+            "ok": not result["failed"],
+            "dry_run": False,
+            "output_root": str(CONFIG.output_root),
+            "renamed": len(result["moved"]),
+            "failed_count": len(result["failed"]),
+            "skipped_count": len(result["skipped"]),
+            **result,
+        }
+        self._send(200, json.dumps(body).encode(), "application/json")
+
     def _post_refusal(self) -> tuple[int, str] | None:
         """Cross-site request guard for every POST: (status, error) to refuse, else None.
 
@@ -6246,6 +6491,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/watcher":
             self._handle_watcher()
+            return
+        if path == "/api/library/abs-layout":
+            self._handle_abs_layout()
             return
         if path == "/api/discover/recommendations":
             payload = self._read_json()
