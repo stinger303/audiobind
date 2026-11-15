@@ -81,6 +81,14 @@ class FakeQbit:
         self.added.append((torrent, filename, category))
         return "f" * 40
 
+    progress_map = {}
+    fail_progress = False
+
+    def progress(self, hashes):
+        if self.fail_progress:
+            raise qbit.QbitError("connection refused")
+        return {h: self.progress_map[h] for h in hashes if h in self.progress_map}
+
     def logout(self):
         self.logged_out = True
 
@@ -455,3 +463,67 @@ class TestOffSwitch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDownloaded(WatcherCase):
+    """0.19.0-dev3: a finished torrent reads DOWNLOADED, not DOWNLOADING."""
+
+    H = "a" * 40
+
+    def downloading(self, asin="B000000001", digest=None):
+        self.want(asin)
+        self.state.wishlist_set_status(asin, "downloading", torrent_hash=self.H if digest is None else digest,
+                                       note="sent to qBittorrent")
+
+    def run_cycle(self, progress, fail=False):
+        FakeQbit.progress_map, FakeQbit.fail_progress = progress, fail
+        self.addCleanup(lambda: (setattr(FakeQbit, "progress_map", {}), setattr(FakeQbit, "fail_progress", False)))
+        self.mam(answer())
+        return self.cycle()
+
+    def test_finished_torrent_becomes_downloaded(self):
+        self.downloading()
+        summary = self.run_cycle({self.H: 1.0})
+        row = self.row()
+        self.assertEqual(row["status"], "downloaded")
+        self.assertEqual(row["note"], "downloaded - waiting for the converted book")
+        self.assertEqual(summary["downloaded"], 1)
+
+    def test_partial_torrent_is_untouched(self):
+        self.downloading()
+        self.run_cycle({self.H: 0.4})
+        self.assertEqual(self.row()["status"], "downloading")
+        self.assertEqual(self.row()["note"], "sent to qBittorrent")
+
+    def test_row_without_a_hash_and_a_vanished_torrent_are_untouched(self):
+        self.downloading("B000000001", digest="")
+        self.downloading("B000000002")
+        self.run_cycle({})  # qBittorrent no longer has the torrent
+        self.assertEqual(self.row("B000000001")["status"], "downloading")
+        self.assertEqual(self.row("B000000002")["status"], "downloading")
+
+    def test_qbittorrent_error_leaves_rows_and_logs_once(self):
+        self.downloading("B000000001")
+        self.downloading("B000000002")
+        with self.assertLogs("audiobind", level="WARNING") as logs:
+            summary = self.run_cycle({self.H: 1.0}, fail=True)
+        self.assertEqual([self.row(a)["status"] for a in ("B000000001", "B000000002")], ["downloading"] * 2)
+        self.assertEqual(sum("download progress" in m for m in logs.output), 1)
+        self.assertEqual(summary["error"], "")  # the cycle itself carried on
+
+    def test_downloaded_is_never_searched_again(self):
+        self.downloading()
+        self.state.wishlist_set_status("B000000001", "downloaded")
+        self.assertEqual(self.state.wishlist_due(10), [])
+        self.mam()  # any MAM request would raise
+        FakeQbit.progress_map = {}
+        self.cycle()
+        self.assertEqual(self.transport.calls, [])
+
+    def test_converted_book_still_deletes_the_row(self):
+        self.downloading()
+        self.state.wishlist_set_status("B000000001", "downloaded")
+        self.state.save(UnitState(path="Andy Weir/Project Hail Mary", status="converted", title="Project Hail Mary",
+                                  author="Andy Weir", asin="B000000001", output="/output/x.m4b"))
+        watcher.resolve_library(self.state)
+        self.assertIsNone(self.row())

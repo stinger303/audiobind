@@ -128,6 +128,23 @@ class QbitClient:
         except (urllib.error.URLError, OSError) as exc:
             raise QbitError(f"qBittorrent at {self.url} could not be reached ({type(exc).__name__})") from None
 
+    def _get(self, path: str, query: dict) -> tuple[int, bytes]:
+        request = urllib.request.Request(
+            self.url + path + "?" + urllib.parse.urlencode(query),
+            method="GET",
+            headers={"Referer": self.origin, "Origin": self.origin},
+        )
+        try:
+            with self._opener.open(request, timeout=TIMEOUT) as response:
+                return response.status, response.read(MAX_ANSWER)
+        except urllib.error.HTTPError as exc:
+            try:
+                return exc.code, exc.read(MAX_ANSWER)
+            finally:
+                exc.close()
+        except (urllib.error.URLError, OSError) as exc:
+            raise QbitError(f"qBittorrent at {self.url} could not be reached ({type(exc).__name__})") from None
+
     def _has_sid(self) -> bool:
         """A non-empty session cookie: ``SID`` (older builds) or ``QBT_SID_<port>`` (5.x)."""
         return any(
@@ -167,6 +184,39 @@ class QbitClient:
             raise QbitError(f"qBittorrent refused the torrent (HTTP {status}"
                             f"{', ' + text[:80].decode('utf-8', 'replace') if text else ''}) - already added?")
         return _answer_hash(text) or info_hash(torrent)
+
+    def progress(self, hashes) -> dict[str, float]:
+        """Read-only: ``{info hash: progress 0..1}`` for the given hashes, in ONE request. A
+        torrent qBittorrent no longer has is simply absent from the result."""
+        wanted = [str(h).lower() for h in hashes if h]
+        if not wanted:
+            return {}
+        if not self.logged_in:
+            self.login()
+        query = {"hashes": "|".join(wanted)}
+        status, answer = self._get("/api/v2/torrents/info", query)
+        if status == 403:  # the session expired: one fresh login, one retry
+            self.logged_in = False
+            self.login()
+            status, answer = self._get("/api/v2/torrents/info", query)
+        if status != 200:
+            raise QbitError(f"qBittorrent could not list torrents (HTTP {status})")
+        try:
+            data = json.loads(answer.decode("utf-8", "replace"))
+        except ValueError:
+            raise QbitError("qBittorrent answered the torrent list with something unreadable") from None
+        out: dict[str, float] = {}
+        for item in data if isinstance(data, list) else []:
+            if not isinstance(item, dict):
+                continue
+            digest = str(item.get("hash") or "").lower()
+            try:
+                value = float(item.get("progress"))
+            except (TypeError, ValueError):
+                continue
+            if digest in wanted:
+                out[digest] = value
+        return out
 
     def logout(self) -> None:
         """Best effort: end the WebUI session and forget the cookie."""

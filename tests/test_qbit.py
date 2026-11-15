@@ -3,6 +3,7 @@
 import email.parser
 import email.policy
 import hashlib
+import json
 import threading
 import unittest
 import urllib.parse
@@ -197,3 +198,38 @@ class TestInfoHash(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestProgress(QbitCase):
+    def test_progress_is_one_get_for_the_whole_batch(self):
+        h1, h2, gone = "a" * 40, "b" * 40, "c" * 40
+        listing = json.dumps([{"hash": h1, "progress": 1.0}, {"hash": h2, "progress": 0.4}]).encode()
+        gets = []
+        orig = FakeQbit.do_GET if hasattr(FakeQbit, "do_GET") else None
+
+        def do_GET(handler):  # noqa: N802
+            gets.append((handler.path, dict(handler.headers)))
+            if "=abc123" not in (handler.headers.get("Cookie") or ""):
+                handler._reply(403, b"Forbidden")
+            else:
+                handler._reply(200, listing)
+
+        FakeQbit.do_GET = do_GET
+        self.addCleanup(lambda: setattr(FakeQbit, "do_GET", orig) if orig else delattr(FakeQbit, "do_GET"))
+        out = self.client().progress([h1, h2, gone])
+        self.assertEqual(out, {h1: 1.0, h2: 0.4})
+        self.assertEqual(len(gets), 1)
+        path, headers = gets[0]
+        self.assertTrue(path.startswith("/api/v2/torrents/info?hashes="))
+        self.assertEqual(urllib.parse.unquote(path.split("hashes=")[1]), "|".join([h1, h2, gone]))
+        self.assertEqual(headers["Referer"], self.url)
+
+    def test_no_hashes_sends_nothing(self):
+        self.assertEqual(self.client().progress(["", None]), {})
+        self.assertEqual(self.server.calls, [])
+
+    def test_unreachable_and_refused_are_qbit_errors(self):
+        with self.assertRaises(qbit.QbitError):
+            qbit.QbitClient("http://127.0.0.1:1", "a", "b").progress(["a" * 40])
+        with self.assertRaises(qbit.QbitError):  # no do_GET on the fake: 501
+            self.client().progress(["a" * 40])

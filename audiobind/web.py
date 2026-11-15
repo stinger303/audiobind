@@ -648,6 +648,7 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-disc-bar .ab-spacer{flex:1}
 .ab-disc-bar a{color:var(--ab-accent-bright);text-decoration:none}
 .ab-disc-pill.ab-wl-downloading{color:var(--ab-accent-bright);background:rgba(94,106,210,.14)}
+.ab-disc-pill.ab-wl-downloaded{color:var(--ab-accent-bright);background:rgba(94,106,210,.14)}
 .ab-disc-pill.ab-wl-in_library{color:var(--ab-green);background:var(--ab-green-soft)}
 .ab-disc-pill.ab-wl-not_found{color:var(--ab-amber);background:var(--ab-amber-soft)}
 .ab-disc-pill.ab-wl-error{color:var(--ab-red);background:var(--ab-red-soft)}
@@ -3521,6 +3522,7 @@ def _discover_recs_body(state) -> str:
 WISHLIST_CHIPS = {
     "wanted": ("WANTED", "Waiting: the MAM watcher searches for it in a coming cycle."),
     "downloading": ("DOWNLOADING", "Found on MAM and handed to qBittorrent; it becomes In library once converted."),
+    "downloaded": ("DOWNLOADED", "The torrent finished in qBittorrent; it becomes In library once the converted book lands."),
     "in_library": ("IN LIBRARY", "A converted book in your library is this one."),
     "not_found": ("NOT FOUND", "MAM had no good match in several searches. Retry searches again."),
     "error": ("ERROR", "The download or the hand-off to qBittorrent failed - the note says why. "

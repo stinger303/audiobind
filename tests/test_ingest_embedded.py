@@ -137,7 +137,7 @@ class TestEmbeddedFallback(PipelineCase):
         self.tag_probe.assert_not_called()
 
     def test_not_used_when_the_folder_match_is_low(self):
-        weak = Product(asin="B0WEAK0001", title="Project Something Else", authors=["Other Person"],
+        weak = Product(asin="B0WEAK0001", title="Project Hail Mary Companion", authors=["Other Person"],
                        hours=2.0, language="english")
         self.add_torrent()
         self.scan(products=(weak,))

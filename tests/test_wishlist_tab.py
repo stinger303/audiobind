@@ -107,6 +107,28 @@ class TestRailAndDiscover(Base):
                       web.render(self.state))
 
 
+class TestDownloadedRow(Base):
+    def downloaded(self):
+        want(self.state)
+        self.state.wishlist_set_status("B000000001", "downloading", torrent_hash="a" * 40)
+        self.state.wishlist_set_status("B000000001", "downloaded", note="downloaded - waiting for the converted book")
+
+    def test_badge_counts_a_downloaded_row(self):
+        self.mam()
+        self.downloaded()
+        self.assertIn('id="ab-rail-wanted" title="books on your wishlist">1</span>', web.render(self.state))
+
+    def test_page_shows_badge_note_remove_and_no_retry(self):
+        self.mam()
+        self.downloaded()
+        html = web.render_discover(self.state, "wishlist")
+        self.assertIn(">DOWNLOADED</span>", html)
+        self.assertIn("downloaded - waiting for the converted book", html)
+        self.assertIn("1 book wanted", html)
+        self.assertIn("abUnwant(this)", html)
+        self.assertNotIn("abRetry(this)", html)
+
+
 class TestRoutes(LiveServerCase):
     def test_wishlist_and_discover_render(self):
         with mock.patch.object(CONFIG, "mam_id", "x"):

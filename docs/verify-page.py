@@ -403,14 +403,19 @@ status, _, refused = fetch("/api/watcher", json.dumps({"action": "run"}).encode(
 check("Run a cycle now is refused while the watcher is off", status == 409 and "MAM_ID" in refused)
 CONFIG.mam_id = "VERIFY-MAM"
 wl_rows = [("B0VERWANT1", "wanted", ""), ("B0VERDOWN1", "downloading", "sent to qBittorrent: MAM #1 'x'"),
+           ("B0VERDONE1", "downloaded", "downloaded - waiting for the converted book"),
            ("B0VERLIB01", "in_library", "in your library"), ("B0VERNF001", "not_found", "not found on MAM in 3 searches"),
            ("B0VERERR01", "error", 'download of MAM #9 failed <"boom">')]
 for asin, wl_status, wl_note in wl_rows:
     state.wishlist_add({"asin": asin, "title": f"Verify {wl_status}", "authors": ["V. Writer"], "origin": "search"})
+    if wl_status == "downloaded":  # only reachable through downloading
+        state.wishlist_set_status(asin, "downloading")
     if wl_status != "wanted":
         state.wishlist_set_status(asin, wl_status, note=wl_note, checked=True)
 wl_page = get("/discover/wishlist")
 check("wishlist: one chip per state", all(f'class="ab-disc-pill ab-wl-{s}"' in wl_page for _, s, _ in wl_rows))
+check("wishlist: downloaded row shows the DOWNLOADED badge and its note, no Retry",
+      ">DOWNLOADED</span>" in wl_page and "downloaded - waiting for the converted book" in wl_page)
 check("wishlist: Retry only on not found / error", wl_page.count('onclick="abRetry(this)">Retry</button>') == 2)
 check("wishlist: notes escaped", 'failed &lt;"boom"&gt;' in wl_page and '<"boom">' not in wl_page)
 check("wishlist: last checked shown", "never checked" in wl_page and "checked just now" in wl_page)

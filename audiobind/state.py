@@ -111,7 +111,7 @@ CATALOG_SEEN_TTL_SECONDS = 90 * 24 * 3600
 #: a wishlist row's life. Phase 2 only ever writes "wanted"; the Phase 3 watcher moves a row
 #: on from there, and only along WISHLIST_TRANSITIONS:
 #:
-#:   wanted ──found on MAM, torrent handed to qBittorrent──▶ downloading ──▶ in_library
+#:   wanted ──found on MAM, torrent handed to qBittorrent──▶ downloading ──▶ downloaded ──▶ in_library
 #:     │ └──three searches in a row found nothing──▶ not_found ──Retry──▶ wanted
 #:     └────download / qBittorrent failed──────────▶ error ──────Retry──▶ wanted
 #:
@@ -122,12 +122,16 @@ WISHLIST_DOWNLOADING = "downloading"
 WISHLIST_IN_LIBRARY = "in_library"
 WISHLIST_NOT_FOUND = "not_found"
 WISHLIST_ERROR = "error"
+#: the torrent finished in qBittorrent; the row waits for the converted book (never searched again)
+WISHLIST_DOWNLOADED = "downloaded"
 WISHLIST_STATUSES = (
-    WISHLIST_WANTED, WISHLIST_DOWNLOADING, WISHLIST_IN_LIBRARY, WISHLIST_NOT_FOUND, WISHLIST_ERROR,
+    WISHLIST_WANTED, WISHLIST_DOWNLOADING, WISHLIST_DOWNLOADED, WISHLIST_IN_LIBRARY, WISHLIST_NOT_FOUND,
+    WISHLIST_ERROR,
 )
 WISHLIST_TRANSITIONS: dict[str, frozenset[str]] = {
     WISHLIST_WANTED: frozenset({WISHLIST_DOWNLOADING, WISHLIST_NOT_FOUND, WISHLIST_ERROR, WISHLIST_IN_LIBRARY}),
-    WISHLIST_DOWNLOADING: frozenset({WISHLIST_IN_LIBRARY, WISHLIST_ERROR}),
+    WISHLIST_DOWNLOADING: frozenset({WISHLIST_DOWNLOADED, WISHLIST_IN_LIBRARY, WISHLIST_ERROR}),
+    WISHLIST_DOWNLOADED: frozenset({WISHLIST_IN_LIBRARY}),
     WISHLIST_NOT_FOUND: frozenset({WISHLIST_WANTED, WISHLIST_IN_LIBRARY}),
     WISHLIST_ERROR: frozenset({WISHLIST_WANTED, WISHLIST_IN_LIBRARY}),
     WISHLIST_IN_LIBRARY: frozenset(),

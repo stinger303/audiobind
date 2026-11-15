@@ -32,6 +32,7 @@ from . import egress, mam, qbit
 from .config import effective_val, watch_interval_min, watch_max_per_cycle
 from .control import CONTROL
 from .state import (
+    WISHLIST_DOWNLOADED,
     WISHLIST_DOWNLOADING,
     WISHLIST_ERROR,
     WISHLIST_IN_LIBRARY,
@@ -45,6 +46,9 @@ log = logging.getLogger("audiobind")
 MISS_LIMIT = 3
 #: the first timed cycle after a start with no cycle on record waits this long
 FIRST_CYCLE_DELAY = 120.0
+#: a torrent at or above this progress counts as finished
+DONE_PROGRESS = 0.999
+DOWNLOADED_NOTE = "downloaded - waiting for the converted book"
 #: unit statuses that mean the book is in the library: converted here, or found already
 #: published ("ready" with an output file - a dry-run "ready" has none)
 PUBLISHED = ("converted", "ready")
@@ -298,6 +302,10 @@ class Watcher:
             if qb is not None:
                 qb.logout()
             state.set_meta(META_BACKOFF, {"until": client.backoff.until, "failures": client.backoff.failures})
+        try:
+            summary["downloaded"] = self._mark_downloaded(state)
+        except Exception:  # noqa: BLE001 - a progress check must never end the cycle
+            log.exception("wishlist watcher: download progress check failed")
         summary["seconds"] = round(time.time() - started, 1)
         state.set_meta(META_LAST_CYCLE, summary)
         if summary["error"]:
@@ -311,6 +319,32 @@ class Watcher:
             summary["would_send"], summary["not_found"], summary["errors"], summary["resolved"],
         )
         return summary
+
+    def _mark_downloaded(self, state) -> int:
+        """After the search phase: ``downloading`` rows whose torrent is finished become
+        ``downloaded``. Read-only against qBittorrent; one request for the whole batch. A
+        qBittorrent failure is logged once and every row is left as it is."""
+        rows = [r for r in state.wishlist_all()
+                if r["status"] == WISHLIST_DOWNLOADING and (r.get("torrent_hash") or "").strip()]
+        if not rows:
+            return 0
+        client = make_qbit()
+        try:
+            progress = client.progress([r["torrent_hash"] for r in rows])
+        except qbit.QbitError as exc:
+            log.warning("wishlist watcher: could not read download progress from qBittorrent (%s) - rows left as they are", exc)
+            return 0
+        finally:
+            client.logout()
+        moved = 0
+        for row in rows:
+            done = progress.get(row["torrent_hash"].strip().lower())
+            if done is not None and done >= DONE_PROGRESS and state.wishlist_set_status(
+                row["asin"], WISHLIST_DOWNLOADED, expect=WISHLIST_DOWNLOADING, note=DOWNLOADED_NOTE,
+            ):
+                moved += 1
+                log.info("wishlist watcher: %s (%s) finished downloading", row["asin"], row["title"])
+        return moved
 
     def _egress_guard(self, state) -> tuple[str, str, str]:
         """(verdict, reason, observed ip), before any MAM request. Not armed = no probe at all."""

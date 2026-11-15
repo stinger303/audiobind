@@ -84,6 +84,8 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
             audit.name_source = NAME_SOURCE_EMBEDDED
             audit.notes.append("matched on the audio file's embedded tags")
     audit.confidence = audit.match.confidence
+    if audit.confidence == "NONE" and audit.match.rejected:
+        audit.notes.append(audit.match.rejected)
 
     avg_hours = audit.hours / len(unit.files) if unit.files else 0
     if looks_like_collection(unit, avg_hours) and audit.confidence in ("LOW", "NONE"):
@@ -419,6 +421,9 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
         except Exception as exc:  # noqa: BLE001 - one book must not stop a scan
             log(f"  FAILED: {exc}")
             rec("failed", note=str(exc)[:300])
+    elif audit.confidence == "NONE" and audit.match.rejected:
+        log(f"  held: {audit.match.rejected}")
+        rec("held", note=audit.match.rejected)
     elif audit.action == "hold":
         log("  held: runtime disagrees with the catalog (wrong edition?)")
         rec("held")

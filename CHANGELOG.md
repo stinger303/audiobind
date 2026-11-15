@@ -5,6 +5,29 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev3] - 2026-11-14
+
+### Fixed
+- **A catalog hit with an unrelated title is no match, not a LOW match.** `Private`,
+  `Private London` and `Private: #1 Suspect` had been adopted as *Step on a Crack*, *The Country
+  Road Murders* and *Judge Stone*. If the best candidate's title similarity (the matcher's own
+  `sim`) is below 0.60, the unit is now no match and goes to `held` with a note such as
+  `no catalog match: closest was 'Step on a Crack' (title 0.18, needs 0.60)`. Candidates at or
+  above the floor grade exactly as before (thresholds, knockoffs, Audnex tie-break and runtime
+  check untouched). Library and ingest units share the rule. Existing rows are not rewritten;
+  only new scans change.
+- **A finished torrent no longer reads DOWNLOADING.** Each watcher cycle asks qBittorrent
+  (one read-only `GET /api/v2/torrents/info`) for the progress of every `downloading` row's
+  torrent; at 100% the row becomes `downloaded` ("downloaded - waiting for the converted book").
+  `downloaded` is never searched again, still counts on the Wishlist badge and in "N books
+  wanted", shows a DOWNLOADED badge, keeps Remove and has no Retry. The row is still deleted when
+  the converted book lands. A qBittorrent failure is logged once and leaves the rows alone.
+
+### Tests
+- No-match cases for the three real books plus the two must-still-match cases; progress 1.0 / 0.4
+  / no hash / qBittorrent error; `wishlist_due`, badge count and page render for `downloaded`.
+  Not verified here: a live qBittorrent.
+
 ## [0.19.0-dev2] - 2026-11-14
 
 ### Fixed

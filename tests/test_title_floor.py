@@ -1,0 +1,79 @@
+"""0.19.0-dev3: a catalog candidate whose title does not resemble the wanted one is no match."""
+
+import unittest
+from unittest import mock
+
+from audiobind import advice, catalog, matching, pipeline
+from audiobind.catalog import Product
+from audiobind.units import BookUnit
+
+
+def prod(asin, title, author="James Patterson", hours=10.0):
+    return Product(asin=asin, title=title, authors=[author], hours=hours, language="english")
+
+
+def run(title, found, author="James Patterson"):
+    unit = BookUnit(path="X", name="X", parent="", parts=[], title_guess=title, author_guess=author)
+    with mock.patch.object(catalog, "search", lambda **kw: [found]), \
+            mock.patch.object(catalog, "book", lambda asin: {}):
+        return matching.match_unit(unit)
+
+
+class TestFloor(unittest.TestCase):
+    def test_the_three_real_wrong_matches_are_no_match(self):
+        for wanted, wrong in (("Private", "Step on a Crack"),
+                              ("Private London", "The Country Road Murders"),
+                              ("Private: #1 Suspect", "Judge Stone")):
+            m = run(wanted, prod("B0WRONG001", wrong))
+            self.assertIsNone(m.product, wanted)
+            self.assertEqual(m.confidence, "NONE")
+            self.assertIn(f"no catalog match: closest was '{wrong}' (title ", m.rejected)
+            self.assertIn("needs 0.60)", m.rejected)
+
+    def test_extra_words_in_the_folder_name_still_match(self):
+        m = run("Project Hail Mary [MAM]", prod("B08G9PRS1K", "Project Hail Mary", "Andy Weir"), "Andy Weir")
+        self.assertEqual(m.asin, "B08G9PRS1K")
+        self.assertEqual(m.rejected, "")
+
+    def test_a_near_title_still_matches(self):
+        m = run("Count to Ten", prod("B0COUNT001", "Count to Ten aka Private Delhi"))
+        self.assertGreaterEqual(m.title_sim, 0.60)
+        self.assertIsNotNone(m.product)
+        self.assertEqual(m.rejected, "")
+
+    def test_the_floor_is_the_matchers_own_scorer(self):
+        self.assertEqual(matching.TITLE_FLOOR, 0.60)
+
+
+class TestHeld(unittest.TestCase):
+    def test_process_unit_holds_with_the_rejected_title_in_the_note(self):
+        import pathlib
+        import tempfile
+
+        from audiobind.state import State
+
+        unit = BookUnit(path="X", name="X", parent="", parts=[], title_guess="Private",
+                        author_guess="James Patterson", rel_path="James Patterson/Private")
+        with tempfile.TemporaryDirectory() as tmp:
+            state = State(pathlib.Path(tmp))
+            try:
+                with mock.patch.object(catalog, "search", lambda **kw: [prod("B0WRONG001", "Step on a Crack")]), \
+                        mock.patch.object(pipeline, "probe", side_effect=AssertionError("no files")):
+                    pipeline.process_unit(state, unit, log=lambda *_: None)
+                row = state.get("James Patterson/Private")
+            finally:
+                state.close()
+        self.assertEqual(row.status, "held")
+        self.assertEqual(row.confidence, "NONE")
+        self.assertEqual(row.asin, "")
+        self.assertNotEqual(row.title, "Step on a Crack")
+        self.assertTrue(row.note.startswith("no catalog match: closest was 'Step on a Crack' (title "))
+
+    def test_advice_names_the_rejected_candidate(self):
+        why, what = advice.explain("held", "NONE", "no catalog match: closest was 'Judge Stone' (title 0.29, needs 0.60)")
+        self.assertIn("Judge Stone", why)
+        self.assertIn("ASIN", what)
+
+
+if __name__ == "__main__":
+    unittest.main()

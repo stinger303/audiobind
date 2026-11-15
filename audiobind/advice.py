@@ -88,6 +88,13 @@ def _explain_base(
             "Rename the file or folder on the share (no line breaks), then press Scan now.",
         )
 
+    if status == "held" and note.startswith("no catalog match"):
+        return (
+            f"{note[0].upper()}{note[1:]}. Nothing in the catalog looked like this folder's title, "
+            "so no other book's title was put on it.",
+            "Find the book on Audible and paste its ASIN, then press Retry now.",
+        )
+
     if status == "held":
         if catalog_hours and hours:
             delta = hours - catalog_hours

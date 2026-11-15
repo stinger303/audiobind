@@ -44,11 +44,18 @@ class Match:
     #: Audnex agreed with the chosen product (True), disagreed or had no record (False), or
     #: was never asked because nothing competed for the margin (None)
     corroborated: bool | None = None
+    #: set when the best candidate's title did not resemble the wanted one (below TITLE_FLOOR):
+    #: nothing is matched then, and this is the note that names what was rejected and why
+    rejected: str = ""
 
     @property
     def asin(self) -> str:
         return self.product.asin if self.product else ""
 
+
+#: the best candidate's title must resemble the wanted title at least this much (the same
+#: ``sim`` the scorer uses) or the unit is no match at all - never a LOW match with another book's title
+TITLE_FLOOR = 0.60
 
 #: the scorer's multiplier for a product whose catalog language is not English
 LANGUAGE_PENALTY = 0.85
@@ -270,6 +277,13 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
         entry["corroborated"] = None  # None = never asked Audnex
     ranked = sorted(scored.values(), key=lambda s: s["score"], reverse=True)
     best, margin = _pick_and_margin(ranked)
+
+    if best["title_sim"] < TITLE_FLOOR:
+        return Match(
+            author_from_series=author_from_series, query_title=title, query_author=author,
+            rejected=(f"no catalog match: closest was '{best['product'].title}' "
+                      f"(title {best['title_sim']:.2f}, needs {TITLE_FLOOR:.2f})"),
+        )
 
     match = Match(
         product=best["product"],
