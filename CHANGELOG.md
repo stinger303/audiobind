@@ -5,6 +5,29 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev6] - 2026-11-14
+
+Documentation and repository polish for the public launch. No behaviour change.
+
+### Documentation
+- **README:** new "What you get" list and "Requirements" block after the intro; the wishlist
+  lifecycle is described as it works (wanted, downloading, downloaded, then the row is removed once
+  the converted book is in the library; not found and error rows stay until Retry or Remove);
+  `/healthz` documented as the public liveness endpoint; a "Behind a reverse proxy" section for
+  `TRUSTED_PROXY` + `TRUSTED_PROXY_IPS` with the dev5 migration; the Docker examples use `:latest`
+  instead of the long-outdated `0.15.1` tag; "never deletes your sources" now says what is true
+  (conversion never touches them, only the explicit Delete does).
+- **Screenshots** retaken from the redesigned UI: library (`docs/screenshot.png`, same name for the
+  Community Applications template), wishlist and Discover books. The two November 2 screenshots
+  that nothing referenced are gone.
+- **Template, CA profile and forum post:** removed the stale "AAC 64 kbps" and "input is mounted
+  read-only" claims.
+
+### Repository
+- New `SECURITY.md` and a bug report issue form.
+- Removed two unreferenced icons from other projects and the host-specific Unraid deploy scripts
+  and template snapshot under `docs/`.
+
 ## [0.19.0-dev5] - 2026-11-14
 
 Security-fix build from the 0.19.0-dev4 audit. Docker users: if you set `TRUSTED_PROXY=true`,

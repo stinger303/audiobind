@@ -8,7 +8,8 @@
     `Author/Title/Title.m4b`.
 
     It is deliberately conservative: anything it is not confident about is marked for review
-    rather than converted, and the source library is mounted read-only.
+    rather than converted. Conversion never changes your source files; mount the library read-only
+    to rule out even the explicit Delete button.
 
     Support and bug reports: please use the support thread linked above.
   </Profile>

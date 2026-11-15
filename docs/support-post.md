@@ -33,14 +33,14 @@ books at once.
 2. **Verifies against the Audible catalog** - title, author, narrator, series, ASIN.
 3. **Proves completeness** - total runtime is compared with the catalog runtime. A set that is an
    hour short gets reported, not merged.
-4. **Merges and converts** - one `.m4b`, AAC 64 kbps mono, real chapter marks from Audnex, cover
+4. **Merges and converts** - one `.m4b`, AAC mono (128 kbps floor), real chapter marks from Audnex, cover
    art and full tags embedded.
 5. **Files it** as `Author/Title/Title.m4b` or `Author/Series/03 - Title/`, with an
    Audiobookshelf-compatible `metadata.json`.
 
 ### What it will not do
 
-* It never modifies your source files - the input is mounted read-only, and nothing is deleted.
+* Conversion never modifies or deletes your source files. Only the explicit Delete button can remove a source folder (typed confirmation); mount the library read-only to rule even that out.
 * It will not convert anything it is unsure about. Partial matches, ambiguous titles, and books
   whose runtime disagrees with the catalog by more than 25% (usually the wrong edition) are
   marked for review on the status page.
@@ -50,7 +50,7 @@ books at once.
 Community Applications: search for **Audiobind**. Manual template:
 `https://raw.githubusercontent.com/stinger303/audiobind/main/templates/audiobind.xml`
 
-Set the library path (read-only), the output path, and leave `AUTO_CONVERT` on `high` for the
+Set the library path, the output path, and leave `AUTO_CONVERT` on `high` for the
 first run so you can check the results before letting it run unattended.
 
 ### Notes

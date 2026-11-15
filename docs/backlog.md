@@ -177,7 +177,7 @@ the wishlist watcher talks to MAM's official API directly.
 - Runtime controls per standing rule: pause/dry-run already gate the whole
   loop; no ingest-specific switch without an owner ask.
 - Deploy includes container recreate with the new mount + template
-  (`my-Audiobind.xml`) kept in step; owner approves the recreate.
+  kept in step; owner approves the recreate.
 
 ### Phase 1 acceptance test (before trusting the chain)
 

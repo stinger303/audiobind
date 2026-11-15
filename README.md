@@ -8,6 +8,31 @@ are spread over dozens of files into a single tagged `.m4b`, and files the resul
 `Part 1`, `Disc 3`, `StoneColdUnabridgedPart2`, three copies of the same book, and a folder called
 `Vince Flynn Novels 14 books Complete Collection`.
 
+## What you get
+
+- One `.m4b` per book, with the Audnex chapter marks, the full tag set and an embedded cover.
+- Every book checked against the Audible catalog. A winner must beat the best different work by
+  a margin, and knockoffs (summaries, study guides, zero-runtime stubs) never count against it.
+- A completeness check: a set whose runtime is an hour short of the catalog is reported, not merged.
+- Optional single-file MP3 output (`OUTPUT_FORMAT`) with ID3 chapters, cover and tags, alone or
+  next to the `.m4b`.
+- Optional wishlist acquisition from MyAnonamouse and qBittorrent. Off unless `MAM_ID` is set.
+- **Discover books**: search the catalog, plus suggestions based on the authors, narrators and
+  genres you already own.
+- Series completion: the **Series** page shows what you are missing, and **Want all missing**
+  puts it on the wishlist in one click.
+- Conversion never changes or deletes your source files. Only the explicit **Delete** button does,
+  and a read-only `/library` mount rules even that out.
+- A dry run that decides and logs everything and writes nothing.
+- One container, Python standard library only, no telemetry, no external database (state is a
+  SQLite file under `/config`).
+
+## Requirements
+
+- Docker (or Unraid). Nothing else to install: ffmpeg is in the image.
+- Optional, for wishlist acquisition only: a MyAnonamouse account (and a VPN container if you
+  want MAM traffic kept off your home connection) and qBittorrent for the downloads.
+
 ```
 library-in/                         library-out/
   Michael Lewis- Moneyball/           Michael Lewis/
@@ -17,7 +42,7 @@ library-in/                         library-out/
     Moneyball [Disc 3]/                    metadata.json
 ```
 
-![Audiobind status page](docs/screenshot.png)
+![The Audiobind library page: every book with its status, match confidence and runtime, and the books that need attention above the list](docs/screenshot.png)
 
 ## Status: beta — read this before you point it at your library
 
@@ -113,7 +138,7 @@ docker run -d \
   -v /path/to/audiobooks-fixed:/output \
   -v /path/to/appdata/audiobind:/config \
   -p 8080:8080 \
-  ghcr.io/stinger303/audiobind:0.15.1
+  ghcr.io/stinger303/audiobind:latest
 ```
 
 ### Docker Compose
@@ -121,7 +146,7 @@ docker run -d \
 ```yaml
 services:
   audiobind:
-    image: ghcr.io/stinger303/audiobind:0.15.1
+    image: ghcr.io/stinger303/audiobind:latest
     restart: unless-stopped
     environment:
       - PUID=99
@@ -165,6 +190,23 @@ can never change or delete your sources, at the cost of Delete no longer removin
 the source folder (it still removes the output and forgets the book). Writable
 (`:rw`) lets Delete remove sources too.
 
+### Behind a reverse proxy
+
+Only if you put Audiobind behind your own reverse proxy (for TLS, say), set both:
+
+```bash
+-e TRUSTED_PROXY=true \
+-e TRUSTED_PROXY_IPS=172.18.0.0/16      # the proxy's address(es) as Audiobind sees them
+```
+
+`X-Forwarded-Host`, `-For` and `-Proto` are then believed, but **only from the peers listed in
+`TRUSTED_PROXY_IPS`** (IPs or CIDRs); a forwarded header from any other peer is ignored. Since
+0.19.0-dev5, `TRUSTED_PROXY=true` on its own trusts nobody. **If you already had
+`TRUSTED_PROXY=true`, add `TRUSTED_PROXY_IPS` when you upgrade**, or your proxy's headers stop being
+honoured (the plain `Host` header is checked against `ALLOWED_HOSTS` instead, and the session cookie
+does not get `Secure` over https). Without a proxy, leave both unset. Audiobind is meant for your LAN: do
+not expose it to the internet without a reverse proxy and TLS (see [SECURITY.md](SECURITY.md)).
+
 ### First run
 
 Open `http://<host>:8080`. The first time, Audiobind asks you to **create your account**:
@@ -179,7 +221,10 @@ Then you get the status page. Books are discovered on the first scan (within `SC
 
 On the first start nobody has an account yet, so the first visit opens a setup page - and until someone finishes it, anyone who can reach the port can create the account. Open the page and complete setup right after starting the container.
 
-`/healthz` is the one public endpoint: it needs no sign-in, so an uptime monitor can poll it, and it only ever answers `ok` (200) or `stale` (503).
+`/healthz` is the one public endpoint, with or without an account: it needs no sign-in, so an
+uptime monitor can poll it, and it only ever answers `ok` (200) or `stale` (503; the scan loop has
+not checked in for longer than about 2.5 scan intervals plus five minutes). Every other page and
+API call needs the account.
 
 * **Browser:** username and password on the sign-in page. A session lasts 7 days
   (`HttpOnly`, `SameSite=Strict` cookie). Tick **Keep me signed in for 30 days** to make that
@@ -285,8 +330,15 @@ wishlist. That's all it does: nothing is downloaded, and no tracker is contacted
 [wishlist watcher](#the-wishlist-watcher-myanonamouse) picks books up from there when it is
 on. The **Wishlist** tab (`/wishlist`, right below Discover books in the rail, MAM only) lists it with
 each book's state and when it was last checked; **Retry** and **Remove** act on one book. The number
-on the Wishlist tab is the wishlist size. A book that lands in your library leaves the wishlist (a
-want-list holds nothing you already have), so only books you still want are listed.
+on the Wishlist tab is the wishlist size.
+
+![The Wishlist tab: each wanted book with its state, the last check and Retry / Remove](docs/screenshot-wishlist.png)
+
+A wishlist row moves through these states: **wanted** → **downloading** (sent to qBittorrent) →
+**downloaded** (the torrent finished; the book is waiting to be converted). The row is **removed**
+when the converted book appears in your library (a want-list holds nothing you already have). A book
+that is in your library already is taken off the list the same way, whatever its state. **not
+found** and **error** rows stay until you press **Retry** or **Remove**.
 
 **Edit title** gives a book its own *search title*. The watcher searches MAM for that title
 instead of the catalog one, and the match has to clear the same 0.90 title score against it. Use
@@ -316,6 +368,8 @@ so opening the page doesn't query the catalog. A refresh runs when nothing is st
 the stored suggestions are more than 7 days old, or when you press **Refresh**. One refresh
 makes at most 10 catalog requests (one per author, narrator and genre). Nothing goes on the
 wishlist until you press **Get this**.
+
+![Discover books: the search box with the stored suggestions under it](docs/screenshot-discover.png)
 
 ```bash
 curl -H "$AUTH" localhost:8080/api/discover/recommendations          # stored result only
@@ -348,7 +402,7 @@ interval and the books-per-cycle cap are editable in **Settings > Watcher**; the
 defaults, and a saved value applies from the next cycle with no restart):
 
 1. Books already in your library (a converted book with the same ASIN, or the same title and
-   author) are taken off the wishlist - this also runs after every scan, watcher or not.
+   author) are removed from the wishlist - this also runs after every scan, watcher or not.
 2. Up to `WATCH_MAX_PER_CYCLE` **wanted** books - never-checked first, oldest first, then the
    least recently checked - are searched on MAM's Torrent Search JSON API (audiobooks,
    English).
@@ -360,7 +414,8 @@ defaults, and a saved value applies from the next cycle with no restart):
    qBittorrent (category `mam-audiobooks`, whose save path is your ingest folder). It is
    downloaded **without** a freeleech wedge when it is already free, VIP freeleech or a
    personal freeleech, and **with** a wedge (`&fl`) otherwise - the decision is written in the
-   book's note. The book becomes **downloading**, and **in library** once ingest converts it.
+   book's note. The book becomes **downloading**, then **downloaded** once the torrent finishes in qBittorrent, and
+   its row is removed once ingest has converted it and the book is in your library.
 
 The watcher only ever calls those two MAM endpoints (the ones MAM authorizes for automation),
 never parses HTML and never follows a redirect. It sends one request at a time, at least 3 s

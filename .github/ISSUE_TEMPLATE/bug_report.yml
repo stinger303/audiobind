@@ -1,0 +1,47 @@
+name: Bug report
+description: Something Audiobind did that it should not have, or did not do
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problem? Do not file it here. See [SECURITY.md](https://github.com/stinger303/audiobind/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Audiobind version
+      description: "Output of `docker exec audiobind audiobind version`."
+      placeholder: "audiobind 0.19.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it runs
+      options:
+        - Unraid (Community Applications template)
+        - Docker Compose
+        - docker run
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: |
+        From `docker logs audiobind` or `/config/audiobind.log`. **Remove your MAM cookie
+        (`mam_id`), passwords and any token from anything you paste.**
+      render: text
