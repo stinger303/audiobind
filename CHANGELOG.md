@@ -5,7 +5,41 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
-## [0.18.0-dev12] - 2026-11-14
+## [0.18.0] - 2026-11-14
+
+The first public release since 0.15.1. It folds every banked build from `0.16.0-dev1`
+through `0.18.0-dev12`; the per-build detail is kept as subsections below.
+
+**Acquiring books.** The wishlist watcher talks to MyAnonamouse: it searches the one
+authorised search endpoint, downloads a book with a freeleech wedge only when the torrent is
+not already free, and hands it to qBittorrent. Off unless `MAM_ID` is set. It refuses to run
+unless MAM would see your VPN address (a home-IP denylist and an optional expected-IP
+allowlist), sends no User-Agent, and can be pointed through an HTTP proxy. How many books a
+cycle takes, and how often it runs, are both editable in Settings > Watcher.
+
+**The wishlist is a want-list.** Its own rail tab with a count, and a book that lands in your
+library leaves the list instead of lingering. A row can carry its own search title, so a book
+MAM spells differently can be fetched without lowering the match bar for everything else.
+
+**Discover books.** Search and recommendations on one screen, no chips: suggestions come from
+the authors, narrators and genres you already own. Series cards say how much of a series you
+have and can add every missing book in one click.
+
+**Ingest.** A read-only folder of finished torrent downloads is converted, matched and filed
+exactly like your library, with a fallback to the files' own tags when the folder name matches
+nothing, torrent-name cleaning, and single-file torrents found. Audiobind never writes to it,
+so the torrent keeps seeding.
+
+**Matching.** Summaries, study guides and review knockoffs are recognised and never promoted
+to HIGH, and Audnex settles close calls between near-identical candidates.
+
+**Your own account.** First-run setup creates a username and password; sessions survive a
+restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgotten one.
+`AUTH_TOKEN` still works on an install that has no account yet, and is deprecated.
+
+**Logging.** A rotating log file, on by default at `/config/audiobind.log`.
+
+### 0.18.0-dev12 (2026-11-14)
 
 ### Added
 - **A wishlist row can carry its own search title.** The new **Edit title** action (next to Retry /
@@ -24,7 +58,7 @@ All notable changes to this project are documented here. This project follows
 - The state DB gains a nullable `wishlist.search_title` column through the usual add-column
   migration; an existing database upgrades in place and loses nothing.
 
-## [0.18.0-dev11] - 2026-11-14
+### 0.18.0-dev11 (2026-11-14)
 
 ### Added
 - **The watcher schedule is editable in Settings > Watcher.** "Check the wishlist every" (10-1440
@@ -41,7 +75,7 @@ All notable changes to this project are documented here. This project follows
 - Saving either field reloads the page so the Watcher status line ("every N min, at most M books
   per cycle") shows what the next cycle will do.
 
-## [0.18.0-dev10] - 2026-11-14
+### 0.18.0-dev10 (2026-11-14)
 
 ### Added
 - **Wishlist is its own rail tab**, directly below Discover books, at `/wishlist`, with the
@@ -59,7 +93,7 @@ All notable changes to this project are documented here. This project follows
   (`wanted`, `not_found`, `error`) are never touched, and the removal is idempotent. Leftover
   `in_library` rows from earlier versions are cleaned up the same way.
 
-## [0.18.0-dev9] - 2026-11-14
+### 0.18.0-dev9 (2026-11-14)
 
 ### Added
 - **"Keep me signed in for 30 days"** on the sign-in form (unticked by default, for that
@@ -76,7 +110,7 @@ All notable changes to this project are documented here. This project follows
   A password or username change still ends every other session, and a session from before a
   change stays invalid.
 
-## [0.18.0-dev8] - 2026-11-14
+### 0.18.0-dev8 (2026-11-14)
 
 ### Changed
 - **The main-page Dry run no longer silences the MAM watcher.** One switch used to do two
@@ -92,7 +126,7 @@ All notable changes to this project are documented here. This project follows
 - **Upgrading:** if you relied on the main-page Dry run to keep the watcher from downloading,
   turn on the watcher's Dry run (or set `WATCH_DRY_RUN=true`).
 
-## [0.18.0-dev7] - 2026-11-14
+### 0.18.0-dev7 (2026-11-14)
 
 ### Added
 - **A log file that survives a container recreate.** `LOG_FILE` (default
@@ -108,7 +142,7 @@ All notable changes to this project are documented here. This project follows
   explaining that MAM is optional and which variables turn it on. The rail says that files in
   the ingest folder are converted whether or not MAM is configured.
 
-## [0.18.0-dev6] - 2026-11-14
+### 0.18.0-dev6 (2026-11-14)
 
 ### Fixed
 - **A successful qBittorrent 5.x login is no longer reported as a failure.** 5.x answers 204 and
@@ -120,7 +154,7 @@ All notable changes to this project are documented here. This project follows
   `DRY_RUN=true` the watcher starts dry whatever was saved (the UI switch can turn it off
   afterwards, and that choice persists). One startup line says which source won.
 
-## [0.18.0-dev5] - 2026-11-14
+### 0.18.0-dev5 (2026-11-14)
 
 ### Added
 - **`MAM_VIP`** and **Settings > Watcher > "VIP member"** (No / Yes, default No, saved in the
@@ -135,7 +169,7 @@ All notable changes to this project are documented here. This project follows
   is unchanged (no wedge spent). `mam.select_candidate` gained `vip: bool = False`. Still one
   request per book.
 
-## [0.18.0-dev4] - 2026-11-14
+### 0.18.0-dev4 (2026-11-14)
 
 ### Fixed
 - **The wishlist watcher searched the wrong MAM category and found nothing.** It sent
@@ -143,7 +177,7 @@ All notable changes to this project are documented here. This project follows
   for 14 on every query, so books that are plainly on MAM were reported "not found". It now
   searches the audiobook main category (`tor[main_cat][]=13`). Still one request per book.
 
-## [0.18.0-dev3] - 2026-11-14
+### 0.18.0-dev3 (2026-11-14)
 
 ### Added
 - **`MAM_EXPECTED_EGRESS_IP`**: an optional allowlist for the egress guard. When set, MAM must
@@ -166,7 +200,7 @@ All notable changes to this project are documented here. This project follows
 - The blocked notice on Settings and the Wishlist bar now quotes the guard's reason rather than
   always saying "home connection", since a block can come from either check.
 
-## [0.18.0-dev2] - 2026-11-14
+### 0.18.0-dev2 (2026-11-14)
 
 ### Added
 - **`MAM_PROXY`**: `http://host:port` or `https://host:port` (an HTTP CONNECT tunnel for
@@ -194,7 +228,7 @@ All notable changes to this project are documented here. This project follows
   User-Agent override is sent unless `MAM_USER_AGENT` is set, which is used verbatim.
 - `MAM_HOME_WAN_IP` that is not an IP address stops startup, naming the variable.
 
-## [0.18.0-dev1] - 2026-11-14
+### 0.18.0-dev1 (2026-11-14)
 
 ### Added
 - **The wishlist watcher (MyAnonamouse).** Off unless `MAM_ID` is set; with it unset no
@@ -247,7 +281,7 @@ All notable changes to this project are documented here. This project follows
 ### Changed
 - The Discover tab's Wishlist list shows the state chips above instead of the bare status.
 
-## [0.17.0-dev1] - 2026-11-13
+### 0.17.0-dev1 (2026-11-13)
 
 ### Added
 - **A wishlist.** A new `wishlist` table in the state DB stores ASIN, title, authors, when
@@ -293,7 +327,7 @@ All notable changes to this project are documented here. This project follows
   has no listing, or the catalog couldn't be reached and will be tried again. The detail
   panel's series block says the same.
 
-## [0.16.0-dev4] - 2026-11-13
+### 0.16.0-dev4 (2026-11-13)
 
 ### Added
 - **Knockoffs are recognised.** A catalog entry counts as a knockoff, not an edition, when
@@ -325,7 +359,7 @@ All notable changes to this project are documented here. This project follows
   23.55. It was parked at MEDIUM behind "[Review] The Butcher's Masquerade (Matt
   Dinniman) Summarized." Now it grades HIGH and converts on its own.
 
-## [0.16.0-dev3] - 2026-11-12
+### 0.16.0-dev3 (2026-11-12)
 
 ### Added
 - **Ingest falls back to the files' own tags.** If an ingest book's name matches nothing
@@ -360,7 +394,7 @@ All notable changes to this project are documented here. This project follows
 - **`01 Convergence [CA]` was searched as "Convergence CA"** and matched nothing. It is
   now searched as "Convergence" (see Changed).
 
-## [0.16.0-dev2] - 2026-11-11
+### 0.16.0-dev2 (2026-11-11)
 
 ### Added
 - **Your own account: username and password.** The first time you open Audiobind it
@@ -405,7 +439,7 @@ All notable changes to this project are documented here. This project follows
 - An install without `AUTH_TOKEN` no longer serves the library, the controls and Delete
   to anyone who can reach the port. It asks for an account first.
 
-## [0.16.0-dev1] - 2026-11-10
+### 0.16.0-dev1 (2026-11-10)
 
 ### Added
 - **Ingest - convert finished torrent downloads.** A new setting, `INGEST_DIR`, points
