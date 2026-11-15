@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Audiobind</Name>
-  <Repository>ghcr.io/stinger303/audiobind:0.19.0</Repository>
+  <Repository>ghcr.io/stinger303/audiobind:0.20.0</Repository>
   <Registry>https://github.com/stinger303/audiobind/pkgs/container/audiobind</Registry>
   <Network>bridge</Network>
   <MyIP/>
@@ -26,6 +26,12 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.20.0
+* Audio channels default to 2 (stereo); `AUDIO_CHANNELS=1` still halves the file size
+* The Series tab now shows a series you own a single book of, so you find the ones you did not know were series
+* Book rows look expandable and open from the keyboard (Tab, then Enter or Space)
+* The template pins a release tag instead of `:latest`, so an install is a build you can name
+
 ### 0.19.0
 * New conversions follow the Audiobookshelf folder convention: `Author/Book/` or `Author/Series/3 - Title/`, with every author in the folder
 * Settings > Library: **Match Audiobookshelf layout** moves books converted under the old naming, with a preview that lists every planned move before anything changes
