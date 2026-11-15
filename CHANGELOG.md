@@ -7,9 +7,9 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
-## [Unreleased]
+## [0.20.0] - 2026-11-15
 
-First-run polish from a real fresh install (0.20.0-dev1).
+First-run polish from a real fresh install.
 
 ### Changed
 - **The deprecated access token no longer greets a new user.** The template's `AUTH_TOKEN` field moves
