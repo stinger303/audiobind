@@ -215,7 +215,7 @@ and you can remove it.
 **stay in their old folders** after the upgrade; nothing moves them on its own.
 
 1. Open **Settings > Library > Match Audiobookshelf layout**, click **Preview** and read the list.
-2. Click **Apply** to move them. Do this **before** any **Re-check all** or **Retry** on converted
+2. Click **Apply** to move them. Do this **before** any **Re-match all…** or **Retry** on converted
    books, and before any **Convert anyway** (which encodes the book again into the new layout and
    leaves the old folder behind).
 3. Audiobookshelf may treat a renamed folder as a new book and **lose its listening progress**.

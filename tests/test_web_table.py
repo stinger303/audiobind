@@ -5,7 +5,10 @@ import re
 import tempfile
 import unittest
 
+from unittest import mock
+
 from audiobind import web
+from audiobind.control import CONTROL
 from audiobind.state import State, UnitState
 
 
@@ -225,8 +228,13 @@ class TestRenderedSearchAndSort(unittest.TestCase):
     def test_control_buttons_carry_hover_tooltips(self):
         page = web.render(self.state)
         self.assertIn('title="Re-check every book in the library', page)
-        self.assertIn('title="Finish the book that is encoding', page)
-        self.assertIn('title="Abort the current conversion immediately', page)
+        # Pause after this book / Stop now exist only while a book is encoding
+        self.assertNotIn('title="Finish the book that is encoding', page)
+        self.assertNotIn('title="Abort the current conversion immediately', page)
+        with mock.patch.object(CONTROL, "current_unit", "Some/Book"):
+            running = web.render(self.state)
+        self.assertIn('title="Finish the book that is encoding', running)
+        self.assertIn('title="Abort the current conversion immediately', running)
         self.assertIn('title="Preview mode: reports what it would do', page)
         self.assertIn('title="Re-check this book against the catalog', page)
         self.assertIn('title="Convert this book even though', page)

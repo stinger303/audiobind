@@ -105,7 +105,7 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"dry_run":false
 
 - **Converted books stay where they are.** Upgrading moves nothing: books converted before
   0.19.0-dev14 keep their old folders until you run **Match Audiobookshelf layout**.
-- **Run Match Audiobookshelf layout first** - Preview, then Apply - **before** any **Re-check all**
+- **Run Match Audiobookshelf layout first** - Preview, then Apply - **before** any **Re-match all…**
   or **Retry** on converted books. Since 0.19.0-dev15 a re-check leaves a converted book whose file
   still exists alone and logs `already converted at <old path> - run Match Audiobookshelf layout to
   move it`, but **Convert anyway** really does encode the book again into the new layout, leaving

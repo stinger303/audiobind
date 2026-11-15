@@ -8,7 +8,7 @@ The status page is also the control panel:
 
 | Button | What it does |
 |---|---|
-| **Scan now** | skips the interval and starts a pass immediately |
+| **Scan for changes** | skips the interval and starts a pass immediately |
 | **Pause after this book** | finishes the book in flight, then stops before starting another |
 | **Resume** | continues, and scans immediately |
 | **Dry run: ON / OFF** | switches between deciding-only and writing. Persisted, so a restart keeps your choice; `DRY_RUN=true` always starts dry, whatever was saved (the switch can turn it off afterwards), while `DRY_RUN=false` leaves the saved choice in charge |

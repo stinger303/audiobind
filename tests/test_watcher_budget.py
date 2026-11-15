@@ -71,7 +71,7 @@ class TestWedgeBudget(BudgetCase):
         self.assertEqual(self.row("B000000001")["status"], "downloading")
         second = self.row("B000000002")
         self.assertEqual(second["status"], "wanted")
-        self.assertIn("1 wedge already spent this cycle", second["note"])
+        self.assertIn("1 freeleech credit already spent this cycle", second["note"])
         self.assertEqual(self.ledger(), 1)
 
     def test_per_day_cap_refuses_the_next_cycle(self):
@@ -83,7 +83,7 @@ class TestWedgeBudget(BudgetCase):
         # the search itself is how we learn the torrent needs a credit; no download is ever requested
         self.assertEqual(self.downloads(), [])
         self.assertEqual(summary["skipped_budget"], 1)
-        self.assertIn("2 wedges spent in the last 24 hours", self.row("B000000009")["note"])
+        self.assertIn("2 freeleech credits spent in the last 24 hours", self.row("B000000009")["note"])
         self.assertEqual(self.ledger(), 2)
 
     def test_old_spends_fall_out_of_the_day(self):
@@ -129,7 +129,7 @@ class TestWedgeBudget(BudgetCase):
                           answer(entry(1002, "Artemis", free=True)), (200, {}, TORRENT))
         summary = self.cycle()
         self.assertEqual((summary["sent"], summary["skipped_budget"]), (1, 1))
-        self.assertIn("qBittorrent is unreachable, so the wedge budget cannot be checked",
+        self.assertIn("qBittorrent is unreachable, so the freeleech credit budget cannot be checked",
                       self.row("B000000001")["note"])
         self.assertEqual(self.row("B000000001")["status"], "wanted")
         self.assertEqual(self.row("B000000002")["status"], "downloading")
@@ -243,13 +243,34 @@ class TestMaySpend(unittest.TestCase):
         with mock.patch.object(CONFIG, "wedge_reserve", 0), mock.patch.object(CONFIG, "wedge_per_cycle", 1), \
                 mock.patch.object(CONFIG, "wedge_per_day", 3):
             b = watcher.Budget(spent_day=3)
-            self.assertEqual(b.may_spend(), (False, "3 wedges spent in the last 24 hours"))
+            self.assertEqual(b.may_spend(), (False, "3 freeleech credits spent in the last 24 hours"))
             b = watcher.Budget(spent_day=0)
             self.assertEqual(b.may_spend(), (True, ""))
             b.spent_cycle = 1
-            self.assertEqual(b.may_spend(), (False, "1 wedge already spent this cycle"))
+            self.assertEqual(b.may_spend(), (False, "1 freeleech credit already spent this cycle"))
             self.assertEqual(watcher.Budget(unknown=True).may_spend(),
-                             (False, "qBittorrent is unreachable, so the wedge budget cannot be checked"))
+                             (False, "qBittorrent is unreachable, so the freeleech credit budget cannot be checked"))
+
+    def test_no_reason_says_wedge_in_any_branch(self):
+        cases = [
+            ({"unknown": True}, 0, 1, 3, 0),   # unreachable
+            ({"spent_day": 2}, 1, 1, 3, 0),    # reserve (singular)
+            ({"spent_day": 1}, 2, 1, 3, 0),    # reserve (plural)
+            ({"spent_day": 0}, 0, 1, 3, 1),    # per cycle, singular
+            ({"spent_day": 0}, 0, 2, 3, 2),    # per cycle, plural
+            ({"spent_day": 1}, 0, 0, 1, 0),    # per day, singular
+            ({"spent_day": 3}, 0, 0, 3, 0),    # per day, plural
+            ({"spent_day": 0}, 0, 1, 3, 0),    # allowed
+        ]
+        for kwargs, reserve, per_cycle, per_day, cycle in cases:
+            with mock.patch.object(CONFIG, "wedge_reserve", reserve), \
+                    mock.patch.object(CONFIG, "wedge_per_cycle", per_cycle), \
+                    mock.patch.object(CONFIG, "wedge_per_day", per_day):
+                b = watcher.Budget(**kwargs)
+                b.spent_cycle = cycle
+                allowed, why = b.may_spend()
+                self.assertNotIn("wedge", why.lower(), (kwargs, why))
+                self.assertEqual(allowed, why == "", (kwargs, why))
 
     def test_zero_means_no_limit(self):
         with mock.patch.object(CONFIG, "wedge_reserve", 0), mock.patch.object(CONFIG, "wedge_per_cycle", 0), \

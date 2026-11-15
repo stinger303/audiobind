@@ -67,7 +67,7 @@ STYLES = """
   --ab-text:#f7f8f8;
   --ab-text2:#d0d6e0;
   --ab-text3:#8a8f98;
-  --ab-text4:#62666d;
+  --ab-text4:#7d828b;
   --ab-accent:#5e6ad2;
   --ab-accent-bright:#7170ff;
   --ab-green:#27a644;
@@ -171,10 +171,11 @@ button:disabled:hover, .btn:disabled:hover{background:rgba(255,255,255,.02);colo
 button.primary:disabled:hover, .btn.primary:disabled:hover{background:var(--ab-accent)}
 button.warn{color:var(--ab-amber)}
 button.warn:hover{background:var(--ab-amber-soft);border-color:rgba(242,163,60,.3)}
-button.dry{border-color:rgba(242,163,60,.35);color:var(--ab-amber);background:var(--ab-amber-soft)}
 button.dry.on{border-color:rgba(242,163,60,.55);color:var(--ab-amber);background:var(--ab-amber-soft)}
-button.dry .ab-switch{width:22px;height:12px;border-radius:6px;background:rgba(242,163,60,.4);position:relative;flex:none}
-button.dry .ab-switch::after{content:"";position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:var(--ab-amber);transition:left .15s}
+button.dry .ab-switch{width:22px;height:12px;border-radius:6px;background:rgba(255,255,255,.14);position:relative;flex:none}
+button.dry.on .ab-switch{background:rgba(242,163,60,.4)}
+button.dry .ab-switch::after{content:"";position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:var(--ab-text3);transition:left .15s}
+button.dry.on .ab-switch::after{background:var(--ab-amber)}
 button.dry.on .ab-switch::after{left:12px}
 
 .ab-queue{flex:none;margin:12px 24px 0;
@@ -309,7 +310,7 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:
 .ab-bookcell .ab-btitle{font-weight:500;font-size:13px;color:var(--ab-text);letter-spacing:-.1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .ab-bookcell .ab-bauthor{font-size:11.5px;color:var(--ab-text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .ab-bookcell .ab-breason{font-size:11.5px;color:var(--ab-amber);margin-top:2px;
-  white-space:normal;overflow-wrap:anywhere;line-height:1.35;}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35;}
 .ab-bookcell .ab-breason b{font-weight:500;font-family:var(--ab-mono);font-size:11px;color:var(--ab-text2)}
 .ab-bookcell .ab-breason.failed{color:var(--ab-red)}
 
@@ -341,7 +342,7 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:
   color:var(--ab-text2);font-size:12px;white-space:nowrap}
 .ab-st-dot{width:8px;height:8px;border-radius:50%;flex:none;margin-right:7px;background:var(--ab-text4)}
 .ab-st-ok .ab-st-dot{background:var(--ab-green)}
-.ab-st-hold .ab-st-dot{background:var(--ab-blue)}
+.ab-st-hold .ab-st-dot{background:var(--ab-amber)}
 .ab-st-rev .ab-st-dot{background:var(--ab-amber)}
 .ab-st-err .ab-st-dot{background:var(--ab-red)}
 .ab-st-enc .ab-st-dot{background:var(--ab-accent-bright)}
@@ -374,6 +375,7 @@ button.ab-kebab:hover, button.ab-kebab[aria-expanded="true"]{color:var(--ab-text
 .ab-menu button.ab-menu-danger{color:var(--ab-red)}
 .ab-menu button.ab-menu-danger:hover, .ab-menu button.ab-menu-danger:focus-visible{background:var(--ab-red-soft)}
 
+tr.drow,tr.urow{scroll-margin-top:40px}
 tr.drow td{background:#11151d;padding:0;border-bottom:1px solid var(--ab-border);white-space:normal}
 tr.drow[hidden] td{padding:0}
 .dd{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:22px;padding:16px 22px 18px;}
@@ -933,7 +935,7 @@ function abSaveMeta(btn) {
 function abSetLockChip(chip, on) {
   chip.classList.toggle('ab-lock-on', on);
   chip.classList.toggle('ab-lock-off', !on);
-  chip.textContent = on ? '\\ud83d\\udd12 Locked by you' : '\\ud83d\\udd13 Unlocked';
+  chip.textContent = on ? 'Locked by you' : 'Unlocked';
   const asin = chip.dataset.field === 'asin';
   chip.title = on
     ? 'A rescan, re-check or re-rip will never overwrite this. ' +
@@ -1209,8 +1211,8 @@ function abShelfInit() {
   if (!shelf) return;
   const head = document.getElementById('ab-shelf-head');
   if (!head) return;
-  let collapsed = false;
-  try { collapsed = sessionStorage.getItem(SHELF_KEY) === '1'; } catch (e) {}
+  let collapsed = true;  // closed unless the user opened it this session
+  try { collapsed = sessionStorage.getItem(SHELF_KEY) !== '0'; } catch (e) {}
   if (collapsed) shelf.classList.add('ab-collapsed');
   head.addEventListener('click', () => {
     shelf.classList.toggle('ab-collapsed');
@@ -1259,12 +1261,43 @@ function abScanIdle() {
   const btn = document.getElementById('ab-scanbtn');
   const re = document.getElementById('ab-recheckbtn');
   if (live) live.hidden = true;
-  if (btn && btn.disabled) { btn.disabled = false; btn.textContent = 'Scan now'; }
+  if (btn && btn.disabled) { btn.disabled = false; btn.textContent = 'Scan for changes'; }
   if (re) re.disabled = false;
 }
 function abAuthed(r) {
   if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
   return r.json();
+}
+function abDur(s) {
+  s = Math.max(0, Math.floor(Number(s) || 0));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm';
+  const m = Math.floor((s % 3600) / 60);
+  return Math.floor(s / 3600) + 'h ' + (m < 10 ? '0' : '') + m + 'm';
+}
+// the encode strip's speed / ETA / elapsed, rebuilt from /api/state with text nodes only
+function abQMeta(prog) {
+  const box = document.getElementById('ab-qprog');
+  if (!box) return;
+  const parts = [];
+  const add = (bold, rest) => {
+    const f = document.createDocumentFragment();
+    if (bold) { const b = document.createElement('b'); b.textContent = bold; f.appendChild(b); }
+    f.appendChild(document.createTextNode(rest));
+    parts.push(f);
+  };
+  if (!prog || !Object.keys(prog).length) {
+    add('', 'analysing - the bar appears once encoding starts');
+  } else {
+    if (prog.speed) add(prog.speed + 'x', ' realtime');
+    if (prog.eta) add(abDur(prog.eta), ' left');
+    if (prog.elapsed) add('', abDur(prog.elapsed) + ' elapsed');
+  }
+  box.textContent = '';
+  parts.forEach((f, i) => {
+    if (i) box.appendChild(document.createTextNode(' \u00b7 '));
+    box.appendChild(f);
+  });
 }
 function tick() {
   fetch('/api/state').then(abAuthed).then(d => {
@@ -1278,6 +1311,10 @@ function tick() {
     bar.style.width = p.toFixed(1) + '%';
     const label = document.getElementById('ab-qpct');
     if (label) label.textContent = p.toFixed(1) + '%';
+    abQMeta(d.progress);
+    const qt = document.getElementById('ab-qtitle');
+    const name = d.current_title || d.current_unit;
+    if (qt && name && qt.textContent !== name) qt.textContent = name;
   }).catch(() => {});
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -1324,13 +1361,13 @@ PAGE = """<!doctype html>
   </nav>
   <div class="ab-rail-label">Attention</div>
   <nav class="ab-rail-section" aria-label="Attention">
-    <a class="ab-rail-item ab-alert" href="/?status=review">
+    <a class="ab-rail-item{rail_review_alert}" href="/?status=review">
       <span class="ab-glyph">&#9873;</span> Review
       <span class="ab-count">{rail_review_count}</span></a>
-    <a class="ab-rail-item ab-alert" href="/?status=held">
-      <span class="ab-glyph">&#x23F8;</span> Held
+    <a class="ab-rail-item{rail_held_alert}" href="/?status=held">
+      <span class="ab-glyph">&#8214;</span> Held
       <span class="ab-count">{rail_held_count}</span></a>
-    <a class="ab-rail-item ab-alert" href="/?status=failed">
+    <a class="ab-rail-item{rail_failed_alert}" href="/?status=failed">
       <span class="ab-glyph">&times;</span> Failed
       <span class="ab-count">{rail_failed_count}</span></a>
   </nav>
@@ -1343,7 +1380,7 @@ PAGE = """<!doctype html>
 
 <main class="ab-main">
   <header class="ab-topbar">
-    <h1><a href="/" title="Back to the library" style="color:inherit;text-decoration:none">Audiobind</a></h1>
+    <h1><a href="/" title="Back to the library" style="color:inherit;text-decoration:none">Library</a></h1>
     <span class="ab-status{health_stale}"><span class="ab-dot"></span>{health_text}<small> &middot; last scan {health_scan}</small></span>
     <span class="ab-version">v{version}</span>
     {dry_text}
@@ -1437,13 +1474,13 @@ SETTINGS_PAGE = """<!doctype html>
   </nav>
   <div class="ab-rail-label">Attention</div>
   <nav class="ab-rail-section" aria-label="Attention">
-    <a class="ab-rail-item ab-alert" href="/?status=review">
+    <a class="ab-rail-item{rail_review_alert}" href="/?status=review">
       <span class="ab-glyph">&#9873;</span> Review
       <span class="ab-count">{rail_review_count}</span></a>
-    <a class="ab-rail-item ab-alert" href="/?status=held">
-      <span class="ab-glyph">&#x23F8;</span> Held
+    <a class="ab-rail-item{rail_held_alert}" href="/?status=held">
+      <span class="ab-glyph">&#8214;</span> Held
       <span class="ab-count">{rail_held_count}</span></a>
-    <a class="ab-rail-item ab-alert" href="/?status=failed">
+    <a class="ab-rail-item{rail_failed_alert}" href="/?status=failed">
       <span class="ab-glyph">&times;</span> Failed
       <span class="ab-count">{rail_failed_count}</span></a>
   </nav>
@@ -1894,13 +1931,13 @@ SERIES_PAGE = """<!doctype html>
   </nav>
   <div class="ab-rail-label">Attention</div>
   <nav class="ab-rail-section" aria-label="Attention">
-    <a class="ab-rail-item ab-alert" href="/?status=review">
+    <a class="ab-rail-item{rail_review_alert}" href="/?status=review">
       <span class="ab-glyph">&#9873;</span> Review
       <span class="ab-count">{rail_review_count}</span></a>
-    <a class="ab-rail-item ab-alert" href="/?status=held">
-      <span class="ab-glyph">&#x23F8;</span> Held
+    <a class="ab-rail-item{rail_held_alert}" href="/?status=held">
+      <span class="ab-glyph">&#8214;</span> Held
       <span class="ab-count">{rail_held_count}</span></a>
-    <a class="ab-rail-item ab-alert" href="/?status=failed">
+    <a class="ab-rail-item{rail_failed_alert}" href="/?status=failed">
       <span class="ab-glyph">&times;</span> Failed
       <span class="ab-count">{rail_failed_count}</span></a>
   </nav>
@@ -2186,7 +2223,7 @@ def fmt_mb(mb) -> str:
 STATUS_DOTS = {
     "converted": ("Converted", "ok", False),
     "held": ("Held", "hold", False),
-    "review": ("Review", "rev", True),
+    "review": ("Review", "rev", False),
     "failed": ("Failed", "err", False),
     "ready": ("Ready", "enc", False),
     "interrupted": ("Interrupted", "rev", False),
@@ -2260,8 +2297,8 @@ def match_cell(unit, detail: dict, overrides: dict, asin_override: str = "") -> 
     return " &middot; ".join(parts_html), " · ".join(p for p in (lead_text, conf_text) if p)
 
 
-LOCK_ON_TEXT = "\U0001f512 Locked by you"
-LOCK_OFF_TEXT = "\U0001f513 Unlocked"
+LOCK_ON_TEXT = "Locked by you"
+LOCK_OFF_TEXT = "Unlocked"
 
 
 def lock_chip(field: str, locked: bool) -> str:
@@ -2554,7 +2591,7 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
         facts.append(f"{_hrs(cat_hours)} hrs")
     asin = _attr(str(match.get("asin")))
     facts.append(
-        f'ASIN <a class="ab-alink" href="https://www.audible.com/pd?asin={asin}" '
+        f'ASIN <a class="ab-alink" href="https://www.audible.com/pd/{asin}" '
         f'target="_blank" rel="noopener">{asin}</a>'
     )
     winner_corroborated = match.get("corroborated") is True
@@ -2737,7 +2774,7 @@ def _render_shelf(problem_units: list) -> str:
         )
         reason_class = "held" if unit.status == "held" else ("failed" if unit.status == "failed" else "")
 
-        btn = '<button class="btn primary" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="abUnitAction(this,\'retry\')">Retry now</button>'
+        btn = '<button class="btn" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="abUnitAction(this,\'retry\')">Retry now</button>'
         force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="abUnitAction(this,\'force\')">Convert anyway</button>'
         asin_btn = '<button class="btn" title="Open this book\'s details and set its exact Audible entry." onclick="abEditAsin(this)">Edit ASIN</button>'
 
@@ -2793,7 +2830,7 @@ def _render_shelf(problem_units: list) -> str:
 # network (series.aggregate queues stale listings for its background refresher instead).
 # f-strings only: series and book titles come from the catalog and from folder names.
 
-AUDIBLE_PD = "https://www.audible.com/pd?asin="
+AUDIBLE_PD = "https://www.audible.com/pd/"
 _EMPTY_SHELF = {"series": [], "by_path": {}, "missing_total": 0}
 
 
@@ -2806,9 +2843,17 @@ def _series_shelf(state, refresh: bool = False) -> dict:
         return dict(_EMPTY_SHELF)
 
 
+def _alert_class(count) -> str:
+    """The rail's amber mark, only for an Attention item that has something in it."""
+    try:
+        return " ab-alert" if int(count) > 0 else ""
+    except (TypeError, ValueError):
+        return ""
+
+
 def _series_rail_item(missing: int, active: bool = False) -> str:
-    """The rail's Series tab, under Library; the amber count is books missing across series."""
-    classes = "ab-rail-item" + (" ab-active" if active else "") + (" ab-alert" if missing else "")
+    """The rail's Series tab, under Library; the count is books missing across series (an opportunity, not an alarm)."""
+    classes = "ab-rail-item" + (" ab-active" if active else "")
     current = ' aria-current="page"' if active else ""
     count = (
         f'<span class="ab-count" title="books missing from your series">{int(missing)}</span>'
@@ -3126,6 +3171,9 @@ def render_series(state) -> str:
         rail_review_count=rc["review"],
         rail_held_count=rc["held"],
         rail_failed_count=rc["failed"],
+        rail_review_alert=_alert_class(rc["review"]),
+        rail_held_alert=_alert_class(rc["held"]),
+        rail_failed_alert=_alert_class(rc["failed"]),
         series_item=_series_rail_item(shelf["missing_total"], active=True),
         discover_item=_discover_rail_item(state),
         library=_html(CONFIG.host_library or str(CONFIG.library_root)),
@@ -3165,13 +3213,13 @@ DISCOVER_PAGE = """<!doctype html>
   </nav>
   <div class="ab-rail-label">Attention</div>
   <nav class="ab-rail-section" aria-label="Attention">
-    <a class="ab-rail-item ab-alert" href="/?status=review">
+    <a class="ab-rail-item{rail_review_alert}" href="/?status=review">
       <span class="ab-glyph">&#9873;</span> Review
       <span class="ab-count">{rail_review_count}</span></a>
-    <a class="ab-rail-item ab-alert" href="/?status=held">
-      <span class="ab-glyph">&#x23F8;</span> Held
+    <a class="ab-rail-item{rail_held_alert}" href="/?status=held">
+      <span class="ab-glyph">&#8214;</span> Held
       <span class="ab-count">{rail_held_count}</span></a>
-    <a class="ab-rail-item ab-alert" href="/?status=failed">
+    <a class="ab-rail-item{rail_failed_alert}" href="/?status=failed">
       <span class="ab-glyph">&#215;</span> Failed
       <span class="ab-count">{rail_failed_count}</span></a>
   </nav>
@@ -3438,7 +3486,7 @@ def _disc_row(item: dict, origin: str, seq_label: str = "") -> str:
         state_html = '<span class="ab-disc-pill ab-disc-want">On your wishlist</span>'
     elif watcher_mod.configured():
         state_html = (
-            f'<button class="btn primary" title="Put this book on your wishlist. Nothing is downloaded." '
+            f'<button class="btn" title="Put this book on your wishlist. Nothing is downloaded." '
             f"onclick=\"abWant(this,'{origin}')\">Get this</button>"
         )
     else:
@@ -4153,6 +4201,9 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
         rail_review_count=rc["review"],
         rail_held_count=rc["held"],
         rail_failed_count=rc["failed"],
+        rail_review_alert=_alert_class(rc["review"]),
+        rail_held_alert=_alert_class(rc["held"]),
+        rail_failed_alert=_alert_class(rc["failed"]),
         series_item=_series_rail_item(_series_shelf(state, refresh=False)["missing_total"]),
         discover_item=_discover_rail_item(state, active=active),
         library=_html(CONFIG.host_library or str(CONFIG.library_root)),
@@ -4298,6 +4349,9 @@ def render_settings(state) -> str:
         rail_review_count=rc["review"],
         rail_held_count=rc["held"],
         rail_failed_count=rc["failed"],
+        rail_review_alert=_alert_class(rc["review"]),
+        rail_held_alert=_alert_class(rc["held"]),
+        rail_failed_alert=_alert_class(rc["failed"]),
         library=CONFIG.host_library or str(CONFIG.library_root),
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
         output=CONFIG.host_output or str(CONFIG.output_root),
@@ -4346,8 +4400,11 @@ OUTPUT_FORMAT_HINT = (
 
 WEDGE_HINTS = {
     "wedge_per_cycle": "Most freeleech credits one cycle may spend. 0 = no limit.",
-    "wedge_per_day": "Most freeleech credits spent in any 24 hours. 0 = no limit.",
-    "wedge_reserve": ("Keep this many of today's allowance unspent, in case you want them. 0 = no reserve. "
+    "wedge_per_day": ("Most freeleech credits spent in any 24 hours. 0 = no daily limit, which also "
+                      "switches the reserve off."),
+    "wedge_reserve": ("Keep this many of the daily allowance unspent, in case you want them. 0 = no reserve. "
+                      "It is measured against the daily limit, so it only applies when a daily limit is set; "
+                      "a reserve at or above the daily limit means nothing is ever spent. "
                       "Counted from what Audiobind itself spent, never read from the site."),
     "watch_max_unsatisfied": ("Add nothing while this many torrents Audiobind added are still downloading or "
                               "below a 1.0 ratio, so unsatisfied snatches stay under the account's limit. "
@@ -4569,7 +4626,7 @@ def render(state, status: str = "", query: str = "") -> str:
             decision.append(f"Match confidence: <b>{_html(unit.confidence)}</b>")
         if unit.asin:
             decision.append(
-                f'ASIN <a class="ab-alink" href="https://www.audible.com/pd?asin={_attr(unit.asin)}" '
+                f'ASIN <a class="ab-alink" href="https://www.audible.com/pd/{_attr(unit.asin)}" '
                 f'target="_blank" rel="noopener">{_attr(unit.asin)}</a>'
             )
         else:
@@ -4695,7 +4752,7 @@ def render(state, status: str = "", query: str = "") -> str:
                         '<div class="ab-edition">'
                         '<span class="ab-edmain"><b>{ko}{ti}</b>'
                         '<span class="ab-edsub">{au} &middot; '
-                        '<a class="ab-alink" href="https://www.audible.com/pd?asin={a}" '
+                        '<a class="ab-alink" href="https://www.audible.com/pd/{a}" '
                         'target="_blank" rel="noopener">{a}</a></span></span>'
                         '<button title="Set this Audible entry as the book\'s ASIN (locks it), then '
                         're-check against it." onclick="abUseEdition(this)" data-asin="{a}">'
@@ -4802,7 +4859,7 @@ def render(state, status: str = "", query: str = "") -> str:
         if unit.status in ("held", "review", "failed"):
             why, _todo = explain(unit.status, unit.confidence or "", unit.note, detail_data, tier=tier)
             rc = " failed" if unit.status == "failed" else ""
-            reason_html = f'<span class="ab-breason{rc}">{_html(why)}</span>'
+            reason_html = f'<span class="ab-breason{rc}" title="{_attr(why)}">{_html(why)}</span>'
 
         match_html, match_title = match_cell(
             unit, detail_data, state.get_overrides(unit.path), asin_pins.get(unit.path, "")
@@ -4862,26 +4919,30 @@ def render(state, status: str = "", query: str = "") -> str:
     scanning = CONTROL.scanning
     prog = CONTROL.scan_progress()
     scan_button = (
-        '<button class="btn primary" title="Re-check every book in the library now and '
+        '<button class="btn" title="Re-check every book in the library now and '
         'convert the ones that pass the automatic rules." '
         'onclick="act(\'scan\')" id="ab-scanbtn"{di}>{lbl}</button>'
     ).format(
         di=" disabled" if (paused or scanning) else "",
-        lbl=("Scanning {} / {}&hellip;".format(prog["done"], prog["total"]) if scanning else "Scan now"),
+        lbl=("Scanning {} / {}&hellip;".format(prog["done"], prog["total"]) if scanning else "Scan for changes"),
     )
     recheck_button = (
         '<button class="btn" id="ab-recheckbtn" title="Re-check every book against '
         "Audible, including ones already decided - refreshes the match, the Other "
         'editions list and the chapters. Books still follow the auto-convert rules." '
-        "onclick=\"act('recheck')\"{di2}>Re-check all</button>"
+        "onclick=\"act('recheck')\"{di2}>Re-match all&hellip;</button>"
     ).format(di2=" disabled" if (paused or scanning) else "")
     pause_button = (
         '<button class="btn" title="Finish the book that is encoding, then stop converting '
         'until you press Resume." onclick="act(\'resume\')">Resume</button>'
         if paused
-        else '<button class="btn warn" title="Finish the book that is encoding, then stop '
-        'converting until you press Resume." onclick="act(\'pause\')">Pause after this '
-        "book</button>"
+        else (
+            '<button class="btn warn" title="Finish the book that is encoding, then stop '
+            'converting until you press Resume." onclick="act(\'pause\')">Pause after this '
+            "book</button>"
+            if CONTROL.running
+            else ""  # nothing is encoding: the queue strip carries Pause/Stop while something is
+        )
     )
     dry_button = (
         '<button class="btn dry on" title="Preview mode: reports what it would do but writes '
@@ -4902,10 +4963,7 @@ def render(state, status: str = "", query: str = "") -> str:
         'partial file is discarded and the book is retried on the next scan." '
         'onclick="stop_now()">Stop now</button>'
         if CONTROL.running
-        else '<button class="btn danger" disabled title="Abort the current conversion '
-        "immediately: the partial file is discarded and the book is retried on the "
-        'next scan. Nothing is encoding right now.">'
-        "Stop now</button>"
+        else ""
     )
 
     # encode strip
@@ -4923,24 +4981,23 @@ def render(state, status: str = "", query: str = "") -> str:
             meta_parts.append("{} elapsed".format(_fmt_duration(prog["elapsed"])))
         if not prog:
             meta_parts.append("analysing - the bar appears once encoding starts")
-        if qsnap["count"]:
-            meta_parts.append("<b>{}</b> waiting in queue".format(qsnap["count"]))
+        queue_meta = " &middot; <b>{}</b> waiting in queue".format(qsnap["count"]) if qsnap["count"] else ""
 
-        title_html = _html(CONTROL.current_unit)
+        title_html = _html(CONTROL.current_title or CONTROL.current_unit)
         queue_strip = (
             '<section class="ab-queue" aria-label="Currently encoding">'
             '<div class="ab-label"><span class="ab-pulse"></span> Now encoding</div>'
-            '<div class="ab-qtitle">{ti}</div>'
+            '<div class="ab-qtitle" id="ab-qtitle">{ti}</div>'
             '<div class="ab-qact">'
             '<button class="btn" onclick="act(\'pause\')">Pause</button>'
             '<button class="btn danger" onclick="stop_now()">Stop</button>'
             "</div>"
-            '<div class="ab-qmeta">{mp}</div>'
+            '<div class="ab-qmeta"><span id="ab-qprog">{mp}</span>{mq}</div>'
             '<div class="ab-qbarwrap">'
             '<div class="ab-qbar"><i id="ab-qfill" style="width:{pc:.1f}%"></i></div>'
             '<span class="ab-qpct" id="ab-qpct">{pc:.1f}%</span>'
             "</div></section>"
-        ).format(ti=title_html, mp=" &middot; ".join(meta_parts), pc=percent)
+        ).format(ti=title_html, mp=" &middot; ".join(meta_parts), mq=queue_meta, pc=percent)
     elif qsnap["count"]:
         nxt = state.get(qsnap["units"][0])
         queue_strip = (
@@ -4986,6 +5043,9 @@ def render(state, status: str = "", query: str = "") -> str:
         rail_review_count=rc["review"],
         rail_held_count=rc["held"],
         rail_failed_count=rc["failed"],
+        rail_review_alert=_alert_class(rc["review"]),
+        rail_held_alert=_alert_class(rc["held"]),
+        rail_failed_alert=_alert_class(rc["failed"]),
         scan_button=scan_button,
         recheck_button=recheck_button,
         pause_button=pause_button,

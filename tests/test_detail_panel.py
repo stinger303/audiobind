@@ -75,13 +75,20 @@ class TestDetailPanelCopy(unittest.TestCase):
         self.assertIn("Audible match: <b>Heir of Novron</b>", page)
         self.assertIn("Author: <b>Michael J. Sullivan</b>", page)
         self.assertIn("Match confidence: <b>MEDIUM</b>", page)
-        self.assertIn("audible.com/pd?asin=B008UCYCSQ", page)
+        self.assertIn("audible.com/pd/B008UCYCSQ", page)
 
     def test_the_match_block_names_the_book_and_links_the_asin(self):
         page = self.page()
         self.assertIn("Audible match: <b>Heir of Novron</b>", page)
         self.assertIn("Match confidence: <b>MEDIUM</b>", page)
-        self.assertIn("audible.com/pd?asin=B008UCYCSQ", page)
+        self.assertIn("audible.com/pd/B008UCYCSQ", page)
+
+    def test_the_old_audible_link_form_never_comes_back(self):
+        # Audible stopped serving /pd?asin=<ASIN>; the working form is /pd/<ASIN>.
+        self.assertNotIn("audible.com/pd?asin=", self.page())
+        import pathlib
+        import audiobind.web
+        self.assertNotIn("audible.com/pd?asin=", pathlib.Path(audiobind.web.__file__).read_text(encoding="utf-8"))
 
     def test_a_confidence_meter_marks_the_current_tier(self):
         page = self.page()

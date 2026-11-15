@@ -9,6 +9,8 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+- The ASIN link opens the right Audible page again — the old address form stopped working.
+
 ### Added
 - **The watcher budgets the account instead of only obeying the site's moment-to-moment answers.** A
   freeleech wedge is never refunded and a tracker account has a limited number of unsatisfied
@@ -24,6 +26,25 @@ All notable changes to this project are documented here. This project follows
   independently of it.
 - **The watcher panel says where the wedges stand**, e.g. "Wedges: 1 spent in the last 24 hours, 2 left
   of today's allowance, 1 kept in reserve." With no freeleech parameter it says no credits are ever spent.
+
+### UI quick wins
+Calm the page, one primary per view; no new features and no layout changes.
+- **Easier to read.** The dimmest label colour is lighter, the Review dots no longer pulse, and the Held
+  dot is amber like the rest of the app.
+- **Problem rows are one line.** The reason under a book is cut to a single line with the full sentence
+  in its tooltip, and the shelf starts collapsed unless you opened it this session.
+- **The rail only shouts when there is something to see.** Review, Held and Failed turn amber only when
+  their count is above 0; the Series count is no longer amber.
+- **Fewer buttons that do nothing.** Pause after this book and Stop now appear only while a book is
+  encoding (Resume still shows when paused). Dry run is neutral until it is on.
+- **One primary per view.** Scan, Retry now and Get this are secondary; Convert anyway is the one amber
+  action for a held book. "Scan now" is now **Scan for changes** and "Re-check all" is **Re-match all...**.
+- **Library page is titled "Library"**; the rail already carries the name.
+- **No more empty boxes.** The Held glyph and the lock chips no longer use characters some fonts lack
+  ("Locked by you" / "Unlocked" in plain text).
+- An opened detail panel scrolls clear of the sticky header, and the encode strip's speed, ETA and
+  book title now update live.
+- Removed `docs/deploy-0.20.0.sh`, which tripped the repo's own no-addresses guard (still in history).
 
 ### Changed
 - **The budget fails closed.** If qBittorrent cannot be read, no credit is spent that cycle; books that

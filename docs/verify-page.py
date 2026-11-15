@@ -246,7 +246,8 @@ check("library detail panel carries the series hook",
 page = get("/series")
 check("series: no unexpanded {placeholders}",
       not re.search(r"\{(version|styles|series_script|series_item|body|rail_total)\}", page))
-check("series: Series tab is the active one", 'ab-active ab-alert" href="/series" aria-current="page"' in page)
+check("series: Series tab is the active one", 'ab-active" href="/series" aria-current="page"' in page
+      and 'ab-active ab-alert" href="/series"' not in page)
 check("series: card shows owned of total", 'of 5 owned' in page and "2 MISSING" in page)
 check("series: missing list heading", "Missing from Jack Reacher &mdash; 2 books" in page)
 check("series: row copy", "Not in your library" in page and "I have this" in page
@@ -256,7 +257,7 @@ check("series: deep-link target present", 'id="ab-series-jack-reacher"' in page)
 check("series: covers go through the local proxy", '/cover?asin=B0000000J4' in page)
 external = set(re.findall(r"https?://[^\"' <>]+", page))
 check("series: the only external URLs are Audible book links",
-      all(u.startswith("https://www.audible.com/pd?asin=") for u in external), str(sorted(external))[:300])
+      all(u.startswith("https://www.audible.com/pd/") for u in external), str(sorted(external))[:300])
 check("series: no external scripts or stylesheets", "<script src" not in page and 'rel="stylesheet"' not in page)
 sscript = re.findall(r"<script>(.*?)</script>", page, re.S)
 check("series: exactly one inline script", len(sscript) == 1, f"found {len(sscript)}")

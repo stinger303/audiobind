@@ -196,7 +196,7 @@ class TestBadgeAndDegraded(StateCase):
         page = web.render(self.state)
         self.assertRegex(page, r'href="/series">\s*<span class="ab-glyph">&#9878;</span> Series\s*'
                                r'<span class="ab-count"[^>]*>5</span>')
-        self.assertIn('class="ab-rail-item ab-alert" href="/series"', page)
+        self.assertIn('class="ab-rail-item" href="/series"', page)  # an opportunity, not an alarm
         self.assertIn('<span class="ab-count" title="books missing from your series">5</span>',
                       web.render_settings(self.state))
 
@@ -378,9 +378,9 @@ class TestPages(StateCase):
         self.assertIn("2</b><span>novellas, unnumbered &middot; hidden", html)
         self.assertIn("between-the-numbers entry (#23.6) &middot; hidden", html)
         self.assertIn('<details class="ab-series-extra">', html)
-        self.assertIn('data-link="https://www.audible.com/pd?asin=B000000019"', html)
+        self.assertIn('data-link="https://www.audible.com/pd/B000000019"', html)
         self.assertIn('id="ab-series-jack-reacher"', html)
-        self.assertIn('class="ab-rail-item ab-active ab-alert" href="/series" aria-current="page"', html)
+        self.assertIn('class="ab-rail-item ab-active" href="/series" aria-current="page"', html)
         self.assertIn("12.0 hrs &middot; ASIN B000000019 &middot; Audible.com", html)
 
     def test_detail_panel_hook_for_a_book_in_a_shelf_series(self):

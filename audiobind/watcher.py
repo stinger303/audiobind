@@ -195,14 +195,14 @@ class Budget:
         """(allowed, why not). The reserve is enforced against the ledger only: the site's own wedge
         count is not read."""
         if self.unknown:
-            return False, "qBittorrent is unreachable, so the wedge budget cannot be checked"
+            return False, "qBittorrent is unreachable, so the freeleech credit budget cannot be checked"
         reserve, per_day, per_cycle = wedge_reserve(), wedge_per_day(), wedge_per_cycle()
         if reserve > 0 and per_day > 0 and self.spent_day >= per_day - reserve:
             return False, "keeping %d freeleech %s in reserve" % (reserve, "credit" if reserve == 1 else "credits")
         if per_cycle > 0 and self.spent_cycle >= per_cycle:
-            return False, "%d %s already spent this cycle" % (self.spent_cycle, "wedge" if self.spent_cycle == 1 else "wedges")
+            return False, "%d freeleech %s already spent this cycle" % (self.spent_cycle, "credit" if self.spent_cycle == 1 else "credits")
         if per_day > 0 and self.spent_day >= per_day:
-            return False, "%d %s spent in the last 24 hours" % (self.spent_day, "wedge" if self.spent_day == 1 else "wedges")
+            return False, "%d freeleech %s spent in the last 24 hours" % (self.spent_day, "credit" if self.spent_day == 1 else "credits")
         return True, ""
 
 

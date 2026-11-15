@@ -225,14 +225,14 @@ class TestEditorUI(unittest.TestCase):
     def test_lock_chips_follow_the_locked_fields(self):
         page = web.render(self.state)
         self.assertIn('class="ab-lock ab-lock-off" data-field="title"', page)
-        self.assertIn("\U0001f513 Unlocked", page)
-        self.assertNotIn("\U0001f512 Locked by you", page)
+        self.assertIn(">Unlocked</button>", page)
+        self.assertNotIn(">Locked by you</button>", page)
         self.assertIn('locked by you" hidden>locked</span>', page)  # row badge, hidden
         self.state.set_overrides("Lewis/Moneyball", {"title": "Corrected"})
         self.state.lock_fields("Lewis/Moneyball", {"title"})
         page = web.render(self.state)
         self.assertIn('class="ab-lock ab-lock-on" data-field="title"', page)
-        self.assertIn("\U0001f512 Locked by you", page)
+        self.assertIn(">Locked by you</button>", page)
         self.assertIn('class="ab-lock ab-lock-off" data-field="narrator"', page)
         self.assertIn('data-field="title" value="Corrected"', page)
         self.assertIn('locked by you">locked</span>', page)  # row badge, shown

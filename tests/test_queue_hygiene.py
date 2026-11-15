@@ -395,8 +395,8 @@ class TestStatusDot(unittest.TestCase):
         self.assertIn('<span class="ab-st-age">waiting &lt;1m</span>', web.status_dot("review", NOW - 10, NOW))
 
     def test_only_a_moving_state_pulses(self):
-        self.assertIn("ab-st-moving", web.status_dot("review", NOW, NOW))
-        for settled in ("converted", "held", "failed", "ready", "interrupted"):
+        # 0.21.0-dev2: Review waits on the operator, it is not moving - nothing pulses any more
+        for settled in ("converted", "held", "review", "failed", "ready", "interrupted"):
             self.assertNotIn("ab-st-moving", web.status_dot(settled, NOW, NOW), settled)
         self.assertIn("ab-st-moving .ab-st-dot{animation", web.STYLES)
 
@@ -574,8 +574,8 @@ class TestVocabulary(unittest.TestCase):
         self.assertEqual(page.count(badge), 1)  # the row's lock badge, shown
         text = re.sub(r"\s+", " ", visible_text(page.replace(badge, "")))
         allowed = (
-            "\U0001f512 Locked by you",
-            "\U0001f513 Unlocked",
+            "Locked by you",
+            "Unlocked",
             "Click to unlock and hand it back to the catalog",
             "Click to unlock: the next re-check matches this book on its own",
             "Edit and save it to lock it",
@@ -591,7 +591,7 @@ class TestVocabulary(unittest.TestCase):
         for phrase in allowed:
             text = text.replace(phrase, "")
         self.assertNotRegex(text, r"(?i)\b(un)?lock(ed|s|ing)?\b")
-        self.assertIn("\U0001f512 Locked by you", page)
+        self.assertIn(">Locked by you</button>", page)
         self.assertIn("Editing a field locks it automatically", page)
 
 
