@@ -12,6 +12,7 @@ import unittest
 import urllib.parse
 from unittest import mock
 
+from audiobind import __version__
 from audiobind import config, tracker, watcher, web
 from audiobind.config import CONFIG, DEPRECATED_ENV, Config
 from audiobind.state import State
@@ -269,7 +270,7 @@ class TestEndToEnd(WatcherCase):
         (m1, u1, d1, h1), (m2, u2, d2, h2) = calls
         self.assertEqual((m1, u1), ("POST", SEARCH_URL))
         self.assertTrue(h1["Cookie"].startswith(f"{COOKIE}="))
-        self.assertNotIn("User-Agent", h1)
+        self.assertEqual(h1["User-Agent"], f"audiobind/{__version__}")
         self.assertEqual(json.loads(d1.decode())["category"], "13")
         self.assertEqual((m2, u2), ("GET", f"{DOWNLOAD_URL}?tid=1001&fl"))
         row = self.row()

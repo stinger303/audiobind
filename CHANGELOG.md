@@ -5,6 +5,21 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev10] - 2026-11-15
+
+A default User-Agent, and a 400 that says what to do.
+
+### Changed
+- **`TRACKER_USER_AGENT` now defaults to `audiobind/<version>`.** dev5 sent no User-Agent unless the
+  variable was set, but a tracker can answer a request with none by HTTP 400 (proven live: no UA -> 400,
+  any UA -> results), so a fresh install failed every search. An install that never set the variable
+  now sends `audiobind/<version>`. A set value is still sent verbatim. The literal `none` (any case,
+  spaces ignored) sends no User-Agent at all, so the anonymity option remains. urllib's own
+  `Python-urllib` agent is still never sent, and the egress probe is unchanged.
+- **An HTTP 400 with no User-Agent says so**, for search and download: "the tracker answered HTTP 400.
+  Some trackers refuse requests with no User-Agent - set TRACKER_USER_AGENT". With a User-Agent the
+  message is unchanged.
+
 ## [0.19.0-dev9] - 2026-11-14
 
 The search document can be sent form-encoded, not only as JSON.

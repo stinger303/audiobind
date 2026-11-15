@@ -282,8 +282,8 @@ class Config:
     qbit_category: str = "audiobooks"
     qbit_user: str = ""
     qbit_pass: str = field(default="", repr=False)
-    #: how tracker requests leave the container. ``tracker_user_agent`` "" = no User-Agent is
-    #: sent at all; ``tracker_proxy`` "" = direct (it may hold credentials, so never in repr());
+    #: how tracker requests leave the container. ``tracker_user_agent`` "" = ``audiobind/<version>``,
+    #: "none" = no User-Agent at all; ``tracker_proxy`` "" = direct (it may hold credentials, so never in repr());
     #: ``tracker_home_ip`` set = the egress guard is armed and refuses to run from that IP.
     tracker_user_agent: str = ""
     tracker_proxy: str = field(default="", repr=False)

@@ -27,6 +27,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
+from . import __version__
 from .util import clean, norm, sim
 
 #: Search answers name the same concept differently from site to site, so every field is read
@@ -578,7 +579,7 @@ def _opener(proxy: str = ""):
     https target goes through an HTTP CONNECT tunnel), or an empty map (no proxy at all) when
     there is none, so the environment's proxy variables are never consulted. ``addheaders`` is
     emptied so urllib's own ``User-agent: Python-urllib/x`` is never sent; the only User-Agent
-    on the wire is TRACKER_USER_AGENT, when the owner set one."""
+    on the wire is the one TrackerClient sets (``audiobind/<version>`` or TRACKER_USER_AGENT)."""
     with _OPENERS_LOCK:
         if proxy not in _OPENERS:
             mapping = {"http": proxy, "https": proxy} if proxy else {}
@@ -630,6 +631,17 @@ def looks_like_torrent(body: bytes) -> bool:
     return bool(body) and len(body) <= MAX_BODY and body[:1] == b"d" and b"4:info" in body
 
 
+def resolve_user_agent(setting: str = "") -> str:
+    """The User-Agent to send for a TRACKER_USER_AGENT setting: empty = ``audiobind/<version>``,
+    the literal ``none`` (any case) = "" (send none at all), anything else verbatim."""
+    value = str(setting or "").strip()
+    if not value:
+        return f"audiobind/{__version__}"
+    if value.lower() == "none":
+        return ""
+    return value
+
+
 class TrackerClient:
     """Search and download - one request at a time, MIN_SPACING apart, with shared backoff.
 
@@ -646,7 +658,7 @@ class TrackerClient:
         self._session = str(session or "").strip()
         self._cookie_name = str(cookie_name or "").strip()
         self.endpoints = endpoints
-        self._user_agent = str(user_agent or "").strip()
+        self._user_agent = resolve_user_agent(user_agent)
         # the default transport carries the proxy; a test's fake transport is used as given
         self.transport = transport or functools.partial(
             urllib_transport, proxy=str(proxy or "").strip(), endpoints=endpoints)
@@ -665,7 +677,7 @@ class TrackerClient:
 
     def _headers(self, extra: dict | None = None) -> dict:
         headers = {"Cookie": f"{self._cookie_name}={self._session}"}
-        if self._user_agent:  # no override unless the owner set TRACKER_USER_AGENT; never our name or version
+        if self._user_agent:  # empty only when the owner set TRACKER_USER_AGENT=none
             headers["User-Agent"] = self._user_agent
         return {**headers, **(extra or {})}
 
@@ -689,7 +701,10 @@ class TrackerClient:
             self.limiter.done()
             if status != 200:
                 delay = self.backoff.fail(_retry_after(headers))
-                raise TrackerError(f"the tracker answered HTTP {status}; backing off {delay:.0f}s", int(status or 0))
+                hint = ""
+                if status == 400 and not self._user_agent:
+                    hint = ". Some trackers refuse requests with no User-Agent - set TRACKER_USER_AGENT"
+                raise TrackerError(f"the tracker answered HTTP {status}{hint}; backing off {delay:.0f}s", int(status or 0))
             if body is None or len(body) > MAX_BODY:
                 delay = self.backoff.fail()
                 raise TrackerError(f"the tracker's answer was too large; backing off {delay:.0f}s", 200)

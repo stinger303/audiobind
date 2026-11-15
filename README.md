@@ -500,9 +500,10 @@ stack, so use one, two or all three:
 2. **Send tracker traffic through an HTTP proxy** (`TRACKER_PROXY`).
 3. **Arm the tripwire** (`TRACKER_HOME_IP` and/or `TRACKER_EXPECTED_EGRESS_IP`): a check that refuses to talk to the tracker from your home IP, or from anywhere but the VPN address you name.
 
-Audiobind also sends **no identifying `User-Agent`** to the tracker: it never announces its name or
-version. The request carries only your session cookie and what the endpoint needs. If you
-would rather look like a particular client, set `TRACKER_USER_AGENT` and that text is sent as-is.
+Audiobind sends a `User-Agent` of `audiobind/<version>` to the tracker by default. Set
+`TRACKER_USER_AGENT` to send your own text as-is, or to the literal `none` to send no User-Agent at all.
+Some trackers refuse a request with no User-Agent (HTTP 400), so only use `none` if yours accepts it.
+The request otherwise carries only your session cookie and what the endpoint needs.
 
 If you have never used a VPN container: it is a container that holds your VPN connection
 (WireGuard or OpenVPN) and routes its own traffic through it. Other containers can then be

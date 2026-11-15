@@ -48,17 +48,36 @@ def recording_client(**kwargs):
 
 
 class TestFingerprint(unittest.TestCase):
-    def test_default_sends_no_user_agent_and_no_version(self):
+    def test_default_sends_audiobind_version_and_never_urllib(self):
         client, seen = recording_client()
         client.search("Project Hail Mary", "Andy Weir")
         client.transport = lambda m, u, d, h, t: (seen.append(dict(h)) or (200, {}, b"d4:infod4:name1:aee"))
         client.download(1, False)
         self.assertEqual(len(seen), 2)
         for headers in seen:
-            self.assertNotIn("user-agent", {k.lower() for k in headers})
-            blob = " ".join(f"{k}: {v}" for k, v in headers.items())
-            self.assertNotIn("audiobind/", blob)
-            self.assertNotIn(__version__, blob)
+            self.assertEqual(headers["User-Agent"], f"audiobind/{__version__}")
+            self.assertNotIn("urllib", headers["User-Agent"].lower())
+
+    def test_none_sends_no_user_agent(self):
+        for value in ("none", "NONE", " none "):
+            client, seen = recording_client(user_agent=value)
+            client.search("x")
+            self.assertNotIn("user-agent", {k.lower() for k in seen[0]}, value)
+
+    def test_400_hint_only_without_a_user_agent(self):
+        hint = "Some trackers refuse requests with no User-Agent - set TRACKER_USER_AGENT"
+        for ua, hinted in (("none", True), ("", False), ("UA/1", False)):
+            client = make_client("cookie", user_agent=ua, transport=lambda *a: (400, {}, b""),
+                                 limiter=tracker.RateLimiter(clock=lambda: 0.0, sleep=lambda s: None))
+            with self.assertRaises(tracker.TrackerError) as ctx:
+                client.search("x")
+            self.assertIn("the tracker answered HTTP 400", str(ctx.exception))
+            self.assertEqual(hint in str(ctx.exception), hinted, ua)
+        client = make_client("cookie", user_agent="none", transport=lambda *a: (400, {}, b""),
+                             limiter=tracker.RateLimiter(clock=lambda: 0.0, sleep=lambda s: None))
+        with self.assertRaises(tracker.TrackerError) as ctx:
+            client.download(1, False)
+        self.assertIn(hint, str(ctx.exception))
 
     def test_owner_user_agent_is_used_verbatim(self):
         client, seen = recording_client(user_agent="Mozilla/5.0 (X11; Linux x86_64)")
