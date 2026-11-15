@@ -78,11 +78,23 @@ class SharedOutputTests(LiveServerCase):
         status, body = self.post({"action": "delete", "path": "Author/Title (re-rip)", "confirm": True})
         self.assertEqual(status, 200, body)
         self.assertEqual(body["output"], "kept")
-        self.assertEqual(body["output_kept_reason"], "also used by 1 other book(s)")
+        # dev15: a "ready" row never owned the folder, whoever else points at it
+        self.assertEqual(body["output_kept_reason"], web.OUTPUT_NOT_OURS)
         self.assertTrue(published.exists())
         self.assertFalse((self.lib / "Author" / "Title (re-rip)").exists())  # source deleted as normal
         self.assertIsNone(self.state.get("Author/Title (re-rip)"))
         self.assertIsNotNone(self.state.get("Author/Title"))
+
+    def test_converted_row_keeps_an_output_another_row_uses(self):
+        published = self.out / "Author" / "Title" / "Title.m4b"
+        touch(str(published), b"m4b")
+        self._book("Author/Title", "converted", published)
+        self._book("Author/Title (copy)", "converted", published)
+        status, body = self.post({"action": "delete", "path": "Author/Title (copy)", "confirm": True})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["output"], "kept")
+        self.assertEqual(body["output_kept_reason"], "also used by 1 other book(s)")
+        self.assertTrue(published.exists())
 
     def test_counts_every_other_row(self):
         published = self.out / "Author" / "Title" / "Title.m4b"

@@ -190,6 +190,15 @@ def restore_controls(state: State) -> None:
         log.info("watcher dry run: off (saved switch)")
 
 
+def paused_tick(state: State, wait_s: float = 60) -> None:
+    """One idle turn of the loop while paused."""
+    CONTROL.clear_scan()  # a click while paused must not busy-loop
+    state.heartbeat()  # paused is alive, not stalled: the healthcheck must stay green
+    refresh_series(state)  # a no-op unless a listing is a day old
+    CONTROL.wait(wait_s)
+    set_effective(state)
+
+
 def run() -> None:
     """Loop forever, honouring SCAN_INTERVAL_MIN."""
     state = State(CONFIG.state_dir)
@@ -216,10 +225,7 @@ def run() -> None:
     set_effective(state)
     while True:
         if CONTROL.paused:
-            CONTROL.clear_scan()  # a click while paused must not busy-loop
-            refresh_series(state)  # a no-op unless a listing is a day old
-            CONTROL.wait(60)
-            set_effective(state)
+            paused_tick(state)
             continue
 
         force = CONTROL.scan_force  # a Re-check all click re-audits decided books

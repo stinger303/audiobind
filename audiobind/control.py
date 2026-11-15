@@ -14,14 +14,20 @@ Three ways to intervene, and they are not the same thing:
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import threading
+import time
 
 from .config import CONFIG
 
 
 class Stopped(Exception):
     """Raised when the operator aborts the conversion that is currently running."""
+
+
+#: at most one encode-progress heartbeat this often (each one is a small DB write)
+HEARTBEAT_EVERY_S = 30.0
 
 
 class Control:
@@ -47,6 +53,9 @@ class Control:
         self._scan_force = False
         #: manually requested conversions waiting for the one-at-a-time encoder
         self._queue: list[str] = []
+        #: called (throttled) from encode progress so a long encode keeps the healthcheck fresh
+        self._heartbeat = None
+        self._heartbeat_at = 0.0
 
     # ---------------------------------------------------------------- pause
     @property
@@ -125,6 +134,25 @@ class Control:
 
     def set_progress(self, **values) -> None:
         self.progress = values
+        self._beat()
+
+    def set_heartbeat(self, fn) -> None:
+        """Install (or with None, remove) the callable an encode's progress keeps alive."""
+        self._heartbeat = fn
+        self._heartbeat_at = 0.0
+
+    def _beat(self) -> None:
+        fn = self._heartbeat
+        if fn is None:
+            return
+        now = time.monotonic()
+        if self._heartbeat_at and now - self._heartbeat_at < HEARTBEAT_EVERY_S:
+            return
+        self._heartbeat_at = now
+        try:
+            fn()
+        except Exception:  # noqa: BLE001 - a heartbeat must never break an encode
+            logging.getLogger("audiobind").debug("heartbeat failed", exc_info=True)
 
     def clear_progress(self) -> None:
         self.progress = {}

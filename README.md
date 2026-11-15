@@ -56,7 +56,7 @@ but not hand-written line by line). It reads real audiobook libraries and writes
 a separate output library, and software like that can fail badly — **you may
 experience data loss**. Audiobind reads your source library and writes converted books
 to a separate output folder; the only thing that ever *deletes* source files is the
-explicit Delete button (typed confirmation, no undo). Keep backups, run it against a
+explicit Delete button (a confirmation dialog, no undo). Keep backups, run it against a
 copy first, and pin a tagged release instead of `latest` if reproducible behavior
 matters to you.
 
@@ -91,7 +91,10 @@ matters to you.
 
 Converted books are written to the separate output library. The web UI's **Delete**
 is the one destructive path — it permanently removes the source folder *and* the
-published output, and requires typed confirmation. If you mount the library
+published output, after you confirm in a dialog (one **Delete permanently** button; there is
+no typed confirmation, so read the dialog). It only removes an output folder Audiobind itself
+converted: a book marked *already published* points at a folder that was there before, and
+Delete forgets the book but leaves that folder alone. If you mount the library
 read-only instead, Delete adapts: it removes the published output and forgets the
 book, keeps the source folder untouched, and tells you so (the folder will
 reappear on the next scan unless you remove it from the share).

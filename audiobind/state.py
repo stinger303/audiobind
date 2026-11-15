@@ -226,6 +226,12 @@ class State:
         self.connection.executescript(SCHEMA)
         self._migrate()
         self._migrate_locks()
+        # after _migrate: asin_override may only just have been added. The cover cache and the
+        # wishlist ask "is this ASIN in the library?" per ASIN; without these that is a full scan
+        columns = {row[1] for row in self.connection.execute("PRAGMA table_info(units)")}
+        for column in ("asin", "asin_override"):
+            if column in columns:  # a very old or hand-made table may lack one: no index, no crash
+                self.connection.execute(f"CREATE INDEX IF NOT EXISTS idx_units_{column} ON units({column})")
         self.connection.commit()
 
     def _migrate(self) -> None:
@@ -990,6 +996,17 @@ class State:
         except ValueError:
             return None
         return data if isinstance(data, dict) else None
+
+    def library_asins(self) -> set[str]:
+        """Every ASIN a library book is matched or pinned to (two queries, one lock hold)."""
+        found: set[str] = set()
+        with self._lock:
+            for sql in (
+                "SELECT asin AS a FROM units WHERE asin != ''",
+                "SELECT asin_override AS a FROM units WHERE asin_override != ''",
+            ):
+                found.update(r["a"] for r in self.connection.execute(sql).fetchall() if r["a"])
+        return found
 
     def cover_keep_asins(self) -> set[str]:
         """Every ASIN whose cached cover must survive a prune: the library's (matched or pinned),

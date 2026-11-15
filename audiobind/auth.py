@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import logging
 import secrets
 import sqlite3
@@ -33,6 +34,9 @@ USER_COOKIE_TTL = 30 * 24 * 3600
 #: failed logins (or wrong Bearer tokens) allowed per source IP inside FAIL_WINDOW
 FAIL_LIMIT = 5
 FAIL_WINDOW = 10 * 60
+#: failures allowed from ALL sources together inside FAIL_WINDOW: a guesser spread over many
+#: addresses (or IPv6 addresses inside one /64) cannot get FAIL_LIMIT guesses per address
+GLOBAL_FAIL_LIMIT = 30
 #: hard caps so a flood of requests cannot grow these tables without bound
 MAX_SESSIONS = 256
 MAX_TRACKED_IPS = 4096
@@ -309,17 +313,47 @@ class Sessions:
             self._persist(lambda: self._store.delete_sessions(dead))
 
 
+def limiter_key(ip: str) -> str:
+    """The key failures are counted under: an IPv4 address as is, an IPv6 address by its /64
+    (one host is usually given a whole /64, so per-address counting is no limit at all), an
+    IPv4-mapped IPv6 address as its IPv4 address. Anything unparseable is used unchanged."""
+    try:
+        addr = ipaddress.ip_address((ip or "").strip().strip("[]").split("%", 1)[0])
+    except ValueError:
+        return ip
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr.ipv4_mapped is not None:
+            return str(addr.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+    return str(addr)
+
+
 class FailLimiter:
-    """At most ``limit`` failures per key inside a sliding ``window``."""
+    """At most ``limit`` failures per key, and ``global_limit`` from every key together, inside
+    a sliding ``window``. Keys are normalised by ``limiter_key`` (IPv6 counted per /64)."""
 
     def __init__(
-        self, limit: int = FAIL_LIMIT, window: float = FAIL_WINDOW, clock: Callable[[], float] = time.time
+        self,
+        limit: int = FAIL_LIMIT,
+        window: float = FAIL_WINDOW,
+        clock: Callable[[], float] = time.time,
+        global_limit: int = GLOBAL_FAIL_LIMIT,
     ):
         self.limit = limit
         self.window = window
         self.clock = clock
+        self.global_limit = global_limit
         self._lock = threading.Lock()
         self._fails: dict[str, list[float]] = {}
+        #: (time, key) for every counted failure, any key: the global budget
+        self._all: list[tuple[float, str]] = []
+
+    def _global_recent(self, now: float) -> list[tuple[float, str]]:
+        self._all = [(t, k) for t, k in self._all if now - t < self.window]
+        return self._all
+
+    def _global_blocked(self, now: float) -> bool:
+        return self.global_limit > 0 and len(self._global_recent(now)) >= self.global_limit
 
     def _recent(self, key: str, now: float) -> list[float]:
         stamps = [t for t in self._fails.get(key, []) if now - t < self.window]
@@ -330,28 +364,35 @@ class FailLimiter:
         return stamps
 
     def blocked(self, key: str) -> bool:
+        key = limiter_key(key)
+        now = self.clock()
         with self._lock:
-            return len(self._recent(key, self.clock())) >= self.limit
+            return len(self._recent(key, now)) >= self.limit or self._global_blocked(now)
 
     def attempt(self, key: str) -> bool:
         """Check the budget and count this attempt in one step, BEFORE the password is
         verified. False = locked out (nothing is counted). On success call ``reset``.
         Because the count is taken up front, N concurrent guesses are N failures."""
+        key = limiter_key(key)
         now = self.clock()
         with self._lock:
-            if len(self._recent(key, now)) >= self.limit:
+            if len(self._recent(key, now)) >= self.limit or self._global_blocked(now):
                 return False
             self._record_locked(key, now)
             return True
 
     def retry_after(self, key: str) -> int:
         """Seconds until the oldest counted failure ages out (0 when not blocked)."""
+        key = limiter_key(key)
         now = self.clock()
         with self._lock:
+            waits = [0]
             stamps = self._recent(key, now)
-            if len(stamps) < self.limit:
-                return 0
-            return max(1, int(self.window - (now - stamps[0])) + 1)
+            if len(stamps) >= self.limit:
+                waits.append(max(1, int(self.window - (now - stamps[0])) + 1))
+            if self._global_blocked(now):
+                waits.append(max(1, int(self.window - (now - self._all[0][0])) + 1))
+            return max(waits)
 
     def _record_locked(self, key: str, now: float) -> None:
         if key not in self._fails and len(self._fails) >= MAX_TRACKED_IPS:
@@ -360,19 +401,27 @@ class FailLimiter:
             if len(self._fails) >= MAX_TRACKED_IPS:
                 self._fails.pop(next(iter(self._fails)))
         self._fails.setdefault(key, []).append(now)
+        self._all.append((now, key))
+        if len(self._all) > MAX_TRACKED_IPS:  # record() is uncapped by the budget: bound the memory
+            del self._all[: len(self._all) - MAX_TRACKED_IPS]
 
     def record(self, key: str) -> None:
+        key = limiter_key(key)
         now = self.clock()
         with self._lock:
             self._record_locked(key, now)
 
     def reset(self, key: str) -> None:
+        """A successful sign-in: this key's failures (and its share of the global budget) go."""
+        key = limiter_key(key)
         with self._lock:
             self._fails.pop(key, None)
+            self._all = [(t, k) for t, k in self._all if k != key]
 
     def clear(self) -> None:
         with self._lock:
             self._fails.clear()
+            self._all.clear()
 
 
 SESSIONS = Sessions()

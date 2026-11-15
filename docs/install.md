@@ -207,3 +207,19 @@ and no account exists, the setup page is skipped. You sign in with any username 
 the account in **Settings → Account** (it asks for the token to confirm) or with
 `reset-password`. From then on the account is the only way in: `AUTH_TOKEN` stops working
 and you can remove it.
+
+## Upgrading
+
+**To 0.19.0-dev14 or later (Audiobookshelf folder layout).** New conversions are filed as
+`Author/Series/<seq> - Title/` (all authors in the folder name). Books you already converted
+**stay in their old folders** after the upgrade; nothing moves them on its own.
+
+1. Open **Settings > Library > Match Audiobookshelf layout**, click **Preview** and read the list.
+2. Click **Apply** to move them. Do this **before** any **Re-check all** or **Retry** on converted
+   books, and before any **Convert anyway** (which encodes the book again into the new layout and
+   leaves the old folder behind).
+3. Audiobookshelf may treat a renamed folder as a new book and **lose its listening progress**.
+   Check your in-progress books after it rescans.
+
+Every move is journaled in `STATE_DIR/abs-layout-<UTC time>.json`; see
+[configuration](configuration.md#match-audiobookshelf-layout-settings--library) for the details.

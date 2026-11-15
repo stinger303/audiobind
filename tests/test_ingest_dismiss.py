@@ -131,13 +131,18 @@ class TestIngestDeleteRemovesOutputOnly(IngestWebCase):
         self.assertIsNotNone(self.state.get("Author/Book"))
         self.assertTrue((self.lib / "Author" / "Book" / "01.mp3").exists())
 
-    def test_output_removal_failure_still_reports_like_a_library_delete(self):
-        self.published()
+    def test_output_removal_failure_keeps_the_row_like_a_library_delete(self):
+        # dev15: a failed removal is a failure - the row is kept and the key is NOT dismissed
+        out = self.published()
         with mock.patch.object(web.shutil, "rmtree", side_effect=PermissionError(13, "Permission denied")):
             status, body = self.post({"action": "delete", "path": KEY, "confirm": True})
-        self.assertEqual(status, 200, body)
-        self.assertTrue(body["output"].startswith("failed ("))
-        self.assertTrue(body["dismissed"])
+        self.assertEqual(status, 500, body)
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["output"], "failed")
+        self.assertIn("EACCES", body["error"])
+        self.assertTrue(out.exists())
+        self.assertIsNotNone(self.state.get(KEY))
+        self.assertFalse(self.state.is_dismissed(KEY))
         self.assertTrue((self.ingest_root / TORRENT / "01.mp3").exists())
 
     def test_shared_output_is_kept_with_the_usual_reason(self):

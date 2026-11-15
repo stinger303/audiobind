@@ -5002,7 +5002,7 @@ def reset_manual_slots(n: int | None = None) -> None:
     MANUAL_SLOTS = threading.BoundedSemaphore(max(1, n if n is not None else CONFIG.manual_workers))
 
 
-def run_manual(state, unit, force: bool = False, slot=None) -> None:
+def run_manual(state, unit, force: bool = False, slot=None, reencode: bool = False) -> None:
     """A Retry / Use this ASIN / Convert anyway request, run off the request thread.
 
     The book leaves the queue however it ends - converted, still in review, held, a dry
@@ -5010,7 +5010,8 @@ def run_manual(state, unit, force: bool = False, slot=None) -> None:
     restart (render() hides queued books and shows them in the queue strip instead).
     """
     try:
-        process_unit(state=state, unit=unit, log=_log, force=force, manual=True)
+        # reencode: only Convert anyway may encode a book that is already converted again
+        process_unit(state=state, unit=unit, log=_log, force=force, manual=True, reencode=reencode)
     except Exception:  # noqa: BLE001 - a background thread has nobody to raise to
         logging.getLogger("audiobind").exception("manual action for %s failed", unit.state_key)
     finally:
@@ -5061,6 +5062,33 @@ def plan_target(p) -> tuple[Path, str]:
     else:
         kind = "file"
     return target, kind
+
+
+#: Delete's output_kept_reason for a row whose output Audiobind did not write
+OUTPUT_NOT_OURS = "that folder was not created by Audiobind"
+
+
+def audiobind_wrote_output(unit_state) -> bool:
+    """True only for a row whose ``output`` is a book Audiobind itself encoded and published.
+
+    A "ready" row (already published) records a file that was there before the scan, so it is
+    never Audiobind's to remove. A converted row whose detail names a different output path
+    (the row was edited, or moved by hand) does not prove ownership of ``output`` either.
+    """
+    if unit_state.status != "converted" or not unit_state.output:
+        return False
+    try:
+        detail = json.loads(unit_state.detail or "{}")
+    except (TypeError, ValueError):
+        detail = {}
+    recorded = detail.get("output") if isinstance(detail, dict) else None
+    path = recorded.get("path") if isinstance(recorded, dict) else None
+    if path:
+        try:
+            return Path(str(path)).resolve() == Path(unit_state.output).resolve()
+        except (OSError, RuntimeError):
+            return False
+    return True
 
 
 def output_sharers(state, rel: str, folder: Path) -> int:
@@ -5840,6 +5868,15 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
 
+            # a queued Retry / Convert anyway would re-create the row (and re-convert) right after
+            if rel in CONTROL.queue_snapshot()["units"]:
+                self._send(
+                    409,
+                    b'{"error":"this book is waiting for a manual action - delete it once that finishes"}',
+                    "application/json",
+                )
+                return
+
             # Validate unit exists in state
             unit_state = self.state.get(rel)
             if unit_state is None:
@@ -5900,7 +5937,10 @@ class Handler(BaseHTTPRequestHandler):
             # Path traversal guard: resolve output inside OUTPUT_ROOT
             out_root = Path(CONFIG.output_root).resolve()
             out_trash = None
-            if unit_state.output:
+            # only a folder Audiobind wrote is ever removed: a "ready" (already published) row
+            # points at a book that was there before, and must not take it with it
+            not_ours = bool(unit_state.output) and not audiobind_wrote_output(unit_state)
+            if unit_state.output and not not_ours:
                 out_path = Path(unit_state.output).resolve()
                 try:
                     out_path.relative_to(out_root)
@@ -6012,7 +6052,11 @@ class Handler(BaseHTTPRequestHandler):
 
             output_removed = "absent"
             output_kept_reason = ""
-            if out_trash is not None and out_shared:
+            if not_ours:
+                output_removed = "kept"
+                output_kept_reason = OUTPUT_NOT_OURS
+                log.info("HARD DELETE %s; output kept, %s: %s", rel, output_kept_reason, unit_state.output)
+            elif out_trash is not None and out_shared:
                 output_removed = "kept"
                 output_kept_reason = f"also used by {out_shared} other book(s)"
                 log.info("HARD DELETE %s; output kept, %s: %s", rel, output_kept_reason, out_trash)
@@ -6039,8 +6083,25 @@ class Handler(BaseHTTPRequestHandler):
                     output_removed = "removed"
                     log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
                 except OSError as exc:
-                    output_removed = f"failed ({_os_error_code(exc)}) - details are in the Audiobind log"
+                    # the book is NOT forgotten: the row stays so the operator can see the
+                    # converted copy is still there, fix the cause and delete again
                     log.error("HARD DELETE %s; could not remove output %s: %s", rel, out_trash, exc)
+                    self._send(
+                        500,
+                        json.dumps(
+                            {
+                                "ok": False,
+                                "error": f"the converted copy could not be removed ({_os_error_code(exc)}; "
+                                "details are in the Audiobind log). The book was kept - fix the "
+                                "permissions and delete again."
+                                + (" The source folder was already removed." if source_removed else ""),
+                                "output": "failed",
+                                "source_removed": source_removed,
+                            }
+                        ).encode(),
+                        "application/json",
+                    )
+                    return
             else:
                 log.info("HARD DELETE %s; output -> none", rel)
 
@@ -6126,6 +6187,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(409, b'{"error":"this book is already waiting for an action"}', "application/json")
             return ""
         try:
+            if self.state.undismiss(rel):
+                # an explicit action on a removed ingest book is the operator bringing it back
+                logging.getLogger("audiobind").info("%s: removal undone by a manual %s", rel, action)
             if action == "set_asin":
                 self.state.set_asin_override(rel, asin)
                 # setting the ASIN by hand is an edit like any other: it locks
@@ -6137,7 +6201,7 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(
                 target=run_manual,
                 args=(self.state, unit),
-                kwargs={"force": action == "force", "slot": slot},
+                kwargs={"force": action == "force", "reencode": action == "force", "slot": slot},
                 daemon=True,
                 name="manual-" + action,
             ).start()

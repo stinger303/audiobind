@@ -101,7 +101,10 @@ class TestHeld(unittest.TestCase):
 
 
 class TestScoreUsesTheFloorMeasure(unittest.TestCase):
-    """0.19.0-dev12: title_sim is floor_sim, so the score and TITLE_FLOOR agree on one measure."""
+    """0.19.0-dev12 / dev15: folder baggage no longer drags a right title down.
+
+    dev15: title_sim is the best whole-string score over normalised readings of the folder title
+    (matching.title_score); floor_sim (best window) is only the TITLE_FLOOR gate."""
 
     DCC_FOLDER_TITLE = "Dungeon Crawler Carl 01 - Dungeon Crawler Carl"
 
@@ -130,10 +133,11 @@ class TestScoreUsesTheFloorMeasure(unittest.TestCase):
         self.assertEqual(m.confidence, "HIGH")
         self.assertGreaterEqual(m.margin, 0.05)
 
-    def test_title_sim_is_floor_sim(self):
+    def test_title_sim_is_the_whole_string_variant_score(self):
         product = self.dcc()
         m = run(self.DCC_FOLDER_TITLE, product, "Matt Dinniman")
-        self.assertEqual(m.title_sim, round(matching.floor_sim(self.DCC_FOLDER_TITLE, product), 3))
+        self.assertEqual(m.title_sim, round(matching.title_score(self.DCC_FOLDER_TITLE, product), 3))
+        self.assertIn("Dungeon Crawler Carl", matching.title_variants(self.DCC_FOLDER_TITLE))
 
     def test_the_dev3_wrong_matches_are_still_rejected_by_the_floor(self):
         for wanted, wrong in (("Private", "Step on a Crack"),
@@ -155,7 +159,8 @@ class TestScoreUsesTheFloorMeasure(unittest.TestCase):
             m = run(wanted, prod("B0MATCH001", title, author), author)
             self.assertEqual(m.asin, "B0MATCH001", wanted)
             self.assertEqual(m.rejected, "", wanted)
-            self.assertGreaterEqual(m.title_sim, matching.TITLE_FLOOR, wanted)
+            # the floor (best window) is what lets the mangled name through; title_sim is whole-string
+            self.assertGreaterEqual(matching.floor_sim(wanted, m.product), matching.TITLE_FLOOR, wanted)
         # a near title is not inflated: no window of "Count to Ten" beats the whole string
         self.assertEqual(run("Count to Ten", prod("B0COUNT001", "Count to Ten aka Private Delhi")).title_sim, 0.85)
 

@@ -237,6 +237,70 @@ class TestApply(LayoutCase):
         self.assertTrue((self.out / "Author/Saga/3 - Book/Book.m4b").exists())
 
 
+class TestDev15Hardening(LayoutCase):
+    """0.19.0-dev15 audit M3."""
+
+    def test_symlinked_target_folder_outside_the_root_is_skipped(self):
+        src = self.book("a", "Old/Book/Book.m4b", ["Linked"], "Book")
+        outside = pathlib.Path(self.tmp.name) / "outside"
+        outside.mkdir()
+        os.symlink(outside, self.out / "Linked")
+        # as if the author folder became a link after the path was built and checked
+        with mock.patch.object(abs_layout, "target_for", return_value=self.out / "Linked" / "Book" / "Book.m4b"):
+            result = abs_layout.plan(self.state)
+            applied = abs_layout.apply(self.state)
+        self.assertEqual(result["moves"], [])
+        self.assertEqual(result["skipped"][0]["reason"], "the new path would leave OUTPUT_ROOT")
+        self.assertEqual(applied["moved"], [])
+        self.assertTrue(src.exists())
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_file_only_rename_in_a_shared_folder_is_skipped(self):
+        src = self.book("a", "Author/Book/old name.m4b", ["Author"], "Book")
+        self.state.save(UnitState(path="b", status="ready", title="Book", output=str(src)))
+        result = abs_layout.plan(self.state)
+        self.assertEqual(result["moves"], [])
+        self.assertEqual(result["skipped"][0]["reason"], "another book in Audiobind is filed in this folder")
+        abs_layout.apply(self.state)
+        self.assertTrue(src.exists())
+
+    def test_journal_keeps_renames_made_before_a_failure(self):
+        self.book("a", "Author/Book/old name.m4b", ["Author"], "Book", extra=("old name.mp3",))
+        real = os.rename
+
+        def fail_on_main(a, b):
+            if str(a).endswith(".m4b"):
+                raise PermissionError(13, "Permission denied", str(a))
+            return real(a, b)
+
+        with mock.patch("audiobind.abs_layout.os.rename", side_effect=fail_on_main):
+            result = abs_layout.apply(self.state)
+        self.assertEqual([f["state_key"] for f in result["failed"]], ["a"])
+        [entry] = json.loads(self.journals()[0].read_text())["moves"]
+        folder = (self.out / "Author/Book").resolve()
+        self.assertEqual(entry["files"], [{"from": str(folder / "old name.mp3"), "to": str(folder / "Book.mp3")}])
+        self.assertTrue((folder / "Book.mp3").exists())
+
+    def test_target_comes_from_metadata_json(self):
+        src = self.book("a", "Old/Old Title/Old Title.m4b", ["Wrong Author"], "Old Title", "Wrong Saga", "9")
+        (src.parent / "metadata.json").write_text(json.dumps(
+            {"title": "Real Title", "authors": ["Ann", "Bob"], "series": ["Saga #2"]}), encoding="utf-8")
+        [move] = abs_layout.plan(self.state)["moves"]
+        self.assertEqual(move.dst, self.out.resolve() / "Ann & Bob/Saga/2 - Real Title/Real Title.m4b")
+
+    def test_metadata_json_without_series_files_a_standalone(self):
+        src = self.book("a", "Old/Book/Book.m4b", ["Author"], "Book", "Saga", "3")
+        (src.parent / "metadata.json").write_text(json.dumps({"title": "Book", "series": []}), encoding="utf-8")
+        [move] = abs_layout.plan(self.state)["moves"]
+        self.assertEqual(move.dst, self.out.resolve() / "Author/Book/Book.m4b")  # authors fell back to the row
+
+    def test_unreadable_metadata_json_falls_back_to_the_row(self):
+        src = self.book("a", "Old/Book/Book.m4b", ["Author"], "Book", "Saga", "3")
+        (src.parent / "metadata.json").write_text("{not json", encoding="utf-8")
+        [move] = abs_layout.plan(self.state)["moves"]
+        self.assertEqual(move.dst, self.out.resolve() / "Author/Saga/3 - Book/Book.m4b")
+
+
 class TestEndpoint(LiveServerCase):
     def setUp(self):
         super().setUp()

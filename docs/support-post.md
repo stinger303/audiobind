@@ -40,7 +40,7 @@ books at once.
 
 ### What it will not do
 
-* Conversion never modifies or deletes your source files. Only the explicit Delete button can remove a source folder (typed confirmation); mount the library read-only to rule even that out.
+* Conversion never modifies or deletes your source files. Only the explicit Delete button can remove a source folder (after a confirmation dialog); mount the library read-only to rule even that out.
 * It will not convert anything it is unsure about. Partial matches, ambiguous titles, and books
   whose runtime disagrees with the catalog by more than 25% (usually the wrong edition) are
   marked for review on the status page.

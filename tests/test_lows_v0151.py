@@ -132,9 +132,13 @@ class LiveLows(LiveServerCase):
         boom = PermissionError(13, "Permission denied", str(published.parent))
         with mock.patch.object(web.shutil, "rmtree", side_effect=boom):
             status, body = self.post({"action": "delete", "path": "Gone/Book", "confirm": True})
-        self.assertEqual(status, 200, body)
-        self.assertTrue(body["output"].startswith("failed (EACCES)"))
+        # dev15: a failed removal keeps the row and answers ok: false (still no raw OSError text)
+        self.assertEqual(status, 500, body)
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["output"], "failed")
+        self.assertIn("(EACCES;", body["error"])
         self.assertNotIn(str(self.out), json.dumps(body))
+        self.assertIsNotNone(self.state.get("Gone/Book"))
 
     # -- reserved "ingest:" keys -----------------------------------------------------------
 

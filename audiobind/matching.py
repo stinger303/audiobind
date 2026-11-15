@@ -47,6 +47,9 @@ class Match:
     #: set when the best candidate's title did not resemble the wanted one (below TITLE_FLOOR):
     #: nothing is matched then, and this is the note that names what was rejected and why
     rejected: str = ""
+    #: share of the folder title's tokens covered by the window that got the pick past TITLE_FLOOR,
+    #: when no whole-string reading did (1.0 otherwise); below 60% the grade is never HIGH
+    title_window_coverage: float = 1.0
 
     @property
     def asin(self) -> str:
@@ -72,9 +75,67 @@ def window_sim(wanted: str, candidate: str) -> float:
 
 
 def floor_sim(wanted: str, product: Product) -> float:
-    """The title score TITLE_FLOOR is applied to: best window, title or title + subtitle."""
+    """The title score TITLE_FLOOR is applied to: best window, title or title + subtitle.
+
+    Only the floor gate uses this. It is never the title score: a catalog title equal to one
+    window of the folder name ("Dune" inside "Dune Messiah") would score 1.0 and beat the real book.
+    """
     return max(window_sim(wanted, product.title),
                window_sim(wanted, f"{product.title} {product.subtitle}".strip()))
+
+
+def window_coverage(wanted: str, product: Product) -> float:
+    """Share of ``wanted``'s tokens covered by the window that gives ``floor_sim`` (1.0 = whole string)."""
+    tokens = (wanted or "").split()
+    if not tokens:
+        return 1.0
+    best, best_len = -1.0, len(tokens)
+    for candidate in (product.title, f"{product.title} {product.subtitle}".strip()):
+        for i in range(len(tokens)):
+            for j in range(i + 1, len(tokens) + 1):
+                score = sim(" ".join(tokens[i:j]), candidate)
+                # ties go to the longer window: the measure must not invent a short match
+                if score > best or (score == best and j - i > best_len):
+                    best, best_len = score, j - i
+    return best_len / len(tokens)
+
+
+#: bracketed release tags and parentheticals: "[TRACKER]", "{Narrator}", "(Unabridged)"
+_BRACKETED = re.compile(r"\[[^\]]*\]|\{[^}]*\}|\([^)]*\)")
+#: a leading sequence: "01 - Title", "3. Title"
+_LEADING_SEQ = re.compile(r"^\s*\d{1,3}(?:\.\d)?\s*(?:-|–|—|\.)\s*(?=\S)")
+#: "<Series> NN - <Title>"
+_SERIES_SEQ_TITLE = re.compile(r"^(?P<x>.+?)\s+\d{1,3}(?:\.\d)?\s*(?:-|–|—|\.)\s*(?P<y>\S.*)$")
+#: the series part and the title part must be this alike before the title part stands alone
+SERIES_ECHO_SIM = 0.8
+
+
+def title_variants(title: str) -> list[str]:
+    """The query title plus its normalised readings, each scored whole-string against a candidate.
+
+    a. the raw title; b. bracketed groups and parentheticals removed; c. a leading sequence
+    (``NN - `` / ``NN. ``) removed; d. ``<X> NN - <Y>`` with X and Y alike -> Y, the real title
+    ("Dungeon Crawler Carl 01 - Dungeon Crawler Carl" -> "Dungeon Crawler Carl").
+    """
+    raw = (title or "").strip()
+    variants = [raw]
+    stripped = re.sub(r"\s+", " ", _BRACKETED.sub(" ", raw)).strip(" -_.")
+    variants.append(stripped)
+    variants.append(_LEADING_SEQ.sub("", stripped).strip())
+    echo = _SERIES_SEQ_TITLE.match(stripped)
+    if echo and sim(echo.group("x"), echo.group("y")) >= SERIES_ECHO_SIM:
+        variants.append(echo.group("y").strip())
+    out: list[str] = []
+    for v in variants:
+        if v and v not in out:
+            out.append(v)
+    return out
+
+
+def title_score(wanted: str, product: Product) -> float:
+    """The title score: best WHOLE-STRING ``sim`` of any variant against title or title + subtitle."""
+    targets = (product.title, f"{product.title} {product.subtitle}".strip())
+    return max((sim(v, t) for v in title_variants(wanted) for t in targets), default=0.0)
 
 
 #: the scorer's multiplier for a product whose catalog language is not English
@@ -268,9 +329,10 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
         for product in catalog.search(limit=10, **query):
             if product.asin in scored:
                 continue
-            # the same best-window measure TITLE_FLOOR uses, so folder baggage around a correct
-            # title ("Dungeon Crawler Carl 01 - Dungeon Crawler Carl") no longer drags the score
-            title_sim = floor_sim(title, product)
+            # whole-string over a few normalised readings of the folder title: release tags and a
+            # "Series NN - Title" echo are dropped, but a catalog title that is only one window of
+            # the folder name ("Dune" in "Dune Messiah") never scores as an exact match
+            title_sim = title_score(title, product)
             author_sim = max([sim(author, a) for a in product.authors] or [0.0]) if author else 0.0
             # without a known author the title is the only evidence we have
             total = 0.60 * title_sim + 0.40 * author_sim if author else title_sim
@@ -284,6 +346,8 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
                 "author_sim": round(author_sim, 3),
                 "language_penalized": penalized,
                 "runtime_delta_pct": runtime_delta_pct(local_hours, product.hours),
+                # tie-breakers only: the raw whole-string title, then the runtime gap
+                "whole_sim": sim(title, product.title) if title else 0.0,
             }
         if scored and max(s["score"] for s in scored.values()) >= 0.95 and len(scored) >= 3:
             break
@@ -295,10 +359,15 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
     for entry in scored.values():
         entry["knockoff"] = is_knockoff(entry["product"], products)
         entry["corroborated"] = None  # None = never asked Audnex
-    ranked = sorted(scored.values(), key=lambda s: s["score"], reverse=True)
+    ranked = sorted(scored.values(), key=_rank_key, reverse=True)
     best, margin = _pick_and_margin(ranked)
 
     floor_score = floor_sim(title, best["product"])
+    # defensive: when only a window of the folder title reached the floor (no whole-string
+    # reading did), record how much of the title that window covers; grade() refuses HIGH below 60%
+    coverage = 1.0
+    if best["title_sim"] < round(floor_score, 3):
+        coverage = window_coverage(title, best["product"])
     if floor_score < TITLE_FLOOR:
         return Match(
             author_from_series=author_from_series, query_title=title, query_author=author,
@@ -321,6 +390,7 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
         query_author=author,
         knockoff=best["knockoff"],
         corroborated=best["corroborated"],
+        title_window_coverage=round(coverage, 3),
     )
     match.confidence = grade(match)
     # keep the runners-up (other editions of the same work, near misses) so the
@@ -345,6 +415,16 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
         for s in [s for s in ranked if s is not best][:4]
     ]
     return match
+
+
+def _rank_key(entry: dict) -> tuple:
+    """Score first; equal scores go to the closer raw title, then the closer runtime."""
+    delta = entry.get("runtime_delta_pct")
+    return (entry["score"], entry.get("whole_sim", 0.0), -abs(delta) if delta is not None else float("-inf"))
+
+
+#: grade() never says HIGH when the floor was only reached by a window covering less of the title
+MIN_HIGH_WINDOW_COVERAGE = 0.60
 
 
 def _pick_and_margin(ranked: list[dict]) -> tuple[dict, float]:
@@ -399,8 +479,9 @@ def grade(match: Match) -> str:
         # a foreign-language hit must never auto-convert at HIGH confidence
         return "MEDIUM"
     title, author = match.title_sim, match.author_sim
+    window_only = match.title_window_coverage < MIN_HIGH_WINDOW_COVERAGE
     if match.author_known:
-        if title >= 0.88 and author >= 0.85 and match.margin >= 0.05:
+        if title >= 0.88 and author >= 0.85 and match.margin >= 0.05 and not window_only:
             return "HIGH"
         if title >= 0.85 and author >= 0.60 and match.margin > 0:
             return "MEDIUM"

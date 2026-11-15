@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -65,6 +66,35 @@ def _record_miss(asin: str) -> None:
         pass
 
 
+#: a download prunes the cache only after this many new covers ...
+PRUNE_EVERY_WRITES = 25
+#: ... or once this long has passed since the last prune
+PRUNE_EVERY_SECONDS = 600.0
+
+_prune_lock = threading.Lock()
+_writes_since_prune = 0
+_last_prune = 0.0
+
+
+def maybe_prune(state: State) -> bool:
+    """Count one new cover and prune when PRUNE_EVERY_WRITES or PRUNE_EVERY_SECONDS is reached.
+
+    A prune lists the cache and reads every kept ASIN; doing that on every download made a
+    Discover page of fresh covers O(covers x books) under the State lock.
+    """
+    global _writes_since_prune, _last_prune
+    with _prune_lock:
+        _writes_since_prune += 1
+        now = time.monotonic()
+        due = _writes_since_prune >= PRUNE_EVERY_WRITES or not _last_prune or now - _last_prune >= PRUNE_EVERY_SECONDS
+        if not due:
+            return False
+        _writes_since_prune = 0
+        _last_prune = now
+    prune(state)
+    return True
+
+
 def prune(state: State) -> int:
     """Shrink the cover cache; returns how many files were removed.
 
@@ -77,7 +107,8 @@ def prune(state: State) -> int:
     except OSError:
         return 0
     keep = state.cover_keep_asins()
-    library = {a for a in keep if state.has_asin(a)}
+    # built once: asking has_asin() per kept ASIN held the State lock once per cover
+    library = state.library_asins()
     removed = 0
 
     def drop(f: Path) -> None:
@@ -181,7 +212,7 @@ def fetch_by_asin(state: State, asin: str) -> Path | None:
     if catalog.download(stored_image_url(state, asin), str(temp)):
         try:
             temp.replace(path)
-            prune(state)
+            maybe_prune(state)
             return path
         except OSError:
             pass

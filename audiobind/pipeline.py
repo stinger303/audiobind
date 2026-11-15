@@ -156,8 +156,14 @@ def choose_action(unit: BookUnit, confidence: str, runtime_matches: bool, codecs
     return "merge+convert" if unit.multi_part else "convert"
 
 
-def convert_unit(audit: Audit, log=print):
-    """Encode, verify and file one book. Returns the EncodeResult (or None in a dry run)."""
+def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None):
+    """Encode, verify and file one book. Returns the EncodeResult (or None in a dry run).
+
+    ``cancelled`` (optional, no arguments) is asked again once the encoder is free: True means
+    the book was removed from Audiobind while it waited, and nothing is encoded. ``heartbeat``
+    (optional) is called, throttled, from the encode's progress so one long encode never makes
+    the healthcheck read the daemon as stalled.
+    """
     unit, match = audit.unit, audit.match
     if not match.product:
         raise ValueError("cannot convert without a catalog match")
@@ -193,7 +199,11 @@ def convert_unit(audit: Audit, log=print):
             audit.already_published = True
             log(f"  already published (while waiting for the encoder): {out_path}")
             return None
+        if cancelled is not None and cancelled():
+            log("  removed from Audiobind while waiting for the encoder - not converted")
+            return None
         CONTROL.begin_unit(unit.state_key, title)
+        CONTROL.set_heartbeat(heartbeat)
         try:
             # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
             plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None)
@@ -230,6 +240,7 @@ def convert_unit(audit: Audit, log=print):
             # a stopped encode leaves only the work directory, which is deleted here, so the
             # library never sees a partial file and the book is simply retried next scan
             shutil.rmtree(work_dir, ignore_errors=True)
+            CONTROL.set_heartbeat(None)
             CONTROL.end_unit()
 
 
@@ -341,7 +352,29 @@ def record(
     )
 
 
-def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, manual: bool = False) -> Audit:
+def kept_conversion(state: State, unit: BookUnit) -> str:
+    """The output of this book's previous conversion when it is still on disk, else "".
+
+    A re-check (Re-check all, Retry, a forced scan) only knows where the CURRENT layout files a
+    book; a book converted under an older layout would look missing there and be encoded again.
+    """
+    prev = state.get(unit.state_key)
+    if prev is None or prev.status != "converted" or not prev.output:
+        return ""
+    try:
+        return prev.output if Path(prev.output).is_file() else ""
+    except OSError:
+        return ""
+
+
+def process_unit(
+    state: State,
+    unit: BookUnit,
+    log=print,
+    force: bool = False,
+    manual: bool = False,
+    reencode: bool = False,
+) -> Audit:
     """Audit, then convert when the confidence tier and runtime check allow it.
 
     ``force`` is the operator saying "I looked at this, convert it anyway": the tier, the runtime
@@ -349,10 +382,48 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
     published. ``manual`` marks a one-off re-check triggered from the web UI (Retry now /
     Use this ASIN): if it still ends in a decision-needed state, the detail is flagged so the
     panel re-opens with the reason instead of the change going unnoticed.
+
+    ``reencode`` is only ever set by the manual Convert anyway: it lets a book that is already
+    converted (its previous output still on disk) be encoded again. Nothing else sets it - not a
+    forced scan (Re-check all), not Retry - so those leave a converted book where it is.
+
+    A book removed from Audiobind (a dismissed ingest key) is never audited, recorded or
+    converted: checked on entry, again before converting and again before every record.
     """
 
+    def dismissed() -> bool:
+        return state.is_dismissed(unit.state_key)
+
     def rec(status: str, **kw) -> None:
+        if dismissed():
+            # deleted while this re-check ran: writing the row would bring the book back
+            log("  removed from Audiobind while being checked - nothing recorded")
+            return
         record(state, audit, status, reopen=manual and status in ("review", "held", "failed"), **kw)
+
+    def convert() -> None:
+        """The conversion shared by the forced and the automatic branch."""
+        if dismissed():
+            log("  removed from Audiobind while being checked - not converted")
+            return
+        kept = "" if reencode else kept_conversion(state, unit)
+        if kept:
+            # the row is left exactly as it was: no re-encode, no duplicate, no orphaned folder
+            log(f"  already converted at {kept} - run Match Audiobookshelf layout to move it")
+            return
+        try:
+            result = convert_unit(audit, log=log, cancelled=dismissed, heartbeat=state.heartbeat)
+            if result is None:  # dry run, already published, or removed while it waited
+                nothing_written()
+            else:
+                rec("converted", output=str(result.path), result=result)
+        except Stopped:
+            log("  stopped by operator - partial file discarded, book will be retried")
+            rec("interrupted", note="stopped by operator - retried next scan")
+            CONTROL.pause()
+        except Exception as exc:  # noqa: BLE001 - one book must not stop a scan
+            log(f"  FAILED: {exc}")
+            rec("failed", note=str(exc)[:300])
 
     def nothing_written() -> None:
         """convert_unit returned None: the book was already filed, or this is a dry run.
@@ -371,6 +442,9 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
         else:
             rec("ready", note="dry run - nothing written")
 
+    if dismissed():
+        log("  removed from Audiobind - skipped")
+        return Audit(unit=unit, action="dismissed")
     started = time.time()
     unsafe = unsafe_path_reason(unit)
     if unsafe:
@@ -394,33 +468,9 @@ def process_unit(state: State, unit: BookUnit, log=print, force: bool = False, m
         rec("review", note=f"{audit.unreadable} unreadable source file(s); not converted")
     elif force and audit.match.product:
         log("  forced by operator - converting regardless of tier/hold")
-        try:
-            result = convert_unit(audit, log=log)
-            if result is None:  # dry run, or already published
-                nothing_written()
-            else:
-                rec("converted", output=str(result.path), result=result)
-        except Stopped:
-            log("  stopped by operator - partial file discarded, book will be retried")
-            rec("interrupted", note="stopped by operator - retried next scan")
-            CONTROL.pause()
-        except Exception as exc:  # noqa: BLE001
-            log(f"  FAILED: {exc}")
-            rec("failed", note=str(exc)[:300])
+        convert()
     elif audit.action in ("merge+convert", "convert", "remux") and audit.confidence in effective_auto_tiers():
-        try:
-            result = convert_unit(audit, log=log)
-            if result is None:  # dry run, or already published
-                nothing_written()
-            else:
-                rec("converted", output=str(result.path), result=result)
-        except Stopped:
-            log("  stopped by operator - partial file discarded, book will be retried")
-            rec("interrupted", note="stopped by operator - retried next scan")
-            CONTROL.pause()
-        except Exception as exc:  # noqa: BLE001 - one book must not stop a scan
-            log(f"  FAILED: {exc}")
-            rec("failed", note=str(exc)[:300])
+        convert()
     elif audit.confidence == "NONE" and audit.match.rejected:
         log(f"  held: {audit.match.rejected}")
         rec("held", note=audit.match.rejected)

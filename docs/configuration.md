@@ -84,10 +84,12 @@ request:
 > This moves and renames folders inside /output. Audiobookshelf may treat a renamed folder as a
 > new book and lose its listening progress.
 
-Each target is worked out from the metadata the book was converted with. A book is skipped, never
-overwritten, when its new folder already exists, its published file is missing or outside
-`OUTPUT_ROOT`, another Audiobind book is filed in the same folder, or the folder also holds audio
-that belongs to other books. Folders left empty by a move are removed. A failure on one book is
+Each target is worked out from the book's own `metadata.json` (title, authors, series and
+sequence), so it lands where a fresh conversion would put it; anything missing there comes from
+the metadata stored with the book's row. A book is skipped, never overwritten, when its new folder
+already exists, the new path would leave `OUTPUT_ROOT` (a symlinked folder is resolved first), its
+published file is missing or outside `OUTPUT_ROOT`, another Audiobind book is filed in the same
+folder (for a file rename too), or the folder also holds audio that belongs to other books. Folders left empty by a move are removed. A failure on one book is
 reported and the run carries on. Every move is recorded in `STATE_DIR/abs-layout-<UTC time>.json`
 (`from`/`to` for each folder and renamed file) so it can be undone by hand. The action is refused
 while a book is being encoded, and a scan never runs it.
@@ -99,5 +101,15 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"dry_run":true}
 curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"dry_run":false,"confirm":true}' localhost:8080/api/library/abs-layout
 ```
 
-A forced re-check (Retry now) of a converted book that is still in the old layout files a second
-copy in the new layout, because its new path does not exist yet: run the layout action first.
+### Upgrading from a release before 0.19.0-dev14
+
+- **Converted books stay where they are.** Upgrading moves nothing: books converted before
+  0.19.0-dev14 keep their old folders until you run **Match Audiobookshelf layout**.
+- **Run Match Audiobookshelf layout first** - Preview, then Apply - **before** any **Re-check all**
+  or **Retry** on converted books. Since 0.19.0-dev15 a re-check leaves a converted book whose file
+  still exists alone and logs `already converted at <old path> - run Match Audiobookshelf layout to
+  move it`, but **Convert anyway** really does encode the book again into the new layout, leaving
+  a second copy and the old folder behind.
+- **Audiobookshelf may lose listening progress.** It may treat a renamed or moved folder as a new
+  book. Note where you are in books you are listening to, or let Audiobookshelf rescan and check
+  before you delete anything there.

@@ -274,6 +274,49 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class TestLockoutBudgets(unittest.TestCase):
+    """0.19.0-dev15 audit L3: a global failure budget, and IPv6 counted per /64."""
+
+    def test_ipv6_is_counted_per_64(self):
+        lim = auth_mod.FailLimiter(limit=5, window=600)
+        for i in range(5):
+            self.assertTrue(lim.attempt(f"2001:db8:1:2::{i + 1}"))  # five addresses, one /64
+        self.assertFalse(lim.attempt("2001:db8:1:2:ffff::9"))
+        self.assertTrue(lim.blocked("2001:db8:1:2::abcd"))
+        self.assertGreater(lim.retry_after("2001:db8:1:2::77"), 0)
+        self.assertTrue(lim.attempt("2001:db8:1:3::1"))  # the next /64 is its own budget
+
+    def test_key_normalisation(self):
+        self.assertEqual(auth_mod.limiter_key("2001:db8::1"), "2001:db8::/64")
+        self.assertEqual(auth_mod.limiter_key("::ffff:10.0.0.7"), "10.0.0.7")
+        self.assertEqual(auth_mod.limiter_key("10.0.0.7"), "10.0.0.7")
+        self.assertEqual(auth_mod.limiter_key("not-an-ip"), "not-an-ip")
+
+    def test_global_budget_stops_a_spread_out_guesser(self):
+        now = [0.0]
+        lim = auth_mod.FailLimiter(limit=5, window=600, clock=lambda: now[0], global_limit=12)
+        allowed = sum(lim.attempt(f"10.0.{i}.1") for i in range(4) for _ in range(5))
+        self.assertEqual(allowed, 12)
+        self.assertTrue(lim.blocked("192.168.1.1"))  # a fresh address is refused too
+        self.assertGreater(lim.retry_after("192.168.1.1"), 0)
+        now[0] = 601
+        self.assertTrue(lim.attempt("192.168.1.1"))
+
+    def test_per_ip_behaviour_is_unchanged_under_the_global_budget(self):
+        lim = auth_mod.FailLimiter(limit=5, window=600)
+        for _ in range(5):
+            self.assertTrue(lim.attempt("1.2.3.4"))
+        self.assertFalse(lim.attempt("1.2.3.4"))
+        self.assertTrue(lim.attempt("5.6.7.8"))
+
+    def test_success_returns_its_share_of_the_global_budget(self):
+        lim = auth_mod.FailLimiter(limit=5, window=600, global_limit=6)
+        for _ in range(4):
+            lim.attempt("1.1.1.1")
+        lim.reset("1.1.1.1")  # signed in
+        self.assertEqual(sum(lim.attempt("2.2.2.2") for _ in range(5)), 5)
+
+
 class TestLockoutIsNotRacy(unittest.TestCase):
     def test_concurrent_failures_each_count(self):
         import threading

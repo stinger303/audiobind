@@ -10,6 +10,14 @@ All notable changes to this project are documented here. This project follows
 ## [Unreleased]
 
 ### Changed
+- **Sign-in lockout also has a global budget, and counts IPv6 per /64.** On top of the unchanged 5
+  failures per address in 10 minutes, at most 30 failed sign-ins from all addresses together are
+  allowed in that window, and an IPv6 client is counted by its /64 (an IPv4-mapped address as its
+  IPv4 address). A successful sign-in clears that client's failures from both budgets.
+- **Upgrade notes for the folder layout.** `docs/install.md` and `docs/configuration.md` now say that
+  converted books stay in their old folders after upgrading, that **Match Audiobookshelf layout**
+  should run before any Re-check all / Retry / Convert anyway on converted books, and that
+  Audiobookshelf may treat a renamed folder as new and lose listening progress.
 - **New conversions follow the Audiobookshelf folder convention.** `Author/Series/Book/` or
   `Author/Book/`. Every author is now in the author folder, joined with ` & ` (only the first was
   used before). A series book is always filed under its series folder: `<seq> - <title>` with a
@@ -47,6 +55,55 @@ All notable changes to this project are documented here. This project follows
   unmounted or disabled ingest folder never forgets a dismissal.
 
 ### Fixed
+- **Delete only removes an output folder Audiobind wrote.** A book whose output path already existed
+  is stored `ready` (already published) with that file as its output, and Delete used to remove the
+  whole folder anyway. The output is now removed only for a `converted` row, and only when the path
+  recorded with the conversion matches the row's output. Any other row is forgotten and its folder
+  left alone: `output: "kept"`, `output_kept_reason: "that folder was not created by Audiobind"`. The
+  `OUTPUT_ROOT` and shared-folder guards are unchanged.
+- **A failed output removal is a failed delete.** When the converted copy could not be removed,
+  Delete still forgot the book and answered `ok: true`. It now keeps the row (an ingest book is not
+  dismissed), answers 500 with `ok: false` and the reason, and the toast shows it.
+- **Re-check no longer re-encodes a converted book into the new layout.** A re-check (Re-check all,
+  Retry, a per-book Re-check) only tested whether the book's NEW path existed, so after the
+  0.19.0-dev14 layout change every series or multi-author book was encoded again: hours of CPU, a
+  duplicate copy and an orphaned old folder. A `converted` row whose file still exists is now left
+  untouched, with the log line `already converted at <old path> - run Match Audiobookshelf layout to
+  move it`. **Convert anyway** still re-encodes; it is the only action that does (`reencode`, a flag
+  separate from the scan's force).
+- **The title score is whole-string again; a window of the folder name is no longer an exact
+  match.** This replaces the best-window `title_sim` above, which gave 1.0 to any catalog title
+  equal to one run of the folder name's words: `Dune Messiah` picked `Dune` at HIGH when only Dune was
+  returned, and tied the right book at 1.0 when both were. `title_sim` is now the best whole-string
+  score over a few readings of the folder title: as is; without `[...]`, `{...}` and `(...)` groups;
+  without a leading `NN - ` / `NN. `; and `<X> NN - <Y>` reduced to `<Y>` when X and Y are alike.
+  `Dungeon Crawler Carl 01 - Dungeon Crawler Carl` still scores 1.0 and grades HIGH; `Dune Messiah`
+  against only `Dune` is MEDIUM, and beats `Dune` at HIGH when both are returned. Equal scores are
+  broken by the raw title, then the runtime. The best-window measure is kept only for the title
+  floor, and a pick that only reached the floor through a window covering under 60% of the title is
+  never HIGH. The `Private` no-match cases are still refused.
+- **A removed book stays removed during a scan or a queued action.** Deleting an ingest book while a
+  scan was running, or while a Retry was queued for it, re-created the row and could convert the
+  torrent again: the dismissal was only checked when the scan listed its books. The pipeline now
+  skips a dismissed book on entry, again before converting (also after waiting for the encoder) and
+  before writing its row. Delete is refused (409) while the book is waiting for a manual action. A
+  deliberate Retry, Use this ASIN, Re-check or Convert anyway on a removed ingest book brings it back.
+- **The healthcheck stays green while paused or during one long encode.** The heartbeat was only
+  written between books, so a paused daemon or a single multi-hour encode read as stalled. It is now
+  also written on every paused tick and, at most every 30 seconds, from the encode's progress.
+- **Match Audiobookshelf layout hardening.** The target folder is checked against `OUTPUT_ROOT` again
+  after it is resolved (a symlinked author folder could point outside it); a file-only rename is
+  skipped when another book is filed in the same folder, like a folder move; the undo journal
+  records each renamed file as it is renamed, so a later failure no longer loses the earlier ones;
+  and the target is worked out from the book's own `metadata.json` (title, authors, series,
+  sequence) where present, falling back to the row, so a migration files the book where a fresh
+  conversion would.
+- **Cover cache pruning is cheaper.** A prune asked the database once per kept cover whether a library
+  book used it, all under the global State lock, and ran after every downloaded cover. The library's
+  ASINs are now read once per prune (two queries), a download prunes at most every 25 new covers or
+  10 minutes, and `units(asin)` / `units(asin_override)` are indexed.
+- **Docs: Delete asks for confirmation in a dialog, not a typed word.** The README promised a typed
+  confirmation; the modal has one **Delete permanently** button. The docs now say so.
 - **The title score uses the same best-window measure as the title floor.** `title_sim` is now
   `floor_sim` (best run of the folder title's words against the catalog title or title + subtitle)
   instead of a whole-string comparison, so folder baggage around a correct title no longer drags it
