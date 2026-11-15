@@ -1761,6 +1761,16 @@ function abRangeShow(el) {
   if (val) val.textContent = el.value;
 }
 
+function abUnitShow(el) {
+  const wrap = el.closest('.ab-range-wrap');
+  const unit = wrap && wrap.querySelector('[data-unit-one]');
+  if (unit) unit.textContent = Number(el.value) === 1 && el.value.trim() !== '' ? unit.dataset.unitOne : unit.dataset.unitMany;
+}
+
+document.addEventListener('input', ev => {
+  if (ev.target && ev.target.matches && ev.target.matches('input[type=number]')) abUnitShow(ev.target);
+});
+
 // each [data-setting] is a wrapper div; the value lives on the select/input inside it
 function abSettingControl(wrap) {
   return wrap.querySelector('select, input');
@@ -1843,6 +1853,7 @@ function abResetSettings() {
           if (!el || env === undefined) return;
           el.value = String(env);
           if (el.type === 'range') abRangeShow(el);
+          if (el.type === 'number') abUnitShow(el);
           el.dataset.initial = el.value;
         });
         document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {
@@ -4454,6 +4465,13 @@ def _setting_range(
     )
 
 
+def _unit_span(word: str, value: int) -> str:
+    """The unit label for a number field: singular at exactly 1, and both forms kept for the live swap."""
+    one = word[:-1] if word.endswith("s") else word
+    shown = one if value == 1 else word
+    return f'<span data-unit-one="{_attr(one)}" data-unit-many="{_attr(word)}">{_html(shown)}</span>'
+
+
 def _setting_number(
     key: str, label: str, value: int, vmin: int, vmax: int, suffix: str, custom: bool, env_val, hint: str = ""
 ) -> str:
@@ -4466,7 +4484,7 @@ def _setting_number(
         '<div class="ab-range-wrap">'
         f'<input type="number" class="ab-in" min="{vmin}" max="{vmax}" value="{value}" step="1" '
         f'data-initial="{value}">'
-        f"<span>{suffix}</span>"
+        f"{_unit_span(suffix, value)}"
         "</div></div>"
     )
 

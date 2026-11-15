@@ -10,6 +10,7 @@ All notable changes to this project are documented here. This project follows
 ## [Unreleased]
 
 - The ASIN link opens the right Audible page again — the old address form stopped working.
+- The Settings number-field unit labels read correctly now ("1 credit", "1 book", not "1 credits").
 
 ### Added
 - **The watcher budgets the account instead of only obeying the site's moment-to-moment answers.** A

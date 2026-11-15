@@ -140,12 +140,32 @@ class TestSettingsSection(StateCase):
         self.assertIn("Resume watcher", paused)
         self.assertIn('<span class="warn">Paused</span>', paused)
 
+    def test_number_unit_labels_follow_the_value(self):
+        for value, shown in ((1, "credit"), (0, "credits"), (2, "credits")):
+            html = web._setting_number("k", "L", value, 0, 99, "credits", False, None)
+            self.assertIn(f'data-unit-many="credits">{shown}</span>', html)
+        self.assertIn('data-unit-one="book" data-unit-many="books">book</span>',
+                      web._setting_number("k", "L", 1, 0, 9, "books", False, None))
+        self.assertIn('data-unit-one="torrent" data-unit-many="torrents">torrents</span>',
+                      web._setting_number("k", "L", 3, 0, 9, "torrents", False, None))
+        for value in (0, 1, 2):
+            self.assertIn('data-unit-one="min" data-unit-many="min">min</span>',
+                          web._setting_number("k", "L", value, 0, 9, "min", False, None))
+
+    def test_settings_page_carries_both_unit_forms_for_each_number_field(self):
+        with tracker_cfg("x"):
+            html = web.render_settings(self.state)
+        for one, many in (("minute", "minutes"), ("book", "books"), ("credit", "credits"), ("torrent", "torrents")):
+            self.assertIn(f'data-unit-one="{one}" data-unit-many="{many}"', html)
+        self.assertEqual(html.count("data-unit-one="), html.count('type="number"'))
+
     def test_scripts_parse(self):
         node = shutil.which("node")
         if not node:
             self.skipTest("node not installed")
         with tempfile.TemporaryDirectory() as tmp:
-            for name, script in (("watcher.js", web.WATCHER_SCRIPT), ("discover.js", web.DISCOVER_SCRIPT)):
+            for name, script in (("watcher.js", web.WATCHER_SCRIPT), ("discover.js", web.DISCOVER_SCRIPT),
+                                 ("settings.js", web.SETTINGS_SCRIPT)):
                 js = pathlib.Path(tmp) / name
                 js.write_text(script)
                 result = subprocess.run([node, "--check", str(js)], capture_output=True, text=True)
