@@ -32,6 +32,51 @@ def _ingest_source_gone(unit: BookUnit) -> bool:
         return True
 
 
+def prune_dismissals(state: State) -> int:
+    """Forget dismissals whose ingest folder (or single file) is gone; returns how many.
+
+    Only while the ingest root is configured, enabled and reachable this run: an unmounted or
+    disabled ingest folder would otherwise look like every torrent was removed, and one
+    transient outage would bring every dismissed book back.
+    """
+    root = ingest.ingest_root()
+    if root is None:
+        return 0
+    try:
+        if not root.is_dir():
+            return 0
+        pruned = 0
+        for key in sorted(state.dismissed_keys()):
+            if not ingest.is_ingest(key):
+                continue
+            rel = ingest.rel_of(key)
+            # "Torrent#CD1"-style keys live in "Torrent"; a folder may also really contain a "#"
+            if rel and not any(os.path.lexists(root / p) for p in {rel, rel.split("#", 1)[0]} if p):
+                state.undismiss(key)
+                pruned += 1
+                log.info("ingest: %s is gone from the ingest folder - dismissal forgotten", key)
+        return pruned
+    except OSError as exc:
+        log.warning("ingest: could not check dismissed books in %s (%s) - kept them all", root, exc)
+        return 0
+
+
+def skip_dismissed(state: State, units: list[BookUnit]) -> list[BookUnit]:
+    """Ingest units the operator removed from Audiobind stay out of the scan (the torrent seeds on)."""
+    dismissed = state.dismissed_keys()
+    if not dismissed:
+        return units
+    kept = []
+    for unit in units:
+        if unit.source == SOURCE_INGEST and unit.state_key in dismissed:
+            log.debug("[%s] removed from Audiobind - skipped", unit.state_key)
+            continue
+        kept.append(unit)
+    if len(kept) != len(units):
+        log.info("ingest: %d unit(s) removed from Audiobind - skipped", len(units) - len(kept))
+    return kept
+
+
 def scan_once(state: State, force: bool = False) -> dict:
     """One pass over the library (and the ingest folder, when INGEST_DIR is set).
 
@@ -43,6 +88,9 @@ def scan_once(state: State, force: bool = False) -> dict:
     log.info("scan: %d unit(s) on disk", len(units))
     # ingest units (empty when INGEST_DIR is unset) go through the very same loop below
     ingest_units = ingest.discover()
+    prune_dismissals(state)
+    # dismissed before anything reads them: never checked, prefetched or converted again
+    ingest_units = skip_dismissed(state, ingest_units)
     if ingest_units:
         log.info("ingest: %d unit(s) in %s", len(ingest_units), ingest.ingest_root())
         units = units + ingest_units

@@ -174,7 +174,7 @@ check("quoted title escaped", "&quot;Quoted&quot;" in html)
 check("every book rendered",
       all(t in html for t in ("The Burning Room", "61 Hours", "Quoted", "Very Long Title", "Project Hail Mary")))
 # ---- ingest rows (0.16.0): one badge per ingest row in the table and one on its shelf card,
-# the container source path in its panel, and Delete marked so it asks the server (which refuses)
+# the container source path in its panel, and Delete marked so it opens the remove-from-Audiobind modal
 badges = html.count('class="ab-ingest-badge"')
 check("ingest badge on the row and its shelf card (and nowhere else)", badges == 2, f"found {badges}")
 check("ingest badge uses a numeric ref", "&#8675; ingest" in html)
@@ -204,17 +204,32 @@ check("/api/units carries source per unit",
       api_units[INGEST_KEY]["source"] == "ingest" and api_units["Child/61 Hours"]["source"] == "library")
 api_state = json.loads(get("/api/state"))
 check("/api/state reports the ingest dir", api_state.get("ingest_dir") == "/ingest" and "counts" in api_state)
-status_code, refusal = None, {}
-try:
-    urllib.request.urlopen(urllib.request.Request(
-        f"http://127.0.0.1:{PORT}/api/unit", headers={"Content-Type": "application/json", "Cookie": COOKIE},
-        data=json.dumps({"action": "delete", "path": INGEST_KEY, "confirm": True}).encode()), timeout=10)
-except urllib.error.HTTPError as exc:
-    status_code, refusal = exc.code, json.loads(exc.read() or b"{}")
-    exc.close()
-check("Delete on an ingest row is refused",
-      status_code == 409 and "remove the torrent in qBittorrent" in refusal.get("error", "")
-      and state.get(INGEST_KEY) is not None)
+def post_unit(payload: dict) -> tuple[int, dict]:
+    try:
+        with urllib.request.urlopen(urllib.request.Request(
+                f"http://127.0.0.1:{PORT}/api/unit", headers={"Content-Type": "application/json", "Cookie": COOKIE},
+                data=json.dumps(payload).encode()), timeout=10) as resp:
+            return resp.status, json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as exc:
+        answer = json.loads(exc.read() or b"{}")
+        exc.close()
+        return exc.code, answer
+
+
+# 0.19.0-dev13: an ingest Delete removes only the converted copy and forgets (dismisses) the row;
+# the torrent keeps seeding. Unconfirmed it changes nothing; confirmed it runs on a throwaway row
+# so the rest of this script still sees the seeded ingest book.
+status_code, answer = post_unit({"action": "delete", "path": INGEST_KEY})
+check("Delete on an ingest row needs confirmation",
+      status_code == 400 and state.get(INGEST_KEY) is not None and not state.is_dismissed(INGEST_KEY))
+THROWAWAY = "ingest:Throwaway Torrent [TRACKER]"
+state.save(UnitState(path=THROWAWAY, status="review", confidence="LOW", title="Throwaway", source="ingest"))
+status_code, answer = post_unit({"action": "delete", "path": THROWAWAY, "confirm": True})
+check("Delete on an ingest row forgets it and keeps the torrent seeding",
+      status_code == 200 and answer.get("dismissed") is True and answer.get("source_kept") is True
+      and "still seeding in qBittorrent" in answer.get("source_kept_reason", "")
+      and state.get(THROWAWAY) is None and state.is_dismissed(THROWAWAY), f"{status_code} {answer}")
+state.undismiss(THROWAWAY)
 filtered = get("/?q=connelly")
 table_body = re.search(r'<tbody id="ab-body">(.*?)</tbody>', filtered, re.S)
 check("?q= narrows server-side",

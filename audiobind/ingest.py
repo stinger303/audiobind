@@ -6,7 +6,9 @@ unit's ``source`` is "ingest", and its state key is ``ingest:<path under INGEST_
 
 The ingest root belongs to the torrent client - the files are still seeding. Nothing in
 Audiobind writes, moves or deletes anything under it: discovery only lists and reads, the
-encoder only reads its sources, and Delete refuses ingest rows outright.
+encoder only reads its sources, and Delete on an ingest row removes only Audiobind's own
+converted copy in OUTPUT_ROOT and forgets the row (the key is dismissed so the next scan does
+not convert the still-seeding torrent again).
 """
 
 from __future__ import annotations
@@ -26,13 +28,6 @@ log = logging.getLogger("audiobind")
 #: why the daemon switched ingest off at start ("" = it did not). Set once by check_at_start;
 #: a folder missing when the daemon starts stays off until a restart, as the warning says
 _DISABLED_AT_START = ""
-
-#: what Delete answers for an ingest row (also shown in the panel's tooltip)
-DELETE_REFUSAL = (
-    "delete is for library sources; remove the torrent in qBittorrent - this book's files are "
-    "a torrent that is still seeding, so Audiobind never deletes them"
-)
-
 
 def configured_dir() -> str:
     """The INGEST_DIR setting through the effective-config getter; "" when the feature is off."""

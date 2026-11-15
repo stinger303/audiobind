@@ -748,20 +748,22 @@ function unitDelete(btn) {
 }
 let abDeleteTrigger = null;
 function abOpenDeleteModal(path, title, trigger) {
-  if (trigger && trigger.dataset.source === 'ingest') {
-    // a seeding torrent is never deleted: no "permanently deletes" modal, just the server's answer
-    fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
-                       body: JSON.stringify({action:'delete', path: path})})
-      .then(r => r.json())
-      .then(result => abToast(result.error || 'delete is for library sources; remove the torrent in qBittorrent'))
-      .catch(() => abToast('delete is for library sources; remove the torrent in qBittorrent'));
-    return;
-  }
   abDeleteTrigger = trigger;
-  document.getElementById('ab-modal-title').textContent = 'Delete this book?';
-  document.getElementById('ab-modal-warning').textContent =
-    'This permanently deletes ' + title + "'s source folder and its published files. " +
-    "This cannot be undone."
+  const confirmBtn = document.getElementById('ab-modal-confirm');
+  if (trigger && trigger.dataset.source === 'ingest') {
+    // a seeding torrent: only Audiobind's converted copy goes, the torrent's files are never touched
+    document.getElementById('ab-modal-title').textContent = 'Remove from Audiobind?';
+    document.getElementById('ab-modal-warning').textContent =
+      'This removes the converted copy from /output and forgets the book in Audiobind. ' +
+      'The torrent and its files stay in qBittorrent and keep seeding. This cannot be undone.';
+    confirmBtn.textContent = 'Remove from library';
+  } else {
+    document.getElementById('ab-modal-title').textContent = 'Delete this book?';
+    document.getElementById('ab-modal-warning').textContent =
+      'This permanently deletes ' + title + "'s source folder and its published files. " +
+      "This cannot be undone."
+    confirmBtn.textContent = 'Delete permanently';
+  }
   document.getElementById('ab-modal').hidden = false;
   document.getElementById('ab-modal-cancel').focus();
 }
@@ -774,11 +776,12 @@ function abModalCancel() {
 function abModalConfirm() {
   const path = abDeleteTrigger ? abDeleteTrigger.dataset.path : '';
   if (!path) return;
+  const ingest = abDeleteTrigger.dataset.source === 'ingest';
   const btn = document.getElementById('ab-modal-confirm');
   const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'deleting\u2026';
-  abToast('deleting permanently\u2026');
+  btn.textContent = ingest ? 'removing\u2026' : 'deleting\u2026';
+  abToast(ingest ? 'removing from Audiobind\u2026' : 'deleting permanently\u2026');
   fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
                      body: JSON.stringify({action:'delete', path: path, confirm: true})})
     .then(r => r.json())
@@ -789,7 +792,10 @@ function abModalConfirm() {
         btn.textContent = label;
         return;
       }
-      if (result.source_kept) {
+      if (result.dismissed) {
+        abToast('Removed from Audiobind. The torrent is still seeding in qBittorrent.' +
+                (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : ''));
+      } else if (result.source_kept) {
         abToast('Deleted from Audiobind and your output library. The source folder stays (' +
                 (result.source_kept_reason || 'your library is read-only') +
                 ') - it will reappear on the next scan unless you remove it from the share.' +
@@ -2242,7 +2248,7 @@ def kebab_menu(unit) -> str:
     """The visible row menu that replaced the hover-only buttons."""
     path = _attr(unit.path)
     title = _attr(unit.title or unit.path)
-    # the delete item reads this: an ingest row's Delete asks the server, which refuses
+    # the delete item reads this: an ingest row's Delete opens the remove-from-Audiobind wording
     source_attr = f' data-source="{SOURCE_INGEST}"' if is_ingest_row(unit) else ""
     return (
         '<div class="ab-kebabwrap" onclick="event.stopPropagation()">'
@@ -4472,16 +4478,18 @@ def render(state, status: str = "", query: str = "") -> str:
             "too unsure &rarr; this panel re-opens with the reason.</span>" + "</div>"
         )
         delete_title = (
-            _attr(ingest_mod.DELETE_REFUSAL[:1].upper() + ingest_mod.DELETE_REFUSAL[1:] + ".")
+            "Remove the converted copy from the output folder and forget this book in Audiobind. "
+            "The torrent and its files stay in qBittorrent and keep seeding."
             if ingest_row
             else "Permanently delete this book's source folder and its published files. Cannot be undone."
         )
         delete_source_attr = f' data-source="{SOURCE_INGEST}"' if ingest_row else ""
+        delete_label = "Remove from library" if ingest_row else "Delete"
         delete_act = (
             '<div class="acts">'
             f'<button class="btn danger" title="{delete_title}" onclick="unitDelete(this)" '
             f'data-path="{_attr(unit.path)}" data-title="{_attr(unit.title or unit.path)}"{delete_source_attr} '
-            'style="margin-left:auto">Delete</button></div>'
+            f'style="margin-left:auto">{delete_label}</button></div>'
         )
         reopen_attr = (
             ' data-reopen="1"' if data.get("reopen") and unit.status in ("review", "held", "failed") else ""
@@ -5620,17 +5628,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if action == "delete":
-            # an ingest row's files are a torrent that is still seeding: refused before anything
-            # else, confirmed or not, so no path guard below ever sees an ingest key
+            # an ingest row's files are a torrent that is still seeding under a read-only mount:
+            # only Audiobind's converted copy goes, the source block below never runs for it, and
+            # the key is dismissed so the next scan does not convert the torrent all over again
             stored = self.state.get(rel)
-            if ingest_mod.is_ingest(rel) or (stored is not None and stored.source == SOURCE_INGEST):
-                logging.getLogger("audiobind").info("delete refused for ingest row %s", rel)
-                self._send(
-                    409,
-                    json.dumps({"error": ingest_mod.DELETE_REFUSAL, "source": SOURCE_INGEST}).encode(),
-                    "application/json",
-                )
-                return
+            ingest_row = ingest_mod.is_ingest(rel) or (stored is not None and stored.source == SOURCE_INGEST)
             if not payload.get("confirm"):
                 self._send(400, b'{"error":"confirmation required"}', "application/json")
                 return
@@ -5648,54 +5650,56 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, b'{"error":"no such unit"}', "application/json")
                 return
 
-            # Path traversal guard: resolve source inside LIBRARY_ROOT
             lib_root = Path(CONFIG.library_root).resolve()
-            src_path = (lib_root / rel.split("#", 1)[0]).resolve()
-            try:
-                src_path.relative_to(lib_root)
-            except ValueError:
-                self._send(400, b'{"error":"source path escapes library root"}', "application/json")
-                return
-
-            # What this book owns on disk - its own folder or part folders, never a parent it
-            # shares with sibling books. Each target must sit strictly inside LIBRARY_ROOT.
-            unit = find_unit(CONFIG.library_root, CONFIG.ignore_globs, rel)
+            src_path: Path | None = None
             targets: list[Path] = []
             kinds: dict[Path, str] = {}
-            if unit is not None:
-                owned = owned_paths(unit)
-                if any(Path(p).resolve() == lib_root for p in owned):
-                    owned = [os.path.join(unit.parent, part.name) for part in unit.parts]
-                for p in owned:
-                    resolved = Path(p).resolve()
-                    try:
-                        resolved.relative_to(lib_root)
-                    except ValueError:
-                        self._send(400, b'{"error":"source path escapes library root"}', "application/json")
-                        return
-                    if resolved == lib_root:
-                        self._send(400, b'{"error":"refusing to delete the library root"}', "application/json")
-                        return
-                    # remove through the resolved parent (TOCTOU: re-verified before removal)
-                    target, kind = plan_target(p)
-                    if removal_unsafe(target, lib_root, kind):
-                        self._send(400, b'{"error":"source path escapes library root"}', "application/json")
-                        return
-                    targets.append(target)
-                    kinds[target] = kind
-                foreign = foreign_audio(unit, [str(t) for t in targets])
-                if foreign:
-                    self._send(
-                        409,
-                        json.dumps(
-                            {
-                                "error": f"this folder also holds {len(foreign)} audio file(s) that belong "
-                                "to other books - nothing was deleted. Remove this book's files by hand."
-                            }
-                        ).encode(),
-                        "application/json",
-                    )
+            if not ingest_row:
+                # Path traversal guard: resolve source inside LIBRARY_ROOT
+                src_path = (lib_root / rel.split("#", 1)[0]).resolve()
+                try:
+                    src_path.relative_to(lib_root)
+                except ValueError:
+                    self._send(400, b'{"error":"source path escapes library root"}', "application/json")
                     return
+
+                # What this book owns on disk - its own folder or part folders, never a parent it
+                # shares with sibling books. Each target must sit strictly inside LIBRARY_ROOT.
+                unit = find_unit(CONFIG.library_root, CONFIG.ignore_globs, rel)
+                if unit is not None:
+                    owned = owned_paths(unit)
+                    if any(Path(p).resolve() == lib_root for p in owned):
+                        owned = [os.path.join(unit.parent, part.name) for part in unit.parts]
+                    for p in owned:
+                        resolved = Path(p).resolve()
+                        try:
+                            resolved.relative_to(lib_root)
+                        except ValueError:
+                            self._send(400, b'{"error":"source path escapes library root"}', "application/json")
+                            return
+                        if resolved == lib_root:
+                            self._send(400, b'{"error":"refusing to delete the library root"}', "application/json")
+                            return
+                        # remove through the resolved parent (TOCTOU: re-verified before removal)
+                        target, kind = plan_target(p)
+                        if removal_unsafe(target, lib_root, kind):
+                            self._send(400, b'{"error":"source path escapes library root"}', "application/json")
+                            return
+                        targets.append(target)
+                        kinds[target] = kind
+                    foreign = foreign_audio(unit, [str(t) for t in targets])
+                    if foreign:
+                        self._send(
+                            409,
+                            json.dumps(
+                                {
+                                    "error": f"this folder also holds {len(foreign)} audio file(s) that belong "
+                                    "to other books - nothing was deleted. Remove this book's files by hand."
+                                }
+                            ).encode(),
+                            "application/json",
+                        )
+                        return
 
             # Path traversal guard: resolve output inside OUTPUT_ROOT
             out_root = Path(CONFIG.output_root).resolve()
@@ -5799,7 +5803,10 @@ class Handler(BaseHTTPRequestHandler):
                         "application/json",
                     )
                     return
-            elif src_path.exists() and "#" not in rel:
+            elif ingest_row:
+                source_kept_reason = "the files are a torrent that is still seeding in qBittorrent"
+                log.info("HARD DELETE %s; ingest source left alone (still seeding)", rel)
+            elif src_path is not None and src_path.exists() and "#" not in rel:
                 # a row whose folder no longer holds a book we recognise: never rmtree a
                 # folder we cannot prove belongs to this one book
                 source_kept_reason = "the folder no longer holds this book's audio, so it was left alone"
@@ -5843,21 +5850,21 @@ class Handler(BaseHTTPRequestHandler):
 
             # Remove from state
             self.state.delete(rel)
-            self._send(
-                200,
-                json.dumps(
-                    {
-                        "ok": True,
-                        "deleted": rel,
-                        "source_removed": source_removed,
-                        "source_kept": bool(source_kept_reason),
-                        "source_kept_reason": source_kept_reason,
-                        "output": output_removed,
-                        "output_kept_reason": output_kept_reason,
-                    }
-                ).encode(),
-                "application/json",
-            )
+            result = {
+                "ok": True,
+                "deleted": rel,
+                "source_removed": source_removed,
+                "source_kept": bool(source_kept_reason),
+                "source_kept_reason": source_kept_reason,
+                "output": output_removed,
+                "output_kept_reason": output_kept_reason,
+            }
+            if ingest_row:
+                # the torrent folder is still in INGEST_DIR: without this the next scan converts it again
+                self.state.dismiss(rel)
+                result["dismissed"] = True
+                log.info("HARD DELETE %s; removed from Audiobind, the torrent keeps seeding", rel)
+            self._send(200, json.dumps(result).encode(), "application/json")
             return
 
         if action not in ("retry", "force", "recheck", "set_asin"):

@@ -102,6 +102,10 @@ CREATE TABLE IF NOT EXISTS discover_cache (
     fetched_at  REAL NOT NULL,
     payload     TEXT NOT NULL DEFAULT '{}'
 );
+CREATE TABLE IF NOT EXISTS dismissed (
+    state_key    TEXT PRIMARY KEY,
+    dismissed_at REAL
+);
 """
 
 #: a book a Discover page showed is remembered this long (its cover stays fetchable and a
@@ -708,6 +712,34 @@ class State:
             self.connection.execute("DELETE FROM field_locks WHERE path = ?", (path,))
             cursor = self.connection.execute("DELETE FROM units WHERE path = ?", (path,))
             self.connection.commit()
+            return cursor.rowcount > 0
+
+    # ------------------------------------------------- dismissed ingest books
+    # An ingest book removed from Audiobind while its torrent keeps seeding: the folder is still
+    # in INGEST_DIR, so the scan skips its key instead of converting it again. A dismissal is
+    # forgotten once the folder itself is gone (the daemon prunes it).
+    def dismiss(self, key: str) -> None:
+        with self._lock:
+            self.connection.execute(
+                "INSERT INTO dismissed (state_key, dismissed_at) VALUES (?,?) "
+                "ON CONFLICT(state_key) DO UPDATE SET dismissed_at=excluded.dismissed_at",
+                (key, time.time()),
+            )
+
+    def is_dismissed(self, key: str) -> bool:
+        with self._lock:
+            row = self.connection.execute("SELECT 1 FROM dismissed WHERE state_key = ?", (key,)).fetchone()
+        return row is not None
+
+    def dismissed_keys(self) -> set[str]:
+        with self._lock:
+            rows = self.connection.execute("SELECT state_key FROM dismissed").fetchall()
+        return {r["state_key"] for r in rows}
+
+    def undismiss(self, key: str) -> bool:
+        """Forget one dismissal. Returns True if there was one."""
+        with self._lock:
+            cursor = self.connection.execute("DELETE FROM dismissed WHERE state_key = ?", (key,))
             return cursor.rowcount > 0
 
     # ------------------------------------------------- the wishlist

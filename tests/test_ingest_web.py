@@ -1,4 +1,4 @@
-"""0.16.0 ingest in the web UI: badge, source path, delete refusal, shelf, API fields."""
+"""0.16.0 ingest in the web UI: badge, source path, delete (output only), shelf, API fields."""
 
 import re
 import unittest
@@ -21,7 +21,7 @@ except ImportError:
 
 TORRENT = "Andy Weir - Project Hail Mary (2021) [TRACKER]"
 KEY = "ingest:" + TORRENT
-REFUSAL = "delete is for library sources; remove the torrent in qBittorrent"
+SEEDING = "the files are a torrent that is still seeding in qBittorrent"
 
 
 class IngestWebCase(LiveServerCase):
@@ -81,7 +81,9 @@ class TestIngestRows(IngestWebCase):
         ingest_row = self.row_html(html, KEY)
         library_row = self.row_html(html, "Author/Book")
         self.assertEqual(ingest_row.count('data-source="ingest"'), 2)  # kebab + panel Delete
-        self.assertIn("remove the torrent in qBittorrent", ingest_row)
+        self.assertIn("keep seeding", ingest_row)  # the panel button's tooltip
+        self.assertIn(">Remove from library</button>", ingest_row)
+        self.assertNotIn(">Remove from library</button>", library_row)
         self.assertNotIn("data-source", library_row)
         self.assertIn("Permanently delete this book's source folder", library_row)
 
@@ -111,38 +113,33 @@ class TestIngestRows(IngestWebCase):
 
 
 class TestIngestDelete(IngestWebCase):
-    def test_delete_on_an_ingest_row_is_refused_and_nothing_is_touched(self):
+    """0.19.0-dev13: Delete on an ingest row removes only the converted output and forgets the
+    row; the torrent's files under /ingest are never touched (tests/test_ingest_dismiss.py has
+    the rest)."""
+
+    def test_delete_on_an_ingest_row_never_touches_the_torrent(self):
         before = tree_snapshot(self.ingest_root)
-        with mock.patch.object(web.shutil, "rmtree", side_effect=AssertionError("rmtree called")):
-            status, body = self.post({"action": "delete", "path": KEY, "confirm": True})
-        self.assertEqual(status, 409)
-        self.assertIn(REFUSAL, body["error"])
-        self.assertEqual(body["source"], "ingest")
-        self.assertIsNotNone(self.state.get(KEY))
+        status, body = self.post({"action": "delete", "path": KEY, "confirm": True})
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["source_kept"])
+        self.assertEqual(body["source_kept_reason"], SEEDING)
+        self.assertFalse(body["source_removed"])
+        self.assertIsNone(self.state.get(KEY))
         self.assertEqual(tree_snapshot(self.ingest_root), before)
 
-    def test_refused_even_without_confirmation_and_with_ingest_off(self):
-        status, body = self.post({"action": "delete", "path": KEY})
-        self.assertEqual(status, 409)
-        self.assertIn(REFUSAL, body["error"])
+    def test_ingest_off_still_only_removes_the_row(self):
         CONFIG.ingest_dir = ""
         status, body = self.post({"action": "delete", "path": KEY, "confirm": True})
-        self.assertEqual(status, 409)
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["dismissed"])
         self.assertTrue((self.ingest_root / TORRENT / "01.mp3").exists())
-
-    def test_a_published_ingest_book_keeps_its_output_too(self):
-        out = self.out / "Andy Weir" / "Project Hail Mary" / "Project Hail Mary.m4b"
-        out.parent.mkdir(parents=True)
-        out.write_text("m4b")
-        self.state.save(UnitState(path=KEY, status="converted", output=str(out)))
-        status, _body = self.post({"action": "delete", "path": KEY, "confirm": True})
-        self.assertEqual(status, 409)
-        self.assertTrue(out.exists())
 
     def test_library_delete_still_works(self):
         status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
         self.assertEqual(status, 200, body)
         self.assertIsNone(self.state.get("Author/Book"))
+        self.assertNotIn("dismissed", body)
+        self.assertFalse(self.state.is_dismissed("Author/Book"))
         self.assertTrue((self.ingest_root / TORRENT / "01.mp3").exists())
 
 
@@ -168,11 +165,22 @@ class TestIngestApi(IngestWebCase):
 
 
 class TestPageScript(unittest.TestCase):
-    def test_ingest_delete_skips_the_destructive_modal(self):
+    def test_ingest_delete_opens_the_confirm_modal_with_its_own_wording(self):
         start = web.SCRIPT.index("function abOpenDeleteModal")
-        body = web.SCRIPT[start:web.SCRIPT.index("abDeleteTrigger = trigger;", start)]
+        body = web.SCRIPT[start:web.SCRIPT.index("function abModalCancel", start)]
         self.assertIn("dataset.source === 'ingest'", body)
-        self.assertNotIn("confirm: true", body)
+        self.assertNotIn("fetch(", body)  # no instant request any more: the modal confirms first
+        self.assertIn("'Remove from Audiobind?'", body)
+        self.assertIn("'This removes the converted copy from /output and forgets the book in Audiobind. '", body)
+        self.assertIn("'The torrent and its files stay in qBittorrent and keep seeding. This cannot be undone.'", body)
+        self.assertIn("'Remove from library'", body)
+        self.assertIn("'Delete permanently'", body)  # a library row puts the usual label back
+
+    def test_ingest_success_toast(self):
+        start = web.SCRIPT.index("function abModalConfirm")
+        body = web.SCRIPT[start:web.SCRIPT.index("window.addEventListener('keydown'", start)]
+        self.assertIn("confirm: true", body)
+        self.assertIn("Removed from Audiobind. The torrent is still seeding in qBittorrent.", body)
 
 
 if __name__ == "__main__":

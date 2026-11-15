@@ -9,6 +9,24 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Changed
+- **Delete works on ingest books; the torrent keeps seeding.** Delete on a torrent-sourced book
+  used to be refused outright, even though the converted `.m4b`/`.mp3` in the output folder is
+  Audiobind's own file. It now opens the normal confirm modal ("Remove from Audiobind?", button
+  **Remove from library**), removes only the converted copy (same `OUTPUT_ROOT` guard and
+  missing-file handling as a library delete) and forgets the row. `/ingest` is never touched:
+  `POST /api/unit` answers `source_kept: true` with the reason "the files are a torrent that is
+  still seeding in qBittorrent", plus `dismissed: true`. Confirmation is still required, and a
+  library delete is unchanged.
+
+### Added
+- **Removed ingest books stay removed.** A new `dismissed` table remembers the state key of each
+  ingest book you removed, and the scan skips it before it is checked, prefetched or converted, so
+  the still-seeding torrent is not converted all over again. A dismissal is forgotten once its
+  folder (or single file) is gone from the ingest folder, so the same torrent re-added later
+  converts as new. Pruning only happens while the ingest folder is enabled and reachable: an
+  unmounted or disabled ingest folder never forgets a dismissal.
+
 ### Fixed
 - **The title score uses the same best-window measure as the title floor.** `title_sim` is now
   `floor_sim` (best run of the folder title's words against the catalog title or title + subtitle)
