@@ -44,15 +44,18 @@ GitHub -> your profile -> **Packages** -> `audiobind` -> *Package settings* ->
 Without this, `docker pull ghcr.io/stinger303/audiobind:latest` returns 403 and the
 Unraid install fails.
 
-## 3. One-time: Unraid forum support thread
+## 3. One-time: support link
 
-Community Applications requires a `<Support>` URL. Create a topic in
-**Docker Containers** on the Unraid forums titled `Audiobind - merge, verify and tag
-audiobook libraries`, paste the text from `docs/support-post.md`, then put the resulting
-URL into both:
+Community Applications requires a real `<Support>` URL — a placeholder fails the scan with
+"Starter defaults removed". Either works:
 
-- `templates/audiobind.xml` -> `<Support>`
-- `ca_profile.xml` -> `<Forum>`
+- **GitHub issues** (what the template ships today): `https://github.com/stinger303/audiobind/issues`
+- **A Unraid forum thread**: create a topic in **Docker Containers** titled `Audiobind - merge,
+  verify and tag audiobook libraries`, paste the text from `docs/support-post.md`, then put the
+  resulting URL into `templates/audiobind.xml` → `<Support>`.
+
+`ca_profile.xml` → `<Forum>` is optional. Leave it out unless a stable thread exists — a placeholder
+there fails the same scan.
 
 ## 4. Submit to Community Applications
 
