@@ -5,7 +5,7 @@
     Audiobind merges multi-part rips into a single m4b, verifies every book against the Audible
     catalog (title, author, narrator, series), proves completeness by comparing runtime with the
     catalog, then embeds real chapter marks, cover art and tags before filing the result as
-    `Author/Title/Title.m4b`.
+    `Author/Book/Book.m4b` (or `Author/Series/3 - Title/Title.m4b`).
 
     It is deliberately conservative: anything it is not confident about is marked for review
     rather than converted. Conversion never changes your source files; mount the library read-only

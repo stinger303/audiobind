@@ -35,7 +35,7 @@ books at once.
    hour short gets reported, not merged.
 4. **Merges and converts** - one `.m4b`, AAC mono (128 kbps floor), real chapter marks from Audnex, cover
    art and full tags embedded.
-5. **Files it** as `Author/Title/Title.m4b` or `Author/Series/03 - Title/`, with an
+5. **Files it** as `Author/Book/Book.m4b` or `Author/Series/3 - Title/Title.m4b`, with an
    Audiobookshelf-compatible `metadata.json`.
 
 ### What it will not do
