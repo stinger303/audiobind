@@ -1,6 +1,6 @@
 """0.18.0-dev1: the wishlist watcher - cycles, dry run, failures, library match, the off switch.
 
-MAM is a real MamClient over a fake transport (mock clock: no real sleeps); qBittorrent is a
+The tracker is a real TrackerClient over a fake transport (mock clock: no real sleeps); qBittorrent is a
 fake object. Nothing here can reach the network.
 """
 
@@ -13,10 +13,11 @@ import unittest
 import urllib.request
 from unittest import mock
 
-from audiobind import daemon, mam, qbit, watcher
+from audiobind import daemon, tracker, qbit, watcher
 from audiobind.config import CONFIG
 from audiobind.control import CONTROL
 from audiobind.state import State, UnitState
+from tests.tracker_cfg import SETTINGS, make_client, tracker_cfg
 
 TORRENT = b"d8:announce3:abc4:infod4:name4:book6:lengthi1eee"
 
@@ -54,7 +55,7 @@ class Transport:
     def __call__(self, method, url, data, headers, timeout):
         self.calls.append((method, url))
         if not self.answers:
-            raise AssertionError(f"unexpected MAM request: {method} {url}")
+            raise AssertionError(f"unexpected tracker request: {method} {url}")
         a = self.answers.pop(0)
         if isinstance(a, Exception):
             raise a
@@ -98,7 +99,7 @@ class WatcherCase(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
         self.patches = [
-            mock.patch.object(CONFIG, "mam_id", "test-cookie"),
+            tracker_cfg("test-cookie"),
             mock.patch.object(CONFIG, "qbit_user", "admin"),
             mock.patch.object(CONFIG, "qbit_pass", "pw"),
             mock.patch.object(CONFIG, "watch_max_per_cycle", 5),
@@ -124,18 +125,18 @@ class WatcherCase(unittest.TestCase):
         self.state.close()
         self.dir.cleanup()
 
-    def mam(self, *answers):
+    def fake_tracker(self, *answers):
         clock = FakeClock()
         self.transport = Transport(answers)
-        client = mam.MamClient("test-cookie", transport=self.transport,
-                               limiter=mam.RateLimiter(clock=clock, sleep=clock.sleep),
-                               backoff=mam.Backoff(clock=time.time))
+        client = make_client("test-cookie", transport=self.transport,
+                             limiter=tracker.RateLimiter(clock=clock, sleep=clock.sleep),
+                             backoff=tracker.Backoff(clock=time.time))
         self.w._client = client
         return client
 
     def cycle(self, **qbit_kwargs):
         with mock.patch.object(watcher, "make_qbit", lambda: FakeQbit(**qbit_kwargs)), \
-                mock.patch.object(watcher, "make_mam", side_effect=AssertionError("client is preset")):
+                mock.patch.object(watcher, "make_tracker", side_effect=AssertionError("client is preset")):
             return self.w.run_cycle(self.state, trigger="test")
 
     def want(self, asin="B000000001", title="Project Hail Mary", authors=("Andy Weir",), **extra):
@@ -147,39 +148,39 @@ class WatcherCase(unittest.TestCase):
 
 
 class TestCycle(WatcherCase):
-    def test_found_not_free_downloads_with_the_wedge_and_goes_downloading(self):
+    def test_found_not_free_downloads_with_a_credit_and_goes_downloading(self):
         self.want()
-        self.mam(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
         summary = self.cycle()
-        self.assertEqual(self.transport.calls[1], ("GET", "https://www.myanonamouse.net/tor/download.php?tid=1001&fl"))
+        self.assertEqual(self.transport.calls[1], ("GET", "https://tracker.example/download.php?tid=1001&fl"))
         row = self.row()
         self.assertEqual(row["status"], "downloading")
-        self.assertEqual((row["mam_tid"], row["torrent_hash"]), ("1001", "f" * 40))
-        self.assertIn("freeleech wedge (&fl)", row["note"], "the wedge decision is audited in the note")
+        self.assertEqual((row["tracker_tid"], row["torrent_hash"]), ("1001", "f" * 40))
+        self.assertIn("freeleech credit", row["note"], "the freeleech decision is audited in the note")
         self.assertEqual(FakeQbit.instances[0].added[0][0], TORRENT)
         self.assertEqual(FakeQbit.instances[0].added[0][2], "mam-audiobooks")
         self.assertTrue(FakeQbit.instances[0].logged_out)
         self.assertEqual((summary["searched"], summary["sent"]), (1, 1))
 
-    def test_already_free_downloads_without_the_wedge(self):
+    def test_already_free_downloads_without_a_credit(self):
         for n, flags in enumerate(({"free": True}, {"fl_vip": True}, {"pfl": "2026-12-01 00:00:00"})):
             asin = f"B00000000{n}"
             self.want(asin)
-            self.mam(answer(entry(2000 + n, "Project Hail Mary", **flags)), (200, {}, TORRENT))
+            self.fake_tracker(answer(entry(2000 + n, "Project Hail Mary", **flags)), (200, {}, TORRENT))
             self.cycle()
             self.assertEqual(self.transport.calls[1][1],
-                             f"https://www.myanonamouse.net/tor/download.php?tid={2000 + n}", flags)
-            self.assertIn("no wedge spent", self.row(asin)["note"])
+                             f"https://tracker.example/download.php?tid={2000 + n}", flags)
+            self.assertIn("no freeleech credit spent", self.row(asin)["note"])
 
     def test_not_found_stays_wanted_with_a_note_then_not_found_after_three(self):
         self.want()
         for n in range(1, watcher.MISS_LIMIT + 1):
-            self.mam(answer(entry(1, "Something Else Entirely")))
+            self.fake_tracker(answer(entry(1, "Something Else Entirely")))
             self.cycle()
             row = self.row()
             if n < watcher.MISS_LIMIT:
                 self.assertEqual(row["status"], "wanted")
-                self.assertTrue(row["note"].startswith("not found on MAM (checked "), row["note"])
+                self.assertTrue(row["note"].startswith("not found on the tracker (checked "), row["note"])
             else:
                 self.assertEqual(row["status"], "not_found")
                 self.assertIn("press Retry", row["note"])
@@ -188,7 +189,7 @@ class TestCycle(WatcherCase):
 
     def test_no_results_at_all(self):
         self.want()
-        self.mam(NOTHING)
+        self.fake_tracker(NOTHING)
         self.cycle()
         self.assertIn("no results", self.row()["note"])
         self.assertEqual(FakeQbit.instances, [], "nothing to send: qBittorrent is never contacted")
@@ -197,7 +198,7 @@ class TestCycle(WatcherCase):
         for n in range(7):
             self.want(f"B00000000{n}", title=f"Book Number {n}")
         CONFIG.watch_max_per_cycle = 3
-        self.mam(NOTHING, NOTHING, NOTHING)
+        self.fake_tracker(NOTHING, NOTHING, NOTHING)
         summary = self.cycle()
         self.assertEqual(summary["searched"], 3)
         self.assertEqual(len(self.transport.calls), 3)
@@ -207,7 +208,7 @@ class TestCycle(WatcherCase):
     def test_search_failure_ends_the_cycle_and_leaves_rows_untouched(self):
         self.want("B000000001")
         self.want("B000000002")
-        self.mam((503, {}, b""))
+        self.fake_tracker((503, {}, b""))
         summary = self.cycle()
         self.assertIn("HTTP 503", summary["error"])
         self.assertEqual(len(self.transport.calls), 1, "the second row is not searched")
@@ -218,15 +219,15 @@ class TestCycle(WatcherCase):
 
     def test_backoff_means_no_request_at_all(self):
         self.want()
-        client = self.mam()
+        client = self.fake_tracker()
         client.backoff.fail()
         summary = self.cycle()
         self.assertIn("backoff", summary["error"])
         self.assertEqual(self.transport.calls, [])
 
-    def test_qbit_down_means_no_download_and_no_wedge(self):
+    def test_qbit_down_means_no_download_and_no_credit(self):
         self.want()
-        self.mam(answer(entry(1001, "Project Hail Mary")))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")))
         summary = self.cycle(fail_login=True)
         self.assertEqual(len(self.transport.calls), 1, "searched, but never downloaded")
         self.assertIn("qBittorrent is not available", summary["error"])
@@ -235,11 +236,11 @@ class TestCycle(WatcherCase):
     def test_download_failure_is_an_error_that_is_never_retried_on_its_own(self):
         self.want("B000000001")
         self.want("B000000002")
-        self.mam(answer(entry(1001, "Project Hail Mary")), (500, {}, b""))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (500, {}, b""))
         summary = self.cycle()
         row = self.row("B000000001")
         self.assertEqual(row["status"], "error")
-        self.assertIn("a wedge may have been spent", row["note"])
+        self.assertIn("a freeleech credit may have been spent", row["note"])
         self.assertEqual(summary["errors"], 1)
         self.assertEqual(len(self.transport.calls), 2, "the cycle stops; the second row is not searched")
         # the next cycle never picks an error row up again
@@ -247,15 +248,15 @@ class TestCycle(WatcherCase):
 
     def test_qbit_refusal_is_an_error_with_the_reason(self):
         self.want()
-        self.mam(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
         self.cycle(fail_add=True)
         row = self.row()
-        self.assertEqual((row["status"], row["mam_tid"]), ("error", "1001"))
+        self.assertEqual((row["status"], row["tracker_tid"]), ("error", "1001"))
         self.assertIn("qBittorrent did not take it", row["note"])
 
     def test_a_row_removed_mid_cycle_is_left_alone(self):
         self.want()
-        self.mam(answer(entry(1001, "Project Hail Mary")))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")))
         real = self.state.wishlist_get
 
         def vanish(asin):
@@ -269,7 +270,7 @@ class TestCycle(WatcherCase):
 
     def test_paused_runs_nothing_and_survives_a_restart(self):
         self.want()
-        self.mam()
+        self.fake_tracker()
         self.w.set_paused(self.state, True)
         self.assertEqual(self.cycle(), {"skipped": "paused"})
         self.assertEqual(self.transport.calls, [])
@@ -280,7 +281,7 @@ class TestCycle(WatcherCase):
         self.assertIn("paused", why)
 
     def test_one_cycle_at_a_time(self):
-        self.mam()
+        self.fake_tracker()
         self.w._cycle_lock.acquire()
         try:
             self.assertEqual(self.w.run_cycle(self.state), {"skipped": "a cycle is already running"})
@@ -290,7 +291,7 @@ class TestCycle(WatcherCase):
 
     def test_request_cycle_runs_in_a_worker_thread(self):
         self.want()
-        self.mam(NOTHING)
+        self.fake_tracker(NOTHING)
         with mock.patch.object(watcher, "make_qbit", lambda: FakeQbit()):
             ok, why = self.w.request_cycle(self.state)
             self.assertTrue(ok, why)
@@ -302,7 +303,7 @@ class TestDryRun(WatcherCase):
     def test_dry_run_logs_the_decision_and_downloads_nothing(self):
         CONTROL.set_watcher_dry_run(True)
         self.want()
-        self.mam(answer(entry(1001, "Project Hail Mary")))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")))
         with self.assertLogs("audiobind", level="INFO") as logs:
             summary = self.cycle()
         self.assertEqual(len(self.transport.calls), 1, "searched only - no download request")
@@ -310,15 +311,15 @@ class TestDryRun(WatcherCase):
         row = self.row()
         self.assertEqual(row["status"], "wanted")
         self.assertIn("dry run", row["note"])
-        self.assertIn("would download MAM #1001", row["note"])
-        self.assertIn("&fl", row["note"])
+        self.assertIn("would download #1001", row["note"])
+        self.assertIn("freeleech credit", row["note"])
         self.assertTrue(any("[dry run]" in line and "would download" in line for line in logs.output))
         self.assertEqual((summary["would_send"], summary["sent"], summary["watcher_dry_run"]), (1, 0, True))
 
     def test_dry_run_from_the_environment_applies_too(self):
         CONFIG.watch_dry_run = True
         self.want()
-        self.mam(answer(entry(1001, "Project Hail Mary")))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")))
         self.cycle()
         self.assertEqual(len(self.transport.calls), 1)
         self.assertEqual(self.row()["status"], "wanted")
@@ -330,7 +331,7 @@ class TestLibraryMatch(WatcherCase):
 
     def test_wanted_downloading_in_library(self):
         self.want()
-        self.mam(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
         self.cycle()
         self.assertEqual(self.row()["status"], "downloading")
         self.convert("ingest:Project Hail Mary [MAM]", "Project Hail Mary", "Andy Weir", asin="B000000001")
@@ -374,14 +375,14 @@ class TestLibraryMatch(WatcherCase):
     def test_a_cycle_resolves_before_searching(self):
         self.want()
         self.convert("Weir/PHM", "Project Hail Mary", "Andy Weir", asin="B000000001")
-        self.mam()
+        self.fake_tracker()
         summary = self.cycle()
         self.assertEqual(summary["resolved"], 1)
         self.assertEqual(self.transport.calls, [], "a book you have is never searched for")
 
 
 class TestOffSwitch(unittest.TestCase):
-    """MAM_ID unset: no thread, no network, nothing changes for the rest of the app."""
+    """Session unset: no thread, no network, nothing changes for the rest of the app."""
 
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
@@ -392,39 +393,39 @@ class TestOffSwitch(unittest.TestCase):
         self.dir.cleanup()
 
     def test_off_by_default(self):
-        self.assertEqual(CONFIG.mam_id, "", "the test environment never sets MAM_ID")
+        self.assertEqual(CONFIG.tracker_session, "", "the test environment never sets the session")
         self.assertFalse(watcher.configured())
 
     def test_settings_come_through_the_effective_config_getter(self):
-        values = {"mam_id": "m", "qbit_user": "u", "qbit_pass": "p", "qbit_url": "http://qbt:9"}
+        values = {**SETTINGS, "tracker_session": "m", "qbit_user": "u", "qbit_pass": "p", "qbit_url": "http://qbt:9"}
         with mock.patch.object(watcher, "effective_val", side_effect=lambda name: values.get(name, "")) as getter:
             self.assertTrue(watcher.configured())
             self.assertEqual(watcher.disabled_reason(), "")
             self.assertEqual(watcher.make_qbit().url, "http://qbt:9")
-        self.assertTrue({"mam_id", "qbit_user", "qbit_pass", "qbit_url"} <= {c.args[0] for c in getter.call_args_list})
+        self.assertTrue({"tracker_session", "qbit_user", "qbit_pass", "qbit_url"} <= {c.args[0] for c in getter.call_args_list})
 
-    def test_no_thread_and_no_network_when_mam_id_is_unset(self):
+    def test_no_thread_and_no_network_when_the_session_is_unset(self):
         w = watcher.Watcher()
         before = {t.name for t in threading.enumerate()}
-        with mock.patch.object(CONFIG, "mam_id", ""), \
-                mock.patch.object(watcher, "make_mam", side_effect=AssertionError("no client")), \
+        with tracker_cfg(""), \
+                mock.patch.object(watcher, "make_tracker", side_effect=AssertionError("no client")), \
                 mock.patch.object(watcher, "make_qbit", side_effect=AssertionError("no client")), \
                 mock.patch.object(urllib.request.OpenerDirector, "open", side_effect=AssertionError("no network")):
             self.assertFalse(w.start(self.state))
-            self.assertEqual(w.run_cycle(self.state), {"skipped": "MAM_ID is not set"})
+            self.assertEqual(w.run_cycle(self.state), {"skipped": "not set: TRACKER_SESSION"})
             ok, why = w.request_cycle(self.state)
             status = w.status(self.state)
         self.assertFalse(ok)
-        self.assertIn("MAM_ID", why)
+        self.assertIn("TRACKER_SESSION", why)
         self.assertFalse(w.alive)
         self.assertNotIn("wishlist-watcher", {t.name for t in threading.enumerate()} - before)
         self.assertEqual((status["configured"], status["enabled"], status["running"]), (False, False, False))
 
     def test_missing_qbit_credentials_disable_it_with_a_clear_log_line(self):
         w = watcher.Watcher()
-        with mock.patch.object(CONFIG, "mam_id", "x"), mock.patch.object(CONFIG, "qbit_user", ""), \
+        with tracker_cfg("x"), mock.patch.object(CONFIG, "qbit_user", ""), \
                 mock.patch.object(CONFIG, "qbit_pass", ""), \
-                mock.patch.object(watcher, "make_mam", side_effect=AssertionError("no client")):
+                mock.patch.object(watcher, "make_tracker", side_effect=AssertionError("no client")):
             with self.assertLogs("audiobind", level="WARNING") as logs:
                 self.assertFalse(w.start(self.state))
             status = w.status(self.state)
@@ -434,7 +435,7 @@ class TestOffSwitch(unittest.TestCase):
 
     def test_start_runs_the_thread_when_configured_and_status_hides_secrets(self):
         w = watcher.Watcher()
-        with mock.patch.object(CONFIG, "mam_id", "SECRET-COOKIE"), mock.patch.object(CONFIG, "qbit_user", "a"), \
+        with tracker_cfg("SECRET-COOKIE"), mock.patch.object(CONFIG, "qbit_user", "a"), \
                 mock.patch.object(CONFIG, "qbit_pass", "SECRET-PASS"):
             try:
                 self.assertTrue(w.start(self.state))
@@ -478,7 +479,7 @@ class TestDownloaded(WatcherCase):
     def run_cycle(self, progress, fail=False):
         FakeQbit.progress_map, FakeQbit.fail_progress = progress, fail
         self.addCleanup(lambda: (setattr(FakeQbit, "progress_map", {}), setattr(FakeQbit, "fail_progress", False)))
-        self.mam(answer())
+        self.fake_tracker(answer())
         return self.cycle()
 
     def test_finished_torrent_becomes_downloaded(self):
@@ -515,7 +516,7 @@ class TestDownloaded(WatcherCase):
         self.downloading()
         self.state.wishlist_set_status("B000000001", "downloaded")
         self.assertEqual(self.state.wishlist_due(10), [])
-        self.mam()  # any MAM request would raise
+        self.fake_tracker()  # any tracker request would raise
         FakeQbit.progress_map = {}
         self.cycle()
         self.assertEqual(self.transport.calls, [])

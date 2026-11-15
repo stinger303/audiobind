@@ -1,4 +1,4 @@
-"""0.18.0-dev1: watcher config, the wishlist state machine and the wedge decision.
+"""0.18.0-dev1: watcher config, the wishlist state machine and the freeleech decision.
 
 Nothing here touches the network.
 """
@@ -11,7 +11,8 @@ import time
 import unittest
 from unittest import mock
 
-from audiobind import config, mam
+from audiobind import config, tracker
+from tests.tracker_cfg import endpoints
 from audiobind.config import CONFIG, Config
 from audiobind.state import (
     WISHLIST_DOWNLOADING,
@@ -33,25 +34,25 @@ class TestWatcherConfig(unittest.TestCase):
     def test_defaults_leave_the_watcher_off(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             cfg = Config.from_env()
-        self.assertEqual(cfg.mam_id, "")
+        self.assertEqual(cfg.tracker_session, "")
         self.assertEqual(cfg.watch_interval_min, 60)
         self.assertEqual(cfg.watch_max_per_cycle, 5)
         self.assertEqual(cfg.qbit_url, "http://localhost:8083")
         self.assertEqual((cfg.qbit_user, cfg.qbit_pass), ("", ""))
 
     def test_env_is_read(self):
-        env = {"MAM_ID": " abc123 ", "WATCH_INTERVAL_MIN": "90", "WATCH_MAX_PER_CYCLE": "3",
+        env = {"TRACKER_SESSION": " abc123 ", "WATCH_INTERVAL_MIN": "90", "WATCH_MAX_PER_CYCLE": "3",
                "QBIT_URL": "http://qbt:8083/", "QBIT_USER": "admin", "QBIT_PASS": "p w"}
         with mock.patch.dict(os.environ, env, clear=True):
             cfg = Config.from_env()
-        self.assertEqual(cfg.mam_id, "abc123")
+        self.assertEqual(cfg.tracker_session, "abc123")
         self.assertEqual((cfg.watch_interval_min, cfg.watch_max_per_cycle), (90, 3))
         self.assertEqual(cfg.qbit_url, "http://qbt:8083")
         self.assertEqual((cfg.qbit_user, cfg.qbit_pass), ("admin", "p w"))
 
     def test_secrets_never_reach_repr(self):
-        cfg = Config(mam_id="SECRET-MAM-COOKIE", qbit_pass="SECRET-QBIT-PASS")
-        self.assertNotIn("SECRET-MAM-COOKIE", repr(cfg))
+        cfg = Config(tracker_session="SECRET-SESSION-COOKIE", qbit_pass="SECRET-QBIT-PASS")
+        self.assertNotIn("SECRET-SESSION-COOKIE", repr(cfg))
         self.assertNotIn("SECRET-QBIT-PASS", repr(cfg))
 
     def test_effective_getters_clamp_to_the_politeness_bounds(self):
@@ -102,11 +103,11 @@ class TestWishlistStateMachine(StateCase):
     def test_wanted_downloading_in_library(self):
         self.state.wishlist_add(item("B000000001"))
         self.assertTrue(self.state.wishlist_set_status(
-            "B000000001", WISHLIST_DOWNLOADING, expect=WISHLIST_WANTED, note="sent", mam_tid="123",
+            "B000000001", WISHLIST_DOWNLOADING, expect=WISHLIST_WANTED, note="sent", tracker_tid="123",
             torrent_hash="ab" * 20, checked=True))
         row = self.state.wishlist_get("B000000001")
         self.assertEqual(row["status"], WISHLIST_DOWNLOADING)
-        self.assertEqual((row["note"], row["mam_tid"], row["torrent_hash"]), ("sent", "123", "ab" * 20))
+        self.assertEqual((row["note"], row["tracker_tid"], row["torrent_hash"]), ("sent", "123", "ab" * 20))
         self.assertGreater(row["checked_at"], 0)
         self.assertTrue(self.state.wishlist_set_status("B000000001", WISHLIST_IN_LIBRARY))
         self.assertEqual(self.state.wishlist_get("B000000001")["status"], WISHLIST_IN_LIBRARY)
@@ -151,8 +152,8 @@ class TestWishlistStateMachine(StateCase):
 
     def test_record_check_counts_consecutive_misses(self):
         self.state.wishlist_add(item("B000000001"))
-        self.assertEqual(self.state.wishlist_record_check("B000000001", "not found on MAM", miss=True), 1)
-        self.assertEqual(self.state.wishlist_record_check("B000000001", "not found on MAM", miss=True), 2)
+        self.assertEqual(self.state.wishlist_record_check("B000000001", "not found on the tracker", miss=True), 1)
+        self.assertEqual(self.state.wishlist_record_check("B000000001", "not found on the tracker", miss=True), 2)
         self.assertEqual(self.state.wishlist_record_check("B000000001", "dry run", miss=False), 0)
         row = self.state.wishlist_get("B000000001")
         self.assertEqual((row["status"], row["note"]), (WISHLIST_WANTED, "dry run"))
@@ -202,35 +203,35 @@ class TestWishlistStateMachine(StateCase):
             old.close()
 
 
-class TestWedgeDecision(unittest.TestCase):
-    def test_already_free_never_spends_a_wedge(self):
+class TestFreeleechDecision(unittest.TestCase):
+    def test_already_free_never_spends_a_credit(self):
         for entry in ({"free": True}, {"free": 1}, {"free": "1"}, {"fl_vip": True}, {"fl_vip": "1"},
                       {"personal_freeleech": "2026-11-20 10:00:00"},
                       {"free": False, "fl_vip": False, "personal_freeleech": "2026-11-20 10:00:00"}):
-            use, why = mam.wedge_decision(entry)
+            use, why = tracker.freeleech_decision(entry)
             self.assertFalse(use, entry)
-            self.assertIn("no wedge", why)
-            self.assertNotIn("&fl", mam.download_url(42, use))
+            self.assertIn("no freeleech credit", why)
+            self.assertNotIn("&fl", tracker.download_url(endpoints(), 42, use))
 
-    def test_not_free_spends_a_wedge(self):
+    def test_not_free_spends_a_credit(self):
         for entry in ({}, {"free": False, "fl_vip": False, "personal_freeleech": None},
                       {"free": 0, "fl_vip": "0", "personal_freeleech": ""},
                       {"free": "false", "personal_freeleech": "0000-00-00 00:00:00"}):
-            use, why = mam.wedge_decision(entry)
+            use, why = tracker.freeleech_decision(entry)
             self.assertTrue(use, entry)
-            self.assertIn("&fl", why)
-            self.assertTrue(mam.download_url(42, use).endswith("?tid=42&fl"))
+            self.assertIn("freeleech credit", why)
+            self.assertTrue(tracker.download_url(endpoints(), 42, use).endswith("?tid=42&fl"))
 
     def test_one_answer_per_torrent(self):
         """The URL carries &fl for True and only for True - no both-ways logic."""
-        self.assertEqual(mam.download_url("42", False), "https://www.myanonamouse.net/tor/download.php?tid=42")
-        self.assertEqual(mam.download_url("42", True), "https://www.myanonamouse.net/tor/download.php?tid=42&fl")
-        self.assertEqual(mam.download_url(42, True).count("fl"), 1)
+        self.assertEqual(tracker.download_url(endpoints(), "42", False), "https://tracker.example/download.php?tid=42")
+        self.assertEqual(tracker.download_url(endpoints(), "42", True), "https://tracker.example/download.php?tid=42&fl")
+        self.assertEqual(tracker.download_url(endpoints(), 42, True).count("fl"), 1)
 
     def test_torrent_id_must_be_a_number(self):
         for bad in ("42&fl", "../x", "", "1 2"):
             with self.assertRaises(ValueError):
-                mam.download_url(bad, False)
+                tracker.download_url(endpoints(), bad, False)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ are spread over dozens of files into a single tagged `.m4b`, and files the resul
 - A completeness check: a set whose runtime is an hour short of the catalog is reported, not merged.
 - Optional single-file MP3 output (`OUTPUT_FORMAT`) with ID3 chapters, cover and tags, alone or
   next to the `.m4b`.
-- Optional wishlist acquisition from MyAnonamouse and qBittorrent. Off unless `MAM_ID` is set.
+- Optional wishlist acquisition from a private tracker you configure, through qBittorrent. Off unless the `TRACKER_*` settings are complete.
 - **Discover books**: search the catalog, plus suggestions based on the authors, narrators and
   genres you already own.
 - Series completion: the **Series** page shows what you are missing, and **Want all missing**
@@ -30,8 +30,8 @@ are spread over dozens of files into a single tagged `.m4b`, and files the resul
 ## Requirements
 
 - Docker (or Unraid). Nothing else to install: ffmpeg is in the image.
-- Optional, for wishlist acquisition only: a MyAnonamouse account (and a VPN container if you
-  want MAM traffic kept off your home connection) and qBittorrent for the downloads.
+- Optional, for wishlist acquisition only: an account on a private tracker (and a VPN container if you
+  want tracker traffic kept off your home connection) and qBittorrent for the downloads.
 
 ```
 library-in/                         library-out/
@@ -327,8 +327,8 @@ title, with an optional author. Each result shows its cover, authors, narrators,
 Books already in your library are marked **In your library**: same ASIN, same title and
 author, or marked "I have this" on the Series page. **Get this** puts a book on your
 wishlist. That's all it does: nothing is downloaded, and no tracker is contacted. The
-[wishlist watcher](#the-wishlist-watcher-myanonamouse) picks books up from there when it is
-on. The **Wishlist** tab (`/wishlist`, right below Discover books in the rail, MAM only) lists it with
+[wishlist watcher](#the-wishlist-watcher-private-tracker) picks books up from there when it is
+on. The **Wishlist** tab (`/wishlist`, right below Discover books in the rail, watcher only) lists it with
 each book's state and when it was last checked; **Retry** and **Remove** act on one book. The number
 on the Wishlist tab is the wishlist size.
 
@@ -340,10 +340,10 @@ when the converted book appears in your library (a want-list holds nothing you a
 that is in your library already is taken off the list the same way, whatever its state. **not
 found** and **error** rows stay until you press **Retry** or **Remove**.
 
-**Edit title** gives a book its own *search title*. The watcher searches MAM for that title
+**Edit title** gives a book its own *search title*. The watcher searches the tracker for that title
 instead of the catalog one, and the match has to clear the same 0.90 title score against it. Use
 it when a book comes back *not found* with a note like `closest was 'The Missing' (0.85, needs
-0.90)`: the catalog calls it `Missing`, MAM calls it `The Missing`, so type the MAM title. Saving
+0.90)`: the catalog calls it `Missing`, the tracker calls it `The Missing`, so type the tracker's title. Saving
 puts the book back to *wanted* with its note and miss count cleared, so the next cycle searches
 it at once; the row keeps its catalog title and shows `searching for "..."` while an override is
 set. Saving a blank title clears the override. Search uses
@@ -390,51 +390,73 @@ folder and point `INGEST_DIR` at it:
 
 The one rule: files must be complete before they land in the folder (move them in when
 finished, or use the downloader's "completed" folder), or the app may see a partial book.
-MAM acquisition (below) is optional; everything else works the same without it.
+Wishlist acquisition (below) is optional; everything else works the same without it.
 
-### The wishlist watcher (MyAnonamouse)
+### The wishlist watcher (private tracker)
 
-Optional, and off unless `MAM_ID` is set.
+Optional, and off by default. Audiobind does not know which site it talks to: you tell it the
+site's URL, the path of its JSON search endpoint, the path of its torrent download endpoint and
+the name and value of its session cookie. Until all five are set (and `QBIT_USER` / `QBIT_PASS`
+for the qBittorrent WebUI) the watcher is off: no thread, no network, and Settings > Watcher
+names what is still missing.
 
-Off unless `MAM_ID` is set. With it set (and `QBIT_USER` / `QBIT_PASS` for the qBittorrent
-WebUI), a background thread works through the wishlist every `WATCH_INTERVAL_MIN` minutes (the
-interval and the books-per-cycle cap are editable in **Settings > Watcher**; the env vars are the
-defaults, and a saved value applies from the next cycle with no restart):
+| Variable | Default | Meaning |
+|---|---|---|
+| `TRACKER_URL` | *(unset)* | **Required.** Base URL, e.g. `https://tracker.example`. No path, query or login; a malformed value stops startup |
+| `TRACKER_SEARCH_PATH` | *(unset)* | **Required.** Path of the JSON search endpoint |
+| `TRACKER_SEARCH_METHOD` | `POST` | `POST` or `GET` |
+| `TRACKER_SEARCH_CATEGORY` | *(unset)* | The category value to send, if the site needs one. Empty = none is sent |
+| `TRACKER_SEARCH_CATEGORY_PARAM` | *(unset)* | The request field that carries it, e.g. `tor[main_cat][]` |
+| `TRACKER_DOWNLOAD_PATH` | *(unset)* | **Required.** Path of the torrent download endpoint |
+| `TRACKER_DOWNLOAD_PARAM` | `tid` | Query parameter carrying the torrent id |
+| `TRACKER_FREELEECH_PARAM` | *(unset)* | Query parameter that spends a freeleech credit, e.g. `fl`. Empty = never sent |
+| `TRACKER_COOKIE_NAME` | *(unset)* | **Required.** The session cookie's name |
+| `TRACKER_SESSION` | *(unset)* | **Required.** The session cookie's value. A secret - never shown in the UI, the API or the log |
+
+The six settings that existed before this naming (session, membership, proxy, user agent and the two
+IP guards) still work under their old variable names when the new name is empty (one deprecation line in the log
+at startup, never the value); the new name wins when both are set. The paths, cookie name and
+category have no old name - set them.
+
+With the settings in place, a background thread works through the wishlist every
+`WATCH_INTERVAL_MIN` minutes (the interval and the books-per-cycle cap are editable in
+**Settings > Watcher**; the env vars are the defaults, and a saved value applies from the next
+cycle with no restart):
 
 1. Books already in your library (a converted book with the same ASIN, or the same title and
    author) are removed from the wishlist - this also runs after every scan, watcher or not.
 2. Up to `WATCH_MAX_PER_CYCLE` **wanted** books - never-checked first, oldest first, then the
-   least recently checked - are searched on MAM's Torrent Search JSON API (audiobooks,
+   least recently checked - are searched on the tracker's JSON search endpoint (audiobooks,
    English).
 3. No good match (title similarity 0.90+, an author match, audio files, not already snatched):
-   the book stays **wanted** with a "not found on MAM (checked ...)" note and is searched again
-   later; after 3 misses in a row it becomes **not found** until you press **Retry**. A poor
+   the book stays **wanted** with a "not found on the tracker (checked ...)" note and is searched
+   again later; after 3 misses in a row it becomes **not found** until you press **Retry**. A poor
    match is never forced.
-4. A match: the torrent is downloaded through MAM's Download Torrent API and handed to
+4. A match: the torrent is downloaded through the download endpoint and handed to
    qBittorrent (category `mam-audiobooks`, whose save path is your ingest folder). It is
-   downloaded **without** a freeleech wedge when it is already free, VIP freeleech or a
-   personal freeleech, and **with** a wedge (`&fl`) otherwise - the decision is written in the
-   book's note. The book becomes **downloading**, then **downloaded** once the torrent finishes in qBittorrent, and
-   its row is removed once ingest has converted it and the book is in your library.
+   downloaded **without** a freeleech credit when it is already free, freeleech for your account
+   or a personal freeleech, and **with** one (`TRACKER_FREELEECH_PARAM`) otherwise - the decision
+   is written in the book's note. The book becomes **downloading**, then **downloaded** once the
+   torrent finishes in qBittorrent, and its row is removed once ingest has converted it and the
+   book is in your library.
 
-The watcher only ever calls those two MAM endpoints (the ones MAM authorizes for automation),
-never parses HTML and never follows a redirect. It sends one request at a time, at least 3 s
-apart, and after any error it backs off (60 s, doubling to 30 minutes) and ends the cycle. A
-failed download or a qBittorrent refusal marks the book **error** and is never retried on its
-own - a wedge is not refunded - so you decide with **Retry**. qBittorrent is logged into before
-anything is downloaded, so a qBittorrent that is down never costs a wedge.
+The watcher only ever calls the two configured endpoints, never parses HTML and never follows a
+redirect. It sends one request at a time, at least 3 s apart, and after any error it backs off
+(60 s, doubling to 30 minutes) and ends the cycle. A failed download or a qBittorrent refusal
+marks the book **error** and is never retried on its own - a credit is not refunded - so you
+decide with **Retry**. qBittorrent is logged into before anything is downloaded, so a
+qBittorrent that is down never costs a credit.
 
-**VIP-only torrents.** MAM marks some torrents as downloadable only by VIP members, and the API
-cannot tell the watcher whether your account is one, so it is a setting: `MAM_VIP` (Settings >
-Watcher > **VIP member**, default **No**). With No, a VIP-only torrent is skipped and the book's
-note says "only match(es) need VIP membership"; with Yes it is an ordinary candidate. VIP-only
-torrents are also VIP freeleech, so downloading one never costs a wedge.
+**Membership-restricted torrents.** Some torrents can only be downloaded by a higher membership
+tier, and the API cannot tell the watcher whether your account has it, so it is a setting:
+`TRACKER_VIP` (Settings > Watcher > **Premium member**, default **No**). With No, such a torrent
+is skipped and the book's note says so; with Yes it is an ordinary candidate.
 
 The watcher has its own **Dry run** (Settings > Watcher, or `WATCH_DRY_RUN`), separate from the
 library preview on the main page: it searches and notes what it *would* download, and downloads
 nothing. Settings > **Watcher** shows its status (last and next cycle, last error, backoff),
-**Run a cycle now** and **Pause watcher** (kept across restarts). MAM sessions are locked to
-an IP address: create the `mam_id` session for the IP the container reaches MAM from.
+**Run a cycle now** and **Pause watcher** (kept across restarts). Tracker sessions are often locked to
+an IP address: create the session for the IP the container reaches the tracker from.
 
 ```bash
 curl -H "$AUTH" localhost:8080/api/watcher                            # status, never a secret
@@ -443,19 +465,19 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PR
 curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PRS1K","title":"The Missing"}' localhost:8080/api/wishlist/title   # blank title clears it
 ```
 
-### Running MAM through a VPN
+### Running the watcher through a VPN
 
-MyAnonamouse ties your session to an IP address, and many people want every request to MAM
+A tracker often ties your session to an IP address, and many people want every request to it
 to leave through a VPN and never from the home connection. Audiobind helps in three ways. They
 stack, so use one, two or all three:
 
 1. **Share a VPN container's network namespace** (recommended).
-2. **Send MAM through an HTTP proxy** (`MAM_PROXY`).
-3. **Arm the tripwire** (`MAM_HOME_WAN_IP` and/or `MAM_EXPECTED_EGRESS_IP`): a check that refuses to talk to MAM from your home IP, or from anywhere but the VPN address you name.
+2. **Send tracker traffic through an HTTP proxy** (`TRACKER_PROXY`).
+3. **Arm the tripwire** (`TRACKER_HOME_IP` and/or `TRACKER_EXPECTED_EGRESS_IP`): a check that refuses to talk to the tracker from your home IP, or from anywhere but the VPN address you name.
 
-Audiobind also sends **no identifying `User-Agent`** to MAM: it never announces its name or
+Audiobind also sends **no identifying `User-Agent`** to the tracker: it never announces its name or
 version. The request carries only your session cookie and what the endpoint needs. If you
-would rather look like a particular client, set `MAM_USER_AGENT` and that text is sent as-is.
+would rather look like a particular client, set `TRACKER_USER_AGENT` and that text is sent as-is.
 
 If you have never used a VPN container: it is a container that holds your VPN connection
 (WireGuard or OpenVPN) and routes its own traffic through it. Other containers can then be
@@ -488,7 +510,7 @@ docker run -d --name gluetun --restart unless-stopped \
 # 2. Audiobind inside its network: NO -p here
 docker run -d --name audiobind --restart unless-stopped \
   --network container:gluetun \
-  -e MAM_ID=... -e QBIT_USER=admin -e QBIT_PASS=... \
+  -e TRACKER_URL=... -e TRACKER_SESSION=... -e QBIT_USER=admin -e QBIT_PASS=... \
   -e ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.10 \
   -v /path/to/audiobooks:/library:rw -v /path/to/audiobooks-fixed:/output \
   -v /path/to/appdata/audiobind:/config \
@@ -519,9 +541,9 @@ Things to know:
   ```
 
   It must print the VPN's exit address, **not** your home IP. If it prints your home IP, stop
-  and fix the setup before you set `MAM_ID`.
+  and fix the setup before you set `TRACKER_SESSION`.
 
-#### 2. An HTTP proxy (`MAM_PROXY`)
+#### 2. An HTTP proxy (`TRACKER_PROXY`)
 
 If your VPN container offers an HTTP proxy (Gluetun: `HTTPPROXY=on`, port 8888), or you have
 any HTTP CONNECT proxy, point Audiobind at it. The web UI stays on your LAN as it is today.
@@ -529,12 +551,12 @@ any HTTP CONNECT proxy, point Audiobind at it. The web UI stays on your LAN as i
 ```bash
 # on the VPN container: -e HTTPPROXY=on -p 8888:8888   (only if other machines need it)
 docker run -d --name audiobind ... -p 8686:8080 \
-  -e MAM_PROXY=http://gluetun:8888 \
+  -e TRACKER_PROXY=http://gluetun:8888 \
   ghcr.io/stinger303/audiobind:latest
 ```
 
-`MAM_PROXY` takes `http://host:port` or `https://host:port`; a value that is not one of those
-stops Audiobind from starting, with a message naming `MAM_PROXY`. Every MAM search and download
+`TRACKER_PROXY` takes `http://host:port` or `https://host:port`; a value that is not one of those
+stops Audiobind from starting, with a message naming `TRACKER_PROXY`. Every tracker search and download
 goes through it. It is **fail-closed**: if the proxy is down or refuses, the request fails and
 the watcher backs off. Audiobind never retries without the proxy and never falls back to a
 direct connection.
@@ -543,37 +565,37 @@ direct connection.
 client. Most VPN containers offer an HTTP proxy too, but the namespace approach above is
 preferred: it covers DNS and has no "proxy forgot to be used" failure mode.
 
-#### 3. Arm the tripwire (`MAM_HOME_WAN_IP`, `MAM_EXPECTED_EGRESS_IP`)
+#### 3. Arm the tripwire (`TRACKER_HOME_IP`, `TRACKER_EXPECTED_EGRESS_IP`)
 
 There are two checks, and you can use either or both:
 
-- **"Never my home IP"** (a denylist, `MAM_HOME_WAN_IP`): refuses to run when MAM would see your home address.
-- **"Only this IP"** (an allowlist, `MAM_EXPECTED_EGRESS_IP`): refuses to run unless MAM would see exactly the address you name, normally your VPN's exit IP.
+- **"Never my home IP"** (a denylist, `TRACKER_HOME_IP`): refuses to run when the tracker would see your home address.
+- **"Only this IP"** (an allowlist, `TRACKER_EXPECTED_EGRESS_IP`): refuses to run unless the tracker would see exactly the address you name, normally your VPN's exit IP.
 
-The allowlist is the stronger one: the denylist only catches the one address you listed, while the allowlist also catches a VPN that reconnected on a different exit address, a proxy that changed, or any other surprise. A MAM session is tied to one IP, so pinning the address turns a silent session break into a loud refusal. The allowlist can be set as the environment variable or in **Settings > Watcher** ("Only reach MAM from one IP"); the setting takes effect on the next cycle, with no restart, and leaving it empty skips the check.
+The allowlist is the stronger one: the denylist only catches the one address you listed, while the allowlist also catches a VPN that reconnected on a different exit address, a proxy that changed, or any other surprise. A tracker session is often tied to one IP, so pinning the address turns a silent session break into a loud refusal. The allowlist can be set as the environment variable or in **Settings > Watcher** ("Only reach the tracker from one IP"); the setting takes effect on the next cycle, with no restart, and leaving it empty skips the check.
 
-Both are optional. With neither set, Audiobind makes no lookup at all. If both are set, a home-IP match is reported with the home reason first; any other address that is not the expected one is reported as "MAM would see X, but this installation only allows Y".
+Both are optional. With neither set, Audiobind makes no lookup at all. If both are set, a home-IP match is reported with the home reason first; any other address that is not the expected one is reported as "the tracker would see X, but this installation only allows Y".
 
-To arm the denylist, set `MAM_HOME_WAN_IP` to your home connection's public IP address (what your ISP gave you;
+To arm the denylist, set `TRACKER_HOME_IP` to your home connection's public IP address (what your ISP gave you;
 search "what is my IP" from a device on your LAN):
 
 ```bash
--e MAM_HOME_WAN_IP=203.0.113.7
+-e TRACKER_HOME_IP=203.0.113.7
 ```
 
-At the start of every watcher cycle, before anything is sent to MAM, Audiobind asks
+At the start of every watcher cycle, before anything is sent to the tracker, Audiobind asks
 `ipinfo.io` (and `api.ipify.org` as a backup) what public address it is connecting from, going
-through `MAM_PROXY` if you set one. That is one small HTTPS request per cycle, with no cookie
+through `TRACKER_PROXY` if you set one. That is one small HTTPS request per cycle, with no cookie
 and nothing about you in it.
 
-- Same as your home IP, or (when `MAM_EXPECTED_EGRESS_IP` is set) not the expected address: the cycle is **refused**, nothing is sent to MAM, and Settings >
+- Same as your home IP, or (when `TRACKER_EXPECTED_EGRESS_IP` is set) not the expected address: the cycle is **refused**, nothing is sent to the tracker, and Settings >
   Watcher says so in red.
-- Different from the home IP, and equal to the expected one when that is set (the VPN's address): the cycle runs and the log says `MAM egress: <ip>`.
+- Different from the home IP, and equal to the expected one when that is set (the VPN's address): the cycle runs and the log says `tracker egress: <ip>`.
 - Cannot be checked (both lookups fail): treated like a refusal. It **fails closed**, because
   "I could not tell" is not "it is safe".
 
 It is the belt-and-braces check for the day a container gets recreated without the VPN, or an
-update drops a setting. Settings > Watcher shows what MAM sees, when it was last checked, and
+update drops a setting. Settings > Watcher shows what the tracker sees, when it was last checked, and
 whether the guard is armed. The same values are in `GET /api/watcher` (`egress_ip`,
 `egress_checked_at`, `egress_guard`, `egress_reason`, `egress_home_ip`, `egress_expected`).
 
@@ -619,7 +641,7 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `MAX_RUNTIME_DELTA` | `0.25` | Hold when runtime differs by more than this fraction |
 | `REGION` | `us` | Audible region (`us`, `ca`, `uk`, `au`, `fr`, `de`, `it`, `es`, `jp`, `in`) |
 | `DRY_RUN` | `false` | Decide and log, write nothing. `true` always starts dry; the UI switch can turn it off afterwards |
-| `WATCH_DRY_RUN` | `false` | The [watcher's](#the-wishlist-watcher-myanonamouse) own dry run, separate from `DRY_RUN`: search MAM and note what it would download, never download. `true` always starts the watcher dry; the Settings > Watcher switch can turn it off afterwards |
+| `WATCH_DRY_RUN` | `false` | The [watcher's](#the-wishlist-watcher-private-tracker) own dry run, separate from `DRY_RUN`: search the tracker and note what it would download, never download. `true` always starts the watcher dry; the Settings > Watcher switch can turn it off afterwards |
 | `WEB_ENABLED` | `true` | Status page |
 | `WEB_PORT` | `8080` | Status page port |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host names / IPs the web UI answers to (ports are ignored). **Add the LAN IP and hostname you browse to**, e.g. `192.168.1.10,tower,tower.local`; any other `Host` gets a 403. This blocks DNS-rebinding attacks from websites you visit. Keep `localhost,127.0.0.1` in the list for scripts on the server itself |
@@ -629,12 +651,7 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 | `ALLOW_ROOT` | *(unset)* | The entrypoint refuses `PUID=0` / `PGID=0` unless this is `1` |
 | `AUTH_TOKEN` | *(unset)* | **Deprecated - use the account instead (see [Signing in](#signing-in)).** A shared password for the web UI and API. It only applies while no account exists: you sign in with any username and the token as the password (session cookie, 7 days, `HttpOnly`, `SameSite=Strict`), and scripts send `Authorization: Bearer <token>` to `/api/...`. Five failed sign-ins from one IP lock it out for 10 minutes. While it is set, the first-run setup page is skipped. Once an account exists, the token no longer signs in |
 | `NOTIFY_URL` | | Optional webhook for a per-scan summary |
-| `MAM_ID` | *(unset)* | **The switch for the [wishlist watcher](#the-wishlist-watcher-myanonamouse).** The MyAnonamouse `mam_id` session cookie. Unset = the watcher is off: no thread, no network. A secret - never shown in the UI, the API or the log |
-| `MAM_USER_AGENT` | *(unset)* | `User-Agent` sent to MAM. Unset = none is set (Audiobind never announces its name or version); a value is sent verbatim |
-| `MAM_PROXY` | *(unset)* | `http://host:port` or `https://host:port` proxy for every MAM request. Unset = direct. Fail-closed, never falls back to direct; a malformed value stops startup. See [Running MAM through a VPN](#running-mam-through-a-vpn) |
-| `MAM_HOME_WAN_IP` | *(unset)* | Your home public IP. When set, each watcher cycle first checks the IP MAM would see (one HTTPS request to `ipinfo.io`) and makes no MAM request if it equals this one, or cannot be checked |
-| `MAM_EXPECTED_EGRESS_IP` | *(empty = off)* | Optional. The one public IP MAM may see, normally your VPN's exit address. When set, each watcher cycle first checks the IP MAM would see and makes no MAM request unless it equals this, or if it cannot be checked. A MAM session is tied to one IP, so pinning it turns a silent session break into a loud refusal. Also editable in Settings > Watcher (no restart); a value that is not an IPv4/IPv6 address stops startup |
-| `MAM_VIP` | `false` (No) | Set `true` if your MyAnonamouse account has VIP status (bought with bonus points). With No, torrents that only VIP members can download are **skipped** (the book's note says so) instead of attempted. Also editable in Settings > Watcher ("VIP member", no restart) |
+| `TRACKER_*` | *(unset)* | **The [wishlist watcher's](#the-wishlist-watcher-private-tracker) settings** - the site's URL, paths and cookie, the proxy, the egress guard. All are listed with their defaults in that section. Unset = the watcher is off: no thread, no network |
 | `WATCH_INTERVAL_MIN` | `60` | Minutes between watcher cycles (10-1440) |
 | `WATCH_MAX_PER_CYCLE` | `5` | Wishlist books one watcher cycle searches at most (1-20) |
 | `QBIT_URL` | `http://localhost:8083` | qBittorrent WebUI the watcher hands torrents to |

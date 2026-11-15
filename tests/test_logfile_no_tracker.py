@@ -1,4 +1,4 @@
-"""0.18.0-dev7: rotating log file, and no MAM surfaces on a non-MAM install."""
+"""0.18.0-dev7: rotating log file, and no watcher surfaces on an install without a tracker."""
 
 import logging
 import os
@@ -10,6 +10,7 @@ from unittest import mock
 from audiobind import cli, series, watcher, web
 from audiobind.config import CONFIG, Config
 from audiobind.state import State
+from tests.tracker_cfg import tracker_cfg
 
 
 def _ours():
@@ -103,18 +104,18 @@ class TestNoMam(unittest.TestCase):
         self.assertNotIn("Get this", web._disc_row(ITEM, "search"))
         self.assertNotIn("abSeriesWant", web._series_row(SROW, "1"))
         settings = web.render_settings(self.state)
-        self.assertIn("MAM acquisition (optional)", settings)
-        for name in ("MAM_ID", "QBIT_URL", "QBIT_USER", "QBIT_PASS"):
+        self.assertIn("Acquisition source (optional)", settings)
+        for name in ("TRACKER_URL", "QBIT_URL", "QBIT_USER", "QBIT_PASS"):
             self.assertIn(name, settings)
         self.assertNotIn('id="ab-watch-run"', settings)
         self.assertNotIn('onclick="abWatcher(', settings)
-        self.assertIn("whether or not MAM is configured", web.render(self.state))
+        self.assertIn("whether or not the watcher is configured", web.render(self.state))
 
     def test_wishlist_tab_falls_back_to_search(self):
         self.assertIn('aria-label="Title"', web.render_discover(self.state, "wishlist"))
 
     def test_configured_shows_everything(self):
-        with mock.patch.object(CONFIG, "mam_id", "x"), mock.patch.object(CONFIG, "qbit_user", "u"), \
+        with tracker_cfg("x"), mock.patch.object(CONFIG, "qbit_user", "u"), \
                 mock.patch.object(CONFIG, "qbit_pass", "p"):
             self.assertTrue(watcher.configured())
             self.assertIn('href="/wishlist"', web.render_discover(self.state, "search"))
@@ -123,7 +124,7 @@ class TestNoMam(unittest.TestCase):
             self.assertIn("abSeriesWant(", web._series_row(SROW, "1"))
             settings = web.render_settings(self.state)
             self.assertIn('id="ab-watch-run"', settings)
-            self.assertNotIn("MAM acquisition (optional)", settings)
+            self.assertNotIn("Acquisition source (optional)", settings)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from audiobind import qbit
 
 INFO = b"d6:lengthi1e4:name4:book12:piece lengthi16384e6:pieces20:aaaaaaaaaaaaaaaaaaaae"
-TORRENT = b"d8:announce30:https://t.myanonamouse.net/ann4:info" + INFO + b"e"
+TORRENT = b"d8:announce30:https://tr.tracker.example/ann4:info" + INFO + b"e"
 
 
 class FakeQbit(BaseHTTPRequestHandler):

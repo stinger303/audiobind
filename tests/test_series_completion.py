@@ -11,6 +11,7 @@ from unittest import mock
 from audiobind import auth as auth_mod
 from audiobind import discover, series, web
 from audiobind.config import CONFIG
+from tests.tracker_cfg import tracker_cfg
 
 try:
     from test_series import FIVE, StateCase, book, entry, store
@@ -111,7 +112,7 @@ class TestUnknownTotals(StateCase):
 class TestWantButtons(StateCase):
     def setUp(self):
         super().setUp()
-        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p = tracker_cfg("x")  # these tests are about the watcher surfaces
         p.start()
         self.addCleanup(p.stop)
         self.owned(1, 3)
@@ -204,7 +205,7 @@ class TestWantMissing(StateCase):
 class TestWantEndpoints(LiveServerCase):
     def setUp(self):
         super().setUp()
-        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p = tracker_cfg("x")  # these tests are about the watcher surfaces
         p.start()
         self.addCleanup(p.stop)
         self.schedule = mock.patch.object(series.REFRESHER, "schedule", return_value=False)

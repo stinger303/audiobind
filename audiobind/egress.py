@@ -1,9 +1,10 @@
-"""The egress guard: which public IP does MAM see, and is it the home connection?
+"""The egress guard: which public IP does the tracker see, and is it the home connection?
 
-``probe`` asks a plain-text "what is my IP" service (through MAM_PROXY when one is set, so it
-sees what MAM sees); ``judge`` compares the answer with MAM_HOME_WAN_IP (never this IP) and MAM_EXPECTED_EGRESS_IP (only this IP). The watcher runs both
-at the start of every cycle and makes no MAM request unless the verdict is ``ok`` (or ``off``).
-This is the only request in the app that is not a MAM endpoint, and it carries no cookie.
+``probe`` asks a plain-text "what is my IP" service (through TRACKER_PROXY when one is set, so it
+sees what the tracker sees); ``judge`` compares the answer with TRACKER_HOME_IP (never this IP)
+and TRACKER_EXPECTED_EGRESS_IP (only this IP). The watcher runs both at the start of every cycle
+and makes no tracker request unless the verdict is ``ok`` (or ``off``). This is the only request
+in the app that is not a tracker endpoint, and it carries no cookie.
 """
 
 from __future__ import annotations
@@ -62,14 +63,14 @@ def judge(configured_home_ip: str, observed: str, expected_ip: str = "") -> tupl
     home = (configured_home_ip or "").strip()
     expected = (expected_ip or "").strip()
     if not home and not expected:
-        return "off", "neither MAM_HOME_WAN_IP nor MAM_EXPECTED_EGRESS_IP is set - the egress guard is not armed"
+        return "off", "neither TRACKER_HOME_IP nor TRACKER_EXPECTED_EGRESS_IP is set - the egress guard is not armed"
     seen = (observed or "").strip()
     if not seen:
         return "unknown", "the egress IP could not be verified"
     if home and _same(seen, home):
-        return "blocked", f"MAM would see {seen}, which is your home connection (MAM_HOME_WAN_IP)"
+        return "blocked", f"the tracker would see {seen}, which is your home connection (TRACKER_HOME_IP)"
     if expected:
         if not _same(seen, expected):
-            return "blocked", f"MAM would see {seen}, but this installation only allows {expected}"
-        return "ok", f"MAM sees {seen}, the allowed address"
-    return "ok", f"MAM sees {seen}, not your home connection"
+            return "blocked", f"the tracker would see {seen}, but this installation only allows {expected}"
+        return "ok", f"the tracker sees {seen}, the allowed address"
+    return "ok", f"the tracker sees {seen}, not your home connection"

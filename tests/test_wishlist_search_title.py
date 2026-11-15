@@ -6,9 +6,10 @@ import tempfile
 import unittest
 from unittest import mock
 
-from audiobind import mam, watcher, web
+from audiobind import tracker, watcher, web
 from audiobind.config import CONFIG
 from audiobind.state import State
+from tests.tracker_cfg import tracker_cfg
 
 try:
     from test_watcher import WatcherCase, TORRENT, answer, entry
@@ -24,14 +25,14 @@ class TestWatcherUsesOverride(WatcherCase):
     def test_the_search_call_gets_the_override(self):
         self.want(title="Missing")
         self.state.wishlist_set_search_title(ASIN, "The Missing")
-        client = self.mam(answer())
+        client = self.fake_tracker(answer())
         with mock.patch.object(client, "search", wraps=client.search) as search:
             self.cycle()
         self.assertEqual(search.call_args.args[0], "The Missing")
 
     def test_no_override_searches_the_catalog_title(self):
         self.want(title="Project Hail Mary")
-        client = self.mam(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
+        client = self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
         with mock.patch.object(client, "search", wraps=client.search) as search:
             self.cycle()
         self.assertEqual(search.call_args.args[0], "Project Hail Mary")
@@ -40,13 +41,13 @@ class TestWatcherUsesOverride(WatcherCase):
     def test_override_clears_the_threshold_where_the_catalog_title_missed(self):
         torrents = answer(entry(1001, "The Missing"))
         self.want(title="Missing")
-        self.mam(torrents)
+        self.fake_tracker(torrents)
         self.cycle()
         row = self.row()
         self.assertEqual(row["status"], "wanted")
-        self.assertIn("not found on MAM", row["note"])
+        self.assertIn("not found on the tracker", row["note"])
         self.state.wishlist_set_search_title(ASIN, "The Missing")
-        self.mam(torrents, (200, {}, TORRENT))
+        self.fake_tracker(torrents, (200, {}, TORRENT))
         self.cycle()
         self.assertEqual(self.row()["status"], "downloading")
         self.assertEqual(self.row()["title"], "Missing")
@@ -54,11 +55,11 @@ class TestWatcherUsesOverride(WatcherCase):
     def test_select_candidate_scores_the_override(self):
         row = {"title": "Missing", "authors": []}
         found = [t for t in self._torrents("The Missing")]
-        self.assertIsNone(mam.select_candidate(row, found)[0])
-        self.assertIsNotNone(mam.select_candidate({**row, "search_title": "The Missing"}, found)[0])
+        self.assertIsNone(tracker.select_candidate(row, found)[0])
+        self.assertIsNotNone(tracker.select_candidate({**row, "search_title": "The Missing"}, found)[0])
 
     def _torrents(self, name):
-        client = self.mam(answer(entry(7, name)))
+        client = self.fake_tracker(answer(entry(7, name)))
         return client.search("x", "")
 
 
@@ -116,7 +117,7 @@ class TestPage(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
-        p = mock.patch.object(CONFIG, "mam_id", "x")
+        p = tracker_cfg("x")
         p.start()
         self.addCleanup(p.stop)
 

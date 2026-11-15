@@ -163,7 +163,7 @@ class QbitClient:
             raise QbitError(f"qBittorrent login failed (HTTP {status}) - check QBIT_USER / QBIT_PASS")
         self.logged_in = True
 
-    def add_torrent(self, torrent: bytes, filename: str = "mam.torrent", category: str = CATEGORY) -> str:
+    def add_torrent(self, torrent: bytes, filename: str = "tracker.torrent", category: str = CATEGORY) -> str:
         """Hand one .torrent over. Returns its info hash (from the answer when qBittorrent sends
         one, else computed from the file), "" if neither is available."""
         if not self.logged_in:

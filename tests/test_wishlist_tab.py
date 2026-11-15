@@ -9,6 +9,7 @@ from unittest import mock
 from audiobind import series, watcher, web
 from audiobind.config import CONFIG
 from audiobind.state import State, UnitState
+from tests.tracker_cfg import tracker_cfg
 
 try:
     from live import LiveServerCase
@@ -36,15 +37,15 @@ class Base(unittest.TestCase):
         self.addCleanup(p.stop)
         watcher.WATCHER._paused = None
 
-    def mam(self, on=True):
-        p = mock.patch.object(CONFIG, "mam_id", "x" if on else "")
+    def watcher_on(self, on=True):
+        p = tracker_cfg("x" if on else "")
         p.start()
         self.addCleanup(p.stop)
 
 
 class TestRailAndDiscover(Base):
     def test_rail_has_wishlist_below_discover_with_mam(self):
-        self.mam()
+        self.watcher_on()
         for page in (web.render(self.state), web.render_series(self.state), web.render_settings(self.state),
                      web.render_discover(self.state, "search"), web.render_discover(self.state, "wishlist")):
             disc, wish = page.index("</span> Discover books"), page.index("</span> Wishlist")
@@ -53,7 +54,7 @@ class TestRailAndDiscover(Base):
             self.assertIn('href="/wishlist"', page)
 
     def test_no_wishlist_rail_item_without_mam(self):
-        self.mam(False)
+        self.watcher_on(False)
         for page in (web.render(self.state), web.render_discover(self.state, "search"),
                      web.render_discover(self.state, "wishlist")):
             self.assertNotIn('href="/wishlist"', page)
@@ -62,7 +63,7 @@ class TestRailAndDiscover(Base):
             self.assertIn("</span> Discover books", page)
 
     def test_discover_has_no_chips(self):
-        self.mam()
+        self.watcher_on()
         html = web.render_discover(self.state, "search")
         self.assertNotIn("For you</a>", html)
         self.assertNotIn('class="chip', html)
@@ -72,7 +73,7 @@ class TestRailAndDiscover(Base):
         self.assertIn("<h1>Discover books</h1>", html)
 
     def test_search_form_and_recommendations_on_one_render(self):
-        self.mam()
+        self.watcher_on()
         html = web.render_discover(self.state, "search")
         self.assertIn('role="search"', html)
         self.assertIn('aria-label="Title"', html)
@@ -81,7 +82,7 @@ class TestRailAndDiscover(Base):
         self.assertIn("abRecsRefresh", html)
 
     def test_a_search_replaces_the_recommendations(self):
-        self.mam()
+        self.watcher_on()
         result = {"ok": True, "title": "dune", "author": "", "results": []}
         html = web.render_discover(self.state, "search", "dune", "", result=result)
         self.assertIn('role="search"', html)
@@ -89,7 +90,7 @@ class TestRailAndDiscover(Base):
         self.assertNotIn('id="ab-recs"', html)
 
     def test_wishlist_page_renders_the_wishlist_body(self):
-        self.mam()
+        self.watcher_on()
         want(self.state)
         html = web.render_discover(self.state, "wishlist")
         self.assertIn("<h1>Wishlist</h1>", html)
@@ -98,7 +99,7 @@ class TestRailAndDiscover(Base):
         self.assertNotIn('role="search"', html)
 
     def test_rail_badge_is_on_wishlist_and_drops_after_a_removal(self):
-        self.mam()
+        self.watcher_on()
         want(self.state)
         self.assertIn('id="ab-rail-wanted" title="books on your wishlist">1</span>', web.render(self.state))
         convert(self.state)
@@ -114,12 +115,12 @@ class TestDownloadedRow(Base):
         self.state.wishlist_set_status("B000000001", "downloaded", note="downloaded - waiting for the converted book")
 
     def test_badge_counts_a_downloaded_row(self):
-        self.mam()
+        self.watcher_on()
         self.downloaded()
         self.assertIn('id="ab-rail-wanted" title="books on your wishlist">1</span>', web.render(self.state))
 
     def test_page_shows_badge_note_remove_and_no_retry(self):
-        self.mam()
+        self.watcher_on()
         self.downloaded()
         html = web.render_discover(self.state, "wishlist")
         self.assertIn(">DOWNLOADED</span>", html)
@@ -131,7 +132,7 @@ class TestDownloadedRow(Base):
 
 class TestRoutes(LiveServerCase):
     def test_wishlist_and_discover_render(self):
-        with mock.patch.object(CONFIG, "mam_id", "x"):
+        with tracker_cfg("x"):
             want(self.state)
             status, html = self.request("/wishlist", raw=True, headers={})
             self.assertEqual(status, 200)
@@ -142,7 +143,7 @@ class TestRoutes(LiveServerCase):
             self.assertIn(b"<h1>Discover books</h1>", html)
 
     def test_wishlist_falls_back_to_the_library_page_without_mam(self):
-        with mock.patch.object(CONFIG, "mam_id", ""):
+        with tracker_cfg(""):
             status, html = self.request("/wishlist", raw=True, headers={})
             self.assertEqual(status, 200)
             self.assertNotIn(b"<h1>Wishlist</h1>", html)

@@ -5,6 +5,42 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev7] - 2026-11-14
+
+The acquisition client no longer knows which site it talks to. The site's URL, endpoints, session
+cookie and category / freeleech parameters are settings you fill in; nothing in the code, the UI,
+the logs or the new docs names a site.
+
+### Changed
+- **The client module is now `audiobind/tracker.py`** (no compatibility import). The client, error
+  and backoff classes are `TrackerClient`, `TrackerError` and `TrackerBackoff`, and the freeleech
+  decision is `freeleech_decision()`. The URL guard (`authorized_url()`) still refuses
+  anything but the two configured endpoints, now compared against the configured values.
+- **New settings, all optional and empty by default:** `TRACKER_URL`, `TRACKER_SEARCH_PATH`,
+  `TRACKER_SEARCH_METHOD` (`POST` or `GET`), `TRACKER_SEARCH_CATEGORY`,
+  `TRACKER_SEARCH_CATEGORY_PARAM`, `TRACKER_DOWNLOAD_PATH`, `TRACKER_DOWNLOAD_PARAM` (default
+  `tid`), `TRACKER_FREELEECH_PARAM` (empty: never sent), `TRACKER_COOKIE_NAME`, `TRACKER_SESSION`,
+  `TRACKER_VIP`, `TRACKER_PROXY`, `TRACKER_USER_AGENT`, `TRACKER_HOME_IP` and
+  `TRACKER_EXPECTED_EGRESS_IP`. The watcher is on only when the URL, both paths, the cookie name
+  and the session are set; otherwise it is off and Settings > Watcher names what is missing. A
+  malformed URL, path, method or name stops startup with a message naming the variable.
+- **Search results are read through one alias table** (title / name, author_info / authors,
+  numfiles / files, filetype / format, free / freeleech, personal freeleech as a boolean or a
+  datetime, and so on). Anything unrecognised is simply absent, never an error.
+- **Wording:** the watcher, the Wishlist notes, the egress notices ("the tracker would see ..."),
+  settings hints and log lines say "the tracker" and "a freeleech credit"; the membership setting
+  is labelled "Premium member".
+- The wishlist table's torrent-id column is now `tracker_tid`; existing rows are copied over on
+  the first start (the old column is left in place).
+
+### Upgrading
+- **Set the endpoints.** The search path, download path, cookie name and category have no old
+  variable to inherit from, so an existing install's watcher stays off ("not set: ...") until they
+  are configured. The log and Settings > Watcher say which.
+- **Renamed variables keep working** while the new name is empty, with one startup log line each
+  (never the value): the six variables that existed before are accepted under their old names and
+  report `<old> is deprecated, use <new>`. When both are set the new one wins.
+
 ## [0.19.0-dev6] - 2026-11-14
 
 Documentation and repository polish for the public launch. No behaviour change.

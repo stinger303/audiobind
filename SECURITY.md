@@ -6,12 +6,12 @@ Please do **not** open a public issue for a security problem. Report it privatel
 on the repository's **Security** tab choose **Report a vulnerability**
 (<https://github.com/stinger303/audiobind/security/advisories/new>). Include the version
 (`docker exec audiobind audiobind version`), what you did, and what happened. Do not paste a
-`mam_id` cookie, a password or a session cookie into a report.
+tracker session cookie, a password or any session cookie into a report.
 
 ## In scope
 
 - The web UI and its API: sign-in, sessions, the host and origin checks, `/healthz`.
-- The MyAnonamouse client: what it sends, where it sends it, and the egress and proxy guards.
+- The tracker client: what it sends, where it sends it, and the egress and proxy guards.
 - Path handling: anything that lets a book, an ingest file or a request read, write or delete
   outside `/library`, `/output`, `/ingest` and `/config`.
 

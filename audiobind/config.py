@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -14,8 +15,38 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
-def _proxy_value(raw: str) -> str:
-    """MAM_PROXY, checked at load: ``http://host:port`` or ``https://host:port`` (or empty =
+#: Deprecated names of settings that were renamed in 0.19.0-dev7. An old variable that is set
+#: while its new name is empty is still honoured (one startup log line each, never the value);
+#: the new name always wins when both are set.
+DEPRECATED_ENV = {
+    "MAM_ID": "TRACKER_SESSION",
+    "MAM_VIP": "TRACKER_VIP",
+    "MAM_PROXY": "TRACKER_PROXY",
+    "MAM_USER_AGENT": "TRACKER_USER_AGENT",
+    "MAM_HOME_WAN_IP": "TRACKER_HOME_IP",
+    "MAM_EXPECTED_EGRESS_IP": "TRACKER_EXPECTED_EGRESS_IP",
+}
+_NEW_TO_OLD = {new: old for old, new in DEPRECATED_ENV.items()}
+
+
+def _resolve(new: str, honoured: list, ignored: list) -> tuple[str, str]:
+    """(value, the variable it came from) for ``new``: the new name when it is set, else its
+    deprecated alias. The alias use is recorded in ``honoured`` / ``ignored`` (names only)."""
+    value = _env(new, "")
+    old = _NEW_TO_OLD.get(new, "")
+    old_value = _env(old, "") if old else ""
+    if value:
+        if old_value:
+            ignored.append((old, new))
+        return value, new
+    if old_value:
+        honoured.append((old, new))
+        return old_value, old
+    return "", new
+
+
+def _proxy_value(raw: str, name: str = "TRACKER_PROXY") -> str:
+    """TRACKER_PROXY, checked at load: ``http://host:port`` or ``https://host:port`` (or empty =
     direct). Anything else stops the start with a message naming the variable - a typo must
     never quietly turn into a direct connection."""
     from urllib.parse import urlsplit
@@ -32,7 +63,7 @@ def _proxy_value(raw: str) -> str:
         ok = False
     if not ok:
         raise RuntimeError(
-            "MAM_PROXY is not valid: use http://host:port or https://host:port "
+            f"{name} is not valid: use http://host:port or https://host:port "
             "(SOCKS is not supported); leave it empty for no proxy"
         )
     return raw.rstrip("/")
@@ -51,9 +82,72 @@ def _ip_value(name: str, raw: str) -> str:
         raise RuntimeError(f"{name} is not valid: {raw!r} is not an IPv4 or IPv6 address") from None
 
 
+def default_bool(raw: str, default: bool) -> bool:
+    return default if raw == "" else raw.strip().lower() in TRUTHY
+
+
 def _env_bool(name: str, default: bool) -> bool:
-    raw = _env(name, "")
-    return default if raw == "" else raw.lower() in TRUTHY
+    return default_bool(_env(name, ""), default)
+
+
+def _tracker_url(raw: str) -> str:
+    """TRACKER_URL, checked at load: ``http(s)://host[:port]`` with no path, query or login
+    ("" = unset). A typo stops the start with a message naming the variable."""
+    from urllib.parse import urlsplit
+
+    raw = raw.strip()
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+        parts.port  # noqa: B018 - raises ValueError on a bad port
+        ok = (parts.scheme in ("http", "https") and bool(parts.hostname) and parts.username is None
+              and parts.path in ("", "/") and not parts.query and not parts.fragment)
+    except ValueError:
+        ok = False
+    if not ok:
+        raise RuntimeError("TRACKER_URL is not valid: use https://host (or http://host:port), "
+                           "with no path, query or login - the paths are separate settings")
+    return raw.rstrip("/")
+
+
+_PATH_RE = re.compile(r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/\-]*$")
+_NAME_RE = re.compile(r"^[A-Za-z0-9_.\-\[\]]+$")
+_COOKIE_VALUE_RE = re.compile(r"^[\x21-\x7e]+$")
+
+
+def _tracker_path(name: str, raw: str) -> str:
+    """A URL path setting: starts with ``/``, no query, no fragment, no spaces ("" = unset)."""
+    raw = raw.strip()
+    if raw and (not _PATH_RE.match(raw) or raw.startswith("//")):
+        raise RuntimeError(f"{name} is not valid: use a path that starts with / (no query string), e.g. /search")
+    return raw
+
+
+def _tracker_name(name: str, raw: str, allow_value: bool = False) -> str:
+    """A parameter / cookie name setting ("" = unset); ``allow_value`` also accepts ``name=value``."""
+    raw = raw.strip()
+    head, sep, tail = raw.partition("=") if allow_value else (raw, "", "")
+    if raw and (not _NAME_RE.match(head) or (sep and not re.match(r"^[A-Za-z0-9_.\-]*$", tail))):
+        raise RuntimeError(f"{name} is not valid: use letters, digits and _ . - [ ] only")
+    return raw
+
+
+def _tracker_method(raw: str) -> str:
+    raw = raw.strip().upper() or "POST"
+    if raw not in ("POST", "GET"):
+        raise RuntimeError("TRACKER_SEARCH_METHOD is not valid: use POST or GET")
+    return raw
+
+
+def _tracker_session(raw: str) -> str:
+    """The session cookie's value: printable characters without ``;`` (a header cannot carry
+    more). The value is never echoed in the error."""
+    raw = raw.strip()
+    if raw and (not _COOKIE_VALUE_RE.match(raw) or ";" in raw):
+        raise RuntimeError("TRACKER_SESSION is not valid: it must be a single cookie value "
+                           "(no spaces, semicolons or control characters)")
+    return raw
 
 
 def _env_int(name: str, default: int) -> int:
@@ -101,7 +195,7 @@ class Config:
 
     scan_interval_min: int = 30
     dry_run: bool = False
-    #: MAM watcher only: search and decide, never download (independent of dry_run)
+    #: acquisition watcher only: search and decide, never download (independent of dry_run)
     watch_dry_run: bool = False
 
     web_enabled: bool = True
@@ -136,27 +230,43 @@ class Config:
     #: in the state DB (and skips first-run /setup); the account takes precedence once created
     auth_token: str = ""
 
-    #: Phase 3 wishlist watcher (MAM auto-acquire). Empty MAM_ID = the watcher is off: no
-    #: thread, no network. The session cookie and the qBittorrent password are secrets - they
-    #: are kept out of repr() so a log line or traceback can never print them.
-    mam_id: str = field(default="", repr=False)
+    #: Phase 3 wishlist watcher (acquisition from a private tracker). Every tracker setting is
+    #: optional and empty by default; the watcher is off until the URL, both paths, the cookie's
+    #: name and the session are set. The session cookie and the qBittorrent password are secrets -
+    #: they are kept out of repr() so a log line or traceback can never print them.
+    tracker_url: str = ""
+    tracker_search_path: str = ""
+    tracker_search_method: str = "POST"
+    #: the category value to send and the request field that carries it (both empty = none sent)
+    tracker_search_category: str = ""
+    tracker_search_category_param: str = ""
+    tracker_download_path: str = ""
+    tracker_download_param: str = "tid"
+    #: the query parameter that spends a freeleech credit; empty = the client never sends one
+    tracker_freeleech_param: str = ""
+    tracker_cookie_name: str = ""
+    tracker_session: str = field(default="", repr=False)
     watch_interval_min: int = 60
     watch_max_per_cycle: int = 5
     qbit_url: str = "http://localhost:8083"
     qbit_user: str = ""
     qbit_pass: str = field(default="", repr=False)
-    #: how MAM requests leave the container. ``mam_user_agent`` "" = no User-Agent override is
-    #: sent; ``mam_proxy`` "" = direct (it may hold credentials, so never in repr());
-    #: ``mam_home_wan_ip`` set = the egress guard is armed and refuses to run from that IP.
-    mam_user_agent: str = ""
-    mam_proxy: str = field(default="", repr=False)
-    mam_home_wan_ip: str = ""
-    #: optional allowlist: set = MAM must see exactly this address, or the watcher refuses to
-    #: contact MAM. "" = this check is off. Also editable in Settings > Watcher.
-    mam_expected_egress_ip: str = ""
-    #: MyAnonamouse VIP membership (not detectable from the API): False = VIP-only torrents are
-    #: skipped. Also editable in Settings > Watcher.
-    mam_vip: bool = False
+    #: how tracker requests leave the container. ``tracker_user_agent`` "" = no User-Agent is
+    #: sent at all; ``tracker_proxy`` "" = direct (it may hold credentials, so never in repr());
+    #: ``tracker_home_ip`` set = the egress guard is armed and refuses to run from that IP.
+    tracker_user_agent: str = ""
+    tracker_proxy: str = field(default="", repr=False)
+    tracker_home_ip: str = ""
+    #: optional allowlist: set = the tracker must see exactly this address, or the watcher refuses
+    #: to contact it. "" = this check is off. Also editable in Settings > Watcher.
+    tracker_expected_egress_ip: str = ""
+    #: whether the account holds the tracker's top membership tier (not detectable from the
+    #: API): False = torrents restricted to it are skipped. Also editable in Settings > Watcher.
+    tracker_vip: bool = False
+    #: deprecated variables that were honoured / ignored at load, as (old, new) names only -
+    #: the daemon logs one line each at startup
+    deprecated_used: list = field(default_factory=list, repr=False)
+    deprecated_ignored: list = field(default_factory=list, repr=False)
 
     ignore_globs: list[str] = field(
         default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
@@ -164,6 +274,14 @@ class Config:
 
     @classmethod
     def from_env(cls) -> Config:
+        honoured: list = []
+        ignored: list = []
+        session, _ = _resolve("TRACKER_SESSION", honoured, ignored)
+        agent, _ = _resolve("TRACKER_USER_AGENT", honoured, ignored)
+        proxy, proxy_name = _resolve("TRACKER_PROXY", honoured, ignored)
+        home, home_name = _resolve("TRACKER_HOME_IP", honoured, ignored)
+        expected, expected_name = _resolve("TRACKER_EXPECTED_EGRESS_IP", honoured, ignored)
+        vip_raw, _ = _resolve("TRACKER_VIP", honoured, ignored)
         return cls(
             library_root=Path(_env("LIBRARY_ROOT", "/library")),
             output_root=Path(_env("OUTPUT_ROOT", "/output")),
@@ -195,17 +313,31 @@ class Config:
             auth_token=_env("AUTH_TOKEN", ""),
             manual_workers=max(1, _env_int("MANUAL_WORKERS", 2)),
             max_connections=max(1, _env_int("MAX_CONNECTIONS", 64)),
-            mam_id=_env("MAM_ID", ""),
+            tracker_url=_tracker_url(_env("TRACKER_URL", "")),
+            tracker_search_path=_tracker_path("TRACKER_SEARCH_PATH", _env("TRACKER_SEARCH_PATH", "")),
+            tracker_search_method=_tracker_method(_env("TRACKER_SEARCH_METHOD", "")),
+            tracker_search_category=_env("TRACKER_SEARCH_CATEGORY", ""),
+            tracker_search_category_param=_tracker_name(
+                "TRACKER_SEARCH_CATEGORY_PARAM", _env("TRACKER_SEARCH_CATEGORY_PARAM", "")),
+            tracker_download_path=_tracker_path("TRACKER_DOWNLOAD_PATH", _env("TRACKER_DOWNLOAD_PATH", "")),
+            tracker_download_param=_tracker_name(
+                "TRACKER_DOWNLOAD_PARAM", _env("TRACKER_DOWNLOAD_PARAM", "")) or "tid",
+            tracker_freeleech_param=_tracker_name(
+                "TRACKER_FREELEECH_PARAM", _env("TRACKER_FREELEECH_PARAM", ""), allow_value=True),
+            tracker_cookie_name=_tracker_name("TRACKER_COOKIE_NAME", _env("TRACKER_COOKIE_NAME", "")),
+            tracker_session=_tracker_session(session),
             watch_interval_min=_env_int("WATCH_INTERVAL_MIN", 60),
             watch_max_per_cycle=_env_int("WATCH_MAX_PER_CYCLE", 5),
             qbit_url=_env("QBIT_URL", "http://localhost:8083").rstrip("/") or "http://localhost:8083",
             qbit_user=_env("QBIT_USER", ""),
             qbit_pass=os.environ.get("QBIT_PASS", ""),  # a password keeps its spaces
-            mam_user_agent=_env("MAM_USER_AGENT", ""),
-            mam_proxy=_proxy_value(_env("MAM_PROXY", "")),
-            mam_home_wan_ip=_ip_value("MAM_HOME_WAN_IP", _env("MAM_HOME_WAN_IP", "")),
-            mam_expected_egress_ip=_ip_value("MAM_EXPECTED_EGRESS_IP", _env("MAM_EXPECTED_EGRESS_IP", "")),
-            mam_vip=_env_bool("MAM_VIP", False),
+            tracker_user_agent=agent,
+            tracker_proxy=_proxy_value(proxy, proxy_name),
+            tracker_home_ip=_ip_value(home_name, home),
+            tracker_expected_egress_ip=_ip_value(expected_name, expected),
+            tracker_vip=default_bool(vip_raw, False),
+            deprecated_used=honoured,
+            deprecated_ignored=ignored,
         )
 
     def ensure_dirs(self) -> None:
@@ -255,8 +387,8 @@ SETTING_MAP: dict[str, str] = {
     "scan_interval": "scan_interval_min",
     "nice": "nice",
     "region": "region",
-    "expected_egress": "mam_expected_egress_ip",
-    "vip": "mam_vip",
+    "expected_egress": "tracker_expected_egress_ip",
+    "vip": "tracker_vip",
     "watch_interval": "watch_interval_min",
     "watch_per_cycle": "watch_max_per_cycle",
     "output_format": "output_format",
@@ -313,8 +445,8 @@ def setting_env_defaults() -> dict[str, object]:
         "scan_interval": int(CONFIG.scan_interval_min),
         "nice": int(CONFIG.nice),
         "region": str(CONFIG.region).lower(),
-        "expected_egress": str(CONFIG.mam_expected_egress_ip or ""),
-        "vip": "YES" if CONFIG.mam_vip else "NO",
+        "expected_egress": str(CONFIG.tracker_expected_egress_ip or ""),
+        "vip": "YES" if CONFIG.tracker_vip else "NO",
         "watch_interval": watch_interval_min_env(),
         "watch_per_cycle": watch_max_per_cycle_env(),
     }
@@ -397,8 +529,8 @@ def _config_to_setting(name: str) -> str | None:
     return None
 
 
-#: politeness bounds for the wishlist watcher. A value outside them is pulled back in: MAM
-#: tolerates automation only on its listed endpoints and a banned account is unrecoverable,
+#: politeness bounds for the wishlist watcher. A value outside them is pulled back in: a private
+#: tracker tolerates automation only on its listed endpoints and a banned account is unrecoverable,
 #: so no setting can make the watcher search more often or more per cycle than this.
 WATCH_INTERVAL_BOUNDS = (10, 1440)
 WATCH_MAX_PER_CYCLE_BOUNDS = (1, 20)
@@ -437,3 +569,21 @@ def effective_auto_tiers() -> set[str]:
     tier = str(effective_val("auto_convert") or "high").lower()
     mapping = {"high": {"HIGH"}, "medium": {"HIGH", "MEDIUM"}, "off": set()}
     return mapping.get(tier, {"HIGH"})
+
+
+def deprecated_env_lines(config: Config | None = None) -> list[str]:
+    """One startup log line per deprecated variable that was in use (names only, never a value)."""
+    config = config or CONFIG
+    lines = [f"{old} is deprecated, use {new}" for old, new in config.deprecated_used]
+    lines += [f"{old} is deprecated and ignored: {new} is set" for old, new in config.deprecated_ignored]
+    return lines
+
+
+#: the settings that must all be present before the watcher can run: (variable, Config attribute)
+WATCHER_REQUIRED = (
+    ("TRACKER_URL", "tracker_url"),
+    ("TRACKER_SEARCH_PATH", "tracker_search_path"),
+    ("TRACKER_DOWNLOAD_PATH", "tracker_download_path"),
+    ("TRACKER_COOKIE_NAME", "tracker_cookie_name"),
+    ("TRACKER_SESSION", "tracker_session"),
+)

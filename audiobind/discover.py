@@ -169,7 +169,7 @@ def public_row(row: dict) -> dict:
     """A wishlist row as the API shows it."""
     return {k: row.get(k) for k in ("asin", "title", "authors", "added_at", "status", "origin",
                                     "series", "sequence", "hours", "note", "checked_at", "updated_at",
-                                    "mam_tid", "torrent_hash", "search_title")}
+                                    "tracker_tid", "torrent_hash", "search_title")}
 
 
 # ------------------------------------------------------------------ already in your library

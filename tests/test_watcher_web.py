@@ -11,10 +11,11 @@ import unittest
 from unittest import mock
 
 from audiobind import auth as auth_mod
-from audiobind import mam, series, watcher, web
+from audiobind import tracker, series, watcher, web
 from audiobind.config import CONFIG
 from audiobind.control import CONTROL
 from audiobind.state import State
+from tests.tracker_cfg import tracker_cfg, make_client, SEARCH_URL
 
 try:
     from live import LiveServerCase, seed_account
@@ -47,7 +48,7 @@ class StateCase(unittest.TestCase):
 class TestWishlistTab(StateCase):
     def setUp(self):
         super().setUp()
-        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p = tracker_cfg("x")  # these tests are about the watcher surfaces
         p.start()
         self.addCleanup(p.stop)
 
@@ -55,8 +56,8 @@ class TestWishlistTab(StateCase):
         add(self.state, "B000000001")
         add(self.state, "B000000002", "downloading", note="sent to qBittorrent")
         add(self.state, "B000000003", "in_library")
-        add(self.state, "B000000004", "not_found", note="not found on MAM in 3 searches")
-        add(self.state, "B000000005", "error", note="download of MAM #9 failed <boom>")
+        add(self.state, "B000000004", "not_found", note="not found on the tracker in 3 searches")
+        add(self.state, "B000000005", "error", note="download of tracker torrent #9 failed <boom>")
         html = web.render_discover(self.state, "wishlist")
         for label in ("WANTED", "DOWNLOADING", "IN LIBRARY", "NOT FOUND", "ERROR"):
             self.assertIn(f">{label}</span>", html)
@@ -64,7 +65,7 @@ class TestWishlistTab(StateCase):
             self.assertIn(f'class="ab-disc-pill ab-wl-{status}"', html)
         self.assertEqual(html.count('onclick="abRetry(this)">Retry</button>'), 2)
         self.assertEqual(html.count('onclick="abUnwant(this)">Remove</button>'), 5)
-        self.assertIn("download of MAM #9 failed &lt;boom&gt;", html, "notes are escaped")
+        self.assertIn("download of tracker torrent #9 failed &lt;boom&gt;", html, "notes are escaped")
         self.assertIn("5 books wanted", html)
         self.assertIn("1 downloading &#183; 1 in library &#183; 1 not found &#183; 1 error", html)
 
@@ -75,26 +76,26 @@ class TestWishlistTab(StateCase):
         self.assertIn("never checked", html)
         self.assertIn("checked just now", html)
 
-    def test_without_mam_the_wishlist_tab_is_gone(self):
+    def test_without_a_tracker_the_wishlist_tab_is_gone(self):
         add(self.state, "B000000001")
-        with mock.patch.object(CONFIG, "mam_id", ""):
+        with tracker_cfg(""):
             html = web.render_discover(self.state, "wishlist")
         self.assertNotIn("/discover/wishlist", html)
         self.assertNotIn("books wanted", html)
 
     def test_the_bar_warns_when_qbittorrent_is_not_configured(self):
-        with mock.patch.object(CONFIG, "mam_id", "x"):
+        with tracker_cfg("x"):
             html = web.render_discover(self.state, "wishlist")
-        self.assertIn("The MAM watcher is disabled: QBIT_USER / QBIT_PASS are not set", html)
+        self.assertIn("The watcher is disabled: QBIT_USER / QBIT_PASS are not set", html)
 
     def test_the_bar_when_on_paused_and_dry_run(self):
-        with mock.patch.object(CONFIG, "mam_id", "x"), mock.patch.object(CONFIG, "qbit_user", "u"), \
+        with tracker_cfg("x"), mock.patch.object(CONFIG, "qbit_user", "u"), \
                 mock.patch.object(CONFIG, "qbit_pass", "p"), mock.patch.object(CONTROL, "_watcher_dry_run", True):
             html = web.render_discover(self.state, "wishlist")
             self.assertIn("checks up to <b>5</b> wanted books every <b>60 min</b>", html)
             self.assertIn("dry run: decisions are noted, nothing is downloaded", html)
             watcher.WATCHER.set_paused(self.state, True)
-            self.assertIn("The MAM watcher is <b>paused</b>", web.render_discover(self.state, "wishlist"))
+            self.assertIn("The watcher is <b>paused</b>", web.render_discover(self.state, "wishlist"))
 
     def test_rail_keeps_the_wishlist_count(self):
         add(self.state, "B000000001")
@@ -106,13 +107,13 @@ class TestSettingsSection(StateCase):
     def test_off(self):
         html = web.render_settings(self.state)
         self.assertIn('id="watcher"', html)
-        self.assertIn("MAM acquisition (optional)", html)
-        self.assertIn("<code>MAM_ID</code>", html)
+        self.assertIn("Acquisition source (optional)", html)
+        self.assertIn("<code>TRACKER_URL</code>", html)
         self.assertNotIn('id="ab-watch-run"', html, "no dead controls for a watcher that is off")
         self.assertNotIn('id="ab-watch-toggle"', html, "no pause switch for a watcher that is off")
 
     def test_missing_qbit_credentials_warn(self):
-        with mock.patch.object(CONFIG, "mam_id", "x"):
+        with tracker_cfg("x"):
             html = web.render_settings(self.state)
         self.assertIn('class="ab-hintbox ab-watch-warn" role="alert"><b>The watcher is disabled.</b>', html)
         self.assertIn("QBIT_USER / QBIT_PASS are not set", html)
@@ -121,20 +122,20 @@ class TestSettingsSection(StateCase):
     def test_enabled_shows_status_last_cycle_and_controls(self):
         self.state.set_meta(watcher.META_LAST_CYCLE, {"at": time.time() - 7200, "trigger": "timer", "searched": 3,
                                                       "sent": 1, "not_found": 2, "errors": 0})
-        self.state.set_meta(watcher.META_LAST_ERROR, {"at": time.time() - 60, "message": "MAM answered HTTP 503"})
-        with mock.patch.object(CONFIG, "mam_id", "SECRET-MAM-COOKIE"), mock.patch.object(CONFIG, "qbit_user", "u"), \
+        self.state.set_meta(watcher.META_LAST_ERROR, {"at": time.time() - 60, "message": "the tracker answered HTTP 503"})
+        with tracker_cfg("SECRET-SESSION-COOKIE"), mock.patch.object(CONFIG, "qbit_user", "u"), \
                 mock.patch.object(CONFIG, "qbit_pass", "SECRET-QBIT-PASS"):
             html = web.render_settings(self.state)
             self.assertIn('<span class="ok">Enabled</span>', html)
             self.assertIn("every 60 min, at most 5 books per cycle", html)
             self.assertIn("2h ago (timer) &#8212; 3 searched, 1 sent to qBittorrent, 2 not found", html)
-            self.assertIn("MAM answered HTTP 503", html)
+            self.assertIn("the tracker answered HTTP 503", html)
             self.assertIn('id="ab-watch-run" onclick="abWatcher(\'run\')" title=', html, "run is enabled")
             self.assertIn("Pause watcher", html)
             watcher.WATCHER.set_paused(self.state, True)
             paused = web.render_settings(self.state)
         for page in (html, paused):
-            self.assertNotIn("SECRET-MAM-COOKIE", page)
+            self.assertNotIn("SECRET-SESSION-COOKIE", page)
             self.assertNotIn("SECRET-QBIT-PASS", page)
         self.assertIn("Resume watcher", paused)
         self.assertIn('<span class="warn">Paused</span>', paused)
@@ -165,11 +166,11 @@ class TestWatcherApi(LiveServerCase):
         super().tearDown()
 
     def test_status_never_carries_a_secret(self):
-        with mock.patch.object(CONFIG, "mam_id", "SECRET-MAM-COOKIE"), mock.patch.object(CONFIG, "qbit_user", "u"), \
+        with tracker_cfg("SECRET-SESSION-COOKIE"), mock.patch.object(CONFIG, "qbit_user", "u"), \
                 mock.patch.object(CONFIG, "qbit_pass", "SECRET-QBIT-PASS"):
             status, raw = self.request("/api/watcher", headers={}, raw=True)
         self.assertEqual(status, 200)
-        self.assertNotIn(b"SECRET-MAM-COOKIE", raw)
+        self.assertNotIn(b"SECRET-SESSION-COOKIE", raw)
         self.assertNotIn(b"SECRET-QBIT-PASS", raw)
         body = json.loads(raw)
         self.assertTrue(body["enabled"])
@@ -178,7 +179,7 @@ class TestWatcherApi(LiveServerCase):
     def test_run_refused_while_off(self):
         status, body = self.request("/api/watcher", {"action": "run"})
         self.assertEqual(status, 409)
-        self.assertIn("MAM_ID", body["error"])
+        self.assertIn("TRACKER_SESSION", body["error"])
 
     def test_pause_and_resume_persist(self):
         status, body = self.request("/api/watcher", {"action": "pause"})
@@ -198,14 +199,14 @@ class TestWatcherApi(LiveServerCase):
             transport_calls.append(url)
             return 200, {}, b'{"error": "Nothing returned, out of 0"}'
 
-        client = mam.MamClient("cookie", transport=transport, limiter=mam.RateLimiter(spacing=0))
-        with mock.patch.object(CONFIG, "mam_id", "cookie"), mock.patch.object(CONFIG, "qbit_user", "u"), \
-                mock.patch.object(CONFIG, "qbit_pass", "p"), mock.patch.object(watcher, "make_mam", return_value=client):
+        client = make_client("cookie", transport=transport, limiter=tracker.RateLimiter(spacing=0))
+        with tracker_cfg("cookie"), mock.patch.object(CONFIG, "qbit_user", "u"), \
+                mock.patch.object(CONFIG, "qbit_pass", "p"), mock.patch.object(watcher, "make_tracker", return_value=client):
             status, body = self.request("/api/watcher", {"action": "run"})
             self.assertEqual(status, 200, body)
             watcher.WATCHER._worker.join(5)
-        self.assertEqual(transport_calls, [mam.SEARCH_URL])
-        self.assertIn("not found on MAM", self.state.wishlist_get("B000000001")["note"])
+        self.assertEqual(transport_calls, [SEARCH_URL])
+        self.assertIn("not found on the tracker", self.state.wishlist_get("B000000001")["note"])
         self.assertEqual(self.state.get_meta(watcher.META_LAST_CYCLE)["trigger"], "manual")
 
     def test_retry(self):
@@ -226,7 +227,7 @@ class TestWatcherApi(LiveServerCase):
         _, listing = self.request("/api/wishlist", headers={})
         item = listing["items"][0]
         self.assertEqual((item["status"], item["note"]), ("error", "boom"))
-        for key in ("checked_at", "updated_at", "mam_tid", "torrent_hash"):
+        for key in ("checked_at", "updated_at", "tracker_tid", "torrent_hash"):
             self.assertIn(key, item)
 
     def test_posts_have_the_cross_site_guard(self):

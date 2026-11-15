@@ -13,11 +13,13 @@ from audiobind.state import State
 try:
     from live import LiveServerCase
     from test_watcher import TORRENT, FakeQbit, WatcherCase, answer, entry
+    from tracker_cfg import SETTINGS
 except ImportError:
     from tests.live import LiveServerCase
     from tests.test_watcher import TORRENT, FakeQbit, WatcherCase, answer, entry
+    from tests.tracker_cfg import SETTINGS
 
-WATCHER_ON = {"mam_id": "x", "qbit_user": "u", "qbit_pass": "p"}
+WATCHER_ON = {**SETTINGS, "tracker_session": "x", "qbit_user": "u", "qbit_pass": "p"}
 
 
 class Switches(unittest.TestCase):
@@ -108,7 +110,7 @@ class TestCycles(WatcherCase):
         CONTROL.set_dry_run(False)
         CONTROL.set_watcher_dry_run(True)
         self.want()
-        self.mam(answer(entry(1001, "Project Hail Mary")))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")))
         summary = self.cycle()
         self.assertEqual(len(self.transport.calls), 1)
         self.assertFalse(any("download.php" in url for _, url in self.transport.calls))
@@ -119,7 +121,7 @@ class TestCycles(WatcherCase):
         CONTROL.set_dry_run(True)
         CONTROL.set_watcher_dry_run(False)
         self.want()
-        self.mam(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
         summary = self.cycle()
         self.assertEqual(sum("download.php" in url for _, url in self.transport.calls), 1)
         self.assertEqual((summary["sent"], summary["watcher_dry_run"]), (1, False))

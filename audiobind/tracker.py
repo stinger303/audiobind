@@ -1,9 +1,13 @@
-"""MyAnonamouse (MAM): the two endpoints the wishlist watcher is allowed to automate.
+"""The private tracker's acquisition client: the two endpoints the wishlist watcher may automate.
 
-MAM authorizes automation ONLY on its listed endpoints. This module talks to exactly two:
+The client does not know which site it talks to. The owner configures the site's URL, the path
+of its JSON search endpoint, the path of its torrent download endpoint, the session cookie's name
+and its category / freeleech parameters (see ``config.py``, ``TRACKER_*``). This module talks to
+exactly those two endpoints:
 
-* Torrent Search JSON - ``POST /tor/js/loadSearchJSONbasic.php``
-* Download Torrent    - ``GET  /tor/download.php?tid=<id>`` (``&fl`` spends a freeleech wedge)
+* search   - the configured search path, POST or GET, answering JSON
+* download - the configured download path, ``GET <path>?<param>=<id>`` (plus the configured
+  freeleech parameter when a freeleech credit is to be spent)
 
 Nothing else on the site is ever requested, no HTML is ever parsed, and redirects are never
 followed (a redirect would be a request to an endpoint nobody authorized). A banned account is
@@ -25,16 +29,81 @@ from dataclasses import dataclass, field
 
 from .util import clean, norm, sim
 
-#: the site; the two endpoint URLs below are the only URLs this module builds
-SITE = "https://www.myanonamouse.net"
-SEARCH_URL = SITE + "/tor/js/loadSearchJSONbasic.php"
-DOWNLOAD_URL = SITE + "/tor/download.php"
+#: Search answers name the same concept differently from site to site, so every field is read
+#: through this table: the first spelling that is present (and not empty) wins. Anything that
+#: matches none of them is simply absent - never an error. One table, so a new spelling is a
+#: one-line change.
+FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "id": ("id", "tid", "torrent_id"),
+    "name": ("name", "title"),
+    "authors": ("author_info", "authors", "author"),
+    "narrators": ("narrator_info", "narrators", "narrator"),
+    "series": ("series_info", "series"),
+    "size": ("size", "size_bytes"),
+    "added": ("added", "added_at", "created"),
+    "numfiles": ("numfiles", "files", "file_count"),
+    "filetype": ("filetype", "format"),
+    "category": ("catname", "category", "cat"),
+    "tags": ("tags",),
+    "snatched": ("my_snatched", "snatched"),
+    "free": ("free", "freeleech"),
+    "free_tier": ("fl_vip", "freeleech_vip", "fl_premium"),
+    "personal_free": ("personal_freeleech", "personal_fl"),
+    "restricted": ("vip", "vip_only", "premium_only"),
+    #: the answer's own wrapper around the result list
+    "rows": ("data", "results", "torrents"),
+}
+
+#: an "error" a search answer starts with when the query simply matched nothing
+NO_RESULT_ERRORS = ("nothing returned", "no results", "no torrents")
+
+
+def _first(entry: dict, concept: str):
+    """The value of the first alias of ``concept`` that is present and not empty, else None."""
+    for key in FIELD_ALIASES[concept]:
+        value = entry.get(key)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _any_flag(entry: dict, concept: str) -> bool:
+    return any(flag(entry.get(key)) for key in FIELD_ALIASES[concept])
+
+
+@dataclass(frozen=True)
+class Endpoints:
+    """The two URLs this client may ever request, built from configuration."""
+
+    search_url: str = ""
+    download_url: str = ""
+    search_method: str = "POST"
+    download_param: str = "tid"
+    freeleech_param: str = ""
+    search_category: str = ""
+    search_category_param: str = ""
+
+    @classmethod
+    def build(cls, base_url: str, search_path: str, download_path: str, *, search_method: str = "POST",
+              download_param: str = "tid", freeleech_param: str = "", search_category: str = "",
+              search_category_param: str = "") -> Endpoints:
+        base = str(base_url or "").strip().rstrip("/")
+        return cls(
+            search_url=base + str(search_path or "").strip() if base and search_path else "",
+            download_url=base + str(download_path or "").strip() if base and download_path else "",
+            search_method=(str(search_method or "").strip().upper() or "POST"),
+            download_param=str(download_param or "").strip() or "tid",
+            freeleech_param=str(freeleech_param or "").strip(),
+            search_category=str(search_category or "").strip(),
+            search_category_param=str(search_category_param or "").strip(),
+        )
+
 
 _FALSE_WORDS = {"", "0", "false", "no", "off", "null", "none"}
 
 
 def flag(value) -> bool:
-    """A MAM yes/no field read defensively: JSON true/false, 1/0, "1"/"0", "true"/"false"."""
+    """A yes/no field read defensively: JSON true/false, 1/0, "1"/"0", "true"/"false"."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -45,7 +114,7 @@ def flag(value) -> bool:
 
 
 def has_datetime(value) -> bool:
-    """``personal_freeleech`` is a datetime when you hold a personal freeleech, else null.
+    """A personal freeleech is a datetime when you hold one, else null.
     An empty string, a zero date or a 0/false also mean "none"."""
     if value is None or isinstance(value, bool):
         return bool(value)
@@ -57,51 +126,54 @@ def has_datetime(value) -> bool:
     return not text.startswith("0000-00-00")
 
 
-def wedge_decision(entry: dict) -> tuple[bool, str]:
-    """(spend a wedge?, why) for one search result.
+def freeleech_decision(entry: dict, can_spend: bool = True) -> tuple[bool, str]:
+    """(spend a freeleech credit?, why) for one search result.
 
-    The torrent already costs nothing when it is site-wide freeleech (``free``), VIP
-    freeleech (``fl_vip``) or you hold a personal freeleech on it (``personal_freeleech``):
-    download WITHOUT ``&fl`` - MAM "will even spend on VIP torrents, no refunds". Anything
-    else is downloaded WITH ``&fl``. Exactly one answer per torrent; there is no retry with
-    the other one.
+    The torrent already costs nothing when it is freeleech for everyone, freeleech for the
+    account's tier, or you hold a personal freeleech on it: download WITHOUT the freeleech
+    parameter - a credit spent on those is not refunded. Anything else is downloaded WITH it.
+    ``can_spend`` False (no freeleech parameter configured) never spends. Exactly one answer per
+    torrent; there is no retry with the other one.
     """
-    if flag(entry.get("free")):
-        return False, "already freeleech (free) - no wedge spent"
-    if flag(entry.get("fl_vip")):
-        return False, "already freeleech (VIP) - no wedge spent"
-    if has_datetime(entry.get("personal_freeleech")):
-        return False, "personal freeleech already held - no wedge spent"
-    return True, "not freeleech - downloaded with a freeleech wedge (&fl)"
+    if _any_flag(entry, "free"):
+        return False, "already freeleech (free) - no freeleech credit spent"
+    if _any_flag(entry, "free_tier"):
+        return False, "already freeleech for this account - no freeleech credit spent"
+    if any(has_datetime(entry.get(key)) for key in FIELD_ALIASES["personal_free"]):
+        return False, "personal freeleech already held - no freeleech credit spent"
+    if not can_spend:
+        return False, "not freeleech - no freeleech parameter is configured, downloaded without one"
+    return True, "not freeleech - downloaded with a freeleech credit"
 
 
-def download_url(tid, use_wedge: bool) -> str:
-    """The Download Torrent URL for one torrent id: ``&fl`` only when ``use_wedge``."""
+def download_url(endpoints: Endpoints, tid, use_freeleech: bool) -> str:
+    """The download URL for one torrent id; the freeleech parameter only when ``use_freeleech``
+    and one is configured."""
     tid = str(tid).strip()
     if not tid.isdigit():
-        raise ValueError("a MAM torrent id is a number")
-    return f"{DOWNLOAD_URL}?tid={tid}" + ("&fl" if use_wedge else "")
+        raise ValueError("a torrent id is a number")
+    url = f"{endpoints.download_url}?{endpoints.download_param}={tid}"
+    if use_freeleech and endpoints.freeleech_param:
+        url += "&" + endpoints.freeleech_param
+    return url
 
 
 # ---------------------------------------------------------------------------- search results
-#: what the watcher asks the Torrent Search JSON endpoint for (fields as MAM documents them)
+#: the fixed part of the search request (the category is configured, see Endpoints)
 SEARCH_LANG_ENGLISH = "1"
-#: the audiobook MAIN category, sent as tor[main_cat][]. tor[cat][] takes a LEAF category id
-#: and "14" there returns nothing at all ("Nothing returned, out of 0") for every query.
-SEARCH_MAIN_CAT_AUDIOBOOKS = "13"
 PER_PAGE = 25
 #: a body bigger than this is not a search answer or a .torrent; it is not read further
 MAX_BODY = 8 * 1024 * 1024
 
 #: file types an audiobook torrent carries. A result must show one of them (or a category
 #: name that says audiobook) before it can be picked - defence in depth, so a category filter
-#: that matches the wrong section can never get an e-book downloaded with a wedge
+#: that matches the wrong section can never get an e-book downloaded with a freeleech credit
 AUDIO_TYPES = {"m4b", "mp3", "m4a", "aac", "flac", "ogg", "opus", "wma", "wav", "aax", "mp4"}
 
 
 @dataclass
 class Torrent:
-    """One Torrent Search JSON entry, read defensively."""
+    """One search result, read defensively."""
 
     tid: str
     name: str = ""
@@ -116,7 +188,7 @@ class Torrent:
     category: str = ""
     tags: str = ""
     snatched: bool = False
-    #: the raw entry - wedge_decision() reads free / fl_vip / personal_freeleech from it
+    #: the raw entry - freeleech_decision() reads the freeleech fields from it
     raw: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -128,7 +200,7 @@ class Torrent:
 
 
 def _json_field(value):
-    """author_info / narrator_info / series_info arrive as JSON *strings*; anything odd is empty."""
+    """Author / narrator / series fields may arrive as JSON *strings*; anything odd is empty."""
     if isinstance(value, (dict, list)):
         return value
     if not isinstance(value, str) or not value.strip():
@@ -157,7 +229,7 @@ def _names(value) -> list[str]:
 
 
 def _series(value) -> list[tuple[str, str]]:
-    """series_info: {"<id>": ["Series name", "3"]} (tolerates a bare name or a dict)."""
+    """The series field: {"<id>": ["Series name", "3"]} (tolerates a bare name or a dict)."""
     data = _json_field(value)
     items = data.values() if isinstance(data, dict) else data if isinstance(data, list) else []
     out = []
@@ -177,39 +249,50 @@ def _series(value) -> list[tuple[str, str]]:
 
 
 def _int(value) -> int:
+    if isinstance(value, (list, tuple)):  # a file list instead of a count
+        return len(value)
     try:
         return int(float(value))
     except (TypeError, ValueError):
         return 0
 
 
+def _rows_key(payload: dict):
+    """The key under which the answer carries its result list (None = this is not a result answer)."""
+    for key in FIELD_ALIASES["rows"]:
+        if key in payload:
+            return key
+    return None
+
+
 def parse_search(payload) -> list[Torrent]:
     """The entries of one search answer ({"data": [...]}). An entry without a numeric id is
     dropped; every other field falls back to empty when it is missing or malformed."""
-    rows = payload.get("data") if isinstance(payload, dict) else None
+    key = _rows_key(payload) if isinstance(payload, dict) else None
+    rows = payload.get(key) if key else None
     if not isinstance(rows, list):
         return []
     out = []
     for entry in rows:
         if not isinstance(entry, dict):
             continue
-        tid = str(entry.get("id") or "").strip()
+        tid = str(_first(entry, "id") or "").strip()
         if not tid.isdigit():
             continue
         out.append(
             Torrent(
                 tid=tid,
-                name=_text(entry.get("name") or entry.get("title") or ""),
-                authors=_names(entry.get("author_info")),
-                narrators=_names(entry.get("narrator_info")),
-                series=_series(entry.get("series_info")),
-                size=_text(entry.get("size") or ""),
-                added=_text(entry.get("added") or ""),
-                numfiles=_int(entry.get("numfiles")),
-                filetype=_text(entry.get("filetype") or ""),
-                category=_text(entry.get("catname") or entry.get("cat") or ""),
-                tags=_text(entry.get("tags") or ""),
-                snatched=flag(entry.get("my_snatched")),
+                name=_text(_first(entry, "name") or ""),
+                authors=_names(_first(entry, "authors")),
+                narrators=_names(_first(entry, "narrators")),
+                series=_series(_first(entry, "series")),
+                size=_text(_first(entry, "size") or ""),
+                added=_text(_first(entry, "added") or ""),
+                numfiles=_int(_first(entry, "numfiles")),
+                filetype=_text(_first(entry, "filetype") or ""),
+                category=_text(_first(entry, "category") or ""),
+                tags=_text(_first(entry, "tags") or ""),
+                snatched=_any_flag(entry, "snatched"),
                 raw=entry,
             )
         )
@@ -217,7 +300,7 @@ def parse_search(payload) -> list[Torrent]:
 
 
 # ---------------------------------------------------------------------------- picking one
-#: a MAM title must be at least this similar to the wishlist title (util.sim, after
+#: a result's title must be at least this similar to the wishlist title (util.sim, after
 #: normalisation). Strictly above sim's 0.85 substring floor, so "Dune" never takes
 #: "Dune Messiah"
 TITLE_MATCH = 0.90
@@ -238,7 +321,7 @@ def _title_variants(title: str) -> list[str]:
 
 
 def title_score(wanted: str, found: str) -> float:
-    """How well a MAM name matches a wishlist title. Each side is compared in full against the
+    """How well a result's name matches a wishlist title. Each side is compared in full against the
     other side's variants (bracketed tags / subtitle dropped) - never both sides shortened at
     once, so "Star Wars: Thrawn" can never match "Star Wars: Heir to the Empire"."""
     best = sim(wanted, found)
@@ -262,15 +345,15 @@ def series_exact(row: dict, torrent: Torrent) -> bool:
     return any(sim(name, s) >= TITLE_MATCH and norm(n) == seq for s, n in torrent.series)
 
 
-def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False) -> tuple[Torrent | None, str]:
+def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False, can_spend: bool = True) -> tuple[Torrent | None, str]:
     """(the torrent to fetch, why) or (None, why not) for one wishlist row.
 
     A candidate must be an audio torrent you have not snatched, whose title scores at least
     TITLE_MATCH and - when the row names authors - credits one of them. Among those: files
     present first, then the exact series/sequence, then the closer title, then one that is
-    already freeleech (no wedge needed), then MAM's relevance order. Nothing below the
-    threshold is ever forced. A VIP-only torrent (``vip`` field) is skipped unless ``vip`` says
-    the account has VIP membership; with ``vip`` it is an ordinary candidate.
+    already freeleech (no credit needed), then the tracker's relevance order. Nothing below the
+    threshold is ever forced. A torrent restricted to a membership tier is skipped unless ``vip``
+    says the account has it; with ``vip`` it is an ordinary candidate.
     """
     if not torrents:
         return None, "no results"
@@ -289,15 +372,15 @@ def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False) -> t
         if torrent.snatched:
             skipped_snatched += 1
             continue
-        if not vip and flag(torrent.raw.get("vip")):
+        if not vip and _any_flag(torrent.raw, "restricted"):
             skipped_vip += 1
             continue
-        free = not wedge_decision(torrent.raw)[0]
+        free = not freeleech_decision(torrent.raw, can_spend)[0]
         key = (torrent.numfiles > 0, series_exact(row, torrent), score, free, -index)
         ranked.append((key, torrent, score))
     if not ranked:
         if skipped_vip:
-            return None, f"only match(es) need VIP membership ({skipped_vip}) - skipped"
+            return None, f"only match(es) need a membership tier this account does not have ({skipped_vip}) - skipped"
         if skipped_snatched:
             return None, f"only match(es) already snatched ({skipped_snatched}) - skipped"
         if best_miss[1]:
@@ -308,11 +391,11 @@ def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False) -> t
     bits = [f"title {score:.2f}", f"{torrent.numfiles} file(s)"]
     if key[1]:
         bits.append("series match")
-    return torrent, f"MAM #{torrent.tid} {torrent.name!r} ({', '.join(bits)})"
+    return torrent, f"#{torrent.tid} {torrent.name!r} ({', '.join(bits)})"
 
 
 # ---------------------------------------------------------------------------- politeness
-#: at least this many seconds between two MAM requests
+#: at least this many seconds between two tracker requests
 MIN_SPACING = 3.0
 #: backoff after any non-200: 60 s, doubling, capped at 30 minutes
 BACKOFF_START = 60.0
@@ -374,16 +457,16 @@ class Backoff:
 
 
 # ---------------------------------------------------------------------------- the client
-class MamError(Exception):
-    """A MAM request failed. ``status`` is the HTTP status (0 = no answer)."""
+class TrackerError(Exception):
+    """A tracker request failed. ``status`` is the HTTP status (0 = no answer)."""
 
     def __init__(self, message: str, status: int = 0):
         super().__init__(message)
         self.status = status
 
 
-class MamBackoff(MamError):
-    """Refused locally: MAM is in backoff, so no request was sent."""
+class TrackerBackoff(TrackerError):
+    """Refused locally: the tracker is in backoff, so no request was sent."""
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -393,9 +476,16 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def authorized_url(url: str) -> bool:
-    """True only for the two endpoints MAM authorizes for automation."""
-    return url == SEARCH_URL or url.startswith(DOWNLOAD_URL + "?tid=")
+def authorized_url(url: str, endpoints: Endpoints) -> bool:
+    """True only for the two endpoints configured for automation: the search URL (exactly, or with
+    a query string when the search method is GET) and the download URL with its id parameter."""
+    if not endpoints.search_url or not endpoints.download_url:
+        return False
+    if url == endpoints.search_url:
+        return True
+    if endpoints.search_method == "GET" and url.startswith(endpoints.search_url + "?"):
+        return True
+    return url.startswith(f"{endpoints.download_url}?{endpoints.download_param}=")
 
 
 _OPENERS: dict = {}
@@ -408,7 +498,7 @@ def _opener(proxy: str = ""):
     https target goes through an HTTP CONNECT tunnel), or an empty map (no proxy at all) when
     there is none, so the environment's proxy variables are never consulted. ``addheaders`` is
     emptied so urllib's own ``User-agent: Python-urllib/x`` is never sent; the only User-Agent
-    on the wire is MAM_USER_AGENT, when the owner set one."""
+    on the wire is TRACKER_USER_AGENT, when the owner set one."""
     with _OPENERS_LOCK:
         if proxy not in _OPENERS:
             mapping = {"http": proxy, "https": proxy} if proxy else {}
@@ -419,13 +509,13 @@ def _opener(proxy: str = ""):
 
 
 def urllib_transport(method: str, url: str, data: bytes | None, headers: dict, timeout: float,
-                     proxy: str = ""):
-    """(status, headers, body) - the one place a MAM request leaves the process.
+                     proxy: str = "", endpoints: Endpoints | None = None):
+    """(status, headers, body) - the one place a tracker request leaves the process.
 
     With ``proxy`` set this is fail-closed: one attempt through the proxy, and any failure is a
-    MamError. There is no retry and never a direct fallback."""
-    if not authorized_url(url):
-        raise MamError("refusing a URL outside the two authorized MAM endpoints")
+    TrackerError. There is no retry and never a direct fallback."""
+    if endpoints is None or not authorized_url(url, endpoints):
+        raise TrackerError("refusing a URL outside the two configured endpoints")
     opener = _opener(proxy)
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
@@ -441,7 +531,7 @@ def urllib_transport(method: str, url: str, data: bytes | None, headers: dict, t
         return exc.code, dict(exc.headers or {}), body
     except Exception as exc:  # noqa: BLE001
         if proxy:
-            raise MamError(f"MAM request through the proxy failed ({type(exc).__name__}); not sent directly") from exc
+            raise TrackerError(f"the request through the proxy failed ({type(exc).__name__}); not sent directly") from exc
         raise
 
 
@@ -460,45 +550,54 @@ def looks_like_torrent(body: bytes) -> bool:
     return bool(body) and len(body) <= MAX_BODY and body[:1] == b"d" and b"4:info" in body
 
 
-class MamClient:
+class TrackerClient:
     """Search and download - one request at a time, MIN_SPACING apart, with shared backoff.
 
     ``transport(method, url, data, headers, timeout) -> (status, headers, body)`` is the
     network; tests hand in a fake. Every non-200 (and every answer that is not what the
-    endpoint documents) starts or extends the backoff.
+    endpoint is expected to give) starts or extends the backoff.
     """
 
     TIMEOUT = 30.0
 
-    def __init__(self, mam_id: str, transport=None, limiter: RateLimiter | None = None,
-                 backoff: Backoff | None = None, proxy: str = "", user_agent: str = ""):
-        self._mam_id = str(mam_id or "").strip()
+    def __init__(self, session: str, endpoints: Endpoints, cookie_name: str, transport=None,
+                 limiter: RateLimiter | None = None, backoff: Backoff | None = None,
+                 proxy: str = "", user_agent: str = ""):
+        self._session = str(session or "").strip()
+        self._cookie_name = str(cookie_name or "").strip()
+        self.endpoints = endpoints
         self._user_agent = str(user_agent or "").strip()
         # the default transport carries the proxy; a test's fake transport is used as given
-        self.transport = transport or functools.partial(urllib_transport, proxy=str(proxy or "").strip())
+        self.transport = transport or functools.partial(
+            urllib_transport, proxy=str(proxy or "").strip(), endpoints=endpoints)
         self.limiter = limiter or RateLimiter()
         self.backoff = backoff or Backoff()
         self._lock = threading.Lock()
         self.requests = 0
 
     def __repr__(self) -> str:  # never the cookie
-        return f"MamClient(requests={self.requests}, backoff={self.backoff.remaining():.0f}s)"
+        return f"TrackerClient(requests={self.requests}, backoff={self.backoff.remaining():.0f}s)"
+
+    @property
+    def can_spend(self) -> bool:
+        """True when a freeleech parameter is configured (else a credit is never spent)."""
+        return bool(self.endpoints.freeleech_param)
 
     def _headers(self, extra: dict | None = None) -> dict:
-        headers = {"Cookie": f"mam_id={self._mam_id}"}
-        if self._user_agent:  # no override unless the owner set MAM_USER_AGENT; never our name or version
+        headers = {"Cookie": f"{self._cookie_name}={self._session}"}
+        if self._user_agent:  # no override unless the owner set TRACKER_USER_AGENT; never our name or version
             headers["User-Agent"] = self._user_agent
         return {**headers, **(extra or {})}
 
     def _request(self, method: str, url: str, data: bytes | None = None, extra: dict | None = None) -> bytes:
-        if not self._mam_id:
-            raise MamError("MAM_ID is not set")
-        if not authorized_url(url):
-            raise MamError("refusing a URL outside the two authorized MAM endpoints")
+        if not self._session or not self._cookie_name:
+            raise TrackerError("the tracker session is not set (TRACKER_COOKIE_NAME / TRACKER_SESSION)")
+        if not authorized_url(url, self.endpoints):
+            raise TrackerError("refusing a URL outside the two configured endpoints")
         with self._lock:
             remaining = self.backoff.remaining()
             if remaining > 0:
-                raise MamBackoff(f"MAM backoff - next request allowed in {int(remaining) + 1}s")
+                raise TrackerBackoff(f"tracker backoff - next request allowed in {int(remaining) + 1}s")
             self.limiter.wait()
             self.requests += 1
             try:
@@ -506,57 +605,67 @@ class MamClient:
             except Exception as exc:  # noqa: BLE001 - timeouts, DNS, TLS: all "no answer"
                 self.limiter.done()
                 delay = self.backoff.fail()
-                raise MamError(f"MAM could not be reached ({type(exc).__name__}); backing off {delay:.0f}s") from exc
+                raise TrackerError(f"the tracker could not be reached ({type(exc).__name__}); backing off {delay:.0f}s") from exc
             self.limiter.done()
             if status != 200:
                 delay = self.backoff.fail(_retry_after(headers))
-                raise MamError(f"MAM answered HTTP {status}; backing off {delay:.0f}s", int(status or 0))
+                raise TrackerError(f"the tracker answered HTTP {status}; backing off {delay:.0f}s", int(status or 0))
             if body is None or len(body) > MAX_BODY:
                 delay = self.backoff.fail()
-                raise MamError(f"MAM answer too large; backing off {delay:.0f}s", 200)
+                raise TrackerError(f"the tracker's answer was too large; backing off {delay:.0f}s", 200)
             return body
 
-    def _bad_answer(self, why: str) -> MamError:
+    def _bad_answer(self, why: str) -> TrackerError:
         delay = self.backoff.fail()
-        return MamError(f"{why}; backing off {delay:.0f}s", 200)
+        return TrackerError(f"{why}; backing off {delay:.0f}s", 200)
 
-    def search(self, title: str, author: str = "") -> list[Torrent]:
-        """Torrent Search JSON: audiobooks, English, by relevance."""
+    def search_form(self, title: str, author: str = "") -> list[tuple[str, str]]:
+        """The search request's fields: audiobooks, English, by relevance (+ the configured category)."""
         form = [
             ("tor[text]", str(title or "")),
             ("tor[searchIn]", "torrents"),
             ("tor[browse_lang][]", SEARCH_LANG_ENGLISH),
-            ("tor[main_cat][]", SEARCH_MAIN_CAT_AUDIOBOOKS),
             ("tor[sortType]", "relevance"),
             ("perpage", str(PER_PAGE)),
         ]
+        if self.endpoints.search_category and self.endpoints.search_category_param:
+            form.insert(3, (self.endpoints.search_category_param, self.endpoints.search_category))
         if author:
             form.insert(1, ("tor[author]", str(author)))
-        body = self._request(
-            "POST", SEARCH_URL, urllib.parse.urlencode(form).encode(),
-            {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
-        )
+        return form
+
+    def search(self, title: str, author: str = "") -> list[Torrent]:
+        """The search endpoint: JSON, by relevance."""
+        query = urllib.parse.urlencode(self.search_form(title, author))
+        if self.endpoints.search_method == "GET":
+            body = self._request("GET", f"{self.endpoints.search_url}?{query}", None,
+                                 {"Accept": "application/json"})
+        else:
+            body = self._request(
+                "POST", self.endpoints.search_url, query.encode(),
+                {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+            )
         try:
             payload = json.loads(body.decode("utf-8", "replace"))
         except ValueError:
             # an HTML page here usually means the session is gone - it is never parsed
-            raise self._bad_answer("MAM search did not answer JSON (session expired or not authorized?)") from None
+            raise self._bad_answer("the tracker's search did not answer JSON (session expired or not authorized?)") from None
         if not isinstance(payload, dict):
-            raise self._bad_answer("MAM search answered an unexpected JSON shape")
-        if "data" not in payload:
+            raise self._bad_answer("the tracker's search answered an unexpected JSON shape")
+        if _rows_key(payload) is None:
             error = str(payload.get("error") or "")
-            if error.lower().startswith("nothing returned"):
+            if error.lower().startswith(NO_RESULT_ERRORS):
                 self.backoff.ok()
-                return []  # MAM's way of saying "no results"
-            raise self._bad_answer(f"MAM search refused: {error[:120] or 'no data'}")
+                return []  # the tracker's way of saying "no results"
+            raise self._bad_answer(f"the tracker's search refused: {error[:120] or 'no data'}")
         self.backoff.ok()
         return parse_search(payload)
 
-    def download(self, tid, use_wedge: bool) -> bytes:
-        """Download Torrent: the .torrent bytes. ``use_wedge`` comes from wedge_decision()."""
-        url = download_url(tid, use_wedge)
+    def download(self, tid, use_freeleech: bool) -> bytes:
+        """The .torrent bytes. ``use_freeleech`` comes from freeleech_decision()."""
+        url = download_url(self.endpoints, tid, use_freeleech)
         body = self._request("GET", url, extra={"Accept": "application/x-bittorrent"})
         if not looks_like_torrent(body):
-            raise self._bad_answer("MAM download did not return a .torrent")
+            raise self._bad_answer("the tracker's download did not return a .torrent")
         self.backoff.ok()
         return body

@@ -335,7 +335,7 @@ def find_unit(root: str | Path, ignore: list[str], rel: str) -> BookUnit | None:
 
 
 # ------------------------------------------------------------------ name parsing
-#: torrent tags: "[MAM v5]", "[CA]", "{ASIN:B00...}" - never part of a title, dropped whole
+#: torrent tags: "[v5]", "[CA]", "{ASIN:B00...}" - never part of a title, dropped whole
 _TORRENT_TAG_RE = re.compile(r"\[[^\[\]]*\]|\{[^{}]*\}")
 #: not part of any Audible title, bracketed or bare
 _EDITION_RE = re.compile(r"\(\s*(?:un)?abridged\s*\)|\b(?:un)?abridged\b", re.I)

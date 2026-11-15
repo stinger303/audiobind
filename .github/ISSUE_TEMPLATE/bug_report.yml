@@ -42,6 +42,6 @@ body:
     attributes:
       label: Relevant log lines
       description: |
-        From `docker logs audiobind` or `/config/audiobind.log`. **Remove your MAM cookie
-        (`mam_id`), passwords and any token from anything you paste.**
+        From `docker logs audiobind` or `/config/audiobind.log`. **Remove your tracker session
+        cookie, passwords and any token from anything you paste.**
       render: text

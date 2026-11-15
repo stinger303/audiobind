@@ -1,25 +1,27 @@
-"""Phase 3: the wishlist watcher - wanted books from MAM, through qBittorrent, into ingest.
+"""Phase 3: the wishlist watcher - wanted books from a private tracker, through qBittorrent, into ingest.
 
-Off unless MAM_ID is set: with it unset no thread starts and nothing touches the network.
+Off unless the tracker settings are complete (TRACKER_URL, TRACKER_SEARCH_PATH,
+TRACKER_DOWNLOAD_PATH, TRACKER_COOKIE_NAME, TRACKER_SESSION): otherwise no thread starts and
+nothing touches the network.
 
 One cycle, every WATCH_INTERVAL_MIN (or on "Run a cycle now"):
 
 1. Wishlist rows already in the library are marked ``in_library`` (no network).
 2. Up to WATCH_MAX_PER_CYCLE ``wanted`` rows - never-checked first, oldest added first, then
-   the least recently checked - are each searched on MAM (mam.MamClient: one request at a
+   the least recently checked - are each searched on the tracker (tracker.TrackerClient: one request at a
    time, >= 3 s apart, backoff on any failure).
-3. No result good enough (mam.select_candidate): the row stays ``wanted`` with a "not found
-   on MAM (checked <date>)" note and is searched again in a later cycle; after MISS_LIMIT
+3. No result good enough (tracker.select_candidate): the row stays ``wanted`` with a "not found
+   on the tracker (checked <date>)" note and is searched again in a later cycle; after MISS_LIMIT
    misses in a row it becomes ``not_found`` until you press Retry. Nothing is ever forced.
-4. A match: the wedge decision (mam.wedge_decision) is written into the row's note. In dry
+4. A match: the freeleech decision (tracker.freeleech_decision) is written into the row's note. In dry
    run that is all - nothing is downloaded. Otherwise qBittorrent is logged into FIRST (a
-   qBittorrent that is down must never cost a wedge), the .torrent is downloaded from MAM and
+   qBittorrent that is down must never cost a freeleech credit), the .torrent is downloaded and
    handed to qBittorrent, and the row becomes ``downloading``. The ingest conveyor does the
    rest; the row becomes ``in_library`` when the book shows up converted.
 
-Failure rules - a wedge is never refunded, so nothing after a download request is retried
+Failure rules - a freeleech credit is never refunded, so nothing after a download request is retried
 on its own: a failed download or a qBittorrent refusal turns the row into ``error`` (with the
-reason) and only a Retry click puts it back. Any MAM failure ends the cycle at once.
+reason) and only a Retry click puts it back. Any tracker failure ends the cycle at once.
 """
 
 from __future__ import annotations
@@ -28,8 +30,8 @@ import logging
 import threading
 import time
 
-from . import egress, mam, qbit
-from .config import effective_val, watch_interval_min, watch_max_per_cycle
+from . import egress, qbit, tracker
+from .config import WATCHER_REQUIRED, effective_val, watch_interval_min, watch_max_per_cycle
 from .control import CONTROL
 from .state import (
     WISHLIST_DOWNLOADED,
@@ -69,15 +71,28 @@ def _setting(name: str) -> str:
     return str(effective_val(name) or "")
 
 
+def missing_settings() -> list[str]:
+    """The tracker variables that are still empty (the watcher needs all of them)."""
+    return [var for var, attr in WATCHER_REQUIRED if not _setting(attr)]
+
+
 def configured() -> bool:
-    """MAM_ID set: the owner wants the watcher."""
-    return bool(_setting("mam_id"))
+    """Every tracker setting the watcher needs is set: the owner wants the watcher."""
+    return not missing_settings()
+
+
+def tracker_host() -> str:
+    """The configured tracker's host (and port) - never the full URL."""
+    from urllib.parse import urlsplit
+
+    return urlsplit(_setting("tracker_url")).netloc
 
 
 def disabled_reason() -> str:
     """Why the watcher will not run ("" = it can)."""
-    if not _setting("mam_id"):
-        return "MAM_ID is not set"
+    missing = missing_settings()
+    if missing:
+        return f"not set: {', '.join(missing)}"
     if not _setting("qbit_user") or not _setting("qbit_pass"):
         return "QBIT_USER / QBIT_PASS are not set - the watcher has nowhere to send a torrent"
     return ""
@@ -88,9 +103,14 @@ def qbit_url() -> str:
 
 
 # the network, behind two factories tests replace
-def make_mam() -> mam.MamClient:
-    return mam.MamClient(_setting("mam_id"), proxy=_setting("mam_proxy"),
-                         user_agent=_setting("mam_user_agent"))
+def make_tracker() -> tracker.TrackerClient:
+    endpoints = tracker.Endpoints.build(
+        _setting("tracker_url"), _setting("tracker_search_path"), _setting("tracker_download_path"),
+        search_method=_setting("tracker_search_method"), download_param=_setting("tracker_download_param"),
+        freeleech_param=_setting("tracker_freeleech_param"), search_category=_setting("tracker_search_category"),
+        search_category_param=_setting("tracker_search_category_param"))
+    return tracker.TrackerClient(_setting("tracker_session"), endpoints, _setting("tracker_cookie_name"),
+                                 proxy=_setting("tracker_proxy"), user_agent=_setting("tracker_user_agent"))
 
 
 def make_qbit() -> qbit.QbitClient:
@@ -145,7 +165,7 @@ class Watcher:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._worker: threading.Thread | None = None
-        self._client: mam.MamClient | None = None
+        self._client: tracker.TrackerClient | None = None
         self._paused: bool | None = None
         self.busy = False
         self.next_at = 0.0
@@ -156,10 +176,10 @@ class Watcher:
         return self._thread is not None and self._thread.is_alive()
 
     def start(self, state) -> bool:
-        """Start the timed loop - only when MAM_ID is set and qBittorrent credentials exist.
+        """Start the timed loop - only when the tracker settings are complete and qBittorrent credentials exist.
         Returns False (and starts nothing) otherwise."""
         if not configured():
-            log.info("wishlist watcher: off (MAM_ID is not set)")
+            log.info("wishlist watcher: off (%s)", disabled_reason())
             return False
         reason = disabled_reason()
         if reason:
@@ -191,10 +211,10 @@ class Watcher:
                 thread.join(timeout)
         self._thread = None
 
-    def client(self) -> mam.MamClient:
+    def client(self) -> tracker.TrackerClient:
         """One client for every cycle: one rate limiter and one backoff, whoever triggers."""
         if self._client is None:
-            self._client = make_mam()
+            self._client = make_tracker()
         return self._client
 
     def _loop(self, state) -> None:
@@ -268,8 +288,8 @@ class Watcher:
             summary["resolved"] = len(resolve_library(state))
         except Exception:  # noqa: BLE001 - a library-match problem must not stop the search
             log.exception("wishlist watcher: library match failed")
-        # Local bookkeeping first: this talks to qBittorrent only, never MAM, so the egress guard
-        # (which protects MAM requests) has no say. A VPN that is down is exactly when someone
+        # Local bookkeeping first: this talks to qBittorrent only, never the tracker, so the egress guard
+        # (which protects tracker requests) has no say. A VPN that is down is exactly when someone
         # is looking at the page and wants finished torrents to read "downloaded".
         try:
             summary["downloaded"] = self._mark_downloaded(state)
@@ -286,7 +306,7 @@ class Watcher:
         try:
             wait = client.backoff.remaining()
             if wait > 0:
-                summary["error"] = f"MAM backoff - next request allowed in {int(wait) + 1}s; nothing searched"
+                summary["error"] = f"tracker backoff - next request allowed in {int(wait) + 1}s; nothing searched"
             else:
                 rows = state.wishlist_due(watch_max_per_cycle())
                 for row in rows:
@@ -294,7 +314,7 @@ class Watcher:
                         break
                     try:
                         outcome = self._one(state, client, row, summary["watcher_dry_run"], holder)
-                    except mam.MamError as exc:
+                    except tracker.TrackerError as exc:
                         summary["error"] = str(exc)
                         break
                     except _QbitDown as exc:
@@ -350,39 +370,39 @@ class Watcher:
         return moved
 
     def _egress_guard(self, state) -> tuple[str, str, str]:
-        """(verdict, reason, observed ip), before any MAM request. Not armed = no probe at all."""
-        home = _setting("mam_home_wan_ip")
-        expected = _setting("mam_expected_egress_ip")
+        """(verdict, reason, observed ip), before any tracker request. Not armed = no probe at all."""
+        home = _setting("tracker_home_ip")
+        expected = _setting("tracker_expected_egress_ip")
         if not home and not expected:
             state.set_meta(META_EGRESS, {})
             return "off", egress.judge("", "")[1], ""
         observed, why = "", ""
         try:
-            observed = egress.probe(_setting("mam_proxy"))
-        except Exception as exc:  # noqa: BLE001 - whatever went wrong, MAM stays untouched
+            observed = egress.probe(_setting("tracker_proxy"))
+        except Exception as exc:  # noqa: BLE001 - whatever went wrong, the tracker stays untouched
             why = str(exc) or type(exc).__name__
         verdict, reason = egress.judge(home, observed, expected)
         if verdict == "unknown":
-            reason = f"the egress IP could not be verified ({why}) - the watcher will not contact MAM until it can"
+            reason = f"the egress IP could not be verified ({why}) - the watcher will not contact the tracker until it can"
         elif verdict == "blocked":
-            reason += " - the watcher will not contact MAM from here. Update the allowed address in Settings, or start the VPN container / fix MAM_PROXY"
+            reason += " - the watcher will not contact the tracker from here. Update the allowed address in Settings, or start the VPN container / fix TRACKER_PROXY"
         else:
-            log.info("MAM egress: %s", observed)
+            log.info("tracker egress: %s", observed)
         state.set_meta(META_EGRESS, {"ip": observed, "at": time.time(), "reason": reason if verdict == "unknown" else ""})
         return verdict, reason, observed
 
     def _refuse(self, state, summary: dict, reason: str, trigger: str) -> dict:
-        """End the cycle at the guard: nothing was requested from MAM."""
+        """End the cycle at the guard: nothing was requested from the tracker."""
         summary["error"] = reason
         summary["seconds"] = round(time.time() - summary["at"], 1)
         state.set_meta(META_LAST_CYCLE, summary)
         state.set_meta(META_LAST_ERROR, {"at": time.time(), "message": reason})
-        log.error("wishlist watcher: egress guard (%s) - %s; no request was sent to MAM", summary["egress_guard"], reason)
+        log.error("wishlist watcher: egress guard (%s) - %s; no request was sent to the tracker", summary["egress_guard"], reason)
         self.next_at = time.time() + watch_interval_min() * 60
         return summary
 
     def _qbit(self, holder: dict) -> qbit.QbitClient:
-        """qBittorrent, logged in once per cycle - before the first MAM download."""
+        """qBittorrent, logged in once per cycle - before the first tracker download."""
         if "qbit" not in holder:
             client = make_qbit()
             try:
@@ -392,27 +412,27 @@ class Watcher:
             holder["qbit"] = client
         return holder["qbit"]
 
-    def _one(self, state, client: mam.MamClient, row: dict, dry_run: bool, holder: dict) -> str:
+    def _one(self, state, client: tracker.TrackerClient, row: dict, dry_run: bool, holder: dict) -> str:
         """Search one row and act on it. Returns the summary key of what happened."""
         asin, title = row["asin"], row["title"]
         author = row["authors"][0] if row.get("authors") else ""
         holder["searched"] = True
-        torrents = client.search(row.get("search_title") or title, author)  # a MamError ends the cycle; the row is untouched
-        pick, why = mam.select_candidate(row, torrents, vip=bool(_setting("mam_vip")))
+        torrents = client.search(row.get("search_title") or title, author)  # a TrackerError ends the cycle; the row is untouched
+        pick, why = tracker.select_candidate(row, torrents, vip=bool(_setting("tracker_vip")), can_spend=client.can_spend)
         when = _stamp()
         if pick is None:
-            note = f"not found on MAM (checked {when}): {why}"
+            note = f"not found on the tracker (checked {when}): {why}"
             misses = state.wishlist_record_check(asin, note, miss=True)
             if misses is not None and misses >= MISS_LIMIT:
                 state.wishlist_set_status(
                     asin, WISHLIST_NOT_FOUND, expect=WISHLIST_WANTED, checked=True,
-                    note=f"not found on MAM in {misses} searches (last checked {when}): {why} - press Retry to search again",
+                    note=f"not found on the tracker in {misses} searches (last checked {when}): {why} - press Retry to search again",
                 )
-            log.info("wishlist watcher: %s (%s) not found on MAM - %s", asin, title, why)
+            log.info("wishlist watcher: %s (%s) not found on the tracker - %s", asin, title, why)
             return "not_found"
 
-        use_wedge, wedge_why = mam.wedge_decision(pick.raw)
-        decision = f"{why}; {wedge_why}"
+        use_credit, credit_why = tracker.freeleech_decision(pick.raw, client.can_spend)
+        decision = f"{why}; {credit_why}"
         if dry_run:
             state.wishlist_record_check(asin, f"dry run ({when}): would download {decision}", miss=False)
             log.info("wishlist watcher [dry run]: %s (%s) - would download %s", asin, title, decision)
@@ -421,30 +441,30 @@ class Watcher:
         current = state.wishlist_get(asin)
         if not current or current["status"] != WISHLIST_WANTED:
             return "skipped"  # removed or changed by a click while this cycle ran
-        qb = self._qbit(holder)  # before the download: a dead qBittorrent costs no wedge
+        qb = self._qbit(holder)  # before the download: a dead qBittorrent costs no freeleech credit
         log.info("wishlist watcher: %s (%s) - downloading %s", asin, title, decision)
         try:
-            torrent = client.download(pick.tid, use_wedge)
-        except mam.MamError as exc:
+            torrent = client.download(pick.tid, use_credit)
+        except tracker.TrackerError as exc:
             state.wishlist_set_status(
-                asin, WISHLIST_ERROR, expect=WISHLIST_WANTED, checked=True, mam_tid=pick.tid,
-                note=(f"download of MAM #{pick.tid} failed ({when}): {exc}. Decision was: {wedge_why}. "
-                      "Not retried on its own - a wedge may have been spent; press Retry to search again."),
+                asin, WISHLIST_ERROR, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
+                note=(f"download of tracker torrent #{pick.tid} failed ({when}): {exc}. Decision was: {credit_why}. "
+                      "Not retried on its own - a freeleech credit may have been spent; press Retry to search again."),
             )
             holder["row_error"] = True
             raise
         try:
-            digest = qb.add_torrent(torrent, f"mam-{pick.tid}.torrent")
+            digest = qb.add_torrent(torrent, f"tracker-{pick.tid}.torrent")
         except qbit.QbitError as exc:
             state.wishlist_set_status(
-                asin, WISHLIST_ERROR, expect=WISHLIST_WANTED, checked=True, mam_tid=pick.tid,
-                note=(f"fetched MAM #{pick.tid} ({wedge_why}) but qBittorrent did not take it ({when}): {exc}. "
+                asin, WISHLIST_ERROR, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
+                note=(f"fetched tracker torrent #{pick.tid} ({credit_why}) but qBittorrent did not take it ({when}): {exc}. "
                       "Press Retry to search again."),
             )
             holder["row_error"] = True
             raise _QbitDown(f"qBittorrent did not take a torrent ({exc})") from None
         state.wishlist_set_status(
-            asin, WISHLIST_DOWNLOADING, expect=WISHLIST_WANTED, checked=True, mam_tid=pick.tid,
+            asin, WISHLIST_DOWNLOADING, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
             torrent_hash=digest, note=f"sent to qBittorrent {when}: {decision}",
         )
         log.info("wishlist watcher: %s (%s) sent to qBittorrent (hash %s)", asin, title, digest or "unknown")
@@ -462,8 +482,8 @@ class Watcher:
             saved = state.get_meta(META_BACKOFF) or {}
             until = float(saved.get("until") or 0) if isinstance(saved, dict) else 0.0
             backoff = max(0.0, until - time.time())
-        home = _setting("mam_home_wan_ip")
-        expected = _setting("mam_expected_egress_ip")
+        home = _setting("tracker_home_ip")
+        expected = _setting("tracker_expected_egress_ip")
         armed = bool(home or expected)
         rec = state.get_meta(META_EGRESS) or {}
         rec = rec if isinstance(rec, dict) else {}
@@ -482,6 +502,8 @@ class Watcher:
             "egress_home_ip": home,
             "egress_expected": expected,
             "configured": configured(),
+            "missing": missing_settings(),
+            "tracker_host": tracker_host(),
             "enabled": not reason,
             "reason": reason,
             "running": self.alive,

@@ -9,7 +9,7 @@ import time
 from . import ingest, web
 from . import series as series_mod
 from . import watcher as watcher_mod
-from .config import CONFIG, effective_val, set_effective
+from .config import CONFIG, deprecated_env_lines, effective_val, set_effective
 from .control import CONTROL
 from .pipeline import process_unit
 from .prefetch import PREFETCH, already_decided, next_eligible
@@ -100,7 +100,7 @@ def scan_once(state: State, force: bool = False) -> dict:
 
 def resolve_wishlist(state: State) -> None:
     """Wishlist rows whose book is now converted become "in_library" (local only, idempotent;
-    runs whether or not the MAM watcher is on - a book can arrive by a manual bookmark too)."""
+    runs whether or not the watcher is on - a book can arrive by a manual bookmark too)."""
     try:
         watcher_mod.resolve_library(state)
     except Exception:  # noqa: BLE001 - the wishlist must never fail a scan
@@ -118,7 +118,7 @@ def refresh_series(state: State) -> None:
 
 def restore_controls(state: State) -> None:
     """Restore pause and the two dry-run switches at startup. Each is independent: DRY_RUN
-    (library pipeline) and WATCH_DRY_RUN (MAM watcher) are floors for their own switch only:
+    (library pipeline) and WATCH_DRY_RUN (acquisition watcher) are floors for their own switch only:
     true in the environment starts it on whatever was saved (the UI can turn it off after)."""
     if state.get_meta("paused", False):
         CONTROL.pause()  # a paused container stays paused across restarts
@@ -153,13 +153,15 @@ def run() -> None:
         CONFIG.output_root,
         CONFIG.scan_interval_min,
     )
+    for line in deprecated_env_lines():  # one line per renamed variable still in use; never a value
+        log.warning(line)
     set_effective(state)
     # a set-but-missing INGEST_DIR is a warning, not a crash: the library keeps converting
     ingest.check_at_start()
     if CONFIG.web_enabled:
         web.serve(state)
         log.info("status page on http://0.0.0.0:%d", CONFIG.web_port)
-    # the wishlist watcher: starts its own thread only when MAM_ID is set and qBittorrent
+    # the wishlist watcher: starts its own thread only when the tracker settings are complete and qBittorrent
     # credentials exist; otherwise one log line and nothing else (no thread, no network)
     watcher_mod.WATCHER.start(state)
 

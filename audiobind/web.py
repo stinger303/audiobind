@@ -3225,8 +3225,8 @@ function abEditTitle(btn) {
   input.type = 'text';
   input.className = 'ab-in';
   input.value = row.dataset.search || '';
-  input.placeholder = 'Title to search MAM for (blank = catalog title)';
-  input.setAttribute('aria-label', 'Title to search MAM for');
+  input.placeholder = 'Title to search the tracker for (blank = catalog title)';
+  input.setAttribute('aria-label', 'Title to search the tracker for');
   const save = document.createElement('button');
   save.className = 'btn primary';
   save.textContent = 'Save';
@@ -3316,7 +3316,7 @@ document.addEventListener('DOMContentLoaded', () => {
 """
 
 def _discover_rail_item(state, active: str | bool = "") -> str:
-    """The rail's Discover books tab, under Series, and (with MAM configured) the Wishlist tab
+    """The rail's Discover books tab, under Series, and (with the watcher configured) the Wishlist tab
     right below it. The count badge on Wishlist is the books still wanted/downloading."""
     if active is True:
         active = "discover"
@@ -3331,7 +3331,7 @@ def _discover_rail_item(state, active: str | bool = "") -> str:
         )
 
     out = link("discover", "/discover", "&#8981;", "Discover books")
-    if watcher_mod.configured():  # a MAM-only surface: nothing consumes the wishlist without the watcher
+    if watcher_mod.configured():  # a watcher-only surface: nothing consumes the wishlist without the watcher
         try:
             wanted = state.wishlist_count()
         except Exception:  # noqa: BLE001 - the rail must never blank a page
@@ -3527,11 +3527,11 @@ def _discover_recs_body(state) -> str:
 
 #: the wishlist state chips: (label, hover text)
 WISHLIST_CHIPS = {
-    "wanted": ("WANTED", "Waiting: the MAM watcher searches for it in a coming cycle."),
-    "downloading": ("DOWNLOADING", "Found on MAM and handed to qBittorrent; it becomes In library once converted."),
+    "wanted": ("WANTED", "Waiting: the watcher searches for it in a coming cycle."),
+    "downloading": ("DOWNLOADING", "Found on the tracker and handed to qBittorrent; it becomes In library once converted."),
     "downloaded": ("DOWNLOADED", "The torrent finished in qBittorrent; it becomes In library once the converted book lands."),
     "in_library": ("IN LIBRARY", "A converted book in your library is this one."),
-    "not_found": ("NOT FOUND", "MAM had no good match in several searches. Retry searches again."),
+    "not_found": ("NOT FOUND", "The tracker had no good match in several searches. Retry searches again."),
     "error": ("ERROR", "The download or the hand-off to qBittorrent failed - the note says why. "
                        "Retry searches again."),
 }
@@ -3557,19 +3557,20 @@ def _watcher_bar(status: dict) -> str:
     """One line above the wishlist: is anything going to look for these books?"""
     link = '<span class="ab-spacer"></span><a href="/settings#watcher">Watcher settings</a>'
     if not status["configured"]:
-        text = "The MAM watcher is <b>off</b> (MAM_ID is not set): nothing here is searched for or downloaded."
+        text = (f"The watcher is <b>off</b> ({_html(status.get('reason') or 'not configured')}): "
+                "nothing here is searched for or downloaded.")
     elif not status["enabled"]:
-        text = f'<span class="warn">The MAM watcher is disabled: {_html(status["reason"])}.</span>'
+        text = f'<span class="warn">The watcher is disabled: {_html(status["reason"])}.</span>'
     elif status.get("egress_guard") == "blocked":
-        text = ('<span class="warn">The MAM watcher is <b>stopped</b>: this connection is not the one you allowed '
+        text = ('<span class="warn">The watcher is <b>stopped</b>: this connection is not the one you allowed '
                 f'({_html(status.get("egress_reason") or "")}). Nothing is searched for.</span>')
     elif status.get("egress_guard") == "unknown" and status.get("egress_checked_at"):
-        text = ('<span class="warn">The MAM watcher is <b>stopped</b>: it cannot confirm this connection is the VPN, '
-                "so it will not contact MAM.</span>")
+        text = ('<span class="warn">The watcher is <b>stopped</b>: it cannot confirm this connection is the VPN, '
+                "so it will not contact the tracker.</span>")
     elif status["paused"]:
-        text = "The MAM watcher is <b>paused</b>: nothing is searched for until you resume it."
+        text = "The watcher is <b>paused</b>: nothing is searched for until you resume it."
     else:
-        bits = [f"The MAM watcher checks up to <b>{int(status['max_per_cycle'])}</b> wanted "
+        bits = [f"The watcher checks up to <b>{int(status['max_per_cycle'])}</b> wanted "
                 f"{_plural(int(status['max_per_cycle']), 'book', 'books')} every "
                 f"<b>{int(status['interval_min'])} min</b>"]
         if status["busy"]:
@@ -3614,7 +3615,7 @@ def _wishlist_row_html(row: dict) -> str:
     custom = row.get("search_title") or ""
     searching = f'<div class="ab-wl-search">searching for &#8220;{_html(custom)}&#8221;</div>' if custom else ""
     edit = (
-        '<button title="Change the title the watcher searches MAM for (the title shown here stays)." '
+        '<button title="Change the title the watcher searches the tracker for (the title shown here stays)." '
         'onclick="abEditTitle(this)">Edit title</button>'
         if status != "in_library" else ""
     )
@@ -3634,7 +3635,7 @@ def _discover_wishlist_body(state) -> str:
     rows = state.wishlist_all()
     status = watcher_mod.WATCHER.status(state)
     if status["enabled"]:
-        how = ("The MAM watcher searches for <b>wanted</b> books and hands a good match to qBittorrent; "
+        how = ("The watcher searches for <b>wanted</b> books and hands a good match to qBittorrent; "
                "a book turns <b>In library</b> once it is converted. ")
     else:
         how = "This list is the hand-off point: nothing here is searched for or downloaded while the watcher is off. "
@@ -3666,12 +3667,13 @@ def render_watcher_section(state) -> str:
     if not s["configured"]:
         return (
             '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
-            '<h2 class="ab-acct-head" id="ab-watch-head">MAM acquisition (optional)</h2>'
-            '<div class="ab-acct-who">Audiobind can optionally look for books on your wishlist at '
-            "MyAnonamouse (MAM) and hand them to qBittorrent. It is off, and you do not need it: "
+            '<h2 class="ab-acct-head" id="ab-watch-head">Acquisition source (optional)</h2>'
+            '<div class="ab-acct-who">Audiobind can optionally look for books on your wishlist at a '
+            "private tracker you configure and hand them to qBittorrent. It is off, and you do not need it: "
             "Audiobind converts whatever lands in the ingest folder, from any downloader or a plain "
-            "copy. To turn MAM acquisition on, set the environment variables <code>MAM_ID</code>, "
-            "<code>QBIT_URL</code>, <code>QBIT_USER</code> and <code>QBIT_PASS</code> and restart "
+            "copy. Still to set: " + ", ".join(f"<code>{_html(m)}</code>" for m in s["missing"]) +
+            " (the site's URL, its search and download paths, and its session cookie's name and value), "
+            "plus <code>QBIT_URL</code>, <code>QBIT_USER</code> and <code>QBIT_PASS</code>; then restart "
             "the container.</div></section>"
         )
     if not s["enabled"]:
@@ -3690,19 +3692,19 @@ def render_watcher_section(state) -> str:
     guard = s.get("egress_guard") or "off"
     if guard == "blocked":
         warn += (
-            '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: MAM would not see the allowed address.</b> '
-            f"{_html(s['egress_reason'])}. The watcher will not contact MAM from here. Either update "
-            '"Only reach MAM from one IP" below to the address you really want, or start your VPN '
-            "container (or fix MAM_PROXY); the next cycle will carry on.</div>")
+            '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: the tracker would not see the allowed address.</b> '
+            f"{_html(s['egress_reason'])}. The watcher will not contact the tracker from here. Either update "
+            '"Only reach the tracker from one IP" below to the address you really want, or start your VPN '
+            "container (or fix TRACKER_PROXY); the next cycle will carry on.</div>")
     elif guard == "unknown" and s.get("egress_checked_at"):
         warn += (
             '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: the guard could not check your connection.</b> '
-            f"{_html(s['egress_reason'])}. Check that your VPN container is running and MAM_PROXY is right; "
-            "the watcher will not contact MAM until it can see where it is connecting from.</div>")
+            f"{_html(s['egress_reason'])}. Check that your VPN container is running and TRACKER_PROXY is right; "
+            "the watcher will not contact the tracker until it can see where it is connecting from.</div>")
     verdict_html = {"ok": '<span class="ok">allowed</span>', "blocked": '<span class="warn">blocked</span>',
                     "unknown": '<span class="warn">unverified</span>'}.get(guard, "")
     if s["egress_ip"]:
-        sees = f"MAM sees <b>{_html(s['egress_ip'])}</b>"
+        sees = f"The tracker sees <b>{_html(s['egress_ip'])}</b>"
         if s.get("egress_expected"):
             sees += f" &#183; expected <b>{_html(s['egress_expected'])}</b>"
         if verdict_html:
@@ -3710,14 +3712,14 @@ def render_watcher_section(state) -> str:
         if s.get("egress_checked_at"):
             sees += f" &#183; Checked {_html(time.strftime('%H:%M', time.localtime(float(s['egress_checked_at']))))}"
     elif guard == "off":
-        sees = "Not checked &#8212; the guard is off, so Audiobind does not look up what MAM sees"
+        sees = "Not checked &#8212; the guard is off, so Audiobind does not look up what the tracker sees"
     else:
         sees = "Not checked yet &#8212; it is looked up at the start of each cycle"
         if s.get("egress_expected"):
             sees += f" &#183; expected <b>{_html(s['egress_expected'])}</b>"
     guard_bits = []
     if s.get("egress_expected"):
-        guard_bits.append(f"only reaches MAM from {_html(s['egress_expected'])}")
+        guard_bits.append(f"only reaches the tracker from {_html(s['egress_expected'])}")
     if s.get("egress_home_ip"):
         guard_bits.append(f"refuses to run from your home IP ({_html(s['egress_home_ip'])})")
     if guard_bits:
@@ -3725,7 +3727,7 @@ def render_watcher_section(state) -> str:
         if guard == "blocked":
             guard_html = f'<span class="warn">{guard_html} &#8212; blocking now</span>'
     else:
-        guard_html = "not armed (set the allowed IP below, or MAM_HOME_WAN_IP, to arm it)"
+        guard_html = "not armed (set the allowed IP below, or TRACKER_HOME_IP, to arm it)"
     last = s["last_cycle"] or {}
     if last.get("at"):
         parts = [f"{int(last.get('searched') or 0)} searched", f"{int(last.get('sent') or 0)} sent to qBittorrent"]
@@ -3750,6 +3752,7 @@ def render_watcher_section(state) -> str:
         ("Status", state_html),
         ("Schedule", f"every {int(s['interval_min'])} min, at most {int(s['max_per_cycle'])} "
                      f"{_plural(int(s['max_per_cycle']), 'book', 'books')} per cycle"),
+        ("Tracker", f"{_html(s['tracker_host'])}" if s.get("tracker_host") else DASH),
         ("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(watcher_mod.qbit.CATEGORY)}</code> &#183; "
                         + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>')),
         ("Connection", sees),
@@ -3759,7 +3762,7 @@ def render_watcher_section(state) -> str:
         ("Last error", error_html),
     ]
     if s["backoff_seconds"]:
-        rows.append(("MAM backoff", f'<span class="warn">no MAM request for {int(s["backoff_seconds"])}s</span>'))
+        rows.append(("Tracker backoff", f'<span class="warn">no tracker request for {int(s["backoff_seconds"])}s</span>'))
     grid = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
     can_run = s["enabled"] and not s["paused"] and not s["busy"]
     run_btn = (f'<button class="ab-save" id="ab-watch-run" onclick="abWatcher(\'run\')"{"" if can_run else " disabled"} '
@@ -3777,15 +3780,15 @@ def render_watcher_section(state) -> str:
     )
     dry_line = (
         '<div class="ab-acct-who" id="ab-watch-dry-note">Watcher dry run is <b>' + ("on" if wdry else "off") +
-        "</b>: searches MAM and reports what it would download, never downloads. It is separate from "
+        "</b>: searches the tracker and reports what it would download, never downloads. It is separate from "
         "the library Dry run on the main page.</div>"
     )
     expected_field = _setting_text(
-        "expected_egress", "Only reach MAM from one IP", setting_effective("expected_egress"),
+        "expected_egress", "Only reach the tracker from one IP", setting_effective("expected_egress"),
         is_custom(SETTING_MAP["expected_egress"]), setting_env("expected_egress"),
         EXPECTED_EGRESS_HINT, "e.g. 198.51.100.7")
     vip_field = _setting_select(
-        "vip", "VIP member", setting_effective("vip"), setting_choices("vip"),
+        "vip", "Premium member", setting_effective("vip"), setting_choices("vip"),
         is_custom(SETTING_MAP["vip"]), setting_env("vip"), hint=VIP_HINT, titlecase=True)
     wlo, whi = setting_bounds("watch_interval")
     plo, phi = setting_bounds("watch_per_cycle")
@@ -3800,10 +3803,13 @@ def render_watcher_section(state) -> str:
     return (
         '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
         '<h2 class="ab-acct-head" id="ab-watch-head">Watcher</h2>'
-        '<div class="ab-acct-who">Searches MAM for the <b>wanted</b> books on your wishlist and hands a good '
+        '<div class="ab-acct-who">Searches the tracker for the <b>wanted</b> books on your wishlist and hands a good '
         "match to qBittorrent; the ingest folder takes it from there. Configured with environment variables "
-        "(<code>MAM_ID</code>, <code>QBIT_URL</code>, <code>QBIT_USER</code>, <code>QBIT_PASS</code>, <code>MAM_PROXY</code>, "
-        "<code>MAM_USER_AGENT</code>, <code>MAM_HOME_WAN_IP</code>, <code>MAM_EXPECTED_EGRESS_IP</code>, <code>MAM_VIP</code>). "
+        "(<code>TRACKER_URL</code>, <code>TRACKER_SEARCH_PATH</code>, <code>TRACKER_DOWNLOAD_PATH</code>, "
+        "<code>TRACKER_COOKIE_NAME</code>, <code>TRACKER_SESSION</code>, <code>QBIT_URL</code>, <code>QBIT_USER</code>, "
+        "<code>QBIT_PASS</code>, <code>TRACKER_PROXY</code>, <code>TRACKER_USER_AGENT</code>, <code>TRACKER_HOME_IP</code>, "
+        "<code>TRACKER_EXPECTED_EGRESS_IP</code>, <code>TRACKER_VIP</code>, and the optional category / freeleech "
+        "parameters). "
         "How often it checks and how many books it takes per cycle are set below (the environment variables "
         "<code>WATCH_INTERVAL_MIN</code> and <code>WATCH_MAX_PER_CYCLE</code> are their defaults) and apply "
         "from the next cycle, no restart. The pause switch is kept across restarts.</div>"
@@ -3861,11 +3867,11 @@ function abWatchPoll() {
 def render_discover(state, tab: str = "search", title: str = "", author: str = "", result: dict | None = None) -> str:
     """Discover books: the search form with the recommendations under it (one screen). A typed
     query runs one catalog search and its results replace the recommendations. tab="wishlist"
-    renders the separate Wishlist page (the library page's rail, no MAM: falls back to search)."""
+    renders the separate Wishlist page (the library page's rail, no watcher: falls back to search)."""
     counts = state.counts()
     rc = rail_counts(state, counts)
     if tab == "wishlist" and not watcher_mod.configured():
-        tab = "search"  # no wishlist surface without MAM: land on Discover books
+        tab = "search"  # no wishlist surface without the watcher: land on Discover books
     if tab == "wishlist":
         body = _discover_wishlist_body(state)
         page_title, active = "Wishlist", "wishlist"
@@ -4076,13 +4082,13 @@ OUTPUT_FORMAT_HINT = (
 )
 
 VIP_HINT = (
-    "MyAnonamouse VIP membership (bought with bonus points). When this is No, torrents that only "
-    "VIP members can download are skipped instead of attempted."
+    "Whether your account holds the tracker's top membership tier. When this is No, torrents "
+    "restricted to that tier are skipped instead of attempted. (Environment variable TRACKER_VIP.)"
 )
 
 EXPECTED_EGRESS_HINT = (
     "Optional. Your VPN's exit address. If Audiobind ever sees a different address it stops before "
-    "contacting MAM, because a MAM session is tied to one IP. Leave it empty to skip this check."
+    "contacting the tracker, because a tracker session is often tied to one IP. Leave it empty to skip this check."
 )
 
 
@@ -4142,13 +4148,13 @@ def in_flight_units() -> set[str]:
 
 
 def _ingest_line() -> str:
-    """Rail footer: the ingest folder is the universal way in, MAM configured or not."""
+    """Rail footer: the ingest folder is the universal way in, watcher configured or not."""
     root = ingest_mod.configured_dir()
     where = f' <span title="{_attr(root)}">{_html(root)}</span>' if root else ""
     state = "" if root and ingest_mod.ingest_root() is not None else " (set INGEST_DIR to use it)"
     return (
         f'<br><b>ingest</b> &larr;{where}{state}<br><small>Files dropped in the ingest folder are '
-        "converted whether or not MAM is configured.</small>"
+        "converted whether or not the watcher is configured.</small>"
     )
 
 
@@ -5499,7 +5505,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, page.encode(), "text/html; charset=utf-8")
             return
         if path.rstrip("/") in ("/wishlist", "/discover/wishlist"):
-            # without MAM there is no wishlist surface: fall back to the library page
+            # without the watcher there is no wishlist surface: fall back to the library page
             if not watcher_mod.configured():
                 self._send(200, render(self.state, "", "").encode(), "text/html; charset=utf-8")
                 return

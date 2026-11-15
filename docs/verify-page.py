@@ -37,9 +37,14 @@ from audiobind import catalog, discover, series, web         # noqa: E402
 from audiobind.config import CONFIG                          # noqa: E402
 from audiobind.state import State, UnitState                 # noqa: E402
 
-# Discover / Series / wishlist checks below are the MAM surfaces, which only render with MAM_ID set.
-# The watcher section turns it off again to prove a non-MAM install shows none of them.
-CONFIG.mam_id = "VERIFY-MAM"
+# Discover / Series / wishlist checks below are the watcher surfaces, which only render once the
+# tracker settings are complete. The watcher section turns it off again to prove an install
+# without a tracker shows none of them.
+TRACKER_SETTINGS = {"tracker_url": "https://tracker.example", "tracker_search_path": "/search.json",
+                    "tracker_download_path": "/download.php", "tracker_cookie_name": "session_cookie"}
+for _name, _value in TRACKER_SETTINGS.items():
+    setattr(CONFIG, _name, _value)
+CONFIG.tracker_session = "VERIFY-SESSION"
 
 state = State(pathlib.Path(TMP))
 BOOKS = [
@@ -377,35 +382,35 @@ check("settings: no CDN references", "http://" not in settings_page and "https:/
 node_check("settings", settings_page, "settings.js")
 
 # ---- the wishlist watcher (0.18.0-dev1): state chips, Retry, Settings > Watcher. The web server
-# never starts the watcher (only the daemon does) and the MAM client factory is replaced, so
-# nothing here can reach MAM or qBittorrent.
+# never starts the watcher (only the daemon does) and the tracker client factory is replaced, so
+# nothing here can reach a tracker or qBittorrent.
 print("wishlist watcher:")
 from audiobind import watcher                                # noqa: E402
 
-watcher.make_mam = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a MAM client"))
+watcher.make_tracker = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a tracker client"))
 watcher.make_qbit = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a qBittorrent client"))
-CONFIG.mam_id = ""
-check("watcher: off without MAM_ID", not watcher.configured() and not watcher.WATCHER.alive)
+CONFIG.tracker_session = ""
+check("watcher: off without a tracker session", not watcher.configured() and not watcher.WATCHER.alive)
 off_settings = get("/settings")
 check("watcher: Settings section, off, is one short block",
-      'id="watcher"' in off_settings and "MAM acquisition (optional)" in off_settings
-      and all(f"<code>{v}</code>" in off_settings for v in ("MAM_ID", "QBIT_URL", "QBIT_USER", "QBIT_PASS"))
+      'id="watcher"' in off_settings and "Acquisition source (optional)" in off_settings
+      and all(f"<code>{v}</code>" in off_settings for v in ("TRACKER_SESSION", "QBIT_URL", "QBIT_USER", "QBIT_PASS"))
       and 'id="ab-watch-run"' not in off_settings and 'id="ab-watch-toggle"' not in off_settings)
-nomam_pages = get("/") + get("/discover") + get("/discover/for-you") + get("/discover/wishlist") + get("/series")
-check("no MAM: no wishlist tab, rail count, Get this or Want anywhere",
-      "/discover/wishlist" not in nomam_pages and 'id="ab-rail-wanted"' not in nomam_pages
-      and ">Get this</button>" not in nomam_pages and ">Want</button>" not in nomam_pages
-      and 'onclick="abSeriesWantAll(' not in nomam_pages and 'onclick="abSeriesWant(' not in nomam_pages)
-check("no MAM: the ingest folder is said to work either way",
-      "converted whether or not MAM is configured" in get("/"))
+notracker_pages = get("/") + get("/discover") + get("/discover/for-you") + get("/discover/wishlist") + get("/series")
+check("no tracker: no wishlist tab, rail count, Get this or Want anywhere",
+      "/discover/wishlist" not in notracker_pages and 'id="ab-rail-wanted"' not in notracker_pages
+      and ">Get this</button>" not in notracker_pages and ">Want</button>" not in notracker_pages
+      and 'onclick="abSeriesWantAll(' not in notracker_pages and 'onclick="abSeriesWant(' not in notracker_pages)
+check("no tracker: the ingest folder is said to work either way",
+      "converted whether or not the watcher is configured" in get("/"))
 status, _, refused = fetch("/api/watcher", json.dumps({"action": "run"}).encode(),
                            {"Content-Type": "application/json", "Cookie": COOKIE})
-check("Run a cycle now is refused while the watcher is off", status == 409 and "MAM_ID" in refused)
-CONFIG.mam_id = "VERIFY-MAM"
-wl_rows = [("B0VERWANT1", "wanted", ""), ("B0VERDOWN1", "downloading", "sent to qBittorrent: MAM #1 'x'"),
+check("Run a cycle now is refused while the watcher is off", status == 409 and "TRACKER_SESSION" in refused)
+CONFIG.tracker_session = "VERIFY-SESSION"
+wl_rows = [("B0VERWANT1", "wanted", ""), ("B0VERDOWN1", "downloading", "sent to qBittorrent: #1 'x'"),
            ("B0VERDONE1", "downloaded", "downloaded - waiting for the converted book"),
-           ("B0VERLIB01", "in_library", "in your library"), ("B0VERNF001", "not_found", "not found on MAM in 3 searches"),
-           ("B0VERERR01", "error", 'download of MAM #9 failed <"boom">')]
+           ("B0VERLIB01", "in_library", "in your library"), ("B0VERNF001", "not_found", "not found on the tracker in 3 searches"),
+           ("B0VERERR01", "error", 'download of tracker torrent #9 failed <"boom">')]
 for asin, wl_status, wl_note in wl_rows:
     state.wishlist_add({"asin": asin, "title": f"Verify {wl_status}", "authors": ["V. Writer"], "origin": "search"})
     if wl_status == "downloaded":  # only reachable through downloading
@@ -419,7 +424,7 @@ check("wishlist: downloaded row shows the DOWNLOADED badge and its note, no Retr
 check("wishlist: Retry only on not found / error", wl_page.count('onclick="abRetry(this)">Retry</button>') == 2)
 check("wishlist: notes escaped", 'failed &lt;"boom"&gt;' in wl_page and '<"boom">' not in wl_page)
 check("wishlist: last checked shown", "never checked" in wl_page and "checked just now" in wl_page)
-check("wishlist: rail item present with MAM_ID set", 'href="/wishlist"' in get("/discover"))
+check("wishlist: rail item present with the tracker configured", 'href="/wishlist"' in get("/discover"))
 check("wishlist: no unexpanded {placeholders}",
       not re.search(r"\{(version|styles|discover_script|discover_item|series_item|disc_tabs|disc_body)\}", wl_page))
 check("wishlist: no external URLs", "http://" not in wl_page and "https://" not in wl_page)
@@ -427,7 +432,7 @@ node_check("wishlist watcher", wl_page, "wishlist-watcher.js")
 status, _, retried = fetch("/api/wishlist/retry", json.dumps({"asin": "B0VERERR01"}).encode(),
                            {"Content-Type": "application/json", "Cookie": COOKIE})
 check("Retry puts an error row back to wanted", status == 200 and json.loads(retried)["item"]["status"] == "wanted")
-CONFIG.mam_id, CONFIG.qbit_user, CONFIG.qbit_pass = "VERIFY-SECRET-COOKIE", "admin", "VERIFY-SECRET-PASS"
+CONFIG.tracker_session, CONFIG.qbit_user, CONFIG.qbit_pass = "VERIFY-SECRET-COOKIE", "admin", "VERIFY-SECRET-PASS"
 on_settings = get("/settings")
 check("watcher: enabled section with Run and Pause", '<span class="ok">Enabled</span>' in on_settings
       and 'onclick="abWatcher(\'run\')" title=' in on_settings and "Pause watcher" in on_settings)
@@ -437,13 +442,13 @@ check("Pause is persisted", status == 200 and state.get_meta(watcher.META_PAUSED
 paused_settings = get("/settings")
 check("watcher: paused section offers Resume", "Resume watcher" in paused_settings)
 watcher_served = on_settings + paused_settings + get("/api/watcher") + get("/discover/wishlist")
-check("watcher: MAM_ID and QBIT_PASS are never served",
+check("watcher: the session and QBIT_PASS are never served",
       "VERIFY-SECRET-COOKIE" not in watcher_served and "VERIFY-SECRET-PASS" not in watcher_served)
 check("watcher settings: no unexpanded {placeholders}",
       not re.search(r"\{(watcher_section|watcher_script|account_section)\}", on_settings))
 check("watcher settings: no CDN references", "http://" not in on_settings and "https://" not in on_settings)
 node_check("watcher settings", on_settings, "watcher-settings.js")
-CONFIG.mam_id, CONFIG.qbit_user, CONFIG.qbit_pass = "", "", ""
+CONFIG.tracker_session, CONFIG.qbit_user, CONFIG.qbit_pass = "", "", ""
 
 creds = state.get_credentials()
 served = html + settings_page + get("/api/state") + get("/api/units")

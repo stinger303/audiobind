@@ -18,6 +18,7 @@ from audiobind import catalog, covers, discover, series, web
 from audiobind.catalog import Product
 from audiobind.config import CONFIG
 from audiobind.state import State, UnitState
+from tests.tracker_cfg import tracker_cfg
 
 try:
     from live import LiveServerCase
@@ -148,7 +149,7 @@ class TestSearchMarks(StateCase):
 class TestSearchPage(StateCase):
     def setUp(self):
         super().setUp()
-        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p = tracker_cfg("x")  # these tests are about the watcher surfaces
         p.start()
         self.addCleanup(p.stop)
 
@@ -223,7 +224,7 @@ class TestSearchPage(StateCase):
 class TestWishlistTab(StateCase):
     def setUp(self):
         super().setUp()
-        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p = tracker_cfg("x")  # these tests are about the watcher surfaces
         p.start()
         self.addCleanup(p.stop)
 
@@ -261,7 +262,7 @@ class TestAssets(unittest.TestCase):
 class TestSearchEndpoints(LiveServerCase):
     def setUp(self):
         super().setUp()
-        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p = tracker_cfg("x")  # these tests are about the watcher surfaces
         p.start()
         self.addCleanup(p.stop)
         self.schedule = mock.patch.object(series.REFRESHER, "schedule", return_value=False)

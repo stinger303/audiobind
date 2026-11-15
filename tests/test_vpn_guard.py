@@ -1,6 +1,6 @@
-"""0.18.0-dev2/dev3: the VPN-safe MAM client - no fingerprint, MAM_PROXY (fail closed), the egress guard.
+"""0.18.0-dev2/dev3: the VPN-safe tracker client - no fingerprint, TRACKER_PROXY (fail closed), the egress guard.
 
-Nothing here touches the network: the MAM transport, the proxy opener and the egress probe are
+Nothing here touches the network: the tracker transport, the proxy opener and the egress probe are
 all fakes.
 """
 
@@ -16,9 +16,10 @@ import urllib.error
 import urllib.request
 from unittest import mock
 
-from audiobind import __version__, config, egress, mam, watcher, web
+from audiobind import __version__, config, egress, tracker, watcher, web
 from audiobind.config import CONFIG, Config
 from audiobind.state import State
+from tests.tracker_cfg import endpoints, make_client, tracker_cfg
 
 try:
     from live import LiveServerCase
@@ -42,8 +43,8 @@ def recording_client(**kwargs):
         return 200, {}, b'{"error": "Nothing returned, out of 0"}'
 
     clock = mock.Mock(return_value=0.0)
-    limiter = mam.RateLimiter(clock=clock, sleep=lambda s: None)
-    return mam.MamClient("cookie", transport=transport, limiter=limiter, **kwargs), seen
+    limiter = tracker.RateLimiter(clock=clock, sleep=lambda s: None)
+    return make_client("cookie", transport=transport, limiter=limiter, **kwargs), seen
 
 
 class TestFingerprint(unittest.TestCase):
@@ -65,10 +66,10 @@ class TestFingerprint(unittest.TestCase):
         self.assertEqual(seen[0]["User-Agent"], "Mozilla/5.0 (X11; Linux x86_64)")
 
     def test_config_reads_the_env(self):
-        with mock.patch.dict("os.environ", {"MAM_USER_AGENT": " Custom/1 ", "MAM_PROXY": "", "MAM_HOME_WAN_IP": ""}):
+        with mock.patch.dict("os.environ", {"TRACKER_USER_AGENT": " Custom/1 ", "TRACKER_PROXY": "", "TRACKER_HOME_IP": ""}):
             cfg = Config.from_env()
-        self.assertEqual((cfg.mam_user_agent, cfg.mam_proxy, cfg.mam_home_wan_ip), ("Custom/1", "", ""))
-        self.assertNotIn("MAM_PROXY", repr(cfg))
+        self.assertEqual((cfg.tracker_user_agent, cfg.tracker_proxy, cfg.tracker_home_ip), ("Custom/1", "", ""))
+        self.assertNotIn("TRACKER_PROXY", repr(cfg))
 
 
 class _Capture(http.server.BaseHTTPRequestHandler):
@@ -89,8 +90,8 @@ class TestWire(unittest.TestCase):
     """What actually leaves the process: a real opener against a local socket."""
 
     def setUp(self):
-        mam._OPENERS.clear()
-        self.addCleanup(mam._OPENERS.clear)
+        tracker._OPENERS.clear()
+        self.addCleanup(tracker._OPENERS.clear)
         _Capture.seen = []
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Capture)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -98,16 +99,16 @@ class TestWire(unittest.TestCase):
         self.addCleanup(self.server.shutdown)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}/"
 
-    def test_mam_opener_sends_no_user_agent(self):
-        opener = mam._opener("")
+    def test_tracker_opener_sends_no_user_agent(self):
+        opener = tracker._opener("")
         self.assertEqual(opener.addheaders, [])
-        opener.open(urllib.request.Request(self.url, headers={"Cookie": "mam_id=x"}), timeout=5).read()
+        opener.open(urllib.request.Request(self.url, headers={"Cookie": "session_cookie=x"}), timeout=5).read()
         self.assertEqual(len(_Capture.seen), 1)
         self.assertNotIn("user-agent", _Capture.seen[0])
         self.assertNotIn("python", json.dumps(_Capture.seen[0]).lower())
 
     def test_owner_user_agent_reaches_the_wire_verbatim(self):
-        opener = mam._opener("")
+        opener = tracker._opener("")
         opener.open(urllib.request.Request(self.url, headers={"User-Agent": "Custom/1"}), timeout=5).read()
         self.assertEqual(_Capture.seen[0]["user-agent"], "Custom/1")
 
@@ -121,8 +122,8 @@ class TestWire(unittest.TestCase):
                "HTTP_PROXY": "http://10.9.9.9:3128", "http_proxy": "http://10.9.9.9:3128",
                "ALL_PROXY": "http://10.9.9.9:3128"}
         with mock.patch.dict("os.environ", env):
-            mam._OPENERS.clear()
-            opener = mam._opener("")
+            tracker._OPENERS.clear()
+            opener = tracker._opener("")
             handlers = [h for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler)]
             # an empty map leaves the handler inert (urllib does not register it); the default
             # handler, which would carry the environment's proxy, must not be there
@@ -143,7 +144,7 @@ class TestWire(unittest.TestCase):
             self.assertEqual([h.proxies for h in captured["h"] if isinstance(h, urllib.request.ProxyHandler)], [{}])
 
     def test_configured_proxy_still_wins(self):
-        opener = mam._opener("http://vpn:8888")
+        opener = tracker._opener("http://vpn:8888")
         handlers = [h for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler)]
         self.assertEqual([h.proxies for h in handlers], [{"http": "http://vpn:8888", "https": "http://vpn:8888"}])
         self.assertEqual(opener.addheaders, [])
@@ -170,16 +171,16 @@ class TestNoHomeAddressInRepo(unittest.TestCase):
 
 class TestProxy(unittest.TestCase):
     def setUp(self):
-        mam._OPENERS.clear()
-        self.addCleanup(mam._OPENERS.clear)
+        tracker._OPENERS.clear()
+        self.addCleanup(tracker._OPENERS.clear)
 
     def test_opener_is_built_once_and_routes_http_and_https_through_the_proxy(self):
-        a = mam._opener("http://vpn:8888")
-        self.assertIs(a, mam._opener("http://vpn:8888"))
+        a = tracker._opener("http://vpn:8888")
+        self.assertIs(a, tracker._opener("http://vpn:8888"))
         proxies = [h for h in a.handlers if isinstance(h, urllib.request.ProxyHandler)]
         self.assertEqual(len(proxies), 1)
         self.assertEqual(proxies[0].proxies, {"http": "http://vpn:8888", "https": "http://vpn:8888"})
-        direct = mam._opener("")
+        direct = tracker._opener("")
         self.assertIsNot(direct, a)
 
     def test_client_default_transport_carries_the_proxy(self):
@@ -190,10 +191,10 @@ class TestProxy(unittest.TestCase):
                 opened.append(request.full_url)
                 raise urllib.error.URLError("proxy down")
 
-        with mock.patch.object(mam, "_opener", return_value=Fake()) as get:
-            client = mam.MamClient("c", proxy="http://vpn:8888",
-                                   limiter=mam.RateLimiter(clock=lambda: 0.0, sleep=lambda s: None))
-            with self.assertRaises(mam.MamError) as ctx:
+        with mock.patch.object(tracker, "_opener", return_value=Fake()) as get:
+            client = make_client("c", proxy="http://vpn:8888",
+                                   limiter=tracker.RateLimiter(clock=lambda: 0.0, sleep=lambda s: None))
+            with self.assertRaises(tracker.TrackerError) as ctx:
                 client.search("x")
         get.assert_called_once_with("http://vpn:8888")
         self.assertEqual(len(opened), 1, "a failing proxied request is attempted once - no direct retry")
@@ -210,12 +211,12 @@ class TestProxy(unittest.TestCase):
                 attempts.append(self.proxy)
                 raise OSError("connection refused")
 
-        with mock.patch.object(mam, "_opener", side_effect=lambda proxy="": Failing(proxy)), \
+        with mock.patch.object(tracker, "_opener", side_effect=lambda proxy="": Failing(proxy)), \
                 mock.patch.object(urllib.request, "build_opener",
                                   side_effect=AssertionError("a direct opener must never be built")), \
                 mock.patch.object(urllib.request, "urlopen", side_effect=AssertionError("no direct urlopen")):
-            with self.assertRaises(mam.MamError):
-                mam.urllib_transport("GET", mam.download_url(5, False), None, {}, 1, proxy="http://vpn:8888")
+            with self.assertRaises(tracker.TrackerError):
+                tracker.urllib_transport("GET", tracker.download_url(endpoints(), 5, False), None, {}, 1, proxy="http://vpn:8888", endpoints=endpoints())
         self.assertEqual(attempts, ["http://vpn:8888"])
 
     def test_direct_failure_is_unchanged(self):
@@ -223,34 +224,34 @@ class TestProxy(unittest.TestCase):
             def open(self, request, timeout=None):
                 raise urllib.error.URLError("no route")
 
-        with mock.patch.object(mam, "_opener", return_value=Failing()):
+        with mock.patch.object(tracker, "_opener", return_value=Failing()):
             with self.assertRaises(urllib.error.URLError):
-                mam.urllib_transport("GET", mam.download_url(5, False), None, {}, 1)
+                tracker.urllib_transport("GET", tracker.download_url(endpoints(), 5, False), None, {}, 1, endpoints=endpoints())
 
     def test_config_accepts_http_and_https_and_empty(self):
         for value in ("http://vpn:8888", "https://proxy.example:3128", "http://user:pw@10.0.0.2:8888/"):
-            with mock.patch.dict("os.environ", {"MAM_PROXY": value}):
-                self.assertEqual(Config.from_env().mam_proxy, value.rstrip("/"))
+            with mock.patch.dict("os.environ", {"TRACKER_PROXY": value}):
+                self.assertEqual(Config.from_env().tracker_proxy, value.rstrip("/"))
 
     def test_malformed_proxy_fails_at_config_load_naming_the_variable(self):
         for value in ("vpn:8888", "socks5://vpn:1080", "http://", "http://vpn:notaport", "ftp://vpn:21",
                       "http://vpn:8888/path", "just words"):
-            with mock.patch.dict("os.environ", {"MAM_PROXY": value}):
+            with mock.patch.dict("os.environ", {"TRACKER_PROXY": value}):
                 with self.assertRaises(RuntimeError, msg=value) as ctx:
                     Config.from_env()
-            self.assertIn("MAM_PROXY", str(ctx.exception))
+            self.assertIn("TRACKER_PROXY", str(ctx.exception))
 
     def test_malformed_home_ip_fails_at_config_load(self):
-        with mock.patch.dict("os.environ", {"MAM_HOME_WAN_IP": "203.0.113"}):
+        with mock.patch.dict("os.environ", {"TRACKER_HOME_IP": "203.0.113"}):
             with self.assertRaises(RuntimeError) as ctx:
                 Config.from_env()
-        self.assertIn("MAM_HOME_WAN_IP", str(ctx.exception))
+        self.assertIn("TRACKER_HOME_IP", str(ctx.exception))
 
     def test_watcher_factory_passes_proxy_and_user_agent(self):
-        with mock.patch.object(CONFIG, "mam_id", "c"), mock.patch.object(CONFIG, "mam_proxy", "http://vpn:8888"), \
-                mock.patch.object(CONFIG, "mam_user_agent", "UA/1"):
-            client = watcher.make_mam()
-        self.assertEqual(client.transport.keywords, {"proxy": "http://vpn:8888"})
+        with tracker_cfg("c"), mock.patch.object(CONFIG, "tracker_proxy", "http://vpn:8888"), \
+                mock.patch.object(CONFIG, "tracker_user_agent", "UA/1"):
+            client = watcher.make_tracker()
+        self.assertEqual(client.transport.keywords["proxy"], "http://vpn:8888")
         self.assertEqual(client._user_agent, "UA/1")
 
 
@@ -299,15 +300,15 @@ class TestEgressModule(unittest.TestCase):
 class GuardCase(WatcherCase):
     def setUp(self):
         super().setUp()
-        for p in (mock.patch.object(CONFIG, "mam_home_wan_ip", HOME),
-                  mock.patch.object(CONFIG, "mam_proxy", "http://vpn:8888")):
+        for p in (mock.patch.object(CONFIG, "tracker_home_ip", HOME),
+                  mock.patch.object(CONFIG, "tracker_proxy", "http://vpn:8888")):
             p.start()
             self.patches.append(p)
         self.want()
 
     def run_cycle(self, observed, *answers):
         """A cycle with a fake probe; returns (summary, probe calls)."""
-        self.mam(*answers)
+        self.fake_tracker(*answers)
         calls = []
 
         def fake_probe(proxy, timeout=10.0):
@@ -321,9 +322,9 @@ class GuardCase(WatcherCase):
 
 
 class TestGuardInTheWatcher(GuardCase):
-    def test_blocked_refuses_with_zero_mam_calls(self):
+    def test_blocked_refuses_with_zero_tracker_calls(self):
         summary, probes = self.run_cycle(HOME, answer(entry(1, "Project Hail Mary")))
-        self.assertEqual(self.transport.calls, [], "not one MAM request")
+        self.assertEqual(self.transport.calls, [], "not one tracker request")
         self.assertEqual(self.w.client().requests, 0)
         self.assertEqual(FakeQbit.instances, [])
         self.assertEqual(summary["egress_guard"], "blocked")
@@ -338,7 +339,7 @@ class TestGuardInTheWatcher(GuardCase):
             self.run_cycle(HOME)
         self.assertTrue(any("egress guard" in line and HOME in line for line in logs.output), logs.output)
 
-    def test_unknown_refuses_with_zero_mam_calls(self):
+    def test_unknown_refuses_with_zero_tracker_calls(self):
         summary, _ = self.run_cycle(egress.EgressError("ipinfo.io: URLError; api.ipify.org: URLError"),
                                     answer(entry(1, "Project Hail Mary")))
         self.assertEqual(self.transport.calls, [])
@@ -362,7 +363,7 @@ class TestGuardInTheWatcher(GuardCase):
         self.assertEqual(len(self.transport.calls), 1)
         self.assertEqual(summary["egress_guard"], "ok")
         self.assertEqual(probes, ["http://vpn:8888"])
-        self.assertEqual([line for line in logs.output if f"MAM egress: {VPN}" in line].__len__(), 1)
+        self.assertEqual([line for line in logs.output if f"tracker egress: {VPN}" in line].__len__(), 1)
 
     def test_probe_runs_every_cycle(self):
         _, first = self.run_cycle(VPN, NOTHING)
@@ -406,7 +407,7 @@ class TestBlockedGuardStillDoesLocalBookkeeping(GuardCase):
         self.downloading()
         summary, _ = self.run_progress(HOME, {self.H: 1.0})
         self.assertEqual(summary["egress_guard"], "blocked")
-        self.assertEqual(self.transport.calls, [], "still not one MAM request")
+        self.assertEqual(self.transport.calls, [], "still not one tracker request")
         self.assertEqual(self.row()["status"], "downloaded")
         self.assertEqual(summary["downloaded"], 1)
         self.assertEqual(self.state.get_meta(watcher.META_LAST_CYCLE)["downloaded"], 1)
@@ -427,7 +428,7 @@ class TestBlockedGuardStillDoesLocalBookkeeping(GuardCase):
 class TestGuardOff(WatcherCase):
     def test_empty_config_means_no_probe_at_all(self):
         self.want()
-        self.mam(NOTHING)
+        self.fake_tracker(NOTHING)
         with mock.patch.object(egress, "probe", side_effect=AssertionError("no probe when unarmed")), \
                 mock.patch.object(egress, "_fetch", side_effect=AssertionError("no network")):
             summary = self.cycle()
@@ -441,9 +442,9 @@ class TestGuardUI(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.state = State(pathlib.Path(self.dir.name))
-        self.patches = [mock.patch.object(CONFIG, "mam_id", "c"), mock.patch.object(CONFIG, "qbit_user", "u"),
+        self.patches = [tracker_cfg("c"), mock.patch.object(CONFIG, "qbit_user", "u"),
                         mock.patch.object(CONFIG, "qbit_pass", "p"),
-                        mock.patch.object(CONFIG, "mam_home_wan_ip", HOME)]
+                        mock.patch.object(CONFIG, "tracker_home_ip", HOME)]
         for p in self.patches:
             p.start()
         watcher.WATCHER._paused = None
@@ -457,10 +458,10 @@ class TestGuardUI(unittest.TestCase):
     def record(self, ip):
         self.state.set_meta(watcher.META_EGRESS, {"ip": ip, "at": time.time(), "reason": ""})
 
-    def test_ok_shows_what_mam_sees_and_the_guard(self):
+    def test_ok_shows_what_the_tracker_sees_and_the_guard(self):
         self.record(VPN)
         html = web.render_settings(self.state)
-        self.assertIn(f"MAM sees <b>{VPN}</b>", html)
+        self.assertIn(f"The tracker sees <b>{VPN}</b>", html)
         self.assertIn("Checked ", html)
         self.assertIn(f"refuses to run from your home IP ({HOME})", html)
         self.assertNotIn("Stopped:", html)
@@ -468,9 +469,9 @@ class TestGuardUI(unittest.TestCase):
     def test_blocked_notice_on_settings_and_the_wishlist_bar(self):
         self.record(HOME)
         html = web.render_settings(self.state)
-        self.assertIn("Stopped: MAM would not see the allowed address.", html)
+        self.assertIn("Stopped: the tracker would not see the allowed address.", html)
         self.assertIn("which is your home connection", html)
-        self.assertIn("start your VPN container (or fix MAM_PROXY)", html)
+        self.assertIn("start your VPN container (or fix TRACKER_PROXY)", html)
         self.assertNotIn("http://", html)
         bar = web.render_discover(self.state, "wishlist")
         self.assertIn("this connection is not the one you allowed", bar)
@@ -483,9 +484,9 @@ class TestGuardUI(unittest.TestCase):
         self.assertIn("cannot confirm this connection is the VPN", bar)
 
     def test_unarmed_says_so(self):
-        with mock.patch.object(CONFIG, "mam_home_wan_ip", ""):
+        with mock.patch.object(CONFIG, "tracker_home_ip", ""):
             html = web.render_settings(self.state)
-        self.assertIn("not armed (set the allowed IP below, or MAM_HOME_WAN_IP", html)
+        self.assertIn("not armed (set the allowed IP below, or TRACKER_HOME_IP", html)
 
 
 OTHER = "203.0.113.9"
@@ -496,9 +497,9 @@ class ExpectedCase(WatcherCase):
 
     def setUp(self):
         super().setUp()
-        for p in (mock.patch.object(CONFIG, "mam_home_wan_ip", self.HOME_SET),
-                  mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN),
-                  mock.patch.object(CONFIG, "mam_proxy", "http://vpn:8888")):
+        for p in (mock.patch.object(CONFIG, "tracker_home_ip", self.HOME_SET),
+                  mock.patch.object(CONFIG, "tracker_expected_egress_ip", VPN),
+                  mock.patch.object(CONFIG, "tracker_proxy", "http://vpn:8888")):
             p.start()
             self.patches.append(p)
         config._EFFECTIVE.clear()
@@ -514,10 +515,10 @@ class ExpectedCase(WatcherCase):
 class TestExpectedJudge(unittest.TestCase):
     def test_order_and_reasons(self):
         self.assertEqual(egress.judge("", "", "")[0], "off")
-        self.assertEqual(egress.judge("", VPN, VPN), ("ok", f"MAM sees {VPN}, the allowed address"))
+        self.assertEqual(egress.judge("", VPN, VPN), ("ok", f"the tracker sees {VPN}, the allowed address"))
         verdict, reason = egress.judge("", OTHER, VPN)
         self.assertEqual(verdict, "blocked")
-        self.assertEqual(reason, f"MAM would see {OTHER}, but this installation only allows {VPN}")
+        self.assertEqual(reason, f"the tracker would see {OTHER}, but this installation only allows {VPN}")
         self.assertEqual(egress.judge("", "", VPN)[0], "unknown")
         # home wins over expected, with the home reason
         verdict, reason = egress.judge(HOME, HOME, VPN)
@@ -538,20 +539,20 @@ class TestExpectedInTheWatcher(ExpectedCase):
         self.assertEqual(len(self.transport.calls), 1)
         self.assertEqual(len(probes), 1, "the probe runs for the expected IP alone, with no home IP set")
 
-    def test_mismatch_is_blocked_with_zero_mam_calls(self):
+    def test_mismatch_is_blocked_with_zero_tracker_calls(self):
         summary, _ = self.run_cycle(OTHER, answer(entry(1, "Project Hail Mary")))
         self.assertEqual(summary["egress_guard"], "blocked")
         self.assertEqual(self.transport.calls, [])
         self.assertEqual(self.w.client().requests, 0)
         self.assertEqual(FakeQbit.instances, [])
-        self.assertIn(f"MAM would see {OTHER}, but this installation only allows {VPN}", summary["error"])
+        self.assertIn(f"the tracker would see {OTHER}, but this installation only allows {VPN}", summary["error"])
         self.assertEqual(self.row()["status"], "wanted")
         status = self.w.status(self.state)
         self.assertEqual((status["egress_guard"], status["egress_expected"], status["egress_ip"]),
                          ("blocked", VPN, OTHER))
         self.assertIn("only allows", status["egress_reason"])
 
-    def test_probe_failure_is_unknown_with_zero_mam_calls(self):
+    def test_probe_failure_is_unknown_with_zero_tracker_calls(self):
         summary, _ = self.run_cycle(egress.EgressError("down"), answer(entry(1, "Project Hail Mary")))
         self.assertEqual(summary["egress_guard"], "unknown")
         self.assertEqual(self.transport.calls, [])
@@ -580,7 +581,7 @@ class TestBothSet(ExpectedCase):
 
 class TestExpectedEmptyKeepsDev2(GuardCase):
     def test_home_only_is_unchanged(self):
-        with mock.patch.object(CONFIG, "mam_expected_egress_ip", ""):
+        with mock.patch.object(CONFIG, "tracker_expected_egress_ip", ""):
             summary, _ = self.run_cycle(OTHER, NOTHING)
             self.assertEqual(summary["egress_guard"], "ok")
             self.assertEqual(len(self.transport.calls), 1)
@@ -592,27 +593,27 @@ class TestExpectedEmptyKeepsDev2(GuardCase):
 class TestExpectedConfig(unittest.TestCase):
     def test_junk_is_rejected_naming_the_variable(self):
         for value in ("198.51.100", "vpn.example", "1.2.3.4/32", "999.1.1.1"):
-            with mock.patch.dict("os.environ", {"MAM_EXPECTED_EGRESS_IP": value}):
+            with mock.patch.dict("os.environ", {"TRACKER_EXPECTED_EGRESS_IP": value}):
                 with self.assertRaises(RuntimeError, msg=value) as ctx:
                     Config.from_env()
-            self.assertIn("MAM_EXPECTED_EGRESS_IP", str(ctx.exception))
+            self.assertIn("TRACKER_EXPECTED_EGRESS_IP", str(ctx.exception))
 
     def test_empty_and_valid_are_accepted(self):
-        with mock.patch.dict("os.environ", {"MAM_EXPECTED_EGRESS_IP": ""}):
-            self.assertEqual(Config.from_env().mam_expected_egress_ip, "")
-        with mock.patch.dict("os.environ", {"MAM_EXPECTED_EGRESS_IP": f" {VPN} "}):
-            self.assertEqual(Config.from_env().mam_expected_egress_ip, VPN)
-        with mock.patch.dict("os.environ", {"MAM_EXPECTED_EGRESS_IP": "2001:0db8::1"}):
-            self.assertEqual(Config.from_env().mam_expected_egress_ip, "2001:db8::1")
+        with mock.patch.dict("os.environ", {"TRACKER_EXPECTED_EGRESS_IP": ""}):
+            self.assertEqual(Config.from_env().tracker_expected_egress_ip, "")
+        with mock.patch.dict("os.environ", {"TRACKER_EXPECTED_EGRESS_IP": f" {VPN} "}):
+            self.assertEqual(Config.from_env().tracker_expected_egress_ip, VPN)
+        with mock.patch.dict("os.environ", {"TRACKER_EXPECTED_EGRESS_IP": "2001:0db8::1"}):
+            self.assertEqual(Config.from_env().tracker_expected_egress_ip, "2001:db8::1")
 
 
 class TestExpectedSetting(LiveServerCase):
     def setUp(self):
         super().setUp()
-        p = mock.patch.object(CONFIG, "mam_id", "x")  # these tests are about the MAM surfaces
+        p = tracker_cfg("x")  # these tests are about the watcher surfaces
         p.start()
         self.addCleanup(p.stop)
-        p = mock.patch.object(CONFIG, "mam_expected_egress_ip", "")
+        p = mock.patch.object(CONFIG, "tracker_expected_egress_ip", "")
         p.start()
         self.addCleanup(p.stop)
         config._EFFECTIVE.clear()
@@ -641,57 +642,57 @@ class TestExpectedSetting(LiveServerCase):
             self.assertIn("expected_egress", body["error"])
             self.assertIn("not an IPv4 or IPv6 address", body["error"])
         self.assertIsNone(self.state.get_meta("setting_expected_egress"))
-        self.assertEqual(config.effective_val("mam_expected_egress_ip"), "")
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), "")
 
     def test_valid_persists_and_is_what_the_watcher_reads(self):
         status, body = self.post({"expected_egress": f" {VPN} "})
         self.assertEqual(status, 200, body)
         self.assertEqual(body["custom"], ["expected_egress"])
         self.assertEqual(self.state.get_meta("setting_expected_egress"), VPN)
-        self.assertEqual(config.effective_val("mam_expected_egress_ip"), VPN)
-        self.assertEqual(watcher._setting("mam_expected_egress_ip"), VPN)
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), VPN)
+        self.assertEqual(watcher._setting("tracker_expected_egress_ip"), VPN)
         self.assertEqual(self.w_status()["egress_expected"], VPN)
         page = web.render_settings(self.state)
         self.assertIn('data-setting="expected_egress"', page)
         self.assertIn(f'value="{VPN}" data-initial="{VPN}"', page)
-        self.assertIn("Only reach MAM from one IP", page)
+        self.assertIn("Only reach the tracker from one IP", page)
         self.assertIn("Leave it empty to skip this check.", page)
 
     def test_blank_turns_it_off_even_over_an_env_value(self):
-        with mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN):
+        with mock.patch.object(CONFIG, "tracker_expected_egress_ip", VPN):
             page = web.render_settings(self.state)
             self.assertIn(f'value="{VPN}" data-initial="{VPN}"', page, "the env value is the visible default")
             status, body = self.post({"expected_egress": ""})
             self.assertEqual(status, 200, body)
-            self.assertEqual(config.effective_val("mam_expected_egress_ip"), "")
+            self.assertEqual(config.effective_val("tracker_expected_egress_ip"), "")
             self.assertEqual(self.w_status()["egress_expected"], "")
             self.assertEqual(self.w_status()["egress_guard"], "off")
 
     def test_reset_hands_back_the_env_value(self):
         self.post({"expected_egress": OTHER})
-        with mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN):
+        with mock.patch.object(CONFIG, "tracker_expected_egress_ip", VPN):
             status, body = self.post(reset=True)
             self.assertEqual(status, 200, body)
             self.assertEqual(body["env_defaults"]["expected_egress"], VPN)
-            self.assertEqual(config.effective_val("mam_expected_egress_ip"), VPN)
+            self.assertEqual(config.effective_val("tracker_expected_egress_ip"), VPN)
 
 
 class TestExpectedUI(TestGuardUI):
     def test_mismatch_shows_observed_expected_verdict_and_what_to_change(self):
-        with mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN), \
-                mock.patch.object(CONFIG, "mam_home_wan_ip", ""):
+        with mock.patch.object(CONFIG, "tracker_expected_egress_ip", VPN), \
+                mock.patch.object(CONFIG, "tracker_home_ip", ""):
             self.record(OTHER)
             html = web.render_settings(self.state)
-        self.assertIn(f"MAM sees <b>{OTHER}</b>", html)
+        self.assertIn(f"The tracker sees <b>{OTHER}</b>", html)
         self.assertIn(f"expected <b>{VPN}</b>", html)
         self.assertIn("blocked", html)
         self.assertIn(f"only allows {VPN}", html)
         self.assertIn("start your VPN container", html)
-        self.assertIn(f"only reaches MAM from {VPN}", html)
+        self.assertIn(f"only reaches the tracker from {VPN}", html)
 
     def test_match_shows_allowed(self):
-        with mock.patch.object(CONFIG, "mam_expected_egress_ip", VPN), \
-                mock.patch.object(CONFIG, "mam_home_wan_ip", ""):
+        with mock.patch.object(CONFIG, "tracker_expected_egress_ip", VPN), \
+                mock.patch.object(CONFIG, "tracker_home_ip", ""):
             self.record(VPN)
             html = web.render_settings(self.state)
         self.assertIn('<span class="ok">allowed</span>', html)

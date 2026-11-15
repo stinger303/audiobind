@@ -33,7 +33,7 @@ class Control:
         self._proc: subprocess.Popen | None = None
         #: None = use the DRY_RUN env default; True/False = the user chose in the web UI
         self._dry_run: bool | None = None
-        #: the MAM watcher's own switch, never read by the pipeline; None = WATCH_DRY_RUN default
+        #: the acquisition watcher's own switch, never read by the pipeline; None = WATCH_DRY_RUN default
         self._watcher_dry_run: bool | None = None
         self.current_unit: str = ""
         #: live encode progress: {"percent", "elapsed", "eta", "speed"}
@@ -151,7 +151,7 @@ class Control:
     # ------------------------------------------------- watcher dry run (separate switch)
     @property
     def watcher_dry_run(self) -> bool:
-        """MAM acquisition only: search and decide, never download. Independent of dry_run."""
+        """Acquisition only: search and decide, never download. Independent of dry_run."""
         return CONFIG.watch_dry_run if self._watcher_dry_run is None else self._watcher_dry_run
 
     def set_watcher_dry_run(self, value: bool) -> None:

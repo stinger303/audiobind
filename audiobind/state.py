@@ -111,7 +111,7 @@ CATALOG_SEEN_TTL_SECONDS = 90 * 24 * 3600
 #: a wishlist row's life. Phase 2 only ever writes "wanted"; the Phase 3 watcher moves a row
 #: on from there, and only along WISHLIST_TRANSITIONS:
 #:
-#:   wanted ──found on MAM, torrent handed to qBittorrent──▶ downloading ──▶ downloaded ──▶ in_library
+#:   wanted ──found on the tracker, torrent handed to qBittorrent──▶ downloading ──▶ downloaded ──▶ in_library
 #:     │ └──three searches in a row found nothing──▶ not_found ──Retry──▶ wanted
 #:     └────download / qBittorrent failed──────────▶ error ──────Retry──▶ wanted
 #:
@@ -247,13 +247,18 @@ class State:
             ("checked_at", "REAL NOT NULL DEFAULT 0"),
             ("updated_at", "REAL NOT NULL DEFAULT 0"),
             ("misses", "INTEGER NOT NULL DEFAULT 0"),
-            ("mam_tid", "TEXT NOT NULL DEFAULT ''"),
+            ("tracker_tid", "TEXT NOT NULL DEFAULT ''"),
             ("torrent_hash", "TEXT NOT NULL DEFAULT ''"),
             # 0.18.0-dev12: an optional title the watcher searches instead of the catalog title
             ("search_title", "TEXT"),
         ):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE wishlist ADD COLUMN {name} {ddl}")
+                if name == "tracker_tid":
+                    # 0.19.0-dev7: this column used to be named after the old site. Copy what it
+                    # holds; the old column is left in place (harmless, and a downgrade still works).
+                    for old in sorted(c for c in existing if c.endswith("_tid") and c != name):
+                        self.connection.execute(f"UPDATE wishlist SET tracker_tid = {old} WHERE tracker_tid = ''")
 
     def _migrate_locks(self) -> None:
         """Once per database: every correction typed before field locks existed was a human
@@ -752,7 +757,7 @@ class State:
             "checked_at": float(row["checked_at"] or 0),
             "updated_at": float(row["updated_at"] or 0),
             "misses": int(row["misses"] or 0),
-            "mam_tid": row["mam_tid"] or "",
+            "tracker_tid": row["tracker_tid"] or "",
             "torrent_hash": row["torrent_hash"] or "",
             "search_title": row["search_title"] or "",
         }
@@ -807,7 +812,7 @@ class State:
     def wishlist_due(self, limit: int) -> list[dict]:
         """The "wanted" rows the watcher searches next: never-checked rows first, oldest added
         first; then the least recently checked. Ordering by the last check is what keeps a
-        handful of books MAM does not have from starving every row behind them."""
+        handful of books the tracker does not have from starving every row behind them."""
         with self._lock:
             rows = self.connection.execute(
                 "SELECT * FROM wishlist WHERE status = ? ORDER BY checked_at ASC, added_at ASC, asin LIMIT ?",
@@ -822,7 +827,7 @@ class State:
         *,
         expect: str | None = None,
         note: str | None = None,
-        mam_tid: str | None = None,
+        tracker_tid: str | None = None,
         torrent_hash: str | None = None,
         checked: bool = False,
     ) -> bool:
@@ -845,7 +850,7 @@ class State:
             params: list = [new, now]
             if new == WISHLIST_WANTED:
                 sets.append("misses = 0")
-            for column, value in (("note", note), ("mam_tid", mam_tid), ("torrent_hash", torrent_hash)):
+            for column, value in (("note", note), ("tracker_tid", tracker_tid), ("torrent_hash", torrent_hash)):
                 if value is not None:
                     sets.append(f"{column} = ?")
                     params.append(str(value))

@@ -155,9 +155,9 @@ shaped versions of the idea:
 
 Phase plan agreed with owner. Trigger stays human (a MAM bookmark or a
 wishlist click); everything after the trigger is automatic. Ratio safety is
-MAM's server-side "Require FL Wedge" preference (owner configured 2026-11-10:
+the tracker's server-side "require freeleech" preference (owner configured 2026-11-10:
 Require mode, size-above 1 MiB, auto-apply left empty) — never rely on
-client-side wedge application (Prowlarr regression history). Prowlarr is
+client-side freeleech application (Prowlarr regression history). Prowlarr is
 deliberately NOT part of this: bookmarks RSS feeds qBittorrent natively, and
 the wishlist watcher talks to MAM's official API directly.
 
@@ -181,9 +181,9 @@ the wishlist watcher talks to MAM's official API directly.
 
 ### Phase 1 acceptance test (before trusting the chain)
 
-Bookmark one audiobook -> wedge auto-applies -> RSS -> qBittorrent auto-
+Bookmark one audiobook -> freeleech auto-applies -> RSS -> qBittorrent auto-
 download -> appears as ingest row -> converts -> published. Verify on MAM
-stats that zero download bytes counted (the Require-wedge feature is marked
+stats that zero download bytes counted (the require-freeleech feature is marked
 in-development by MAM itself; a blocked download is the expected failure
 mode, a ratio hit is the bug).
 

@@ -6,6 +6,7 @@ from unittest import mock
 
 from audiobind import config, watcher, web
 from audiobind.config import CONFIG
+from tests.tracker_cfg import tracker_cfg
 
 try:
     from live import LiveServerCase
@@ -14,7 +15,7 @@ except ImportError:
 
 
 class ScheduleCase(LiveServerCase):
-    MAM = "x"
+    SESSION = "x"
 
     def setUp(self):
         super().setUp()
@@ -22,7 +23,7 @@ class ScheduleCase(LiveServerCase):
         CONFIG.watch_interval_min, CONFIG.watch_max_per_cycle = 60, 5
         config._EFFECTIVE.clear()
         watcher.WATCHER._paused = None
-        p = mock.patch.object(CONFIG, "mam_id", self.MAM)
+        p = tracker_cfg(self.SESSION)
         p.start()
         self.addCleanup(p.stop)
 
@@ -138,7 +139,7 @@ except ImportError:
 
 
 class TestCycleReadsSavedCap(WatcherCase):
-    """A real cycle (fake MAM transport, no network): the cap is re-read every cycle."""
+    """A real cycle (fake tracker transport, no network): the cap is re-read every cycle."""
 
     def setUp(self):
         super().setUp()
@@ -153,7 +154,7 @@ class TestCycleReadsSavedCap(WatcherCase):
         super().tearDown()
 
     def test_saved_cap_governs_the_next_cycle_then_the_one_after(self):
-        self.mam(*[NOTHING] * 20)
+        self.fake_tracker(*[NOTHING] * 20)
         config._EFFECTIVE["watch_per_cycle"] = 2
         self.assertEqual(self.cycle()["searched"], 2)
         config._EFFECTIVE["watch_per_cycle"] = 4
@@ -165,14 +166,14 @@ class TestCycleReadsSavedCap(WatcherCase):
 
 
 class TestNoMam(ScheduleCase):
-    MAM = ""
+    SESSION = ""
 
-    def test_without_mam_the_watcher_block_and_both_fields_are_absent(self):
+    def test_without_a_tracker_the_watcher_block_and_both_fields_are_absent(self):
         page = web.render_settings(self.state)
         self.assertNotIn('data-setting="watch_interval"', page)
         self.assertNotIn('data-setting="watch_per_cycle"', page)
         self.assertNotIn("Run a cycle now</button>", page)
-        self.assertIn("MAM acquisition (optional)", page)
+        self.assertIn("Acquisition source (optional)", page)
 
 
 if __name__ == "__main__":
