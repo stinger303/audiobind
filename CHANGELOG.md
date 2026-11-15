@@ -3,8 +3,9 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> Entries before 0.19.0-dev7 describe the acquisition client as a specific private tracker;
-> it was generalized then and every setting is now `TRACKER_*`.
+> Entries before 0.19.0-dev7 describe the acquisition client as a specific private tracker and
+> name its settings by their current `TRACKER_*` names. The client was generalized then, and the
+> older setting names remain accepted as deprecated aliases.
 
 ## [Unreleased]
 
@@ -146,10 +147,10 @@ honoured.
 ### Security
 - **Tracker requests no longer send a Python User-Agent.** urllib's default `User-agent:
   Python-urllib/x` was going out on every search and download, contradicting the documented
-  behaviour. No User-Agent is sent unless `MAM_USER_AGENT` is set, then exactly that one. The
+  behaviour. No User-Agent is sent unless `TRACKER_USER_AGENT` is set, then exactly that one. The
   same fix applies to the egress probe.
 - **The environment's `HTTP(S)_PROXY` is no longer consulted** by the tracker client or the egress
-  probe. Without `MAM_PROXY` the request goes direct; with it, only through that proxy.
+  probe. Without `TRACKER_PROXY` the request goes direct; with it, only through that proxy.
 - **A residential IP address and a LAN layout were removed from the repository**: tests now use
   documentation addresses, and the host-specific deploy/rollback scripts and the stored
   container-args file are gone (a test keeps the address out). `docs/PUBLISHING.md` describes the
@@ -275,7 +276,7 @@ through `0.18.0-dev12`; the per-build detail is kept as subsections below.
 
 **Acquiring books.** The wishlist watcher talks to a private tracker: it searches the one
 authorised search endpoint, downloads a book with a freeleech wedge only when the torrent is
-not already free, and hands it to qBittorrent. Off unless `MAM_ID` is set. It refuses to run
+not already free, and hands it to qBittorrent. Off unless `TRACKER_SESSION` is set. It refuses to run
 unless the tracker would see your VPN address (a home-IP denylist and an optional expected-IP
 allowlist), sends no User-Agent, and can be pointed through an HTTP proxy. How many books a
 cycle takes, and how often it runs, are both editable in Settings > Watcher.
@@ -399,7 +400,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 - README: "Bring your own downloader".
 
 ### Changed
-- **A non-tracker install no longer shows tracker surfaces.** Without `MAM_ID`: no Wishlist tab (and
+- **A non-tracker install no longer shows tracker surfaces.** Without `TRACKER_SESSION`: no Wishlist tab (and
   `/discover/wishlist` lands on Search), no wishlist count in the rail, no Get this / Want /
   Want all missing buttons (Discover and Series), and Settings > Watcher is one short block
   explaining that the tracker is optional and which variables turn it on. The rail says that files in
@@ -420,7 +421,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 ### 0.18.0-dev5 (2026-11-14)
 
 ### Added
-- **`MAM_VIP`** and **Settings > Watcher > "VIP member"** (No / Yes, default No, saved in the
+- **`TRACKER_VIP`** and **Settings > Watcher > "VIP member"** (No / Yes, default No, saved in the
   database, effective on the next cycle). The tracker marks some torrents VIP-only (`vip=1` in the search
   results); only a VIP member can download them. VIP status cannot be read from the API
   (`vip_expire` is `0` even for a VIP account), so it is a setting.
@@ -443,7 +444,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 ### 0.18.0-dev3 (2026-11-14)
 
 ### Added
-- **`MAM_EXPECTED_EGRESS_IP`**: an optional allowlist for the egress guard. When set, the tracker must
+- **`TRACKER_EXPECTED_EGRESS_IP`**: an optional allowlist for the egress guard. When set, the tracker must
   see exactly this address (your VPN's exit IP) or the cycle is refused with **zero tracker
   requests**, because a tracker session is tied to one IP. Empty = off (the default); a value that
   is not an IPv4/IPv6 address stops startup with a message naming the variable.
@@ -466,13 +467,13 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 ### 0.18.0-dev2 (2026-11-14)
 
 ### Added
-- **`MAM_PROXY`**: `http://host:port` or `https://host:port` (an HTTP CONNECT tunnel for
+- **`TRACKER_PROXY`**: `http://host:port` or `https://host:port` (an HTTP CONNECT tunnel for
   the tracker's https). Search and download share one proxied opener. **Fail-closed:** a failing
   proxied request is an error and is never retried or sent directly. A malformed value stops
-  startup with a message naming `MAM_PROXY`. SOCKS is not supported (standard library only).
-- **Egress guard, `MAM_HOME_WAN_IP`**: at the start of every watcher cycle (dry run included),
+  startup with a message naming `TRACKER_PROXY`. SOCKS is not supported (standard library only).
+- **Egress guard, `TRACKER_HOME_IP`**: at the start of every watcher cycle (dry run included),
   before any tracker request, the IP the tracker would see is looked up (`ipinfo.io`, then `api.ipify.org`,
-  through `MAM_PROXY` if set). Equal to the home IP: the cycle is refused. Lookup failed:
+  through `TRACKER_PROXY` if set). Equal to the home IP: the cycle is refused. Lookup failed:
   refused too (fail closed). Either way **zero tracker requests**. Empty = off, no lookup at all.
   `GET /api/watcher` gains `egress_ip`, `egress_checked_at`, `egress_guard` and
   `egress_reason`; Settings > Watcher shows what the tracker sees, when it was checked and the guard,
@@ -488,14 +489,14 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 
 ### Changed
 - **No fingerprint.** Tracker requests no longer carry `User-Agent: audiobind/<version>`; no
-  User-Agent override is sent unless `MAM_USER_AGENT` is set, which is used verbatim.
-- `MAM_HOME_WAN_IP` that is not an IP address stops startup, naming the variable.
+  User-Agent override is sent unless `TRACKER_USER_AGENT` is set, which is used verbatim.
+- `TRACKER_HOME_IP` that is not an IP address stops startup, naming the variable.
 
 ### 0.18.0-dev1 (2026-11-14)
 
 ### Added
-- **The wishlist watcher (a private tracker).** Off unless `MAM_ID` is set; with it unset no
-  thread starts and nothing touches the network. With `MAM_ID` and the qBittorrent WebUI
+- **The wishlist watcher (a private tracker).** Off unless `TRACKER_SESSION` is set; with it unset no
+  thread starts and nothing touches the network. With `TRACKER_SESSION` and the qBittorrent WebUI
   login (`QBIT_USER` / `QBIT_PASS`, at `QBIT_URL`, default `http://localhost:8083`) a
   background thread works through the wishlist every `WATCH_INTERVAL_MIN` minutes (default
   60, 10-1440): up to `WATCH_MAX_PER_CYCLE` wanted books (default 5, 1-20), never-checked
@@ -504,7 +505,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
   matching author when the book has one, audio files and not already snatched; files
   present, the exact series and sequence, and an already-free torrent are preferred. The
   torrent is downloaded through the tracker's Download Torrent API and handed to qBittorrent
-  (category `mam-audiobooks`), and the book becomes **downloading**.
+  (the configured category), and the book becomes **downloading**.
 - **Freeleech wedges are spent only when needed.** A torrent that is already free, VIP
   freeleech or a personal freeleech is downloaded without `&fl`; any other is downloaded
   with it. Exactly one decision per torrent, written into the book's note.
@@ -525,7 +526,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
   the watcher stays disabled instead of failing.
 - `GET /api/watcher`, `POST /api/watcher` (`run`, `pause`, `resume`) and
   `POST /api/wishlist/retry`. `/api/wishlist` rows now include `note`, `checked_at`,
-  `updated_at`, `mam_tid` and `torrent_hash`.
+  `updated_at`, `tracker_tid` and `torrent_hash`.
 
 ### Safety
 - The watcher calls only the two tracker endpoints the tracker authorizes for automation, checks every
@@ -539,7 +540,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
   never retried on its own (wedges are not refunded); a Retry searches again first.
 - Dry run applies: the watcher searches and notes what it would download, and downloads
   nothing.
-- `MAM_ID` and `QBIT_PASS` are never shown in a page, the API, the log or a `repr()`.
+- `TRACKER_SESSION` and `QBIT_PASS` are never shown in a page, the API, the log or a `repr()`.
 
 ### Changed
 - The Discover tab's Wishlist list shows the state chips above instead of the bare status.
@@ -719,7 +720,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
   same columns as your library books. Type "ingest" in the search box to see only them.
   One that needs a decision lands on the Needs attention shelf with the usual reason and
   buttons. Its details show the folder it came from, for example
-  `/ingest/Andy Weir - Project Hail Mary [MAM]`.
+  `/ingest/Andy Weir - Project Hail Mary [tracker]`.
 - `/api/units` now says where each book came from (`"source": "library"` or
   `"ingest"`). `/api/state` adds `ingest_dir` and `ingest_enabled`.
 
