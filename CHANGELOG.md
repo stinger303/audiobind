@@ -3,6 +3,9 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> Entries before 0.19.0-dev7 describe the acquisition client as a specific private tracker;
+> it was generalized then and every setting is now `TRACKER_*`.
+
 ## [Unreleased]
 
 ## [0.19.0-dev11] - 2026-11-15
@@ -141,11 +144,11 @@ Security-fix build from the 0.19.0-dev4 audit. Docker users: if you set `TRUSTED
 honoured.
 
 ### Security
-- **MAM requests no longer send a Python User-Agent.** urllib's default `User-agent:
+- **Tracker requests no longer send a Python User-Agent.** urllib's default `User-agent:
   Python-urllib/x` was going out on every search and download, contradicting the documented
   behaviour. No User-Agent is sent unless `MAM_USER_AGENT` is set, then exactly that one. The
   same fix applies to the egress probe.
-- **The environment's `HTTP(S)_PROXY` is no longer consulted** by the MAM client or the egress
+- **The environment's `HTTP(S)_PROXY` is no longer consulted** by the tracker client or the egress
   probe. Without `MAM_PROXY` the request goes direct; with it, only through that proxy.
 - **A residential IP address and a LAN layout were removed from the repository**: tests now use
   documentation addresses, and the host-specific deploy/rollback scripts and the stored
@@ -176,7 +179,7 @@ honoured.
 ### Fixed
 - **A blocked egress guard no longer skips local bookkeeping.** The qBittorrent progress step
   (`downloading` to `downloaded`) now runs before the guard and regardless of its verdict; it
-  makes no MAM request.
+  makes no tracker request.
 - **`/healthz` is reachable without a session** once an account exists, for uptime monitors. It
   only ever answers `ok` or `stale`. Nothing else became public.
 - **An audiobook with more than 255 chapters** no longer gets a malformed MP3 chapter list: the
@@ -270,16 +273,16 @@ honoured.
 The first public release since 0.15.1. It folds every banked build from `0.16.0-dev1`
 through `0.18.0-dev12`; the per-build detail is kept as subsections below.
 
-**Acquiring books.** The wishlist watcher talks to MyAnonamouse: it searches the one
+**Acquiring books.** The wishlist watcher talks to a private tracker: it searches the one
 authorised search endpoint, downloads a book with a freeleech wedge only when the torrent is
 not already free, and hands it to qBittorrent. Off unless `MAM_ID` is set. It refuses to run
-unless MAM would see your VPN address (a home-IP denylist and an optional expected-IP
+unless the tracker would see your VPN address (a home-IP denylist and an optional expected-IP
 allowlist), sends no User-Agent, and can be pointed through an HTTP proxy. How many books a
 cycle takes, and how often it runs, are both editable in Settings > Watcher.
 
 **The wishlist is a want-list.** Its own rail tab with a count, and a book that lands in your
 library leaves the list instead of lingering. A row can carry its own search title, so a book
-MAM spells differently can be fetched without lowering the match bar for everything else.
+the tracker spells differently can be fetched without lowering the match bar for everything else.
 
 **Discover books.** Search and recommendations on one screen, no chips: suggestions come from
 the authors, narrators and genres you already own. Series cards say how much of a series you
@@ -305,8 +308,8 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 - **A wishlist row can carry its own search title.** The new **Edit title** action (next to Retry /
   Remove, on every row) opens an inline input pre-filled with the effective search title. The
   watcher searches `search_title or title`, and the 0.90 title score compares the override against
-  the MAM result, so a book whose catalog title near-missed (`Missing` vs `The Missing`, 0.85) can
-  be re-titled to the MAM title and land. The row keeps showing the catalog title and notes
+  the tracker result, so a book whose catalog title near-missed (`Missing` vs `The Missing`, 0.85) can
+  be re-titled to the tracker title and land. The row keeps showing the catalog title and notes
   `searching for "..."` while an override is set.
 - `POST /api/wishlist/title` with `{"asin", "title"}` (same auth and cross-site guard as the other
   wishlist endpoints) returns the row's public shape, now including `search_title`. A blank or
@@ -325,7 +328,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
   minutes) and "Books per cycle" (1-20) sit above Run a cycle now, with the usual "custom (was N
   from env)" mark. `WATCH_INTERVAL_MIN` and `WATCH_MAX_PER_CYCLE` remain the defaults and are
   shown when nothing is saved. A saved value applies from the next cycle, no restart: every cycle
-  reads the effective value. With MAM unconfigured the Watcher block, and so both fields, stays
+  reads the effective value. With the tracker unconfigured the Watcher block, and so both fields, stays
   absent.
 
 ### Changed
@@ -339,7 +342,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 
 ### Added
 - **Wishlist is its own rail tab**, directly below Discover books, at `/wishlist`, with the
-  wishlist count badge. With MAM unconfigured there is no Wishlist item and `/wishlist` shows the
+  wishlist count badge. With the tracker unconfigured there is no Wishlist item and `/wishlist` shows the
   library page. `/discover/wishlist` still works as an alias.
 
 ### Changed
@@ -373,7 +376,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 ### 0.18.0-dev8 (2026-11-14)
 
 ### Changed
-- **The main-page Dry run no longer silences the MAM watcher.** One switch used to do two
+- **The main-page Dry run no longer silences the tracker watcher.** One switch used to do two
   unrelated jobs: stop the library pipeline writing files, and make the watcher search without
   downloading. They are now two switches. The main-page **Dry run** button only previews the
   library scan. The watcher has its own **Dry run** in Settings > Watcher (searches and reports,
@@ -396,11 +399,11 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 - README: "Bring your own downloader".
 
 ### Changed
-- **A non-MAM install no longer shows MAM surfaces.** Without `MAM_ID`: no Wishlist tab (and
+- **A non-tracker install no longer shows tracker surfaces.** Without `MAM_ID`: no Wishlist tab (and
   `/discover/wishlist` lands on Search), no wishlist count in the rail, no Get this / Want /
   Want all missing buttons (Discover and Series), and Settings > Watcher is one short block
-  explaining that MAM is optional and which variables turn it on. The rail says that files in
-  the ingest folder are converted whether or not MAM is configured.
+  explaining that the tracker is optional and which variables turn it on. The rail says that files in
+  the ingest folder are converted whether or not the tracker is configured.
 
 ### 0.18.0-dev6 (2026-11-14)
 
@@ -418,7 +421,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 
 ### Added
 - **`MAM_VIP`** and **Settings > Watcher > "VIP member"** (No / Yes, default No, saved in the
-  database, effective on the next cycle). MAM marks some torrents VIP-only (`vip=1` in the search
+  database, effective on the next cycle). The tracker marks some torrents VIP-only (`vip=1` in the search
   results); only a VIP member can download them. VIP status cannot be read from the API
   (`vip_expire` is `0` even for a VIP account), so it is a setting.
 
@@ -426,34 +429,34 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 - **A non-VIP install no longer tries to download VIP-only torrents.** They are skipped, and when
   nothing else qualifies the book's note reads "only match(es) need VIP membership (N) -
   skipped". With VIP on, they are normal candidates; they are VIP freeleech, so the wedge decision
-  is unchanged (no wedge spent). `mam.select_candidate` gained `vip: bool = False`. Still one
+  is unchanged (no wedge spent). `tracker.select_candidate` gained `vip: bool = False`. Still one
   request per book.
 
 ### 0.18.0-dev4 (2026-11-14)
 
 ### Fixed
-- **The wishlist watcher searched the wrong MAM category and found nothing.** It sent
-  `tor[cat][]=14`, but `tor[cat][]` takes a leaf category id and MAM answers "Nothing returned"
-  for 14 on every query, so books that are plainly on MAM were reported "not found". It now
+- **The wishlist watcher searched the wrong tracker category and found nothing.** It sent
+  `tor[cat][]=14`, but `tor[cat][]` takes a leaf category id and the tracker answers "Nothing returned"
+  for 14 on every query, so books that are plainly on the tracker were reported "not found". It now
   searches the audiobook main category (`tor[main_cat][]=13`). Still one request per book.
 
 ### 0.18.0-dev3 (2026-11-14)
 
 ### Added
-- **`MAM_EXPECTED_EGRESS_IP`**: an optional allowlist for the egress guard. When set, MAM must
-  see exactly this address (your VPN's exit IP) or the cycle is refused with **zero MAM
-  requests**, because a MAM session is tied to one IP. Empty = off (the default); a value that
+- **`MAM_EXPECTED_EGRESS_IP`**: an optional allowlist for the egress guard. When set, the tracker must
+  see exactly this address (your VPN's exit IP) or the cycle is refused with **zero tracker
+  requests**, because a tracker session is tied to one IP. Empty = off (the default); a value that
   is not an IPv4/IPv6 address stops startup with a message naming the variable.
-- **Settings > Watcher, "Only reach MAM from one IP"**: the same value as a text setting, saved
+- **Settings > Watcher, "Only reach the tracker from one IP"**: the same value as a text setting, saved
   in the database and effective on the next cycle with no restart. The environment value is the
   default until something is saved; blank turns the check off; an invalid address is refused
   with a clear message and not stored. "Reset to defaults" hands back the environment value.
 - Guard order: (1) the home IP, when it matches: blocked with the home-connection reason;
-  (2) expected set and different: blocked, "MAM would see X, but this installation only allows
+  (2) expected set and different: blocked, "the tracker would see X, but this installation only allows
   Y"; (3) expected set and equal: ok; (4) nothing armed: off; unverifiable: unknown (fail
   closed). The probe now runs when either check is armed.
 - `GET /api/watcher` gains `egress_expected`, and `egress_reason` says which rule produced the
-  verdict. Settings > Watcher shows the address MAM sees, the expected one, the verdict, and
+  verdict. Settings > Watcher shows the address the tracker sees, the expected one, the verdict, and
   what to change when blocked.
 
 ### Changed
@@ -464,18 +467,18 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 
 ### Added
 - **`MAM_PROXY`**: `http://host:port` or `https://host:port` (an HTTP CONNECT tunnel for
-  MAM's https). Search and download share one proxied opener. **Fail-closed:** a failing
+  the tracker's https). Search and download share one proxied opener. **Fail-closed:** a failing
   proxied request is an error and is never retried or sent directly. A malformed value stops
   startup with a message naming `MAM_PROXY`. SOCKS is not supported (standard library only).
 - **Egress guard, `MAM_HOME_WAN_IP`**: at the start of every watcher cycle (dry run included),
-  before any MAM request, the IP MAM would see is looked up (`ipinfo.io`, then `api.ipify.org`,
+  before any tracker request, the IP the tracker would see is looked up (`ipinfo.io`, then `api.ipify.org`,
   through `MAM_PROXY` if set). Equal to the home IP: the cycle is refused. Lookup failed:
-  refused too (fail closed). Either way **zero MAM requests**. Empty = off, no lookup at all.
+  refused too (fail closed). Either way **zero tracker requests**. Empty = off, no lookup at all.
   `GET /api/watcher` gains `egress_ip`, `egress_checked_at`, `egress_guard` and
-  `egress_reason`; Settings > Watcher shows what MAM sees, when it was checked and the guard,
+  `egress_reason`; Settings > Watcher shows what the tracker sees, when it was checked and the guard,
   with a notice when blocked, and the Wishlist bar says the watcher is stopped because the
   connection is not the VPN.
-- **README "Running MAM through a VPN"**: share a VPN container's network namespace (any VPN
+- **README "Running the tracker through a VPN"**: share a VPN container's network namespace (any VPN
   container, not just Gluetun), an HTTP proxy, and the tripwire, with a way to verify it.
   `docker-compose.yml` gains a commented-out VPN example and the Community Applications
   template gains the watcher, proxy, guard, qBittorrent and ingest settings.
@@ -484,30 +487,30 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
   container is not running.
 
 ### Changed
-- **No fingerprint.** MAM requests no longer carry `User-Agent: audiobind/<version>`; no
+- **No fingerprint.** Tracker requests no longer carry `User-Agent: audiobind/<version>`; no
   User-Agent override is sent unless `MAM_USER_AGENT` is set, which is used verbatim.
 - `MAM_HOME_WAN_IP` that is not an IP address stops startup, naming the variable.
 
 ### 0.18.0-dev1 (2026-11-14)
 
 ### Added
-- **The wishlist watcher (MyAnonamouse).** Off unless `MAM_ID` is set; with it unset no
+- **The wishlist watcher (a private tracker).** Off unless `MAM_ID` is set; with it unset no
   thread starts and nothing touches the network. With `MAM_ID` and the qBittorrent WebUI
   login (`QBIT_USER` / `QBIT_PASS`, at `QBIT_URL`, default `http://localhost:8083`) a
   background thread works through the wishlist every `WATCH_INTERVAL_MIN` minutes (default
   60, 10-1440): up to `WATCH_MAX_PER_CYCLE` wanted books (default 5, 1-20), never-checked
-  first and oldest first, then the least recently checked. Each is searched on MAM's Torrent
+  first and oldest first, then the least recently checked. Each is searched on the tracker's Torrent
   Search JSON API (audiobooks, English). A match needs a title similarity of 0.90 or more, a
   matching author when the book has one, audio files and not already snatched; files
   present, the exact series and sequence, and an already-free torrent are preferred. The
-  torrent is downloaded through MAM's Download Torrent API and handed to qBittorrent
+  torrent is downloaded through the tracker's Download Torrent API and handed to qBittorrent
   (category `mam-audiobooks`), and the book becomes **downloading**.
 - **Freeleech wedges are spent only when needed.** A torrent that is already free, VIP
   freeleech or a personal freeleech is downloaded without `&fl`; any other is downloaded
   with it. Exactly one decision per torrent, written into the book's note.
 - **Wishlist states:** wanted, downloading, in library, not found and error, moved only along
   a fixed set of transitions. A book with no good match stays wanted with a "not found on
-  MAM (checked ...)" note and is searched again later; after 3 misses in a row it becomes
+  the tracker (checked ...)" note and is searched again later; after 3 misses in a row it becomes
   not found. Nothing below the threshold is ever forced. **Retry** puts a not-found or failed
   book back to wanted.
 - **Books resolve on their own.** After every scan (watcher on or off), a wishlist book whose
@@ -516,7 +519,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
   Retry / Remove on each row, plus a line saying whether the watcher is off, disabled,
   paused or on (with its next cycle and a dry-run warning).
 - **Settings > Watcher:** status (enabled, off, disabled, paused, dry run), schedule,
-  qBittorrent host, last and next cycle, last error and any MAM backoff. **Run a cycle now**
+  qBittorrent host, last and next cycle, last error and any tracker backoff. **Run a cycle now**
   runs one cycle in the background; **Pause watcher** is kept across restarts, like the
   conversion pause. Missing qBittorrent credentials show a warning here and in the log;
   the watcher stays disabled instead of failing.
@@ -525,9 +528,9 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
   `updated_at`, `mam_tid` and `torrent_hash`.
 
 ### Safety
-- The watcher calls only the two MAM endpoints MAM authorizes for automation, checks every
+- The watcher calls only the two tracker endpoints the tracker authorizes for automation, checks every
   URL before sending it, never parses HTML and never follows a redirect.
-- One MAM request at a time, at least 3 s apart. Any non-200, an unreachable host or an
+- One tracker request at a time, at least 3 s apart. Any non-200, an unreachable host or an
   answer that is not what the endpoint documents starts a backoff (60 s, doubling to
   30 minutes; a longer `Retry-After` is honoured) and ends the cycle. The backoff survives
   a restart, and a restart never fires a cycle at once.
@@ -634,7 +637,7 @@ restart; "Keep me signed in for 30 days"; `audiobind reset-password` for a forgo
 
 ### Changed
 - **Torrent names are cleaned before an ingest book is matched.** Tags in square
-  brackets or braces are dropped with their contents (`[CA]`, `[MAM v5]`,
+  brackets or braces are dropped with their contents (`[CA]`, `[tracker v5]`,
   `{ASIN:...}`). So are Unabridged and Abridged, a leading sequence number (`01 `,
   `03. `, `Book 2 - `, `Book 1: `), and extra spaces. Numbers that are the title stay:
   `1984` and `2001 A Space Odyssey` survive. The author is still read the way it was.

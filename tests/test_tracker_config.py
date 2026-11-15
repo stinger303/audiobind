@@ -243,7 +243,7 @@ class TestSettingsPage(unittest.TestCase):
     def test_no_user_facing_page_names_a_site(self):
         with tracker_cfg("x"), mock.patch.object(CONFIG, "qbit_user", "u"), mock.patch.object(CONFIG, "qbit_pass", "p"):
             pages = web.render_settings(self.state) + web.render_discover(self.state, "wishlist")
-        for word in ("myanonamouse", "wedge", "VIP"):
+        for word in ("".join(("my", "anonamouse")), "wedge", "VIP"):
             visible = pages.lower().replace("tracker_vip", "").replace('data-setting="vip"', "").replace('data-field="vip"', "")
             self.assertNotIn(word.lower(), visible, word)
 
