@@ -5,6 +5,24 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.0-dev11] - 2026-11-15
+
+The last three findings of the dev4 security audit.
+
+### Security
+- **Catalog and image reads are capped at 8 MB** (`catalog.MAX_BODY`, like the tracker client). An
+  oversized answer is refused as a failure, not read into memory.
+- **The cover cache is pruned** whenever a cover is written: covers whose ASIN is no longer in the
+  library, a catalog-seen result, a series listing or the wishlist are removed, and the cache is held
+  to 2000 covers (oldest unprotected first). A library book's cover is never removed.
+- **`_attr` escapes `'`** as `&#x27;`. The CSP now also sets `object-src 'none'`, `base-uri 'none'`
+  and `form-action 'self'` next to `frame-ancestors`. There is deliberately **no `script-src`**: the
+  page is built on an inline script and inline `onclick=` handlers, so a `script-src` without
+  `'unsafe-inline'` breaks every button and one with it protects nothing.
+
+### Fixed
+- `_start_manual` returned `None` on one refusal path; it now returns `""` like the others.
+
 ## [0.19.0-dev10] - 2026-11-15
 
 A default User-Agent, and a 400 that says what to do.

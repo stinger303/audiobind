@@ -110,6 +110,11 @@ def re_strip(html: str) -> str:
     return re.sub(r"<[^>]+>", " ", html or "").strip()
 
 
+#: the most bytes any catalog or image response may carry (same ceiling as the tracker client);
+#: a bigger answer is a failure, never read into memory
+MAX_BODY = 8 * 1024 * 1024
+
+
 def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
     """GET with a global ~0.6 s politeness gap and exponential backoff.
 
@@ -130,7 +135,10 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
                 url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
             )
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                payload = json.loads(response.read().decode("utf-8", "replace"))
+                raw = response.read(MAX_BODY + 1)
+            if len(raw) > MAX_BODY:
+                return None  # oversized: refuse, do not retry
+            payload = json.loads(raw.decode("utf-8", "replace"))
             if isinstance(payload, dict):
                 cache_put(url, payload)
             return payload
@@ -276,8 +284,8 @@ def download(url: str, destination: str) -> bool:
     try:
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with _image_opener.open(request, timeout=30) as response:
-            data = response.read()
-        if len(data) < 2000:
+            data = response.read(MAX_BODY + 1)
+        if len(data) < 2000 or len(data) > MAX_BODY:
             return False
         with open(destination, "wb") as handle:
             handle.write(data)

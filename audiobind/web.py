@@ -2045,7 +2045,7 @@ def _html(text: str) -> str:
 
 
 def _attr(text: str) -> str:
-    return _html(text).replace('"', "&quot;")
+    return _html(text).replace('"', "&quot;").replace("'", "&#x27;")
 
 
 def _fmt_duration(seconds: float) -> str:
@@ -4906,10 +4906,14 @@ def warn_default_hosts() -> None:
     )
 
 
+SECURITY_HEADERS_CSP = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
 #: added to every response (including BaseHTTPRequestHandler's own error pages)
 SECURITY_HEADERS = (
     ("X-Frame-Options", "DENY"),
-    ("Content-Security-Policy", "frame-ancestors 'none'"),
+    # No script-src on purpose: the page is built on one inline <script> and inline onclick=
+    # handlers, so a script-src without 'unsafe-inline' breaks every button and one with it
+    # buys nothing. Do not "fix" this by adding one.
+    ("Content-Security-Policy", SECURITY_HEADERS_CSP),
     ("X-Content-Type-Options", "nosniff"),
     ("Referrer-Policy", "same-origin"),
 )
@@ -5899,7 +5903,7 @@ class Handler(BaseHTTPRequestHandler):
                     b'{"error":"this torrent folder is no longer in the ingest folder - nothing to re-check"}',
                     "application/json",
                 )
-                return
+                return ""
             self._send(404, b'{"error":"no such unit"}', "application/json")
             return ""
 

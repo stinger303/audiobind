@@ -946,6 +946,21 @@ class State:
             return None
         return data if isinstance(data, dict) else None
 
+    def cover_keep_asins(self) -> set[str]:
+        """Every ASIN whose cached cover must survive a prune: the library's (matched or pinned),
+        and anything a Discover page, a series listing or the wishlist still refers to."""
+        keep: set[str] = set()
+        with self._lock:
+            for sql in (
+                "SELECT asin AS a FROM units WHERE asin != ''",
+                "SELECT asin_override AS a FROM units WHERE asin_override != ''",
+                "SELECT asin AS a FROM catalog_seen",
+                "SELECT asin AS a FROM series_asins",
+                "SELECT asin AS a FROM wishlist",
+            ):
+                keep.update(r["a"] for r in self.connection.execute(sql).fetchall() if r["a"])
+        return keep
+
     def catalog_seen_image(self, asin: str) -> str | None:
         """The catalog image URL for an ASIN a Discover page showed; None when it showed none."""
         if not asin:

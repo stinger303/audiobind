@@ -22,7 +22,7 @@ except ImportError:
 
 HEADERS = {
     "X-Frame-Options": "DENY",
-    "Content-Security-Policy": "frame-ancestors 'none'",
+    "Content-Security-Policy": web.SECURITY_HEADERS_CSP,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
 }

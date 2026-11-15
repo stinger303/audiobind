@@ -27,6 +27,8 @@ from .state import State
 CACHE_DIR_NAME = "cover-cache"
 #: how long a failed fetch is remembered before it is tried again
 MISS_TTL_SECONDS = 6 * 3600
+#: most cached covers kept; past this the oldest unprotected ones go (library covers never do)
+MAX_CACHED_COVERS = 2000
 ASIN_RE = re.compile(r"^[A-Z0-9]{8,14}$")
 
 
@@ -61,6 +63,49 @@ def _record_miss(asin: str) -> None:
         _miss_path(asin).write_text(str(int(time.time())), encoding="utf-8")
     except OSError:
         pass
+
+
+def prune(state: State) -> int:
+    """Shrink the cover cache; returns how many files were removed.
+
+    Evicts a cover (and its .miss marker) whose ASIN is no longer in the library, a catalog-seen
+    result, a series listing or the wishlist, then enforces MAX_CACHED_COVERS by dropping the
+    oldest unprotected covers. A library book's cover is never removed.
+    """
+    try:
+        files = [f for f in cache_dir().iterdir() if f.suffix in (".jpg", ".miss")]
+    except OSError:
+        return 0
+    keep = state.cover_keep_asins()
+    library = {a for a in keep if state.has_asin(a)}
+    removed = 0
+
+    def drop(f: Path) -> None:
+        nonlocal removed
+        try:
+            f.unlink()
+            removed += 1
+        except OSError:
+            pass
+
+    survivors = []
+    for f in files:
+        if f.stem.upper() in keep:
+            if f.suffix == ".jpg":
+                survivors.append(f)
+        else:
+            drop(f)
+    excess = len(survivors) - MAX_CACHED_COVERS
+    if excess > 0:
+        def age(f: Path) -> float:
+            try:
+                return f.stat().st_mtime
+            except OSError:
+                return 0.0
+
+        for f in sorted((f for f in survivors if f.stem.upper() not in library), key=age)[:excess]:
+            drop(f)
+    return removed
 
 
 def stored_image_url(state: State, asin: str) -> str:
@@ -136,6 +181,7 @@ def fetch_by_asin(state: State, asin: str) -> Path | None:
     if catalog.download(stored_image_url(state, asin), str(temp)):
         try:
             temp.replace(path)
+            prune(state)
             return path
         except OSError:
             pass
