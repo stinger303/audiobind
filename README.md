@@ -141,6 +141,8 @@ docker run -d \
   ghcr.io/stinger303/audiobind:latest
 ```
 
+First time? The [First run](#first-run) checklist below covers the mounts, ALLOWED_HOSTS and the account.
+
 ### Docker Compose
 
 ```yaml
@@ -209,13 +211,47 @@ not expose it to the internet without a reverse proxy and TLS (see [SECURITY.md]
 
 ### First run
 
-Open `http://<host>:8080`. The first time, Audiobind asks you to **create your account**:
-a username (1-64 characters) and a password (at least 8 characters, typed twice). There is
-exactly one account; once it exists the setup page is gone for good, and every page and
-API call needs you signed in. Until then nothing but the setup page answers, so do this
-right after you start the container, from your own network.
+A new install needs three mounts, `ALLOWED_HOSTS` and an account before it does anything
+useful. Acquisition also needs the tracker settings, but that part is optional. In order:
 
-Then you get the status page. Books are discovered on the first scan (within `SCAN_INTERVAL_MIN` minutes). Review and held books need attention in the sidebar — you decide what to convert. See the [CHANGELOG](CHANGELOG.md) for what changed in each release.
+1. **Mount three folders.** The container runs read-only with `--tmpfs /tmp` and writes
+   only to these:
+
+   | Mount      | What it is for                            | Without it                         |
+   |------------|-------------------------------------------|------------------------------------|
+   | `/library` | Your audiobooks. Mount it read-write.     | Nothing to scan. `:ro` rules out even Delete. |
+   | `/output`  | Converted `.m4b`/`.mp3` files land here.  | Nowhere to write a conversion.     |
+   | `/config`  | SQLite state DB, the account, `audit.csv`. | Nowhere to keep state or the account. |
+
+2. **Set `ALLOWED_HOSTS`.** The default is `localhost,127.0.0.1`, so out of the box the UI
+   answers only on the server itself. From another machine you get a 403: that is the host
+   list, not a crash. Any other `Host` header is refused, which blocks DNS-rebinding attacks.
+   Ports are ignored. Add the LAN IP and hostname you browse from, and keep
+   `localhost,127.0.0.1` for scripts on the server itself:
+   `-e ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.10,tower,tower.local`
+
+3. **Start the container and create the account.** Open `http://<host>:8080`. The first
+   visit opens the setup page: a username (1-64 characters) and a password (at least 8
+   characters, typed twice). There is exactly one account; once it exists the setup page is
+   gone for good, and every page and API call needs you signed in. Until setup is finished,
+   anyone who can reach the port can create the account, so do it right after you start the
+   container, from your own network. Forgot the password later? See
+   [Signing in](#signing-in) (`docker exec -it audiobind audiobind reset-password`).
+
+4. **Wait for the first scan, then review.** Books are discovered within `SCAN_INTERVAL_MIN`
+   minutes, and then you get the status page. Review and held books need attention in the
+   sidebar. You decide what to convert.
+
+Smoke test: `curl -fsS http://<host>:8080/healthz` should print `ok`. It is the one public
+endpoint, so it needs no sign-in.
+
+**Optional: acquisition.** The wishlist watcher needs the `TRACKER_*` settings complete plus
+qBittorrent, and stays off unless they are. Without them Audiobind is library-only (scan,
+match, convert, file) and everything else works. See
+[The wishlist watcher (private tracker)](#the-wishlist-watcher-private-tracker) and
+[Bring your own downloader](#bring-your-own-downloader).
+
+See the [CHANGELOG](CHANGELOG.md) for what changed in each release.
 
 ### Signing in
 
