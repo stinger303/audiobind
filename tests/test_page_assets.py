@@ -35,6 +35,13 @@ class TestPageAssets(unittest.TestCase):
         self.assertIn("styles", placeholders)
         self.assertIn("script", placeholders)
 
+    def test_scan_line_reads_the_server_label(self):
+        """0.19.0-dev12: the scan line shows control.scan_label (the book being encoded)."""
+        self.assertIn("abScanUI(d.scan, d.scan_label)", web.SCRIPT)
+        self.assertIn("text.textContent = label ||", web.SCRIPT)
+        # the button still reads "Scanning..." and is disabled for the whole pass
+        self.assertIn("btn.disabled = true; btn.textContent = 'Scanning…'", web.SCRIPT)
+
 
 if __name__ == "__main__":
     unittest.main()

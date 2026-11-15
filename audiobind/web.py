@@ -1199,14 +1199,16 @@ function abScanFinishedToast(d) {
           + (lr.converted || 0) + ' converted, ' + (lr.held || 0) + ' held, '
           + (lr.failed || 0) + ' failed');
 }
-function abScanUI(scan) {
+function abScanUI(scan, label) {
   const live = document.getElementById('ab-scanlive');
   const btn = document.getElementById('ab-scanbtn');
   const re = document.getElementById('ab-recheckbtn');
   if (!live) return;
   live.hidden = false;
   const text = document.getElementById('ab-scanlive-text');
-  if (text) text.textContent = 'Scanning ' + (scan.done || 0) + '/' + (scan.total || 0) + '\u2026';
+  // control.scan_label names the book while the scan encodes it inline (one encode can run
+  // ~15 minutes); "Scanning n/m" is only the fallback when nothing is encoding
+  if (text) text.textContent = label || ('Scanning ' + (scan.done || 0) + '/' + (scan.total || 0) + '\u2026');
   if (btn) { btn.disabled = true; btn.textContent = 'Scanning\u2026'; }
   if (re) re.disabled = true;
 }
@@ -1226,7 +1228,7 @@ function tick() {
   fetch('/api/state').then(abAuthed).then(d => {
     abScanFinishedToast(d);
     const bar = document.getElementById('ab-qfill');
-    if (d.scan && d.scan.scanning) { abScanUI(d.scan); return; }
+    if (d.scan && d.scan.scanning) { abScanUI(d.scan, d.scan_label); return; }
     abScanIdle();
     if (!bar) return;
     if (!d.running) { if (!abBusy()) location.reload(); return; }

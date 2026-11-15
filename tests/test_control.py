@@ -1,6 +1,6 @@
 import unittest
 
-from audiobind.control import Control
+from audiobind.control import Control, scan_label, unit_display_name
 
 
 class TestControl(unittest.TestCase):
@@ -122,6 +122,45 @@ class TestScanProgress(unittest.TestCase):
         self.c.begin_scan(3)
         self.c.end_scan()
         self.assertFalse(self.c.describe()["scan"]["scanning"])
+
+    def test_scan_label_names_the_book_being_encoded(self):
+        self.c.begin_scan(41)
+        self.c.scan_tick(37)
+        self.c.begin_unit("Matt Dinniman/Dungeon Crawler Carl 04", "The Gate of the Feral Gods")
+        self.c.set_progress(percent=43.7, elapsed=400, eta=520, speed=40.0)
+        d = self.c.describe()
+        self.assertEqual(d["scan_label"], "Encoding The Gate of the Feral Gods - 43%…")
+        self.assertEqual(d["current_title"], "The Gate of the Feral Gods")
+        # the scan counters are still reported alongside, unchanged
+        self.assertEqual(d["scan"], {"scanning": True, "done": 37, "total": 41})
+
+    def test_scan_label_falls_back_to_the_count_when_nothing_encodes(self):
+        self.c.begin_scan(41)
+        self.c.scan_tick(37)
+        self.assertEqual(self.c.describe()["scan_label"], "Scanning 37/41…")
+        self.c.begin_unit("A/B", "B")
+        self.c.end_unit()
+        self.assertEqual(self.c.describe()["scan_label"], "Scanning 37/41…")
+        self.assertEqual(self.c.describe()["current_title"], "")
+
+    def test_scan_label_is_empty_when_not_scanning(self):
+        self.c.begin_unit("A/B", "B")  # a manual convert outside a scan has its own strip
+        self.assertEqual(self.c.describe()["scan_label"], "")
+
+    def test_scan_label_before_the_first_progress_tick(self):
+        self.c.begin_scan(2)
+        self.c.begin_unit("Author/Book", "Book")
+        self.assertEqual(self.c.describe()["scan_label"], "Encoding Book…")
+
+    def test_scan_label_formatting(self):
+        on = {"scanning": True, "done": 1, "total": 3}
+        self.assertEqual(scan_label(on, "Author/Folder Name", {"percent": 99.9}), "Encoding Folder Name - 99%…")
+        self.assertEqual(scan_label(on, "ingest:Some Book", {}), "Encoding Some Book…")
+        self.assertEqual(scan_label(on, "Author/Parent#2", {"percent": 0}), "Encoding Parent (2) - 0%…")
+        self.assertEqual(scan_label(on, "A/B", {"percent": "junk"}, "Title"), "Encoding Title…")
+        self.assertEqual(scan_label(on, "", {"percent": 50}), "Scanning 1/3…")
+        self.assertEqual(scan_label({"scanning": False}, "A/B", {"percent": 50}), "")
+        self.assertEqual(unit_display_name("A/B", "  "), "B")
 
     def test_scan_force_is_one_shot(self):
         self.c.request_scan(force=True)

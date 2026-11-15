@@ -100,5 +100,65 @@ class TestHeld(unittest.TestCase):
         self.assertIn("ASIN", what)
 
 
+class TestScoreUsesTheFloorMeasure(unittest.TestCase):
+    """0.19.0-dev12: title_sim is floor_sim, so the score and TITLE_FLOOR agree on one measure."""
+
+    DCC_FOLDER_TITLE = "Dungeon Crawler Carl 01 - Dungeon Crawler Carl"
+
+    def dcc(self):
+        return Product(asin="B08V8B2CGV", title="Dungeon Crawler Carl", authors=["Matt Dinniman"],
+                       narrators=["Jeff Hays"], series="Dungeon Crawler Carl", sequence="1",
+                       hours=13.7, language="english")
+
+    def test_folder_baggage_no_longer_drags_a_right_title_to_review(self):
+        # the live row: title_sim 0.85, score 0.91 -> MEDIUM -> Review under the old whole-string sim
+        m = run(self.DCC_FOLDER_TITLE, self.dcc(), "Matt Dinniman")
+        self.assertEqual(m.asin, "B08V8B2CGV")
+        self.assertEqual(m.title_sim, 1.0)
+        self.assertEqual(m.score, 1.0)
+        self.assertEqual(m.confidence, "HIGH")
+
+    def test_it_still_beats_its_own_sequel(self):
+        sequel = Product(asin="B08WJ59784", title="Carl's Doomsday Scenario", authors=["Matt Dinniman"],
+                         hours=14.0, language="english")
+        unit = BookUnit(path="X", name="X", parent="", parts=[], title_guess=self.DCC_FOLDER_TITLE,
+                        author_guess="Matt Dinniman")
+        with mock.patch.object(catalog, "search", lambda **kw: [self.dcc(), sequel]), \
+                mock.patch.object(catalog, "book", lambda asin: {}):
+            m = matching.match_unit(unit)
+        self.assertEqual(m.asin, "B08V8B2CGV")
+        self.assertEqual(m.confidence, "HIGH")
+        self.assertGreaterEqual(m.margin, 0.05)
+
+    def test_title_sim_is_floor_sim(self):
+        product = self.dcc()
+        m = run(self.DCC_FOLDER_TITLE, product, "Matt Dinniman")
+        self.assertEqual(m.title_sim, round(matching.floor_sim(self.DCC_FOLDER_TITLE, product), 3))
+
+    def test_the_dev3_wrong_matches_are_still_rejected_by_the_floor(self):
+        for wanted, wrong in (("Private", "Step on a Crack"),
+                              ("Private London", "The Country Road Murders"),
+                              ("Private: #1 Suspect", "Judge Stone")):
+            m = run(wanted, prod("B0WRONG001", wrong))
+            self.assertIsNone(m.product, wanted)
+            self.assertEqual(m.confidence, "NONE", wanted)
+            self.assertIn("needs 0.60)", m.rejected)
+
+    def test_a_plain_exact_match_is_unchanged(self):
+        m = run("Project Hail Mary", prod("B08G9PRS1K", "Project Hail Mary", "Andy Weir"), "Andy Weir")
+        self.assertEqual((m.title_sim, m.score, m.confidence), (1.0, 1.0, "HIGH"))
+
+    def test_the_must_still_match_cases_still_match(self):
+        for wanted, title, author in (("Project Hail Mary [TRACKER]", "Project Hail Mary", "Andy Weir"),
+                                      ("Count to Ten", "Count to Ten aka Private Delhi", "James Patterson"),
+                                      ("Steeleart Reckoners Brandon Sanderson", "Steelheart", "Brandon Sanderson")):
+            m = run(wanted, prod("B0MATCH001", title, author), author)
+            self.assertEqual(m.asin, "B0MATCH001", wanted)
+            self.assertEqual(m.rejected, "", wanted)
+            self.assertGreaterEqual(m.title_sim, matching.TITLE_FLOOR, wanted)
+        # a near title is not inflated: no window of "Count to Ten" beats the whole string
+        self.assertEqual(run("Count to Ten", prod("B0COUNT001", "Count to Ten aka Private Delhi")).title_sim, 0.85)
+
+
 if __name__ == "__main__":
     unittest.main()

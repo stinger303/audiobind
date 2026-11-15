@@ -36,6 +36,8 @@ class Control:
         #: the acquisition watcher's own switch, never read by the pipeline; None = WATCH_DRY_RUN default
         self._watcher_dry_run: bool | None = None
         self.current_unit: str = ""
+        #: the catalog title of the book being encoded ("" = name it from current_unit)
+        self.current_title: str = ""
         #: live encode progress: {"percent", "elapsed", "eta", "speed"}
         self.progress: dict = {}
         #: live scan progress for the status page's busy indicator
@@ -85,8 +87,9 @@ class Control:
     def running(self) -> bool:
         return bool(self.current_unit)
 
-    def begin_unit(self, name: str) -> None:
+    def begin_unit(self, name: str, title: str = "") -> None:
         self.current_unit = name
+        self.current_title = title or ""
         self.progress = {}
         self._stop.clear()
         self.dequeue(name)
@@ -117,6 +120,7 @@ class Control:
 
     def end_unit(self) -> None:
         self.current_unit = ""
+        self.current_title = ""
         self.progress = {}
 
     def set_progress(self, **values) -> None:
@@ -214,6 +218,7 @@ class Control:
 
     # ---------------------------------------------------------------- helpers
     def describe(self) -> dict:
+        scan = self.scan_progress()
         return {
             "paused": self.paused,
             "scan_pending": self.scan_requested(),
@@ -223,10 +228,47 @@ class Control:
             "watcher_dry_run_source": self.watcher_dry_run_source,
             "running": self.running,
             "current_unit": self.current_unit,
+            "current_title": self.current_title,
             "progress": self.progress,
-            "scan": self.scan_progress(),
+            "scan": scan,
+            "scan_label": scan_label(scan, self.current_unit, self.progress, self.current_title),
             "queue": self.queue_snapshot(),
         }
+
+
+def unit_display_name(current_unit: str, title: str = "") -> str:
+    """What to call the book being encoded: its catalog title, else its folder name.
+
+    ``current_unit`` is a state key: ``Author/Book``, ``ingest:Book`` or ``Parent#key``.
+    """
+    if (title or "").strip():
+        return title.strip()
+    key = current_unit or ""
+    if key.startswith("ingest:"):
+        key = key[len("ingest:"):]
+    base, _, part = key.partition("#")
+    name = base.rstrip("/").rsplit("/", 1)[-1]
+    return f"{name} ({part})" if part else name
+
+
+def scan_label(scan: dict, current_unit: str = "", progress: dict | None = None, title: str = "") -> str:
+    """The status page's scan line while a scan is running ("" when it is not).
+
+    A scan encodes eligible books inline and one encode can run for a quarter of an hour, so
+    while a book is encoding the line names it and shows its progress instead of a frozen
+    ``Scanning n/m...``; ``Scanning n/m...`` is only the fallback when nothing is encoding.
+    """
+    if not (scan or {}).get("scanning"):
+        return ""
+    if current_unit:
+        name = unit_display_name(current_unit, title)
+        percent = (progress or {}).get("percent")
+        try:
+            pct = " - {}%".format(int(float(percent))) if percent is not None else ""
+        except (TypeError, ValueError):
+            pct = ""
+        return "Encoding " + name + pct + "…"
+    return "Scanning {}/{}…".format(int(scan.get("done") or 0), int(scan.get("total") or 0))
 
 
 CONTROL = Control()

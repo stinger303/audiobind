@@ -9,6 +9,20 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Fixed
+- **The title score uses the same best-window measure as the title floor.** `title_sim` is now
+  `floor_sim` (best run of the folder title's words against the catalog title or title + subtitle)
+  instead of a whole-string comparison, so folder baggage around a correct title no longer drags it
+  down: `Dungeon Crawler Carl 01 - Dungeon Crawler Carl` scored 0.85 against "Dungeon Crawler Carl",
+  graded MEDIUM and went to Review; it now scores 1.0 and grades HIGH. The floor, the HIGH/MEDIUM/LOW
+  thresholds and the knockoff, Audnex and runtime rules are unchanged, and the folders that must stay
+  no match (`Private`, `Private London`, `Private: #1 Suspect`) are still refused.
+- **The scan line says what is encoding.** A scan encodes eligible books inline and one encode can
+  take a quarter of an hour, so `Scanning 37/41...` sat frozen and read as a hang. While a book is
+  encoding the line now names it and shows its progress (`Encoding The Gate of the Feral Gods -
+  43%...`); `Scanning n/m...` is only shown when nothing is encoding. The label is built server-side
+  (`scan_label` in `/api/state`).
+
 ## [0.19.0-dev11] - 2026-11-15
 
 The last three findings of the dev4 security audit.

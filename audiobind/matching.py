@@ -54,7 +54,7 @@ class Match:
 
 
 #: the best candidate's title must resemble the best token window of the wanted title at least this much (the same
-#: ``sim`` the scorer uses) or the unit is no match at all - never a LOW match with another book's title
+#: ``floor_sim`` the scorer uses for title_sim) or the unit is no match at all - never a LOW match with another book's title
 TITLE_FLOOR = 0.60
 
 def window_sim(wanted: str, candidate: str) -> float:
@@ -268,9 +268,9 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
         for product in catalog.search(limit=10, **query):
             if product.asin in scored:
                 continue
-            title_sim = max(
-                sim(title, product.title), sim(title, f"{product.title} {product.subtitle}".strip())
-            )
+            # the same best-window measure TITLE_FLOOR uses, so folder baggage around a correct
+            # title ("Dungeon Crawler Carl 01 - Dungeon Crawler Carl") no longer drags the score
+            title_sim = floor_sim(title, product)
             author_sim = max([sim(author, a) for a in product.authors] or [0.0]) if author else 0.0
             # without a known author the title is the only evidence we have
             total = 0.60 * title_sim + 0.40 * author_sim if author else title_sim

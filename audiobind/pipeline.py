@@ -193,7 +193,7 @@ def convert_unit(audit: Audit, log=print):
             audit.already_published = True
             log(f"  already published (while waiting for the encoder): {out_path}")
             return None
-        CONTROL.begin_unit(unit.state_key)
+        CONTROL.begin_unit(unit.state_key, title)
         try:
             # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
             plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None)
