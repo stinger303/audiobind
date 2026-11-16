@@ -119,6 +119,8 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
     """GET with a global ~0.6 s politeness gap and exponential backoff.
 
     A successful response is memoised, so a prefetched lookup costs the main loop nothing.
+    Only a JSON object counts as an answer: a list, string or ``null`` body is a failed lookup
+    (None, not cached, not retried), so no caller ever calls ``.get`` on something else.
     """
     global _last_call
     cached = cache_get(url)
@@ -139,8 +141,9 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
             if len(raw) > MAX_BODY:
                 return None  # oversized: refuse, do not retry
             payload = json.loads(raw.decode("utf-8", "replace"))
-            if isinstance(payload, dict):
-                cache_put(url, payload)
+            if not isinstance(payload, dict):
+                return None  # well-formed but not an object: a failed lookup, do not retry
+            cache_put(url, payload)
             return payload
         except urllib.error.HTTPError as exc:
             if exc.code in (400, 404):
