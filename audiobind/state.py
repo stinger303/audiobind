@@ -223,6 +223,13 @@ class State:
             self.path, check_same_thread=False, timeout=30, isolation_level=None
         )
         self.connection.row_factory = sqlite3.Row
+        # WAL: a reader and a writer no longer block each other inside SQLite, so each hold of
+        # the RLock is shorter. The mode is stored in the file, so an existing rollback-journal
+        # database converts once, here, and stays WAL. The RLock stays: it is what keeps the
+        # threads sharing this one connection from interleaving transactions
+        self.connection.execute("PRAGMA journal_mode=WAL")
+        self.connection.execute("PRAGMA synchronous=NORMAL")
+        self.connection.execute("PRAGMA busy_timeout=30000")
         self.connection.executescript(SCHEMA)
         self._migrate()
         self._migrate_locks()
@@ -311,6 +318,9 @@ class State:
             self._save_locked(state)
 
     def _save_locked(self, state: UnitState) -> None:
+        """Insert or update a row. An empty ``detail`` never replaces a stored one: a caller that
+        builds a fresh UnitState without the blob must not wipe the match evidence, cover URL and
+        reopen flag. Clearing the blob on purpose is clear_detail()."""
         state = self._honour_locks_locked(state)
         self.connection.execute(
             """INSERT INTO units (path, status, confidence, asin, title, author, hours, files,
@@ -322,7 +332,9 @@ class State:
                  title=excluded.title, author=excluded.author, hours=excluded.hours,
                  files=excluded.files, output=excluded.output, note=excluded.note,
                  updated_at=excluded.updated_at, src_mb=excluded.src_mb, out_mb=excluded.out_mb,
-                 chapters=excluded.chapters, detail=excluded.detail,
+                 chapters=excluded.chapters,
+                 detail=CASE WHEN excluded.detail IS NULL OR excluded.detail = ''
+                             THEN units.detail ELSE excluded.detail END,
                  alternates=excluded.alternates, source=excluded.source""",
             (
                 state.path,
@@ -345,6 +357,17 @@ class State:
             ),
         )
         self.connection.commit()
+
+    def clear_detail(self, path: str) -> bool:
+        """Drop a row's detail blob on purpose. save() will not do it: an empty ``detail`` there
+        means "not supplied" and keeps what is stored. Returns True when a row had one."""
+        with self._lock:
+            cursor = self.connection.execute(
+                "UPDATE units SET detail = '' WHERE path = ? AND detail IS NOT NULL AND detail != ''",
+                (path,),
+            )
+            self.connection.commit()
+            return cursor.rowcount > 0
 
     def set_output(self, path: str, output: str, detail: str | None = None) -> bool:
         """Point a row at its moved output file (and optionally its rewritten detail JSON) without
@@ -410,13 +433,17 @@ class State:
         return row is not None
 
     def detail_for_asin(self, asin: str) -> str:
-        """The newest detail blob recorded for an ASIN (the cover proxy reads the image URL)."""
+        """The newest detail blob recorded for an ASIN (the cover proxy reads the image URL).
+
+        Matched or pinned, like has_asin(): a book pinned with an ASIN override that was never
+        matched keeps ``asin`` empty, and its blob must still be found."""
         if not asin:
             return ""
         with self._lock:
             row = self.connection.execute(
-                "SELECT detail FROM units WHERE asin = ? AND detail != '' ORDER BY updated_at DESC LIMIT 1",
-                (asin,),
+                "SELECT detail FROM units WHERE (asin = ? OR asin_override = ?) AND detail != '' "
+                "ORDER BY updated_at DESC LIMIT 1",
+                (asin, asin),
             ).fetchone()
         return (row["detail"] if row else "") or ""
 

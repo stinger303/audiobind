@@ -7,6 +7,29 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.21.0-dev8] - 2026-11-16
+
+Data safety in the state database.
+
+### Fixed
+- **A re-save no longer wipes a book's detail.** Saving a row with an empty `detail` used to replace
+  the stored one, so any caller that built a fresh row lost the match evidence, the catalog cover URL
+  and the re-check banner flag without a word. An empty `detail` now means "not supplied" and the
+  stored blob is kept; clearing it on purpose is `State.clear_detail(path)`. No code path cleared it
+  that way today. `alternates` is left as it was: its only writer is the matcher, which always stores
+  a JSON list (`[]` when there are none), never an empty string.
+- **A pinned book's cover is found again.** `detail_for_asin` only looked at the matched ASIN, so a
+  book pinned with an ASIN override but never matched had no detail, and the cover proxy had no image
+  URL for it. It now looks at the matched or pinned ASIN, as `has_asin` already did.
+
+### Changed
+- **The database runs in WAL mode** (`synchronous=NORMAL`, 30 s busy timeout). Reads and writes no
+  longer block each other inside SQLite, so the app's lock is held for less time. An existing database
+  converts by itself on first start and stays converted. **Backups:** `audiobind.db-wal` and
+  `audiobind.db-shm` now sit next to `audiobind.db`. While the app is running, recent writes may live
+  only in the `-wal` file, so copying `audiobind.db` alone is not a complete backup. Stop the app first
+  (SQLite then folds the `-wal` back in), or take a live copy with `sqlite3 audiobind.db ".backup copy.db"`.
+
 ## [Unreleased]
 
 - The ASIN link opens the right Audible page again — the old address form stopped working.
