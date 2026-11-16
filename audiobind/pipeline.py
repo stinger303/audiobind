@@ -77,12 +77,20 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
     audit.src_mb = round(sum(os.path.getsize(f) for f in unit.files if os.path.exists(f)) / 1e6, 1)
 
     audit.match = matching.match_unit(unit, asin_override, local_hours=audit.hours)
-    if unit.source == SOURCE_INGEST and not asin_override and audit.match.confidence == "NONE":
+    if unit.source == SOURCE_INGEST and not asin_override and audit.match.confidence in ("NONE", "LOW"):
+        # a release name can match the wrong book at LOW as easily as it matches nothing, so the
+        # files' own tags get a say in both cases - but only a genuinely better match replaces
+        # the folder's
         embedded = _match_embedded(unit, audit.hours)
-        if embedded is not None:
+        if embedded is not None and _embedded_is_better(embedded, audit.match):
             audit.match = embedded
             audit.name_source = NAME_SOURCE_EMBEDDED
             audit.notes.append("matched on the audio file's embedded tags")
+        elif embedded is not None and embedded.asin != audit.match.asin:
+            audit.notes.append(
+                f"embedded tags suggest {embedded.product.title} ({embedded.confidence}) - "
+                "kept the folder match"
+            )
     audit.confidence = audit.match.confidence
     if audit.confidence == "NONE" and audit.match.rejected:
         audit.notes.append(audit.match.rejected)
@@ -116,12 +124,31 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
     return audit
 
 
+_TIER_RANK = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3}
+#: at equal confidence the tags' match must beat the folder's score by this much to replace it
+EMBEDDED_SCORE_EDGE = 0.10
+
+
+def _embedded_is_better(embedded: matching.Match, folder: matching.Match) -> bool:
+    """True when the embedded-tag match should replace the folder-name match.
+
+    A higher tier always wins (MEDIUM/HIGH over a LOW folder match, anything over NONE); at the
+    same tier the embedded score must be clearly higher. Otherwise the folder match stands.
+    """
+    rank_e = _TIER_RANK.get(embedded.confidence, 0)
+    rank_f = _TIER_RANK.get(folder.confidence, 0)
+    if rank_e != rank_f:
+        return rank_e > rank_f
+    return embedded.score >= folder.score + EMBEDDED_SCORE_EDGE
+
+
 def _match_embedded(unit: BookUnit, local_hours: float) -> matching.Match | None:
-    """INGEST ONLY, after the folder name matched nothing: retry with the files' own tags.
+    """INGEST ONLY, after the folder name matched nothing or only at LOW: retry with the files' own tags.
 
     A torrent name is often junk while a single m4b carries correct title/artist tags. Returns
-    the retry's match when it found something (any tier - the usual grading and auto-convert
-    rules still apply), else None so the folder's NONE stands. The unit itself is not changed.
+    the retry's match when it found something (any tier - the caller decides with
+    _embedded_is_better whether it replaces the folder's, and the usual grading and auto-convert
+    rules still apply), else None so the folder's match stands. The unit itself is not changed.
     """
     author, title = ingest.embedded_names(unit)
     if not (author or title):

@@ -1,8 +1,8 @@
 """0.16.0-dev3: an ingest unit whose cleaned name matches nothing retries on its embedded tags.
 
 A single m4b torrent often has a junk name but correct title/artist tags. The fallback runs
-only for ingest units, only when the folder match is NONE, and the detail records which name
-source won ("folder" or "embedded").
+only for ingest units, only when the folder match is NONE (or, since 0.21.0-dev10, LOW), and
+the detail records which name source won ("folder" or "embedded").
 """
 
 import json
@@ -136,7 +136,9 @@ class TestEmbeddedFallback(PipelineCase):
         self.assertEqual(self.state.get(key).status, "converted")
         self.tag_probe.assert_not_called()
 
-    def test_not_used_when_the_folder_match_is_low(self):
+    def test_a_low_folder_match_is_rechecked_but_kept_when_the_tags_find_nothing_better(self):
+        # 0.21.0-dev10: a LOW folder match also asks the tags (it may be the wrong book), but
+        # the folder match stands unless the tags' match is genuinely better
         weak = Product(asin="B0WEAK0001", title="Project Hail Mary Companion", authors=["Other Person"],
                        hours=2.0, language="english")
         self.add_torrent()
@@ -144,8 +146,10 @@ class TestEmbeddedFallback(PipelineCase):
         key = "ingest:" + "Andy Weir - Project Hail Mary (2021) [TRACKER]"
         row = self.state.get(key)
         self.assertNotEqual(row.confidence, "NONE")
+        self.assertEqual(row.asin, "B0WEAK0001")
         self.assertEqual(self.detail(key)["match"]["name_source"], "folder")
-        self.tag_probe.assert_not_called()
+        self.assertNotIn("embedded tags", row.note)
+        self.tag_probe.assert_called_once()
 
     def test_embedded_that_also_finds_nothing_keeps_the_folder_result(self):
         touch(str(self.ingest_root / JUNK))
