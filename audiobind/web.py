@@ -35,14 +35,18 @@ from .advice import (
 )
 from .config import (
     CONFIG,
+    GENERAL_SETTING_KEYS,
+    SECRET_SETTING_KEYS,
     SETTING_KEYS,
     SETTING_MAP,
+    WATCHER_TEXT_CHECKS,
     effective_val,
     is_custom,
     set_effective,
     setting_bounds,
     FIXED_BOUNDS,
     watch_interval_min,
+    watch_max_incomplete,
     watch_max_per_cycle,
     watch_max_unsatisfied,
     wedge_per_cycle,
@@ -475,10 +479,21 @@ tr.drow[hidden] td{padding:0}
 .ab-in:focus{outline:none;border-color:#2b5ea8;}
 .ab-in::placeholder{color:#5d6479;font-style:italic;}
 .ab-editbar{display:flex;align-items:center;gap:10px;margin-top:12px;}
+/* Settings tabs: the library's chip pills; the tab that is on is the indigo pill (the rail's active tint) */
+.ab-tabs{margin:14px 0 4px}
+.ab-tabs .chip.on{background:rgba(94,106,210,.14);border-color:rgba(94,106,210,.45);color:var(--ab-text)}
+.ab-tabpanel[hidden], .ab-editbar[hidden]{display:none}
 .ab-save{font-size:12.5px;padding:6px 12px;background:#1e4fa0;border-color:#2b5ea8;}
 .ab-fb{font-size:12.5px;color:var(--ab-text3);}
 .ab-fb.ab-good{color:#5fd38d;}
 .ab-fb.ab-bad{color:#f2686b;}
+/* Settings > Watcher: where a value comes from - "from the container", or "set here" + a way back */
+.ab-src{font-size:11px;font-weight:400;color:var(--ab-text4)}
+.ab-src-here{color:var(--ab-text2)}
+button.ab-src-reset{height:auto;padding:0;border:none;background:none;font-size:11px;font-weight:400;
+  color:var(--ab-accent-bright)}
+button.ab-src-reset:hover{background:none;color:var(--ab-text)}
+.ab-src-clear{display:inline-flex;align-items:center;gap:5px}
 .ab-custom{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
   color:#12a89b;background:#10302c;border:1px solid #1b4a44;border-radius:999px;
   padding:1px 7px;margin-left:8px;vertical-align:1px;}
@@ -1502,15 +1517,18 @@ SETTINGS_PAGE = """<!doctype html>
   <section class="ab-settings" style="padding:24px;max-width:640px;">
     <div class="ab-hintbox">
       <b>Apply later.</b> Changes take effect on the next scan or conversion. Existing m4b files are never touched.</div>
-    {controls}
-    <div class="ab-editbar" style="margin-top:8px;">
-      <button class="ab-save" onclick="abSaveSettings()">Save settings</button>
-      <button class="btn" onclick="abResetSettings()">Reset to defaults</button>
+    {settings_tabs}
+    <form id="ab-settings-form" class="ab-settings-form" onsubmit="abSaveSettings(); return false;" novalidate>
+    {library_panel}
+    {watcher_panel}
+    {advanced_panel}
+    <div class="ab-editbar" style="margin-top:8px;"{savebar_hidden}>
+      <button class="ab-save" type="submit">Save settings</button>
+      <button class="btn" type="button" onclick="abResetSettings()">Reset to defaults</button>
       <span class="ab-fb" id="ab-settings-fb"></span>
     </div>
-    {library_section}
-    {watcher_section}
-    {account_section}
+    </form>
+    {account_panel}
   </section>
 </main>
 <div id="ab-toast" role="status" aria-live="polite"></div>
@@ -1776,7 +1794,7 @@ document.addEventListener('input', ev => {
 
 // each [data-setting] is a wrapper div; the value lives on the select/input inside it
 function abSettingControl(wrap) {
-  return wrap.querySelector('select, input');
+  return wrap.querySelector('select, input, textarea');
 }
 
 function abSettingValue(el) {
@@ -1785,48 +1803,58 @@ function abSettingValue(el) {
   return el.value;
 }
 
-function abSaveSettings() {
-  const fb = document.getElementById('ab-settings-fb');
+// Save: only what you changed (an untouched field keeps following the container). A secret's box
+// is always empty - typing sends a new value, blank keeps the stored one, Clear removes it.
+// fbId: where to report (default: the top bar). quiet: no "nothing changed", no reload (the
+// connection tests save first). Resolves true when the values are saved (or nothing changed).
+function abSaveSettings(fbId, quiet) {
+  const fb = document.getElementById(fbId || 'ab-settings-fb');
   const settings = {};
-  // only what you changed: an untouched field keeps following the environment
+  const clear = [];
   document.querySelectorAll('[data-setting]').forEach(wrap => {
+    const key = wrap.dataset.setting;
+    const box = wrap.querySelector('input[data-clear]');
+    if (box && box.checked) { clear.push(key); return; }
     const el = abSettingControl(wrap);
     if (!el) return;
     if (String(el.value) === String(el.dataset.initial)) return;
-    settings[wrap.dataset.setting] = abSettingValue(el);
+    settings[key] = abSettingValue(el);
   });
-  if (Object.keys(settings).length === 0) {
-    fb.className = 'ab-fb';
-    fb.textContent = 'nothing changed';
-    setTimeout(() => { fb.textContent = ''; }, 4000);
-    return;
+  if (Object.keys(settings).length === 0 && clear.length === 0) {
+    if (!quiet) {
+      fb.className = 'ab-fb';
+      fb.textContent = 'nothing changed';
+      setTimeout(() => { fb.textContent = ''; }, 4000);
+    }
+    return Promise.resolve(true);
   }
   fb.className = 'ab-fb';
   fb.textContent = 'saving...';
-  fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
-                         body: JSON.stringify({settings: settings})})
+  return fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify({settings: settings, clear: clear})})
     .then(r => r.json().then(body => ({ok: r.ok, body: body})))
     .then(res => {
       if (!res.ok) {
         fb.className = 'ab-fb ab-bad';
         fb.textContent = res.body.error || 'could not save';
-        return;
+        return false;
       }
       fb.className = 'ab-fb ab-good';
       fb.textContent = 'saved';
+      let reload = clear.length > 0;
       document.querySelectorAll('[data-setting]').forEach(wrap => {
+        const key = wrap.dataset.setting;
         const el = abSettingControl(wrap);
-        if (el && Object.prototype.hasOwnProperty.call(settings, wrap.dataset.setting)) {
-          el.dataset.initial = el.value;
+        if (!el || !Object.prototype.hasOwnProperty.call(settings, key)) return;
+        if (wrap.hasAttribute('data-secret')) {
+          el.value = '';  // the page never keeps a secret, not even the one just typed
+          el.placeholder = 'set - leave blank to keep it';
         }
+        el.dataset.initial = el.value;
+        if (wrap.hasAttribute('data-reload')) reload = true;
       });
-      if (Object.prototype.hasOwnProperty.call(settings, 'watch_interval') ||
-          Object.prototype.hasOwnProperty.call(settings, 'watch_per_cycle') ||
-          Object.prototype.hasOwnProperty.call(settings, 'wedge_reserve') ||
-          Object.prototype.hasOwnProperty.call(settings, 'wedge_per_cycle') ||
-          Object.prototype.hasOwnProperty.call(settings, 'wedge_per_day') ||
-          Object.prototype.hasOwnProperty.call(settings, 'watch_max_unsatisfied')) {
-        // the Watcher status line and any clamped value are rendered by the server: show them
+      if (reload && !quiet) {
+        // the Watcher status, the "set here" marks and any clamped value are rendered by the server
         setTimeout(() => { location.reload(); }, 700);
       }
       document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {
@@ -1834,10 +1862,12 @@ function abSaveSettings() {
         mark.hidden = res.body.custom.indexOf(key) === -1;
       });
       setTimeout(() => { fb.textContent = ''; fb.className = 'ab-fb'; }, 6000);
+      return true;
     })
     .catch(() => {
       fb.className = 'ab-fb ab-bad';
       fb.textContent = 'could not reach the daemon';
+      return false;
     });
 }
 
@@ -2150,6 +2180,12 @@ def _html(text: str) -> str:
 
 def _attr(text: str) -> str:
     return _html(text).replace('"', "&quot;").replace("'", "&#x27;")
+
+
+def public_settings(values: dict) -> dict:
+    """A settings dict safe to send to a browser: a secret (the tracker session, the qBittorrent
+    password) becomes True/False - is one set - and never its value."""
+    return {key: (bool(value) if key in SECRET_SETTING_KEYS else value) for key, value in values.items()}
 
 
 def _breakable_path(p) -> str:
@@ -3794,8 +3830,158 @@ def _discover_wishlist_body(state) -> str:
     )
 
 
+#: hints for the watcher's connection settings (Settings > Watcher > Where it looks)
+WATCH_FIELD_HINTS = {
+    "tracker_url": "The site's address, e.g. https://tracker.example - no path; the paths are below.",
+    "tracker_session": ("The value of the site's session cookie, copied from your browser while you are signed in. "
+                        "It is never shown again once saved."),
+    "tracker_cookie_name": "The name of that session cookie, e.g. session_id.",
+    "tracker_search_path": "Where the site answers searches, e.g. /search.json.",
+    "tracker_search_body": ('The search request as a JSON object. {{title}} and {{author}} are filled in for each '
+                            'book, e.g. {"q": "{{title}} {{author}}"}.'),
+    "tracker_search_method": "How the search is sent. Most sites take POST.",
+    "tracker_search_encoding": "How a POST search is encoded: json, or form for a classic web form.",
+    "tracker_search_category": "Optional. Filled in for {{category}} in the search request, e.g. the audiobook category.",
+    "tracker_download_path": "Where the site hands out .torrent files, e.g. /download.php.",
+    "tracker_download_param": "The download link's torrent id parameter. Usually tid.",
+    "tracker_freeleech_param": ("Optional. The parameter that spends a freeleech credit on a download. Empty = "
+                                "Audiobind never spends one."),
+    "tracker_user_agent": "Optional. Empty = audiobind/<version>; none = send no User-Agent at all.",
+    "qbit_url": "Your qBittorrent WebUI, e.g. http://qbittorrent:8080.",
+    "qbit_user": "The qBittorrent WebUI login.",
+    "qbit_pass": "The qBittorrent WebUI password. It is never shown again once saved.",
+    "qbit_category": ("The category new torrents get. Point its save path at Audiobind's ingest folder so finished "
+                      "books are picked up."),
+    "watch_max_incomplete": "Add nothing while this many torrents in that category are still downloading. 0 = off.",
+}
+
+
+def _source_mark(key: str) -> str:
+    """Where a watcher setting's value comes from: this page (with a way back) or the container."""
+    if is_custom(SETTING_MAP[key]):
+        return (
+            '<span class="ab-src ab-src-here">set here</span>'
+            f'<button type="button" class="ab-src-reset" onclick="abResetSetting(\'{key}\')" '
+            'title="Forget the value saved here and use the container\'s again">Reset to container value</button>'
+        )
+    return '<span class="ab-src">from the container</span>'
+
+
+def _watch_wrap(key: str, label: str, hint: str, control: str, secret: bool = False) -> str:
+    hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
+    return (
+        f'<div class="ab-setting" data-setting="{key}" data-reload{" data-secret" if secret else ""}>'
+        f'<span class="ab-setting-label">{_html(label)}{_source_mark(key)}</span>'
+        f"{hint_html}{control}</div>"
+    )
+
+
+def _watch_text(key: str, label: str, placeholder: str = "", area: bool = False) -> str:
+    value = _attr(str(setting_effective(key) or ""))
+    if area:
+        control = (f'<textarea class="ab-in" rows="3" data-initial="{value}" placeholder="{_attr(placeholder)}" '
+                   f'autocomplete="off" spellcheck="false">{value}</textarea>')
+    else:
+        control = (f'<input type="text" class="ab-in" value="{value}" data-initial="{value}" '
+                   f'placeholder="{_attr(placeholder)}" autocomplete="off" spellcheck="false">')
+    hint = EXPECTED_EGRESS_HINT if key == "expected_egress" else WATCH_FIELD_HINTS.get(key, "")
+    return _watch_wrap(key, label, hint, control)
+
+
+def _watch_secret(key: str, label: str) -> str:
+    """A secret: an empty password box, a placeholder that says whether one is set, and Clear.
+    The stored value is never written into the page - not as a value, an attribute or a title."""
+    is_set = bool(setting_effective(key))
+    placeholder = "set - leave blank to keep it" if is_set else "not set"
+    control = (f'<input type="password" class="ab-in" value="" data-initial="" placeholder="{placeholder}" '
+               'autocomplete="new-password" spellcheck="false">')
+    if is_set:
+        control += '<label class="ab-src ab-src-clear"><input type="checkbox" data-clear> Clear</label>'
+    return _watch_wrap(key, label, WATCH_FIELD_HINTS.get(key, ""), control, secret=True)
+
+
+def _watch_select(key: str, label: str, hint: str, titlecase: bool = False) -> str:
+    options = setting_choices(key)
+    value = str(setting_effective(key))
+    selected = next((o for o in options if str(o).upper() == value.upper()), options[0])
+    opt_html = "".join(
+        f'<option value="{_attr(o)}"{" selected" if o == selected else ""}>{_html(o.title() if titlecase else o)}</option>'
+        for o in options
+    )
+    return _watch_wrap(key, label, hint, f'<select class="ab-in" data-initial="{_attr(selected)}">{opt_html}</select>')
+
+
+def _watch_number(key: str, label: str, value: int, suffix: str, hint: str = "") -> str:
+    lo, hi = setting_bounds(key)
+    control = (
+        '<div class="ab-range-wrap">'
+        f'<input type="number" class="ab-in" min="{lo}" max="{hi}" value="{value}" step="1" data-initial="{value}">'
+        f"{_unit_span(suffix, value)}</div>"
+    )
+    return _watch_wrap(key, label, hint, control)
+
+
+def _watch_connection_fields() -> str:
+    """Settings > Watcher > Where it looks: the tracker and qBittorrent connection."""
+    return (
+        '<div class="ab-acct-title">Where it looks</div>'
+        '<div class="ab-acct-who">The tracker and the qBittorrent it hands torrents to. A value saved here wins over '
+        "the container's; Reset to container value goes back to it. Two settings stay container-only: "
+        "<code>TRACKER_PROXY</code> and <code>TRACKER_HOME_IP</code>.</div>"
+        + _watch_text("tracker_url", "Tracker URL", "https://tracker.example")
+        + _watch_secret("tracker_session", "Session cookie value")
+        + _watch_text("tracker_cookie_name", "Session cookie name", "session_id")
+        + _watch_text("tracker_search_path", "Search path", "/search.json")
+        + _watch_text("tracker_search_body", "Search request body", '{"q": "{{title}} {{author}}"}', area=True)
+        + _watch_select("tracker_search_method", "Search method", WATCH_FIELD_HINTS["tracker_search_method"])
+        + _watch_select("tracker_search_encoding", "Search encoding", WATCH_FIELD_HINTS["tracker_search_encoding"])
+        + _watch_text("tracker_search_category", "Search category")
+        + _watch_text("tracker_download_path", "Download path", "/download.php")
+        + _watch_text("tracker_download_param", "Download parameter", "tid")
+        + _watch_text("tracker_freeleech_param", "Freeleech parameter")
+        + _watch_text("tracker_user_agent", "User-Agent", "audiobind/<version>")
+        + _watch_select("vip", "Premium member", VIP_HINT, titlecase=True)
+        + _watch_text("qbit_url", "qBittorrent URL", "http://qbittorrent:8080")
+        + _watch_text("qbit_user", "qBittorrent user")
+        + _watch_secret("qbit_pass", "qBittorrent password")
+        + _watch_text("qbit_category", "qBittorrent category", "audiobooks")
+    )
+
+
+def _watch_schedule_fields() -> str:
+    """Settings > Watcher > How often it looks: pacing and the account-protection budgets."""
+    fields = (
+        '<div class="ab-acct-title">How often it looks</div>'
+        + _watch_number("watch_interval", "Check the wishlist every", watch_interval_min(), "minutes")
+        + _watch_number("watch_per_cycle", "Books per cycle", watch_max_per_cycle(), "books")
+        + _watch_number("watch_max_incomplete", "Downloads in progress allowed", watch_max_incomplete(), "torrents",
+                        WATCH_FIELD_HINTS["watch_max_incomplete"])
+    )
+    for key, label, value, suffix in (
+        ("wedge_per_cycle", "Freeleech credits per cycle", wedge_per_cycle(), "credits"),
+        ("wedge_per_day", "Freeleech credits per day", wedge_per_day(), "credits"),
+        ("wedge_reserve", "Freeleech credits kept in reserve", wedge_reserve(), "credits"),
+        ("watch_max_unsatisfied", "Unsatisfied snatches allowed", watch_max_unsatisfied(), "torrents"),
+    ):
+        fields += _watch_number(key, label, value, suffix, WEDGE_HINTS[key])
+    return fields
+
+
+def _watch_test_and_save() -> str:
+    """Settings > Watcher > Test the connection (the page's one Save settings sits under the form)."""
+    return (
+        '<div class="ab-acct-title">Test the connection</div>'
+        '<div class="ab-acct-who">Saves what you typed, then makes one request with it. Nothing about the test '
+        "is kept.</div>"
+        '<div class="ab-acct-row">'
+        '<button class="btn" type="button" id="ab-watch-test-qbit" onclick="abWatchTest(\'qbit\')">Test qBittorrent</button>'
+        '<button class="btn" type="button" id="ab-watch-test-tracker" onclick="abWatchTest(\'tracker\')">Test tracker</button>'
+        '<span class="ab-fb" id="ab-watch-test-fb" role="status"></span></div>'
+    )
+
+
 def render_watcher_section(state) -> str:
-    """Settings > Watcher: read-only status, Run a cycle now, Pause / Resume."""
+    """Settings > Watcher: status, the connection settings, pacing, connection tests, Run / Pause."""
     s = watcher_mod.WATCHER.status(state)
     warn = ""
     if not s["configured"]:
@@ -3807,15 +3993,19 @@ def render_watcher_section(state) -> str:
             "Audiobind converts whatever lands in the ingest folder, from any downloader or a plain "
             "copy. Still to set: " + ", ".join(f"<code>{_html(m)}</code>" for m in s["missing"]) +
             " (the site's URL, its search and download paths, the search request body, and its session cookie's name and value), "
-            "plus <code>QBIT_URL</code>, <code>QBIT_USER</code> and <code>QBIT_PASS</code>; then restart "
-            "the container.</div></section>"
+            "plus the qBittorrent URL, user and password (<code>QBIT_URL</code>, <code>QBIT_USER</code>, "
+            "<code>QBIT_PASS</code>). Fill them in below and save - no restart needed - or set them as container "
+            "variables.</div>"
+            + _watch_connection_fields()
+            + _watch_test_and_save()
+            + "</section>"
         )
     if not s["enabled"]:
         state_html = '<span class="warn">Disabled</span>'
         warn = (
             '<div class="ab-hintbox ab-watch-warn" role="alert"><b>The watcher is disabled.</b> '
-            f"{_html(s['reason'])}. Set QBIT_USER and QBIT_PASS (the qBittorrent WebUI login) "
-            "and restart the container.</div>"
+            f"{_html(s['reason'])}. Set the qBittorrent user and password below (or QBIT_USER and QBIT_PASS "
+            "in the container) and save.</div>"
         )
     elif s["paused"]:
         state_html = '<span class="warn">Paused</span> &#8212; no cycle runs until you resume it'
@@ -3828,7 +4018,7 @@ def render_watcher_section(state) -> str:
         warn += (
             '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: the tracker would not see the allowed address.</b> '
             f"{_html(s['egress_reason'])}. The watcher will not contact the tracker from here. Either update "
-            '"Only reach the tracker from one IP" below to the address you really want, or start your VPN '
+            '"Only reach the tracker from one IP" on the Advanced tab to the address you really want, or start your VPN '
             "container (or fix TRACKER_PROXY); the next cycle will carry on.</div>")
     elif guard == "unknown" and s.get("egress_checked_at"):
         warn += (
@@ -3861,7 +4051,7 @@ def render_watcher_section(state) -> str:
         if guard == "blocked":
             guard_html = f'<span class="warn">{guard_html} &#8212; blocking now</span>'
     else:
-        guard_html = "not armed (set the allowed IP below, or TRACKER_HOME_IP, to arm it)"
+        guard_html = "not armed (set the allowed IP on the Advanced tab, or TRACKER_HOME_IP, to arm it)"
     last = s["last_cycle"] or {}
     if last.get("at"):
         parts = [f"{int(last.get('searched') or 0)} searched", f"{int(last.get('sent') or 0)} sent to qBittorrent"]
@@ -3901,16 +4091,16 @@ def render_watcher_section(state) -> str:
         rows.append(("Tracker backoff", f'<span class="warn">no tracker request for {int(s["backoff_seconds"])}s</span>'))
     grid = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
     can_run = s["enabled"] and not s["paused"] and not s["busy"]
-    run_btn = (f'<button class="ab-save" id="ab-watch-run" onclick="abWatcher(\'run\')"{"" if can_run else " disabled"} '
+    run_btn = (f'<button class="btn" type="button" id="ab-watch-run" onclick="abWatcher(\'run\')"{"" if can_run else " disabled"} '
                'title="Run one cycle now in the background (same caps and pacing as a timed cycle).">'
                "Run a cycle now</button>")
     toggle = ""
     if s["configured"]:
         action, label = ("resume", "Resume watcher") if s["paused"] else ("pause", "Pause watcher")
-        toggle = f'<button class="btn" id="ab-watch-toggle" onclick="abWatcher(\'{action}\')">{label}</button>'
+        toggle = f'<button class="btn" type="button" id="ab-watch-toggle" onclick="abWatcher(\'{action}\')">{label}</button>'
     wdry = bool(s["watcher_dry_run"])
     dry_toggle = (
-        f'<button class="btn dry{" on" if wdry else ""}" id="ab-watch-dry" aria-pressed="{"true" if wdry else "false"}" '
+        f'<button class="btn dry{" on" if wdry else ""}" id="ab-watch-dry" type="button" aria-pressed="{"true" if wdry else "false"}" '
         f'title="Searches and reports what it would download, never downloads. Click to turn it {"off" if wdry else "on"}." '
         f'onclick="abWatcherDry({"false" if wdry else "true"})">Dry run <span class="ab-switch"></span></button>'
     )
@@ -3919,50 +4109,20 @@ def render_watcher_section(state) -> str:
         "</b>: searches the tracker and reports what it would download, never downloads. It is separate from "
         "the library Dry run on the main page.</div>"
     )
-    expected_field = _setting_text(
-        "expected_egress", "Only reach the tracker from one IP", setting_effective("expected_egress"),
-        is_custom(SETTING_MAP["expected_egress"]), setting_env("expected_egress"),
-        EXPECTED_EGRESS_HINT, "e.g. 198.51.100.7")
-    vip_field = _setting_select(
-        "vip", "Premium member", setting_effective("vip"), setting_choices("vip"),
-        is_custom(SETTING_MAP["vip"]), setting_env("vip"), hint=VIP_HINT, titlecase=True)
-    wlo, whi = setting_bounds("watch_interval")
-    plo, phi = setting_bounds("watch_per_cycle")
-    schedule_fields = (
-        _setting_number(
-            "watch_interval", "Check the wishlist every", watch_interval_min(), wlo, whi, "minutes",
-            is_custom(SETTING_MAP["watch_interval"]), setting_env("watch_interval"))
-        + _setting_number(
-            "watch_per_cycle", "Books per cycle", watch_max_per_cycle(), plo, phi, "books",
-            is_custom(SETTING_MAP["watch_per_cycle"]), setting_env("watch_per_cycle"))
-    )
-    for key, label, value, suffix in (
-        ("wedge_per_cycle", "Freeleech credits per cycle", wedge_per_cycle(), "credits"),
-        ("wedge_per_day", "Freeleech credits per day", wedge_per_day(), "credits"),
-        ("wedge_reserve", "Freeleech credits kept in reserve", wedge_reserve(), "credits"),
-        ("watch_max_unsatisfied", "Unsatisfied snatches allowed", watch_max_unsatisfied(), "torrents"),
-    ):
-        lo, hi = setting_bounds(key)
-        schedule_fields += _setting_number(
-            key, label, value, lo, hi, suffix, is_custom(SETTING_MAP[key]), setting_env(key), WEDGE_HINTS[key])
     return (
         '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
         '<h2 class="ab-acct-head" id="ab-watch-head">Watcher</h2>'
         '<div class="ab-acct-who">Searches the tracker for the <b>wanted</b> books on your wishlist and hands a good '
-        "match to qBittorrent; the ingest folder takes it from there. Configured with environment variables "
-        "(<code>TRACKER_URL</code>, <code>TRACKER_SEARCH_PATH</code>, <code>TRACKER_DOWNLOAD_PATH</code>, "
-        "<code>TRACKER_SEARCH_BODY</code>, <code>TRACKER_COOKIE_NAME</code>, <code>TRACKER_SESSION</code>, <code>QBIT_URL</code>, <code>QBIT_CATEGORY</code>, <code>QBIT_USER</code>, "
-        "<code>QBIT_PASS</code>, <code>TRACKER_PROXY</code>, <code>TRACKER_USER_AGENT</code>, <code>TRACKER_HOME_IP</code>, "
-        "<code>TRACKER_EXPECTED_EGRESS_IP</code>, <code>TRACKER_VIP</code>, and the optional category / freeleech "
-        "parameters). <code>WATCH_MAX_INCOMPLETE</code> holds a cycle while that many torrents are still downloading. "
-        "How often it checks and how many books it takes per cycle are set below (the environment variables "
-        "<code>WATCH_INTERVAL_MIN</code> and <code>WATCH_MAX_PER_CYCLE</code> are their defaults) and apply "
-        "from the next cycle, no restart. The pause switch is kept across restarts.</div>"
+        "match to qBittorrent; the ingest folder takes it from there. Everything below can be set here or as a "
+        "container variable; a value saved here wins and applies from the next cycle, no restart. The pause switch "
+        "is kept across restarts.</div>"
         f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
-        + schedule_fields + expected_field + vip_field +
-        f'<div class="ab-acct-row">{run_btn}{toggle}{dry_toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
-        + dry_line +
-        "</section>"
+        + _watch_connection_fields()
+        + _watch_schedule_fields()
+        + _watch_test_and_save()
+        + f'<div class="ab-acct-row">{run_btn}{toggle}{dry_toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
+        + dry_line
+        + "</section>"
     )
 
 
@@ -3986,8 +4146,8 @@ def render_library_section() -> str:
         "in an <code>abs-layout-&lt;time&gt;.json</code> journal beside the database.</div>"
         f'<div class="ab-hintbox ab-watch-warn" role="alert"><b>Heads up.</b> {_html(ABS_LAYOUT_WARNING)}</div>'
         '<div class="ab-acct-row">'
-        '<button class="btn" id="ab-abs-preview" onclick="abAbsPreview()">Preview</button>'
-        '<button class="ab-save" id="ab-abs-apply" onclick="abAbsAsk()">Apply</button>'
+        '<button class="btn" type="button" id="ab-abs-preview" onclick="abAbsPreview()">Preview</button>'
+        '<button class="btn" type="button" id="ab-abs-apply" onclick="abAbsAsk()">Apply</button>'
         '<span class="ab-fb" id="ab-abs-fb"></span></div>'
         '<div id="ab-abs-plan" hidden></div>'
         "</section>"
@@ -4180,6 +4340,42 @@ function abWatchPoll() {
     location.reload();
   }).catch(() => setTimeout(abWatchPoll, 6000));
 }
+// ---- Settings > Watcher: "Reset to container value" for one setting
+function abResetSetting(key) {
+  const fb = document.getElementById('ab-settings-fb');
+  fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
+                          body: JSON.stringify({reset_keys: [key]})})
+    .then(r => r.json().then(body => ({ok: r.ok, body: body})))
+    .then(res => {
+      if (res.ok) { location.reload(); return; }
+      if (fb) { fb.className = 'ab-fb ab-bad'; fb.textContent = res.body.error || 'could not reset'; }
+    })
+    .catch(() => { if (fb) { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach the daemon'; } });
+}
+// ---- Settings > Watcher: Test qBittorrent / Test tracker - save what is typed, then one request
+function abWatchTest(target) {
+  const fb = document.getElementById('ab-watch-test-fb');
+  fb.className = 'ab-fb';
+  fb.textContent = 'saving, then testing...';
+  abSaveSettings('ab-watch-test-fb', true).then(saved => {
+    if (!saved) return;
+    fb.className = 'ab-fb';
+    fb.textContent = 'testing...';
+    return fetch('/api/watcher/test-' + target, {method:'POST', headers:{'Content-Type':'application/json'}, body: '{}'})
+      .then(r => {
+        if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+        return r.json().then(body => ({ok: r.ok && body.ok, body: body}));
+      })
+      .then(res => {
+        fb.className = 'ab-fb ' + (res.ok ? 'ab-good' : 'ab-bad');
+        fb.textContent = res.body.message || res.body.error || 'no answer';
+      });
+  }).catch(err => {
+    if (String(err && err.message) === 'signed out') return;
+    fb.className = 'ab-fb ab-bad';
+    fb.textContent = 'could not reach the daemon';
+  });
+}
 """
 
 
@@ -4221,8 +4417,8 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
     )
 
 
-def render_settings(state) -> str:
-    """Render the settings page with current effective values."""
+def render_settings(state, tab: str = "") -> str:
+    """Render the settings page with current effective values, on the tab named by ?tab=."""
     counts = state.counts()
     total = sum(counts.values())
     set_effective(state)
@@ -4330,7 +4526,8 @@ def render_settings(state) -> str:
             hint="higher = kinder to the system; ffmpeg runs at this priority",
         )
     )
-    controls_parts.append(
+    # Advanced: the catalog region, the egress pin, and what only the container can set
+    advanced = (
         _setting_select(
             "region",
             "Catalog region",
@@ -4340,7 +4537,16 @@ def render_settings(state) -> str:
             setting_env("region"),
             hint="Applies to future catalog lookups.",
         )
+        + _watch_text("expected_egress", "Only reach the tracker from one IP", "e.g. 198.51.100.7")
+        + _container_only_section()
     )
+
+    tab = settings_tab(tab)
+    account = render_account_section(state) + SIGNOUT_PANEL_HTML
+
+    def panel(name: str, body: str) -> str:
+        hidden = "" if name == tab else " hidden"
+        return f'<div class="ab-tabpanel" id="ab-tab-{name}" data-tab="{name}"{hidden}>{body}</div>'
 
     rc = rail_counts(state, counts)
     return SETTINGS_PAGE.format(
@@ -4358,14 +4564,64 @@ def render_settings(state) -> str:
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
         output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
-        controls="\n".join(controls_parts),
+        settings_tabs=settings_tab_bar(tab),
+        library_panel=panel("library", "\n".join(controls_parts) + render_library_section()),
+        watcher_panel=panel("watcher", render_watcher_section(state)),
+        advanced_panel=panel("advanced", advanced),
+        account_panel=panel("account", account),
+        savebar_hidden=" hidden" if tab == "account" else "",
         settings_script=SETTINGS_SCRIPT,
-        account_section=render_account_section(state),
         account_script=ACCOUNT_SCRIPT,
-        watcher_section=render_watcher_section(state),
         watcher_script=WATCHER_SCRIPT,
-        library_section=render_library_section(),
         library_script=LIBRARY_SCRIPT,
+    )
+
+
+#: the Settings page's tabs, in order: (?tab= value, label). The first is the default.
+SETTINGS_TABS = (("library", "Library"), ("watcher", "Watcher"), ("account", "Account"), ("advanced", "Advanced"))
+
+
+def settings_tab(value: str) -> str:
+    """The tab a ?tab= value names; anything unknown (or nothing) is the first, Library."""
+    value = str(value or "").strip().lower()
+    return value if value in dict(SETTINGS_TABS) else SETTINGS_TABS[0][0]
+
+
+def settings_tab_bar(active: str) -> str:
+    """The tab row: the library's chip pills, plain links (a refresh or bookmark keeps the tab)."""
+    links = "".join(
+        f'<a class="chip{" on" if name == active else ""}" href="/settings?tab={name}"'
+        f'{" aria-current=\"page\"" if name == active else ""}>{label}</a>'
+        for name, label in SETTINGS_TABS
+    )
+    return f'<nav class="chips ab-tabs" aria-label="Settings sections">{links}</nav>'
+
+
+#: the Account tab's sign-out (the rail keeps its own link too)
+SIGNOUT_PANEL_HTML = (
+    '<form class="ab-acct-form" method="post" action="/logout">'
+    '<span class="ab-acct-title">Sign out</span>'
+    '<div class="ab-acct-row"><button class="btn" type="submit">Sign out of this browser</button></div>'
+    "</form>"
+)
+
+
+def _container_only_section() -> str:
+    """Settings > Advanced: what can only be set in the container's environment, read-only. The proxy
+    can carry a login, so only whether it is set is shown."""
+    proxy = "set" if CONFIG.tracker_proxy else "not set"
+    home = _html(CONFIG.tracker_home_ip) if CONFIG.tracker_home_ip else "not set"
+    return (
+        '<section class="ab-acct" id="container-only" aria-labelledby="ab-env-head">'
+        '<h2 class="ab-acct-head" id="ab-env-head">Set in the container only</h2>'
+        '<div class="ab-acct-who">Read from the container\'s environment; change them there and restart the '
+        "container.</div>"
+        '<dl class="ab-watch-grid">'
+        f"<dt><code>TRACKER_PROXY</code></dt><dd>{proxy} &#8212; how tracker requests leave the container "
+        "(it can hold a login, so its value is never shown)</dd>"
+        f"<dt><code>TRACKER_HOME_IP</code></dt><dd>{home} &#8212; the watcher refuses to reach the tracker "
+        "from this address</dd>"
+        "</dl></section>"
     )
 
 
@@ -4400,6 +4656,20 @@ OUTPUT_FORMAT_HINT = (
     "future conversions only."
 )
 
+#: the page label of each numeric setting, for save errors ("Scan interval: use a whole number ...")
+SETTING_LABELS = {
+    "runtime_delta": "Wrong-edition tolerance",
+    "scan_interval": "Scan interval",
+    "nice": "CPU priority (nice)",
+    "watch_interval": "Check the wishlist every",
+    "watch_per_cycle": "Books per cycle",
+    "wedge_reserve": "Freeleech credits kept in reserve",
+    "wedge_per_cycle": "Freeleech credits per cycle",
+    "wedge_per_day": "Freeleech credits per day",
+    "watch_max_unsatisfied": "Unsatisfied snatches allowed",
+    "watch_max_incomplete": "Downloads in progress allowed",
+}
+
 WEDGE_HINTS = {
     "wedge_per_cycle": "Most freeleech credits one cycle may spend. 0 = no limit.",
     "wedge_per_day": ("Most freeleech credits spent in any 24 hours. 0 = no daily limit, which also "
@@ -4422,21 +4692,6 @@ EXPECTED_EGRESS_HINT = (
     "Optional. Your VPN's exit address. If Audiobind ever sees a different address it stops before "
     "contacting the tracker, because a tracker session is often tied to one IP. Leave it empty to skip this check."
 )
-
-
-def _setting_text(key: str, label: str, value: str, custom: bool, env_val, hint: str = "", placeholder: str = "") -> str:
-    """A free-text setting (validated on save by the server). Blank is a valid value."""
-    mark = _custom_mark(key, custom, env_val)
-    hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
-    return (
-        f'<div class="ab-setting" data-setting="{key}">'
-        f'<span class="ab-setting-label">{_html(label)}{mark}</span>'
-        f"{hint_html}"
-        f'<input type="text" class="ab-in" value="{_attr(value or "")}" data-initial="{_attr(value or "")}" '
-        f'placeholder="{_attr(placeholder)}" autocomplete="off" spellcheck="false">'
-        '<div class="ab-acct-row"><button class="ab-save" onclick="abSaveSettings()">Save</button></div>'
-        "</div>"
-    )
 
 
 def _setting_range(
@@ -4562,6 +4817,9 @@ STATUS_CHIP_LABELS = {
     "failed": "Failed",
     "interrupted": "Stopped",
 }
+
+#: Settings > Watcher connection tests (POST only): path -> what is tested
+WATCHER_TEST_ROUTES = {"/api/watcher/test-qbit": "qbit", "/api/watcher/test-tracker": "tracker"}
 
 #: ?status= values that open the "Needs you" view
 ATTENTION_ALIASES = ("attention", "needs-you")
@@ -5232,7 +5490,7 @@ def snapshot(state) -> dict:
         "ingest_enabled": ingest_mod.ingest_root() is not None,
         "auto_convert": effective_val("auto_convert"),
         "dry_run": CONTROL.dry_run,
-        "settings": {sk: setting_effective(sk) for sk in SETTING_KEYS},
+        "settings": public_settings({sk: setting_effective(sk) for sk in SETTING_KEYS}),
         **CONTROL.describe(),
     }
 
@@ -5977,6 +6235,9 @@ class Handler(BaseHTTPRequestHandler):
             rows = [discover_mod.public_row(r) for r in self.state.wishlist_all()]
             self._send(200, json.dumps({"count": len(rows), "items": rows}).encode(), "application/json")
             return
+        if path.rstrip("/") in WATCHER_TEST_ROUTES:
+            self._send(405, b'{"error":"a connection test is a POST"}', "application/json", {"Allow": "POST"})
+            return
         if path.rstrip("/") == "/api/watcher":
             self._send(200, json.dumps(watcher_mod.WATCHER.status(self.state)).encode(), "application/json")
             return
@@ -6013,7 +6274,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200 if healthy else 503, b"ok" if healthy else b"stale", "text/plain")
             return
         if path == "/settings" or path.startswith("/settings"):
-            body = render_settings(self.state)
+            body = render_settings(self.state, params.get("tab", ""))
             self._send(200, body.encode(), "text/html; charset=utf-8")
             return
         body = render(self.state, status, params.get("q", ""))
@@ -6460,28 +6721,53 @@ class Handler(BaseHTTPRequestHandler):
         if payload is None:
             return
 
-        # Reset: clear all six setting keys and hand back the live environment values
+        # Reset to defaults: clear the general settings and hand back their environment values. The
+        # watcher's connection settings are left alone (a typed-in session or password is never wiped
+        # by resetting the conversion settings) and none of their values is sent back.
         if payload.get("reset"):
-            for key in SETTING_KEYS:
+            for key in GENERAL_SETTING_KEYS:
                 self.state.set_meta(f"setting_{key}", None)
             set_effective(self.state)
+            env = setting_env_defaults()
+            env_defaults = {key: env[key] for key in GENERAL_SETTING_KEYS if key in env}
             self._send(
                 200,
-                json.dumps({"ok": True, "env_defaults": setting_env_defaults()}).encode(),
+                json.dumps({"ok": True, "env_defaults": public_settings(env_defaults)}).encode(),
                 "application/json",
             )
+            return
+
+        # Reset to container value: drop the override of the named settings, one or several
+        reset_keys = payload.get("reset_keys")
+        if reset_keys is not None:
+            if not isinstance(reset_keys, list) or not reset_keys or any(k not in SETTING_KEYS for k in reset_keys):
+                self._send(400, b'{"error":"unknown setting"}', "application/json")
+                return
+            for key in reset_keys:
+                self.state.set_meta(f"setting_{key}", None)
+            set_effective(self.state)
+            watcher_mod.WATCHER.settings_changed(self.state)
+            custom = [key for key in SETTING_KEYS if is_custom(SETTING_MAP[key])]
+            self._send(200, json.dumps({"ok": True, "custom": custom}).encode(), "application/json")
             return
 
         settings = payload.get("settings") or {}
         if not isinstance(settings, dict):
             self._send(400, b'{"error":"settings must be an object"}', "application/json")
             return
+        # Clear: a secret's "Clear" box - store an empty value, so no session / password is used
+        clear = payload.get("clear") or []
+        if not isinstance(clear, list) or any(k not in SECRET_SETTING_KEYS for k in clear):
+            self._send(400, b'{"error":"only the session and the qBittorrent password can be cleared"}', "application/json")
+            return
 
         errors = []
         validated = {}
 
         # selects: one of the offered choices (which include an unusual env value)
-        for key, fold in (("auto_convert", str.upper), ("output_format", str.upper), ("audio_bitrate", str.lower), ("region", str.lower), ("vip", str.upper)):
+        for key, fold in (("auto_convert", str.upper), ("output_format", str.upper), ("audio_bitrate", str.lower),
+                          ("region", str.lower), ("vip", str.upper), ("tracker_search_method", str.upper),
+                          ("tracker_search_encoding", str.lower)):
             if key not in settings:
                 continue
             choices = setting_choices(key)
@@ -6494,7 +6780,8 @@ class Handler(BaseHTTPRequestHandler):
 
         # numbers: whole numbers inside the bounds (widened to fit the env value)
         for key in ("runtime_delta", "scan_interval", "nice", "watch_interval", "watch_per_cycle",
-                    "wedge_reserve", "wedge_per_cycle", "wedge_per_day", "watch_max_unsatisfied"):
+                    "wedge_reserve", "wedge_per_cycle", "wedge_per_day", "watch_max_unsatisfied",
+                    "watch_max_incomplete"):
             if key not in settings:
                 continue
             lo, hi = setting_bounds(key)
@@ -6506,7 +6793,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError
                 validated[key] = v
             except (ValueError, TypeError):
-                errors.append(f"{key}: whole number {lo}-{hi}")
+                errors.append(f"{SETTING_LABELS.get(key, key)}: use a whole number from {lo} to {hi}")
 
         # text: the egress pin is empty (check off) or a real IP address
         if "expected_egress" in settings:
@@ -6521,6 +6808,25 @@ class Handler(BaseHTTPRequestHandler):
                     "(leave it empty to turn the check off)"
                 )
 
+        # the watcher's text settings: each through the same check the container value gets at start.
+        # A blank secret keeps what is stored (the page never holds it to send back); messages never
+        # repeat what was typed.
+        for key, (label, check) in WATCHER_TEXT_CHECKS.items():
+            if key not in settings:
+                continue
+            raw = "" if settings[key] is None else settings[key]
+            if not isinstance(raw, str):
+                errors.append(f"{label}: must be text")
+                continue
+            if key in SECRET_SETTING_KEYS and raw == "":
+                continue
+            try:
+                validated[key] = check(raw)
+            except ValueError as exc:
+                errors.append(str(exc))
+        for key in clear:
+            validated[key] = ""  # Clear wins over anything typed in the same save
+
         if errors:
             self._send(400, json.dumps({"error": "; ".join(errors)}).encode(), "application/json")
             return
@@ -6529,6 +6835,8 @@ class Handler(BaseHTTPRequestHandler):
             self.state.set_meta(f"setting_{key}", value)
 
         set_effective(self.state)
+        # in the daemon, a save that completes the watcher's configuration starts it (no restart)
+        watcher_mod.WATCHER.settings_changed(self.state)
         # every setting with a saved override, not just the ones in this request: the page
         # posts only the fields you changed
         custom = [key for key in SETTING_KEYS if is_custom(SETTING_MAP[key])]
@@ -6655,6 +6963,18 @@ class Handler(BaseHTTPRequestHandler):
                                             "set" if row["search_title"] else "cleared")
         self._send(200, json.dumps({"ok": True, "asin": asin, "item": discover_mod.public_row(row)}).encode(),
                    "application/json")
+
+    def _handle_watcher_test(self, target: str) -> None:
+        """POST /api/watcher/test-qbit | test-tracker: one connection test with the saved values.
+        200 {"ok": true, "message": "Connected - ..."} or 502 {"ok": false, "message": why}. The result
+        is only answered, never stored."""
+        if self._read_json() is None:
+            return
+        if target == "qbit":
+            ok, message = watcher_mod.probe_qbit()
+        else:
+            ok, message = watcher_mod.probe_tracker(self.state)
+        self._send(200 if ok else 502, json.dumps({"ok": ok, "message": message}).encode(), "application/json")
 
     def _handle_watcher(self) -> None:
         """POST /api/watcher: {"action": "run" | "pause" | "resume"}."""
@@ -6798,6 +7118,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/wishlist/title":
             self._handle_wishlist_title()
+            return
+        if path in WATCHER_TEST_ROUTES:
+            self._handle_watcher_test(WATCHER_TEST_ROUTES[path])
             return
         if path == "/api/watcher":
             self._handle_watcher()

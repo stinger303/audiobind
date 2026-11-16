@@ -219,7 +219,9 @@ def run() -> None:
         web.serve(state)
         log.info("status page on http://0.0.0.0:%d", CONFIG.web_port)
     # the wishlist watcher: starts its own thread only when the tracker settings are complete and qBittorrent
-    # credentials exist; otherwise one log line and nothing else (no thread, no network)
+    # credentials exist; otherwise one log line and nothing else (no thread, no network). From here on a
+    # Settings page save that completes the configuration starts it too, with no restart.
+    watcher_mod.WATCHER.autostart = True
     watcher_mod.WATCHER.start(state)
 
     set_effective(state)

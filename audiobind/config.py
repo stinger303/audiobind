@@ -419,9 +419,26 @@ CONFIG = Config.from_env()
 #: each scan and whenever the settings page saves.
 _EFFECTIVE: dict[str, object] = {}
 
-SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region", "expected_egress", "vip",
-                "watch_interval", "watch_per_cycle", "output_format",
-                "wedge_reserve", "wedge_per_cycle", "wedge_per_day", "watch_max_unsatisfied")
+#: the settings "Reset to defaults" on the Settings page clears - every key that existed before the
+#: watcher's connection settings became editable. The connection keys below are deliberately not in
+#: it: resetting the conversion settings must never wipe a tracker session or a qBittorrent password
+#: typed into the page. Each of those has its own "Reset to container value".
+GENERAL_SETTING_KEYS = ("auto_convert", "audio_bitrate", "runtime_delta", "scan_interval", "nice", "region",
+                        "expected_egress", "vip", "watch_interval", "watch_per_cycle", "output_format",
+                        "wedge_reserve", "wedge_per_cycle", "wedge_per_day", "watch_max_unsatisfied")
+
+#: 0.21.0-dev5: the watcher's connection settings, editable on the Settings page (Watcher section).
+#: TRACKER_PROXY and TRACKER_HOME_IP stay container-only.
+WATCHER_SETTING_KEYS = ("tracker_url", "tracker_session", "tracker_cookie_name", "tracker_search_path",
+                        "tracker_search_body", "tracker_search_method", "tracker_search_encoding",
+                        "tracker_search_category", "tracker_download_path", "tracker_download_param",
+                        "tracker_freeleech_param", "tracker_user_agent",
+                        "qbit_url", "qbit_user", "qbit_pass", "qbit_category", "watch_max_incomplete")
+
+SETTING_KEYS = GENERAL_SETTING_KEYS + WATCHER_SETTING_KEYS
+
+#: settings whose value is never sent to a browser: not in a page, an attribute, a JSON answer or a log
+SECRET_SETTING_KEYS = frozenset({"tracker_session", "qbit_pass"})
 
 SETTING_MAP: dict[str, str] = {
     "auto_convert": "auto_convert",
@@ -439,6 +456,8 @@ SETTING_MAP: dict[str, str] = {
     "wedge_per_day": "wedge_per_day",
     "watch_max_unsatisfied": "watch_max_unsatisfied",
     "output_format": "output_format",
+    # the watcher's connection settings: the key is the Config attribute's own name
+    **{key: key for key in WATCHER_SETTING_KEYS},
 }
 
 SETTING_TYPES: dict[str, type] = {
@@ -457,6 +476,9 @@ SETTING_TYPES: dict[str, type] = {
     "wedge_per_cycle": int,  # 0 = no limit
     "wedge_per_day": int,  # 0 = no limit
     "watch_max_unsatisfied": int,  # 0 = no limit
+    # the watcher's connection settings: text (validated on save), except the one number
+    **{key: str for key in WATCHER_SETTING_KEYS if key != "watch_max_incomplete"},
+    "watch_max_incomplete": int,  # torrents still downloading at which a cycle adds none; 0 = off
 }
 
 #: the values the settings page offers; an environment value outside these is added to the
@@ -467,6 +489,8 @@ SETTING_CHOICES: dict[str, tuple[str, ...]] = {
     "audio_bitrate": ("64k", "128k", "192k", "256k"),
     "region": ("us", "uk", "ca", "au", "de"),
     "vip": ("NO", "YES"),
+    "tracker_search_method": ("POST", "GET"),
+    "tracker_search_encoding": ("json", "form"),
 }
 
 #: (min, max) for the numeric settings, widened to include the environment value
@@ -480,6 +504,7 @@ SETTING_BOUNDS: dict[str, tuple[int, int]] = {
     "wedge_per_cycle": (0, 10),
     "wedge_per_day": (0, 50),
     "watch_max_unsatisfied": (0, 500),
+    "watch_max_incomplete": (0, 500),
 }
 
 #: settings whose bounds are politeness limits: never widened to fit an env value
@@ -509,7 +534,75 @@ def setting_env_defaults() -> dict[str, object]:
         "wedge_per_cycle": _budget_env("wedge_per_cycle"),
         "wedge_per_day": _budget_env("wedge_per_day"),
         "watch_max_unsatisfied": _budget_env("watch_max_unsatisfied"),
+        # the watcher's connection settings, as the container set them (secrets included: this is
+        # the server's own view - web.public_settings() strips them before anything is sent)
+        **{key: str(getattr(CONFIG, key) or "") for key in WATCHER_SETTING_KEYS if key != "watch_max_incomplete"},
+        "watch_max_incomplete": max(0, int(CONFIG.watch_max_incomplete or 0)),
     }
+
+
+def _plain_text(label: str, raw: str, limit: int = 300, keep_spaces: bool = False) -> str:
+    """A free-text setting: one line, printable, not too long. Never echoes the value."""
+    text = raw if keep_spaces else raw.strip()
+    if len(text) > limit or any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        raise ValueError(f"{label}: use one line of plain text (at most {limit} characters)")
+    return text
+
+
+def _qbit_url(raw: str) -> str:
+    """QBIT_URL: http(s)://host[:port][/path], no login in it ("" = the default address)."""
+    from urllib.parse import urlsplit
+
+    raw = raw.strip().rstrip("/")
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+        parts.port  # noqa: B018 - raises ValueError on a bad port
+        ok = parts.scheme in ("http", "https") and bool(parts.hostname) and parts.username is None \
+            and not parts.query and not parts.fragment
+    except ValueError:
+        ok = False
+    if not ok:
+        raise ValueError("qBittorrent URL: use http://host:port (or https://), with no login in it")
+    return raw
+
+
+def _from_startup_check(label: str, check, raw: str) -> str:
+    """Run one of the start-up validators (which raise RuntimeError naming the variable) and turn
+    its message into a page message naming the field instead."""
+    try:
+        return check(raw)
+    except RuntimeError as exc:
+        message = str(exc)
+        _, sep, why = message.partition(" is not valid: ")
+        raise ValueError(f"{label}: {why if sep else message}") from None
+
+
+#: key -> (label, validator) for the watcher's text settings. Each validator takes the typed text
+#: and returns what is stored, or raises ValueError with a plain message (never the value itself).
+WATCHER_TEXT_CHECKS = {
+    "tracker_url": ("Tracker URL", lambda raw: _from_startup_check("Tracker URL", _tracker_url, raw)),
+    "tracker_session": ("Session cookie value",
+                        lambda raw: _from_startup_check("Session cookie value", _tracker_session, raw)),
+    "tracker_cookie_name": ("Session cookie name", lambda raw: _from_startup_check(
+        "Session cookie name", lambda v: _tracker_name("TRACKER_COOKIE_NAME", v), raw)),
+    "tracker_search_path": ("Search path", lambda raw: _from_startup_check(
+        "Search path", lambda v: _tracker_path("TRACKER_SEARCH_PATH", v), raw)),
+    "tracker_search_body": ("Search request body", lambda raw: _from_startup_check("Search request body", _tracker_body, raw)),
+    "tracker_search_category": ("Search category", lambda raw: _plain_text("Search category", raw, 200)),
+    "tracker_download_path": ("Download path", lambda raw: _from_startup_check(
+        "Download path", lambda v: _tracker_path("TRACKER_DOWNLOAD_PATH", v), raw)),
+    "tracker_download_param": ("Download parameter", lambda raw: _from_startup_check(
+        "Download parameter", lambda v: _tracker_name("TRACKER_DOWNLOAD_PARAM", v), raw) or "tid"),
+    "tracker_freeleech_param": ("Freeleech parameter", lambda raw: _from_startup_check(
+        "Freeleech parameter", lambda v: _tracker_name("TRACKER_FREELEECH_PARAM", v, allow_value=True), raw)),
+    "tracker_user_agent": ("User-Agent", lambda raw: _plain_text("User-Agent", raw, 300)),
+    "qbit_url": ("qBittorrent URL", _qbit_url),
+    "qbit_user": ("qBittorrent user", lambda raw: _plain_text("qBittorrent user", raw, 200)),
+    "qbit_pass": ("qBittorrent password", lambda raw: _plain_text("qBittorrent password", raw, 300, keep_spaces=True)),
+    "qbit_category": ("qBittorrent category", lambda raw: _plain_text("qBittorrent category", raw, 200)),
+}
 
 
 def valid_ip_or_empty(text: str) -> str:

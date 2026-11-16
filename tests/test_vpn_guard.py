@@ -491,7 +491,9 @@ class TestGuardUI(unittest.TestCase):
         self.assertIn("Stopped: the tracker would not see the allowed address.", html)
         self.assertIn("which is your home connection", html)
         self.assertIn("start your VPN container (or fix TRACKER_PROXY)", html)
-        self.assertNotIn("http://", html)
+        # the notice names no address to visit (the qBittorrent URL field below legitimately holds one)
+        notice = html.split('<div class="ab-hintbox ab-watch-warn" role="alert">')[1].split("</div>")[0]
+        self.assertNotIn("http://", notice)
         bar = web.render_discover(self.state, "wishlist")
         self.assertIn("this connection is not the one you allowed", bar)
         self.assertNotIn("is disabled", bar)
@@ -505,7 +507,7 @@ class TestGuardUI(unittest.TestCase):
     def test_unarmed_says_so(self):
         with mock.patch.object(CONFIG, "tracker_home_ip", ""):
             html = web.render_settings(self.state)
-        self.assertIn("not armed (set the allowed IP below, or TRACKER_HOME_IP", html)
+        self.assertIn("not armed (set the allowed IP on the Advanced tab, or TRACKER_HOME_IP", html)
 
 
 OTHER = "203.0.113.9"

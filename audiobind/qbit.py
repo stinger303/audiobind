@@ -1,7 +1,8 @@
 """qBittorrent WebUI: hand a .torrent to the download client (never write files ourselves).
 
-Three calls, all POSTs to the WebUI API: ``/api/v2/auth/login``, ``/api/v2/torrents/add``
-and ``/api/v2/auth/logout``. Quirks of the 5.x build this is written against:
+POSTs to the WebUI API: ``/api/v2/auth/login``, ``/api/v2/torrents/add`` and
+``/api/v2/auth/logout``; GETs for ``/api/v2/torrents/info`` and, for the Settings page's
+connection test only, ``/api/v2/app/version``. Quirks of the 5.x build this is written against:
 
 * login answers 204 with an EMPTY body on success (older builds: 200 "Ok."); the proof is
   the session cookie in the jar, so that is what is checked. Older builds name it ``SID``;
@@ -246,6 +247,19 @@ class QbitClient:
             if digest in wanted:
                 out[digest] = value
         return out
+
+    def version(self) -> str:
+        """The connection test: log in, ``GET /api/v2/app/version`` (e.g. "v5.0.4" -> "5.0.4"),
+        log out. Raises QbitError with the same plain messages as every other call."""
+        self.login()
+        try:
+            status, answer = self._get("/api/v2/app/version", {})
+        finally:
+            self.logout()
+        text = answer.decode("utf-8", "replace").strip()
+        if status != 200 or not text or len(text) > 40:
+            raise QbitError(f"qBittorrent answered HTTP {status} to a version check")
+        return text[1:] if text[:1] in ("v", "V") else text
 
     def logout(self) -> None:
         """Best effort: end the WebUI session and forget the cookie."""

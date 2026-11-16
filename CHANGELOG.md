@@ -58,7 +58,8 @@ One list for everything that is waiting on you, instead of the same books twice.
   under the title. The full sentence is still in the row's tooltip and in the detail panel.
 - **Match is easier to read.** For books that need you it shows the confidence word next to its meter;
   for books already converted it shows the series position.
-- **Waiting shows how long a book has waited**, as a relative age ("7d", "4h"), never a date.
+- **The age is a relative age**, never a date ("7d", "4h"), and it lives in the row's tooltip and the
+  detail panel now that the column is gone.
 - **One way in.** The rail has one triage entry, Needs your review, instead of a separate Review / Held /
   Failed block, and the chips read Needs your review / Review / Held / Converted / All.
 - **The view names itself.** The page heading and the tab title read **Needs your review · 27**, so it is
@@ -71,9 +72,29 @@ One list for everything that is waiting on you, instead of the same books twice.
 - Fixed: a held book with damaged source files was told "that gap usually means a different edition".
   It now leads with the real cause, e.g. "One of your 18 source files can't be read, which probably
   explains why your files run 1.38 hours when Audible lists 7.72 for this edition (82% shorter)."
-- Fixed: a long status label could squeeze the age out of the Status column. That column is now
-  Waiting, which shows only the age, so the age is never cut off.
+- Fixed: a long status label could squeeze the age out of the row. The label truncates now, never the age.
 - Fixed: paths in the rail footer wrap at a slash instead of mid-word.
+
+### The watcher settings live in the app
+- **No container edit needed.** The tracker URL, session cookie, cookie name, search path, body, method,
+  encoding and category, download path and parameter, freeleech parameter, user agent, VIP, the
+  qBittorrent URL, user, password and category, and the downloads-in-progress limit are all editable on
+  the Watcher tab, saved in the app's own database.
+- **You can see where each value comes from.** A value saved in the app wins over the container's
+  environment, each field says which of the two it is using ("set here" / "from the container"), and
+  **Reset to container value** puts it back.
+- **Test qBittorrent** and **Test tracker** check the values you just typed and say what went wrong in
+  plain words, instead of leaving you to find out from an empty cycle.
+- **Secrets stay out of the page.** The session cookie and the qBittorrent password are never shown back:
+  the box only says whether one is set, and saving with it empty keeps what is already there.
+- Fixed: the tracker client used to be built once and kept forever, so a new session cookie or URL never
+  took effect. It is rebuilt when those settings change.
+- Settings that only make sense for an unusual setup (`TRACKER_PROXY`, `TRACKER_HOME_IP`) stay in the
+  container and are listed on the Advanced tab, so it is clear where they live.
+
+### Settings has tabs
+- The page was one long column; it is now **Library**, **Watcher**, **Account** and **Advanced**, with one
+  save button, and the tab you are on survives a refresh (`/settings?tab=watcher`).
 
 ### Changed
 - **The budget fails closed.** If qBittorrent cannot be read, no credit is spent that cycle; books that

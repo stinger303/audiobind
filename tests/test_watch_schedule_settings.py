@@ -39,7 +39,7 @@ class ScheduleCase(LiveServerCase):
 
     def field(self, key):
         page = web.render_settings(self.state)
-        found = re.search(rf'<div class="ab-setting" data-setting="{key}">(.*?)</div></div>', page, re.S)
+        found = re.search(rf'<div class="ab-setting" data-setting="{key}"[^>]*>(.*?)</div></div>', page, re.S)
         self.assertIsNotNone(found, key)
         return found.group(0)
 
@@ -65,12 +65,14 @@ class TestScheduleFields(ScheduleCase):
         self.assertIn('value="60"', interval)
         self.assertIn('data-initial="60"', interval)
         self.assertIn('value="5"', cap)
-        self.assertRegex(interval, r'class="ab-custom" data-field="watch_interval" hidden')
-        self.assertRegex(cap, r'class="ab-custom" data-field="watch_per_cycle" hidden')
+        # 0.21.0-dev5: the Watcher section says where a value comes from
+        self.assertIn('<span class="ab-src">from the container</span>', interval)
+        self.assertIn('<span class="ab-src">from the container</span>', cap)
         self.assertEqual(self.schedule_line(), "every 60 min, at most 5 books per cycle")
         self.save(watch_per_cycle=20)
-        self.assertNotRegex(self.field("watch_per_cycle"), r'data-field="watch_per_cycle" hidden')
-        self.assertRegex(self.field("watch_interval"), r'data-field="watch_interval" hidden')
+        self.assertIn('<span class="ab-src ab-src-here">set here</span>', self.field("watch_per_cycle"))
+        self.assertIn("abResetSetting('watch_per_cycle')", self.field("watch_per_cycle"))
+        self.assertIn('<span class="ab-src">from the container</span>', self.field("watch_interval"))
 
     def test_ui_bounds_equal_the_clamp_bounds_even_for_an_odd_env_value(self):
         CONFIG.watch_interval_min, CONFIG.watch_max_per_cycle = 5000, 0

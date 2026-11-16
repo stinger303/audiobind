@@ -238,7 +238,14 @@ class TestSettingsPage(unittest.TestCase):
             status = watcher.WATCHER.status(self.state)
         self.assertEqual(status["tracker_host"], "tracker.example")
         self.assertIn("<dt>Tracker</dt><dd>tracker.example</dd>", html)
-        self.assertNotIn("search.json", html)
+        # 0.21.0-dev5: the paths are editable on the page, so they show - but only in their own field;
+        # the status grid still names the host alone, and the session never appears anywhere
+        grid = html.split('<dl class="ab-watch-grid">')[1].split("</dl>")[0]
+        self.assertNotIn("search.json", grid)
+        field = re.search(r'<div class="ab-setting" data-setting="tracker_search_path".*?</div>(?=<div class="ab-setting")',
+                          html, re.S).group(0)
+        self.assertIn("search.json", field)
+        self.assertNotIn("search.json", html.replace(field, ""))
         self.assertNotIn("SECRET-SESSION", html + json.dumps(status))
 
     def test_no_user_facing_page_names_a_site(self):

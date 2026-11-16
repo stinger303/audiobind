@@ -33,7 +33,7 @@ import json                                                  # noqa: E402
 import time                                                  # noqa: E402
 import urllib.parse                                          # noqa: E402
 
-from audiobind import catalog, discover, series, web         # noqa: E402
+from audiobind import catalog, config, discover, series, web  # noqa: E402
 from audiobind.config import CONFIG                          # noqa: E402
 from audiobind.state import State, UnitState                 # noqa: E402
 
@@ -429,28 +429,69 @@ check("series: after Want all, the panel says they are all wanted",
       "All 2 on your wishlist" in spage and 'onclick="abSeriesWantAll(this)"' not in spage)
 check("series: the wishlist lists them from the series", "Personal" in get("/discover/wishlist"))
 
-# ---- Settings > Account (0.16.0-dev2)
+# ---- Settings (0.21.0-dev5: four tabs; each check reads the tab it belongs to, inside its visible panel)
 print("settings page:")
+
+
+def active_panel(page: str) -> str:
+    """The one tab panel the page shows (the others are in the page, hidden, for the one Save)."""
+    found = re.search(r'<div class="ab-tabpanel" id="ab-tab-(\w+)" data-tab="\w+">', page)
+    if not found:
+        return ""
+    rest = page[found.start():]
+    end = re.search(r'<div class="ab-tabpanel" id=|<div class="ab-editbar"|</section>\s*</main>', rest[1:])
+    return rest[: end.start() + 1] if end else rest
+
+
 settings_page = get("/settings")
+library_tab = active_panel(settings_page)
+account_page = get("/settings?tab=account")
+account_tab = active_panel(account_page)
+advanced_tab = active_panel(get("/settings?tab=advanced"))
+tab_bar = settings_page.split('<nav class="chips ab-tabs" aria-label="Settings sections">')[1].split("</nav>")[0]
+check("settings: the tab bar lists Library, Watcher, Account, Advanced in order, Library marked on by default",
+      re.findall(r'href="/settings\?tab=(\w+)"', tab_bar) == ["library", "watcher", "account", "advanced"]
+      and '<a class="chip on" href="/settings?tab=library" aria-current="page">Library</a>' in tab_bar
+      and tab_bar.count(" on\"") == 1, tab_bar[:300])
+check("settings: ?tab=account marks Account and shows its panel",
+      '<a class="chip on" href="/settings?tab=account" aria-current="page">Account</a>' in account_page
+      and 'id="ab-tab-account" data-tab="account">' in account_page)
+check("settings: an unknown tab opens Library", 'id="ab-tab-library" data-tab="library">' in get("/settings?tab=nonsense"))
 check("settings: no unexpanded {placeholders}",
-      not re.search(r"\{(styles|controls|settings_script|account_section|account_script|acct_user|acct_min)\}",
-                    settings_page))
-check("settings: Account section names the signed-in user",
-      'class="ab-acct"' in settings_page and '<b id="ab-acct-user">verify</b>' in settings_page)
+      not re.search(r"\{(styles|settings_tabs|library_panel|watcher_panel|advanced_panel|account_panel|savebar_hidden|"
+                    r"settings_script|account_script|acct_user|acct_min)\}", settings_page + account_page))
+check("settings: one form, one Save settings, every setting in it exactly once",
+      settings_page.count(">Save settings</button>") == 1
+      and settings_page.count('<button class="ab-save" type="submit">Save settings</button>') == 1
+      and (lambda form: sorted(re.findall(r'data-setting="(\w+)"', form)) == sorted(set(re.findall(r'data-setting="(\w+)"', form)))
+           and len(re.findall(r'data-setting="', form))
+           == len(re.findall(r'data-setting="', re.sub(r"<script>.*?</script>", "", settings_page, flags=re.S))))(
+          settings_page.split('<form id="ab-settings-form"')[1].split("</form>")[0]))
+check("settings: Account tab names the signed-in user",
+      'class="ab-acct"' in account_tab and '<b id="ab-acct-user">verify</b>' in account_tab)
 check("settings: change-password and change-username forms",
-      'data-acct="password"' in settings_page and 'data-acct="username"' in settings_page
-      and settings_page.count('name="current"') == 2)
-check("settings: reset-password hint", "docker exec -it audiobind audiobind reset-password" in settings_page)
-check("settings: sign-out is a POST form to /logout", 'method="post" action="/logout"' in settings_page)
+      'data-acct="password"' in account_tab and 'data-acct="username"' in account_tab
+      and account_tab.count('name="current"') == 2)
+check("settings: reset-password hint", "docker exec -it audiobind audiobind reset-password" in account_tab)
+check("settings: sign-out is a POST form to /logout", 'method="post" action="/logout"' in account_tab)
+check("settings: the Save bar is hidden on the Account tab (nothing to save there)",
+      '<div class="ab-editbar" style="margin-top:8px;" hidden>' in account_page)
 check("settings: output format select with the three choices and the player note",
-      'data-setting="output_format"' in settings_page and '<option value="M4B + MP3"' in settings_page
-      and '<option value="MP3"' in settings_page and "Audiobookshelf" in settings_page)
-check("settings: no CDN references", "http://" not in settings_page and "https://" not in settings_page)
+      'data-setting="output_format"' in library_tab and '<option value="M4B + MP3"' in library_tab
+      and '<option value="MP3"' in library_tab and "Audiobookshelf" in library_tab)
+check("settings: Advanced holds the region, the egress pin and the container-only list",
+      all(t in advanced_tab for t in ('data-setting="region"', 'data-setting="expected_egress"',
+                                      "<code>TRACKER_PROXY</code>", "<code>TRACKER_HOME_IP</code>"))
+      and 'data-setting="output_format"' not in advanced_tab and 'data-setting="qbit_url"' not in advanced_tab)
+# 0.21.0-dev5: the Watcher fields hold typed URLs (the tracker, qBittorrent), so "no CDN" means what it
+# guards: nothing is loaded from another host - no external src/href, CSS url() or @import
+EXTERNAL_LOAD = re.compile(r"""(?:src|href)\s*=\s*["']https?://|url\(\s*["']?https?://|@import""", re.I)
+check("settings: no CDN references", not EXTERNAL_LOAD.search(settings_page))
 node_check("settings", settings_page, "settings.js")
 check("settings: Library card with the layout warning, Preview, Apply and the confirm modal",
-      'id="library"' in settings_page and "Match Audiobookshelf layout" in settings_page
-      and "may treat a renamed folder as a new book and lose its listening progress" in settings_page
-      and 'onclick="abAbsPreview()"' in settings_page and 'onclick="abAbsAsk()"' in settings_page
+      'id="library"' in library_tab and "Match Audiobookshelf layout" in library_tab
+      and "may treat a renamed folder as a new book and lose its listening progress" in library_tab
+      and 'onclick="abAbsPreview()"' in library_tab and 'onclick="abAbsAsk()"' in library_tab
       and 'id="ab-modal"' in settings_page)
 
 # ---- the wishlist watcher (0.18.0-dev1): state chips, Retry, Settings > Watcher. The web server
@@ -463,7 +504,7 @@ watcher.make_tracker = lambda: (_ for _ in ()).throw(AssertionError("verify-page
 watcher.make_qbit = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a qBittorrent client"))
 CONFIG.tracker_session = ""
 check("watcher: off without a tracker session", not watcher.configured() and not watcher.WATCHER.alive)
-off_settings = get("/settings")
+off_settings = get("/settings?tab=watcher")
 check("watcher: Settings section, off, is one short block",
       'id="watcher"' in off_settings and "Acquisition source (optional)" in off_settings
       and all(f"<code>{v}</code>" in off_settings for v in ("TRACKER_SESSION", "QBIT_URL", "QBIT_USER", "QBIT_PASS"))
@@ -505,20 +546,69 @@ status, _, retried = fetch("/api/wishlist/retry", json.dumps({"asin": "B0VERERR0
                            {"Content-Type": "application/json", "Cookie": COOKIE})
 check("Retry puts an error row back to wanted", status == 200 and json.loads(retried)["item"]["status"] == "wanted")
 CONFIG.tracker_session, CONFIG.qbit_user, CONFIG.qbit_pass = "VERIFY-SECRET-COOKIE", "admin", "VERIFY-SECRET-PASS"
-on_settings = get("/settings")
+on_settings = get("/settings?tab=watcher")
 check("watcher: enabled section with Run and Pause", '<span class="ok">Enabled</span>' in on_settings
       and 'onclick="abWatcher(\'run\')" title=' in on_settings and "Pause watcher" in on_settings)
 status, _, paused = fetch("/api/watcher", json.dumps({"action": "pause"}).encode(),
                           {"Content-Type": "application/json", "Cookie": COOKIE})
 check("Pause is persisted", status == 200 and state.get_meta(watcher.META_PAUSED) is True)
-paused_settings = get("/settings")
+paused_settings = get("/settings?tab=watcher")
 check("watcher: paused section offers Resume", "Resume watcher" in paused_settings)
 watcher_served = on_settings + paused_settings + get("/api/watcher") + get("/discover/wishlist")
 check("watcher: the session and QBIT_PASS are never served",
       "VERIFY-SECRET-COOKIE" not in watcher_served and "VERIFY-SECRET-PASS" not in watcher_served)
+
+# ---- 0.21.0-dev5: the watcher's connection settings on the page
+print("watcher connection settings:")
+watch_block = on_settings[on_settings.index('<section class="ab-acct ab-watch" id="watcher"'):]
+watch_block = watch_block[:watch_block.index("</section>")]
+check("watcher: Where it looks / How often it looks / Test the connection, no filled button in the panel",
+      all(t in on_settings for t in ("Where it looks", "How often it looks", "Test the connection"))
+      and all(f'data-setting="{k}"' in watch_block for k in config.WATCHER_SETTING_KEYS)
+      and watch_block.count('class="ab-save"') == 0, f"{watch_block.count('class=\"ab-save\"')} filled buttons in the panel")
+check("watcher: the secrets are empty password boxes that say a value is set",
+      watch_block.count('type="password" class="ab-in" value="" data-initial="" placeholder="set - leave blank to keep it"') == 2
+      and watch_block.count("data-clear") == 2,
+      str(re.findall(r'<input type="password"[^>]*>', watch_block))[:300])
+check("watcher: proxy and home IP are named as container-only",
+      "<code>TRACKER_PROXY</code> and <code>TRACKER_HOME_IP</code>" in on_settings)
+
+
+def post_json(path: str, payload: dict):
+    return fetch(path, json.dumps(payload).encode(), {"Content-Type": "application/json", "Cookie": COOKIE})
+
+
+status, _, saved = post_json("/api/settings", {"settings": {"tracker_session": "VERIFY-GUI-SESSION",
+                                                            "qbit_pass": "VERIFY GUI PASS", "qbit_category": "books"}})
+check("saving a session and a password from the page", status == 200
+      and config.setting_effective("tracker_session") == "VERIFY-GUI-SESSION"
+      and config.setting_effective("qbit_pass") == "VERIFY GUI PASS", f"{status} {saved}")
+status, _, reset_answer = post_json("/api/settings", {"reset": True})
+gui_served = get("/settings") + get("/api/state") + get("/api/watcher") + saved + reset_answer
+check("the secrets saved from the page are never served (page, /api/state, /api/watcher, save and reset answers)",
+      not any(secret in gui_served for secret in ("VERIFY-GUI-SESSION", "VERIFY GUI PASS", "VERIFY-SECRET-COOKIE",
+                                                  "VERIFY-SECRET-PASS")))
+check("Reset to defaults leaves the connection settings alone",
+      config.setting_effective("tracker_session") == "VERIFY-GUI-SESSION" and config.is_custom("qbit_category"))
+status, _, _ = post_json("/api/settings", {"settings": {"tracker_session": ""}})
+check("a blank secret keeps the saved one", status == 200 and config.setting_effective("tracker_session") == "VERIFY-GUI-SESSION")
+status, _, bad = post_json("/api/settings", {"settings": {"tracker_url": "not a url", "watch_interval": "often"}})
+check("a bad URL and a non-number are refused with a plain message",
+      status == 400 and "Tracker URL:" in bad and "Check the wishlist every:" in bad, f"{status} {bad}")
+status, _, _ = post_json("/api/settings", {"reset_keys": ["tracker_session", "qbit_pass", "qbit_category"]})
+check("Reset to container value hands each back", status == 200
+      and config.setting_effective("tracker_session") == "VERIFY-SECRET-COOKIE" and not config.is_custom("qbit_category"))
+for route in ("/api/watcher/test-qbit", "/api/watcher/test-tracker"):
+    status, headers, _ = fetch(route, headers={"Cookie": COOKIE})
+    check(f"{route}: GET is refused (POST only)", status == 405 and headers.get("Allow") == "POST", str(status))
+    status, _, _ = fetch(route, b"{}", {"Content-Type": "application/json"})
+    check(f"{route}: needs a signed-in session", status in (401, 403), str(status))
+    status, _, answer = post_json(route, {})
+    check(f"{route}: fails closed with a plain message when the target cannot be reached",
+          status == 502 and json.loads(answer).get("ok") is False and json.loads(answer).get("message"), f"{status} {answer}")
 check("watcher settings: no unexpanded {placeholders}",
       not re.search(r"\{(watcher_section|watcher_script|account_section)\}", on_settings))
-check("watcher settings: no CDN references", "http://" not in on_settings and "https://" not in on_settings)
+check("watcher settings: no CDN references", not EXTERNAL_LOAD.search(on_settings))
 node_check("watcher settings", on_settings, "watcher-settings.js")
 CONFIG.tracker_session, CONFIG.qbit_user, CONFIG.qbit_pass = "", "", ""
 

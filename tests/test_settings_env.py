@@ -64,6 +64,10 @@ class TestEnvDefaultsAreLive(EnvCase):
                 "wedge_per_cycle": 1,
                 "wedge_per_day": 3,
                 "watch_max_unsatisfied": 0,
+                # 0.21.0-dev5: the watcher's connection settings, straight from the container
+                **{key: str(getattr(CONFIG, key) or "") for key in config.WATCHER_SETTING_KEYS
+                   if key != "watch_max_incomplete"},
+                "watch_max_incomplete": CONFIG.watch_max_incomplete,
             },
         )
 
@@ -117,7 +121,7 @@ class TestUnusualEnvValues(EnvCase):
 class TestSettingsScript(unittest.TestCase):
     def test_save_reads_the_control_inside_each_wrapper(self):
         # [data-setting] is the wrapper div - reading .value off it posted nothing at all
-        self.assertIn("wrap.querySelector('select, input')", web.SETTINGS_SCRIPT)
+        self.assertIn("wrap.querySelector('select, input, textarea')", web.SETTINGS_SCRIPT)
         self.assertIn("el.dataset.initial", web.SETTINGS_SCRIPT)
 
 

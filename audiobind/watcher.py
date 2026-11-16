@@ -134,6 +134,58 @@ def make_qbit() -> qbit.QbitClient:
     return qbit.QbitClient(qbit_url(), _setting("qbit_user"), _setting("qbit_pass"))
 
 
+#: every setting make_tracker() reads: a change to any of them means a new client
+TRACKER_CLIENT_SETTINGS = (
+    "tracker_url", "tracker_search_path", "tracker_download_path", "tracker_search_method",
+    "tracker_download_param", "tracker_freeleech_param", "tracker_search_category", "tracker_search_body",
+    "tracker_search_encoding", "tracker_session", "tracker_cookie_name", "tracker_proxy", "tracker_user_agent",
+)
+
+
+def _client_settings_digest() -> str:
+    """A digest of the tracker client's settings (so the session is not kept a second time in clear)."""
+    import hashlib
+
+    joined = "\x1f".join(_setting(name) for name in TRACKER_CLIENT_SETTINGS)
+    return hashlib.sha256(joined.encode("utf-8", "replace")).hexdigest()
+
+
+# ---------------------------------------------------------------------------- connection tests
+#: the title the tracker test searches for: nothing is called this, so the answer is "no results"
+PROBE_TITLE = "audiobind connection test zqxj"
+
+
+def probe_qbit() -> tuple[bool, str]:
+    """Settings > Watcher "Test qBittorrent": log in with the saved values and ask the version.
+    (ok, message). Nothing is stored; the session is logged out again."""
+    try:
+        version = make_qbit().version()
+    except qbit.QbitError as exc:
+        return False, str(exc)
+    except Exception as exc:  # noqa: BLE001 - whatever it is, the answer is "not connected"
+        return False, f"qBittorrent could not be reached ({type(exc).__name__})"
+    return True, f"Connected - qBittorrent {version}"
+
+
+def probe_tracker(state) -> tuple[bool, str]:
+    """Settings > Watcher "Test tracker": one search for a title nothing has, through the same client
+    (so the same pacing and backoff) and behind the same egress guard as a cycle. (ok, message)."""
+    missing = missing_settings()
+    if missing:
+        return False, f"not set yet: {', '.join(missing)}"
+    verdict, reason, _observed = WATCHER._egress_guard(state)
+    if verdict in ("blocked", "unknown"):
+        return False, reason
+    try:
+        found = WATCHER.client().search(PROBE_TITLE)
+    except tracker.TrackerError as exc:
+        return False, str(exc)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"the tracker could not be reached ({type(exc).__name__})"
+    n = len(found)
+    return True, f"Connected - the tracker answered a test search ({n} {'result' if n == 1 else 'results'})"
+
+
 # ---------------------------------------------------------------------------- library match
 def resolve_library(state) -> list[str]:
     """Every wishlist row whose book is now in the library is taken off the wishlist (a want-list
@@ -213,9 +265,17 @@ class Watcher:
         self._thread: threading.Thread | None = None
         self._worker: threading.Thread | None = None
         self._client: tracker.TrackerClient | None = None
+        # the client client() built itself, and a digest of the settings it was built from: a saved
+        # change to any of them builds a fresh client on next use (a client handed in from outside,
+        # as tests do, is never replaced)
+        self._built: tracker.TrackerClient | None = None
+        self._built_from = ""
         self._paused: bool | None = None
         self.busy = False
         self.next_at = 0.0
+        #: set by the daemon only: a settings save that completes the configuration may start the
+        #: timed loop (the web page never restarts the daemon, and tests never start a thread this way)
+        self.autostart = False
 
     # ------------------------------------------------------------------ lifecycle
     @property
@@ -259,10 +319,30 @@ class Watcher:
         self._thread = None
 
     def client(self) -> tracker.TrackerClient:
-        """One client for every cycle: one rate limiter and one backoff, whoever triggers."""
+        """One client for every cycle: one rate limiter and one backoff, whoever triggers.
+
+        The client holds the tracker settings it was built with, so a value saved on the Settings
+        page (a new session, URL, cookie name...) builds a fresh one on next use. The rate limiter and
+        the backoff carry over: changing a setting never buys an extra request or ends a backoff.
+        """
+        digest = _client_settings_digest()
         if self._client is None:
-            self._client = make_tracker()
+            self._client = self._built = make_tracker()
+            self._built_from = digest
+        elif self._client is self._built and digest != self._built_from:
+            fresh = make_tracker()
+            fresh.limiter, fresh.backoff = self._client.limiter, self._client.backoff
+            self._client = self._built = fresh
+            self._built_from = digest
+            log.info("wishlist watcher: tracker settings changed - using them from this request on")
         return self._client
+
+    def settings_changed(self, state) -> bool:
+        """Called after the Settings page saves. In the daemon, a save that completes the watcher's
+        configuration starts the timed loop (no restart needed). Returns True when it started it."""
+        if not self.autostart or self.alive or disabled_reason():
+            return False
+        return self.start(state)
 
     def _loop(self, state) -> None:
         while not self._stop.is_set():
