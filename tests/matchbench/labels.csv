@@ -1,0 +1,70 @@
+key,expect,source,classes,note
+David Baldacci/David Bldacci - King and Maxwell,not:B00G2H2L5W|B00G2H2N0U,review,misspelled-author;volume,local 12.95h; Part 1 and Part 2 are 7.5h halves of a split edition; the whole-book edition never reached the pool
+Fall Of Giants,,,no-author,
+God Delusion,,,no-author,
+Hollow World,,,no-author,
+How To Quit Without Feeling Shit,,,no-author;lone-candidate,
+Influx - Daniel Suarez,,,swap,
+Jack Reacher Series/01 Killing Floor,,,series-folder,
+Jack Reacher Series/14 61 Hours,,,series-folder;numeric-title,
+Jack Reacher Series/15.5 Second Son,not:B00JOPT6BG,review,volume;series-folder,a 1.46h novella is not the 7.15h three-novella omnibus; the single novella never reached the pool
+Jack Reacher Series/16.5 Deep Down,not:B00JOPT6BG,review,volume;series-folder,a 1.72h novella is not the 7.15h three-novella omnibus
+Jack Reacher Series/17.5 High Heat,not:B00JOPT6BG,review,volume;series-folder,a 2.44h novella is not the 7.15h three-novella omnibus
+Jack Reacher Series/Jack Reacher's Rules,not:B00JOPT6BG,review,volume;series-folder,1.54h of bonus material is not the 7.15h omnibus that carries it
+"James Patterson/James Patterson, Mark Sullivan - Private L.A",,,coauthor,
+Jen Sincero - You are a Badass (Unabridged),not:B01N9EC5T7,review,edition;knockoff,'at Making Money' is another book; today's HIGH pick is the Ultimate Collector's Edition (7.95h vs 5.76h local) - edition unconfirmed; owner to label
+John Scalzi - Lock In,,,narrator-edition,
+John Scalzi - Lock In/John Scalzi - Unlocked,not:B0BCDTCVGV,review,nested-folder,'Unlocked with Savannah Chrisley' is a podcast; Scalzi's Unlocked never reached the pool
+Liu Cixin/01 The Three Body Problem,,,name-order,
+Michael J. Sullivan/Michael J. Sullivan - Heir of Novron - Riyira Revelations Book 03,,,production;misspelled-series,
+Michael J. Sullivan/Michael J. Sullivan - The Crown Tower,,,production,
+Michael J. Sullivan/Michael J. Sullivan - Theft of Swords - Riyria Revelations - Book 1,,,production;volume,
+"Michael J. Sullivan/Micheal J. Sullivan - Rise of Empire - Riyria Revelations, Book 2",,,production;misspelled-author,
+Mitchell Zuckoff - 13 Hours,unlabelled,,production,local files are 1.38h of a 7.72h book; plain vs Booktrack edition is the owner's call
+Nora Roberts - The Guardians; 3 Island of Glass.m4b,not:B0HFKLS7XR,review,series-in-name,converted at LOW as 'The Missing' (another Nora Roberts book); Island of Glass never reached the pool
+Partials,,,no-author,
+Patrick Rothfuss - Kingkiller Chronicle/Patrick Rothfuss - 1 - The Name of the Wind - 192kbps (Degas),,,torrent-noise;no-author,
+Pierce Brown - Red Rising,,,production;tie,
+Steeleart Reckoners Brandon Sanderson,,,misspelled-title;swap,
+The 4-Hour Body by Timothy Ferris/The 4-Hour Body An Uncommon Guide to Rapid Fat-Loss Incredible Sex and Becoming Superhuman,,,misspelled-author,
+The Book Thief,,,no-author,
+The Easy Way To Stop Smoking - Allen Carr,,,swap,
+The Folk of the Fringe,,,no-author;lone-candidate,
+The Life-Changing Magic of Tidying Up,unlabelled,,knockoff;no-author,B0DPR9BSLT is 5.77h vs 4.84h local (+19%); an older edition may match better - the owner's call
+The Martian by Andy Weir (unabridged),,,by-author,
+The Maze Runner Series,none,review,boxset;foreign;lone-candidate,a 40h folder named for the series is the box set; the only candidate is a German spin-off
+The Power of Habit,,,no-author,
+The Power of Habit#power of habit,B0FD4CV4BF,review,no-author,the same work the owner pinned on the m4b row; bucket display name approximated from the key
+The Subtle Art of Not Giving a F_ck,,,foreign;tie;knockoff,
+The Total Money Makeover - Dave Ramsey,unlabelled,,edition,local 3.69h vs 7.83h 'Updated and Expanded' - another edition or abridged; the owner's call
+Udemy - Excel Budget that Will Save You Thousands/3_-_Wrap_Up,none,review,not-a-book,a 4-minute course video; nothing on Audible is right
+Vince Flynn Novels 14 books Complete Collection,none,review,boxset,14 books in one folder
+"Vince Flynn, Kyle Mills - The Survivor (Unabridged)",,,coauthor,
+What If - Randall Munroe,,,swap,
+World War Z,B00BIKAVHS,review,edition;no-author,local 12.21h = the Complete Edition (12.15h); B002V8DH36 is the 5.98h abridged recording
+ingest:17 Private Beijing,B0GL99KHWL,review,series-number;no-author;lone-candidate,9.0h vs 8.84h local; the only Private Beijing
+ingest:20 Make Me,B011PVUGUG,review,series-number;no-author,the only Lee Child 'Make Me'; 14.05h vs 11.72h local - narration unconfirmed
+ingest:21 Night School,,,series-number;no-author,
+ingest:22 Midnight Line,unlabelled,,series-number;no-author;edition,two Lee Child editions (13.1h / 7.17h) and 11.29h local - neither fits; the owner's call
+ingest:24 Blue Moon,1524774367,review,series-number;no-author,11.35h vs 11.23h local
+ingest:Dungeon Crawler Carl - 04 - The Gate of the Feral Gods,,,series-number,
+ingest:Exit Strategy_ A Reacher Novel [B0DTZ6J2SG].m4b,,,asin-hint;lone-candidate,
+ingest:In Too Deep [B0CLGF5CFH],unlabelled,,asin-hint;no-author,the bracketed ASIN has no Audnex record; Lee Child's (9.97h) and Julie Olivia's (8.63h) both fit 8.89h local - the owner's call
+ingest:James Patterson - Jack Morgan 02 - Private No 1 Suspect,,,series-number;torrent-noise,
+ingest:James Patterson - Private 01 - Private,,,series-echo,
+ingest:James Patterson - Private 19 - Private Monaco - Chapterized,,,series-number;torrent-noise,
+ingest:James Patterson - Private 20 - Private Dublin.mp3,B0H7RGY4GG,review,series-number;torrent-noise,the only Private Dublin; catalog lists 12.0h vs 7.43h local
+ingest:James Patterson - Private Down Under (2013) 96K by chapter,,,embedded-tags;torrent-noise,
+ingest:James Patterson - Private India - City On Fire (2014) 64K by chapter,,,embedded-tags;torrent-noise,
+"ingest:James Patterson, Adam Hamdy - Private Moscow Private, Book 15.MP3",B0BK2QTNK9,review,series-number;torrent-noise;coauthor,9.03h vs 9.02h local; 'Private Monaco' is book 19
+"ingest:Lee Child, Andrew Child - Better Off Dead",,,coauthor,
+"ingest:Lee Child, Andrew Child - Reacher 31 - Chain Reaction (M4B)",,,coauthor;series-number;torrent-noise,
+"ingest:Lee Child, Andrew Child - The Sentinel A Jack Reacher Novel.MP3",059333972X,review,edition;coauthor,10.65h matches 10.66h local; 0593339991 is a 6.05h edition
+"ingest:Matt Dinniman - A Parade of Horribles - Dungeon Crawler Carl, Book 8 (Read by Jeff Hays) {B0FXY6DVJS}",,,asin-hint;narrator-in-name,
+ingest:Matt Dinniman - Dungeon Crawler Carl 01 - Dungeon Crawler Carl (Jeff Hays),,,series-echo,
+ingest:Past Tense - Lee Child.m4b,B07DK1BBS6,review,swap,12.85h vs 12.86h local
+ingest:Private 18 Private Rome - James Patterson (MP3),,,series-echo,
+ingest:Private Paris.mp3,B01944PE94,review,no-author;lone-candidate,9.4h vs 9.42h local; the only candidate
+ingest:Private Vegas,unlabelled,,no-author,the only candidate is 7.48h vs 11.58h local (+55%); the owner's call
+"ingest:The Butcher's Masquerade Dungeon Crawler Carl, Book 5",,,series-in-title;no-author;lone-candidate,
+"ingest:The Guilty Will Robie, Book 4 (Unabridged).m4b",,,series-in-title;no-author,
