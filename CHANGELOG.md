@@ -7,7 +7,38 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
-## [0.21.0-dev14] - 2026-11-16
+## [0.21.0] - 2026-11-16
+
+Five audit batches, one release. Each batch was its own pass with a green suite, and the matcher
+changes were verified against the real 123-book library rather than argued about.
+
+**The database stops losing things.** A re-save no longer wipes a book's match evidence, a pinned
+book's cover is found again, and the database runs in WAL mode. Backups change with it: `-wal`/`-shm`
+now sit beside the file while the app runs, so copying `audiobind.db` alone is not a complete backup —
+stop the app first, or use `sqlite3 audiobind.db ".backup copy.db"`.
+
+**An encode can no longer leave a half-written book.** Publishing is atomic across filesystems,
+ffmpeg's stderr goes to a file so a full pipe can never block an encode, the duration check now catches
+a dropped 15-minute file in a ten-hour book (it used to allow twelve minutes of drift), and zero-length
+chapters are dropped in every tier.
+
+**The pipeline stops redoing work.** A published file is honoured whatever the row's status, the work
+directory keeps its name across restarts, a LOW folder match is re-checked against the audio's own tags,
+and a failed second format rolls the first back out of the library.
+
+**The matcher stops trusting a single candidate.** A window-only match can no longer reach MEDIUM,
+coverage now measures the candidate it gates, a dead ASIN pin gives up after three checks, and an
+adaptation nobody asked for loses to the plain edition of the same book — which put four Riyria books
+back on their real editions at HIGH.
+
+Plus the audit's tail: a non-object catalogue answer is a failed lookup instead of a crash, a GET on a
+POST-only route answers 405 with `Allow`, an unknown `/api` path answers a JSON 404, and the app reports
+the version it was actually built as.
+
+The batch-by-batch detail follows.
+
+
+### [0.21.0-dev14] - 2026-11-16
 
 Support modules and the web layer: two fixes, two containment/regression proofs. The rest of the
 audit entries for these modules were already handled or did not hold up.
@@ -32,7 +63,7 @@ audit entries for these modules were already handled or did not hold up.
   `cover.jpg` symlinked out of the output tree all get a 404 and never serve the file. The path is
   only ever a key into the state DB.
 
-## [0.21.0-dev13] - 2026-11-16
+### [0.21.0-dev13] - 2026-11-16
 
 Picking the right edition when an adaptation is in the running, gated on the same regression run.
 
@@ -61,7 +92,7 @@ Picking the right edition when an adaptation is in the running, gated on the sam
 
   Tiers: HIGH 69, MEDIUM 9, LOW 6, NONE 7.
 
-## [0.21.0-dev12] - 2026-11-16
+### [0.21.0-dev12] - 2026-11-16
 
 Audiobook adaptations, gated on the same regression run.
 
@@ -93,7 +124,7 @@ Audiobook adaptations, gated on the same regression run.
   the dramatization's subtitle "Riyria Revelations, Book 1" matches the folder's "- Book 1" better
   than the plain edition's "Volume 1". Those two stay at MEDIUM (margin 0.022) and LOW.
 
-## [0.21.0-dev11] - 2026-11-16
+### [0.21.0-dev11] - 2026-11-16
 
 Matching, gated on a before/after regression run over the real library.
 
@@ -138,7 +169,7 @@ Matching, gated on a before/after regression run over the real library.
   0.75/0.25, and z-scoring `a_sim` onto `t_sim`'s distribution. The blend only ranks candidates and
   sets the margin, and `grade()` gates each score on its own. The blend stays at 0.60/0.40.
 
-## [0.21.0-dev10] - 2026-11-16
+### [0.21.0-dev10] - 2026-11-16
 
 Pipeline flow.
 
@@ -168,7 +199,7 @@ Pipeline flow.
   made. A failed publish now removes the files, `cover.jpg` and empty folders that this attempt
   created. Nothing that was there before is removed.
 
-## [0.21.0-dev9] - 2026-11-16
+### [0.21.0-dev9] - 2026-11-16
 
 Encode correctness.
 
@@ -193,7 +224,7 @@ Encode correctness.
   within 30 s or 0.2% (72 s on a ten-hour book). The old allowance was 2 minutes or 2% (12 minutes
   on ten hours), wide enough to pass an encode that had lost a whole 15-minute file.
 
-## [0.21.0-dev8] - 2026-11-16
+### [0.21.0-dev8] - 2026-11-16
 
 Data safety in the state database.
 
