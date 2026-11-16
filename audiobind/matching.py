@@ -54,6 +54,10 @@ class Match:
     #: the title score (whole-string readings) is below floor_sim - a window matched better than
     #: any whole reading; 1.0 otherwise. Below MIN_HIGH_WINDOW_COVERAGE the grade is never HIGH
     title_window_coverage: float = 1.0
+    #: set when the chosen product is an adaptation (Dramatized Adaptation, GraphicAudio, full
+    #: cast, audio drama - see adaptation_label) and nothing the folder said asks for one: the
+    #: phrase naming it ("a Dramatized Adaptation"). grade() never says HIGH for it
+    unasked_adaptation: str = ""
 
     @property
     def asin(self) -> str:
@@ -302,6 +306,37 @@ def is_knockoff(product, peers=()) -> bool:
     return False
 
 
+#: words on a catalog title / subtitle that mark an adaptation of the book rather than a reading
+#: of it, each with the phrase the panel note uses. Separators may be spaces, dots, underscores
+#: or dashes ("Full.Cast", "GraphicAudio")
+_ADAPTATION_MARKERS = (
+    (re.compile(r"(?<![a-z0-9])dramati[sz]ed[\W_]+adaptation(?![a-z0-9])", re.IGNORECASE),
+     "a Dramatized Adaptation"),
+    (re.compile(r"(?<![a-z0-9])graphic[\W_]*audio(?![a-z0-9])", re.IGNORECASE), "a GraphicAudio production"),
+    (re.compile(r"(?<![a-z0-9])full[\W_]+cast(?![a-z0-9])", re.IGNORECASE), "a full-cast production"),
+    (re.compile(r"(?<![a-z0-9])audio[\W_]+dramas?(?![a-z0-9])", re.IGNORECASE), "an audio drama"),
+)
+
+
+def adaptation_label(*texts: str) -> str:
+    """The phrase for the first adaptation marker found in ``texts`` ("a Dramatized Adaptation"),
+    or "" when none carries one."""
+    for pattern, label in _ADAPTATION_MARKERS:
+        if any(pattern.search(t or "") for t in texts):
+            return label
+    return ""
+
+
+def unasked_adaptation(product: Product, wanted: tuple[str, ...]) -> str:
+    """``adaptation_label`` of the product's title / subtitle, unless ``wanted`` (the folder's
+    own words) carries any adaptation marker too - then "". Any marker counts as asking: the
+    GraphicAudio productions are the ones Audible titles "[Dramatized Adaptation]"."""
+    label = adaptation_label(product.title, product.subtitle)
+    if not label or adaptation_label(*wanted):
+        return ""
+    return label
+
+
 #: margins below this are what grade() acts on (0.05 HIGH, 0.10 title-only MEDIUM), so only
 #: rivals this close to the best are worth a second-source check
 CORROBORATION_WINDOW = 0.10
@@ -476,6 +511,11 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
         knockoff=best["knockoff"],
         corroborated=best["corroborated"],
         title_window_coverage=round(coverage, 3),
+        # the folder's own words: its name, the scanner's title reading(s) and the reading
+        # searched (for an ingest retry, title_guess is the embedded-tag title)
+        unasked_adaptation=unasked_adaptation(
+            best["product"], (unit.name, unit.title_guess, unit.alt_title_guess, title)
+        ),
     )
     match.confidence = grade(match)
     # keep the runners-up (other editions of the same work, near misses) so the
@@ -690,8 +730,15 @@ def grade(match: Match) -> str:
     foreign = not (match.language or "english").lower().startswith("english")
     title, author = match.title_sim, match.author_sim
     window_only = match.title_window_coverage < MIN_HIGH_WINDOW_COVERAGE
+    # an adaptation the folder never asked for (a GraphicAudio [Dramatized Adaptation] found for a
+    # plain folder) is the right book in a different production: capped at MEDIUM, like a foreign
+    # hit. At the default AUTO_CONVERT=high a MEDIUM waits for the operator's click, so a silent
+    # wrong conversion becomes a visible choice. Not LOW: title and author genuinely match, so it
+    # stays a useful suggestion. A folder that names the adaptation is not capped
+    adaptation = bool(match.unasked_adaptation)
     if match.author_known:
-        if title >= 0.88 and author >= 0.85 and match.margin >= 0.05 and not window_only and not foreign:
+        if (title >= 0.88 and author >= 0.85 and match.margin >= 0.05 and not window_only
+                and not foreign and not adaptation):
             return "HIGH"
         # MEDIUM is one config change from auto-converting: a catalog title that is only one
         # window of the folder name is held at LOW here too. A foreign hit may still reach MEDIUM

@@ -103,6 +103,11 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
                 "kept the folder match"
             )
     audit.confidence = audit.match.confidence
+    if audit.match.product and audit.match.unasked_adaptation:
+        audit.notes.append(
+            f"catalog hit is {audit.match.unasked_adaptation} and your folder does not say so - "
+            "not graded HIGH"
+        )
     if audit.confidence == "NONE" and audit.match.rejected:
         audit.notes.append(audit.match.rejected)
 
@@ -377,6 +382,9 @@ def record(
                 # Audnex backed it when another candidate competed for the margin
                 "knockoff": audit.match.knockoff,
                 "corroborated": audit.match.corroborated,
+                # "a Dramatized Adaptation" etc. when the pick is an adaptation the folder never
+                # asked for (capped at MEDIUM); "" otherwise
+                "unasked_adaptation": audit.match.unasked_adaptation,
                 "query_title": audit.match.query_title,
                 "query_author": audit.match.query_author,
                 # "folder" or "embedded": which names the search above was run with
