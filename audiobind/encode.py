@@ -10,7 +10,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -470,6 +469,20 @@ def build_command(
     return command
 
 
+_STDERR_TAIL_BYTES = 256 * 1024
+
+
+def _stderr_tail(path: Path) -> str:
+    """The last 256 KB of ffmpeg's stderr log ("" when there is none)."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, handle.tell() - _STDERR_TAIL_BYTES))
+            return handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
 def encode(
     unit: BookUnit,
     match,
@@ -542,18 +555,14 @@ def encode(
         tags=mp3_tags(tags, sequence) if mp3 else None,
     )
 
-    # Popen (not run) so the status page can abort mid-book and show a progress bar
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # Popen (not run) so the status page can abort mid-book and show a progress bar.
+    # stderr goes to a real file, not a pipe: a pipe nobody drains fills at 64 KB and a
+    # chatty ffmpeg then blocks forever on its next write. The file is read once ffmpeg
+    # has exited, so the tail is always complete (no reader thread, nothing to join).
+    stderr_path = work_dir / "ffmpeg-stderr.log"
+    with stderr_path.open("wb") as stderr_file:
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=stderr_file, text=True)
     CONTROL.attach_process(proc)
-
-    errors: list[str] = []
-
-    def drain_stderr() -> None:
-        if proc.stderr is not None:
-            errors.append(proc.stderr.read() or "")
-
-    drain = threading.Thread(target=drain_stderr, daemon=True, name="ffmpeg-stderr")
-    drain.start()
 
     started = time.time()
     speed = 0.0
@@ -583,10 +592,8 @@ def encode(
     finally:
         CONTROL.detach_process()
         CONTROL.clear_progress()
-        # errors[] is only complete once the drain thread has read stderr to EOF;
-        # reading it earlier left "ffmpeg failed:" with an empty reason
-        drain.join(timeout=5)
 
+    errors = [_stderr_tail(stderr_path)]
     if CONTROL.stop_requested:
         raise Stopped("stopped by operator")
     if proc.returncode != 0:

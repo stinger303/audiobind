@@ -140,8 +140,13 @@ class TestEncodeRun(unittest.TestCase):
         self.dir.cleanup()
 
     def run_encode(self, proc, plan):
+        def popen(cmd, **kw):
+            # stderr is a file ffmpeg writes into, read back after it exits
+            kw["stderr"].write(proc.stderr.read().encode())
+            return proc
+
         with (
-            mock.patch.object(encode.subprocess, "Popen", return_value=proc),
+            mock.patch.object(encode.subprocess, "Popen", side_effect=popen),
             mock.patch.object(encode.catalog, "download", return_value=False),
             mock.patch.object(encode.catalog, "chapters", return_value=[]),
         ):

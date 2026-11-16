@@ -1,12 +1,15 @@
 """encode.py correctness: the duration check, atomic publish, stderr handling, chapters."""
 
 import pathlib
+import subprocess
+import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
 from audiobind import encode
-from audiobind.control import CONTROL
+from audiobind.control import CONTROL, Stopped
 from audiobind.units import BookUnit, Part
 
 
@@ -88,6 +91,74 @@ class DurationCheckTests(EncodeHarness):
         self.run_encode(total=600.0, output=575.0)
         with self.assertRaises(RuntimeError):
             self.run_encode(total=600.0, output=565.0)
+
+
+# ---------------------------------------------------------------- 3. stderr cannot block ffmpeg
+class StderrTests(EncodeHarness):
+    """A real child process writes megabytes to stderr and nobody reads it while it runs."""
+
+    def real_child(self, script):
+        real_popen = subprocess.Popen
+
+        def popen(cmd, **kw):
+            pathlib.Path(cmd[-1]).write_bytes(b"audio")
+            return real_popen([sys.executable, "-c", script], **kw)
+
+        return popen
+
+    def run_with_timeout(self, **kwargs):
+        outcome = {}
+
+        def target():
+            try:
+                outcome["result"] = self.run_encode(**kwargs)
+            except BaseException as exc:  # noqa: BLE001 - reported to the test thread
+                outcome["error"] = exc
+
+        worker = threading.Thread(target=target, daemon=True)
+        worker.start()
+        worker.join(timeout=30)
+        self.assertFalse(worker.is_alive(), "encode hung on a full stderr pipe")
+        return outcome
+
+    def test_megabytes_of_stderr_do_not_hang_and_the_tail_is_reported(self):
+        script = (
+            "import sys\n"
+            "for i in range(40000): sys.stderr.write('frame=%d chatty ffmpeg line\\n' % i)\n"
+            "sys.stderr.write('[aac] the real reason at the end\\n')\n"
+            "sys.exit(1)\n"
+        )
+        outcome = self.run_with_timeout(popen=self.real_child(script))
+        error = outcome.get("error")
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn("ffmpeg failed:", str(error))
+        self.assertIn("[aac] the real reason at the end", str(error))
+
+    def test_a_successful_chatty_run_returns(self):
+        script = "import sys\nsys.stderr.write('x' * 2_000_000)\n"
+        outcome = self.run_with_timeout(popen=self.real_child(script))
+        self.assertNotIn("error", outcome)
+        self.assertEqual(outcome["result"].duration, 60.0)
+
+    def test_ffmpeg_hint_still_reaches_the_duration_error(self):
+        def popen(cmd, **kw):
+            pathlib.Path(cmd[-1]).write_bytes(b"audio")
+            kw["stderr"].write(b"frame=1\n[mp3] Invalid data found when processing input\n")
+            return FakeProc()
+
+        with self.assertRaises(RuntimeError) as ctx:
+            self.run_encode(total=3600.0, output=3000.0, popen=popen)
+        self.assertIn("ffmpeg: [mp3] Invalid data found", str(ctx.exception))
+
+    def test_operator_stop_still_stops(self):
+        self.addCleanup(CONTROL.resume)
+        self.addCleanup(CONTROL.clear_stop)
+        script = "import sys, time\nsys.stderr.write('y' * 500_000)\nsys.stderr.flush()\ntime.sleep(60)\n"
+        stopper = threading.Timer(1.0, CONTROL.stop)
+        stopper.start()
+        self.addCleanup(stopper.cancel)
+        outcome = self.run_with_timeout(popen=self.real_child(script))
+        self.assertIsInstance(outcome.get("error"), Stopped)
 
 
 # ---------------------------------------------------------------- 2. atomic publish
