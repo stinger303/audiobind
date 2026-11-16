@@ -67,9 +67,15 @@ class TestActionScript(unittest.TestCase):
 
 
 class TestEditAsinFallback(unittest.TestCase):
-    def test_shelf_cards_carry_their_status(self):
-        html = web._render_shelf([UnitState(path="A/B", status="held", title="B")])
-        self.assertIn('data-path="A/B" data-status="held"', html)
+    def test_the_shelf_is_gone_and_needs_you_rows_carry_their_group(self):
+        self.assertFalse(hasattr(web, "_render_shelf"))
+        self.assertFalse(hasattr(web, "MAX_SHELF_CARDS"))
+        html = web.grouped_rows(
+            [UnitState(path="A/B", status="held", title="B")],
+            lambda u, group="", paged=False: f'<tr class="urow" data-path="{u.path}" data-group="{group}">',
+            lambda u: "",
+        )
+        self.assertIn('data-path="A/B" data-group="held"', html)
 
     def test_edit_asin_falls_back_to_a_view_with_the_row(self):
         script = web.SCRIPT

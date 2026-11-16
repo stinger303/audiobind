@@ -40,14 +40,15 @@ class TestEncodingBookHidden(unittest.TestCase):
         chips = page.split('<a class="chip')[1:]
         return table, "".join(chips)
 
-    def test_encoding_book_leaves_table_chips_and_shelf(self):
+    def test_encoding_book_leaves_table_chips_and_needs_you(self):
         self.control.begin_unit("A/Zorblax")
         page = web.render(self.state)
         table, chips = self.sections(page)
         self.assertNotIn("Zorblax Saga", table)
-        self.assertNotIn("Zorblax Saga", page)  # shelf card too; banner shows the path
+        self.assertNotIn("Zorblax Saga", page)  # nowhere else either; banner shows the path
         self.assertNotIn("?status=review", chips)
-        self.assertIn('id="ab-shelf-count">0<', page)
+        self.assertNotIn("Needs you", page.split('<div class="chips">')[1].split("</div>")[0])
+        self.assertNotIn("ab-shelf", page)
         self.assertEqual(web.rail_counts(self.state, self.state.counts())["review"], 0)
 
     def test_current_and_queued_together_are_not_double_counted(self):
@@ -55,14 +56,15 @@ class TestEncodingBookHidden(unittest.TestCase):
         self.control.current_unit = "A/Zorblax"  # both at once, as a race could leave it
         self.assertEqual(web.rail_counts(self.state, self.state.counts())["review"], 0)
         page = web.render(self.state)
-        self.assertIn('id="ab-shelf-count">0<', page)
+        self.assertNotIn("?status=attention", self.sections(page)[1])
+        self.assertEqual(web.rail_counts(self.state, self.state.counts())["attention"], 0)
 
     def test_idle_book_still_listed(self):
         page = web.render(self.state)
         table, chips = self.sections(page)
         self.assertIn("Zorblax Saga", table)
         self.assertIn("?status=review", chips)
-        self.assertIn('id="ab-shelf-count">1<', page)
+        self.assertIn('Needs you <span class="n">1</span>', chips)
         self.assertEqual(web.rail_counts(self.state, self.state.counts())["review"], 1)
 
 
@@ -88,17 +90,17 @@ class TestRender(unittest.TestCase):
         self.dir.cleanup()
 
     def test_shows_every_book_not_just_a_page_of_them(self):
-        page = web.render(self.state)
+        page = web.render(self.state, "all")
         for i in range(6):
             self.assertIn(f"Book {i}", page)
 
     def test_status_filter_narrows_the_table(self):
         page = web.render(self.state, "ready")
-        # Table rows show only ready books, but problem units may still be in the shelf
+        # Table rows show only ready books; there is no shelf repeating problem books any more
         self.assertIn("Book 1", page)
         self.assertIn("Book 2", page)
         self.assertNotIn("Book 0", page)  # converted
-        # Book 3 (review) appears in the shelf, so check it's not in table rows
+        self.assertNotIn("Book 3", page)  # review
         body_content = page.split('<tbody id="ab-body">')[1].split("</tbody>")[0]
         self.assertNotIn("Book 3", body_content)
 
@@ -113,7 +115,7 @@ class TestRender(unittest.TestCase):
         self.assertIn("Book 0", page)
 
     def test_detail_panel_carries_source_and_output(self):
-        page = web.render(self.state)
+        page = web.render(self.state, "all")
         self.assertIn("Author/Book 0", page)  # source path in the panel
         self.assertIn("120 MB", page)
 
@@ -127,26 +129,30 @@ class TestRender(unittest.TestCase):
         page = web.render(self.state)
         self.assertNotIn('class="ab-queue"', page)
 
-    def test_rail_links_point_to_status_filters(self):
+    def test_status_filters_are_linked_from_the_chips(self):
         page = web.render(self.state)
+        page = page.split('<div class="chips">')[1].split("</div>")[0] + page.split("</aside>")[0]
         self.assertIn('href="/?status=review"', page)
         self.assertIn('href="/?status=held"', page)
         self.assertIn('href="/?status=failed"', page)
         # Each rail item carries the live count
         self.assertIn('class="ab-count"', page)
 
-    def test_shelf_renders_from_held_review_failed(self):
+    def test_needs_you_renders_from_held_review_failed(self):
         page = web.render(self.state)
-        # 3 problem units: review, held, failed
-        self.assertIn('id="ab-shelf"', page)
-        self.assertIn('id="ab-shelf-count">3<', page)
-        self.assertIn("action needed on 3 books", page)
-        # Each problem card rendered
-        self.assertIn("Book 3", page)
-        self.assertIn("Book 4", page)
-        self.assertIn("Book 5", page)
+        # 3 problem units: review, held, failed - the default view, no shelf
+        self.assertNotIn('id="ab-shelf"', page)
+        self.assertIn('<a class="chip on ab-alert" href="/?status=attention">Needs you <span class="n">3</span></a>', page)
+        body = page.split('<tbody id="ab-body">')[1].split("</tbody>")[0]
+        for title in ("Failed", "Held", "Review"):
+            self.assertIn(f'<span class="ab-group-t">{title}</span>', body)
+        # Each problem row rendered, nothing else
+        self.assertIn("Book 3", body)
+        self.assertIn("Book 4", body)
+        self.assertIn("Book 5", body)
+        self.assertNotIn("Book 0", body)
 
-    def test_shelf_empty_state_when_nothing_needs_attention(self):
+    def test_all_clear_when_nothing_needs_attention(self):
         import pathlib
         import tempfile
 
@@ -158,8 +164,9 @@ class TestRender(unittest.TestCase):
             s.save(UnitState(path="Done/Book", status="converted", title="Done", hours=1))
             s.save(UnitState(path="Ready/Book", status="ready", title="Ready", hours=1))
             page = web.render(s)
-            self.assertIn("nothing needs attention", page)
-            self.assertIn('id="ab-shelf-count">0<', page)
+            self.assertIn("nothing needs you.</p>", page)
+            self.assertNotIn("ab-shelf", page)
+            self.assertNotIn('href="/?status=attention">Needs you', page.split('<div class="chips">')[1])
         finally:
             s.close()
             d.cleanup()
@@ -212,21 +219,23 @@ class TestReasonLine(unittest.TestCase):
 
     def test_held_rows_render_a_reason_line(self):
         page = web.render(self.state)
-        self.assertIn('class="ab-breason"', page)
+        self.assertIn('class="ab-why"', page)
+        self.assertNotIn("ab-breason", page)
         self.assertIn("5.2", page)  # hours in the reason
 
-    def test_failed_rows_render_reason_with_failed_class(self):
+    def test_failed_rows_render_a_short_reason(self):
         page = web.render(self.state)
-        self.assertIn('class="ab-breason failed"', page)
+        self.assertIn('<span class="ab-why-l">Encoder error</span>', page)
 
     def test_converted_rows_do_not_render_a_reason(self):
         self.state.save(UnitState(path="Author/Done", status="converted", title="Done", hours=1, files=1))
-        page = web.render(self.state)
-        # Only the Done row itself should have no ab-breason
+        page = web.render(self.state, "all")
+        # Only the Done row itself should have no reason
         done_row_start = page.find('data-path="Author/Done"')
         next_tr = page.find('<tr class="drow"', done_row_start)
         done_row = page[done_row_start:next_tr] if next_tr > 0 else page[done_row_start:]
         self.assertNotIn("ab-breason", done_row)
+        self.assertNotIn('class="ab-why"', done_row)
 
 
 class TestCompactActions(unittest.TestCase):
@@ -271,16 +280,17 @@ class TestDeleteUI(unittest.TestCase):
         self.state.close()
         self.dir.cleanup()
 
-    def test_delete_button_is_in_detail_panel_not_shelf_or_row(self):
+    def test_delete_button_is_in_detail_panel_not_the_row(self):
         page = web.render(self.state)
         # Delete still appears inside the detail panel (drow)
         detail_section = page.split('<tr class="drow"')[1].split("</tr>")[0]
         self.assertIn(">Delete<", detail_section)
         # The confirmation is now a shared modal, not inline
         self.assertIn('id="ab-modal"', page)
-        # Shelf cards should NOT have Delete
-        shelf_section = page.split('id="ab-shelf"')[1].split("</section>")[0]
-        self.assertNotIn(">Delete<", shelf_section)
+        # The row itself should NOT have Delete (the kebab says "Delete&hellip;"), and no shelf
+        row = page.split('<tr class="urow"')[1].split("</tr>")[0]
+        self.assertNotIn(">Delete<", row)
+        self.assertNotIn('id="ab-shelf"', page)
 
     def test_confirm_strip_warns_of_permanent_deletion(self):
         page = web.render(self.state)

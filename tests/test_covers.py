@@ -213,7 +213,9 @@ class TestCoverEndpointAndMarkup(CoverBase):
         page = web.render(self.state)
         self.assertEqual(web.TOTAL_COLUMNS, len(web.COLUMNS) + 2)
         self.assertIn(f'colspan="{web.TOTAL_COLUMNS}"', page)
-        self.assertEqual(page.count("<col style="), page.count("<col ") - 1)
+        # every col but the actions col and the classed Why col opens with its style
+        self.assertEqual(page.count("<col style="), page.count("<col ") - 2)
+        self.assertEqual(page.count('<col class="ab-col-why" style='), 1)
 
 
 class TestCatalogImage(unittest.TestCase):

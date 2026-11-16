@@ -171,20 +171,65 @@ check("status chips still present", 'class="chip' in html)
 check("favicon link intact", "/favicon.svg" in html)
 check("dark theme intact", "#08090a" in html)
 check("quoted title escaped", "&quot;Quoted&quot;" in html)
-check("every book rendered",
-      all(t in html for t in ("The Burning Room", "61 Hours", "Quoted", "Very Long Title", "Project Hail Mary")))
-# ---- ingest rows (0.16.0): one badge per ingest row in the table and one on its shelf card,
+# ---- 0.21.0 "Needs you": the default view is the triage list, grouped; the shelf is gone
+check("no Needs-attention shelf (markup, script or styles)",
+      "ab-shelf" not in html and "abShelfInit" not in html and "SHELF_KEY" not in html)
+check("Needs you chip is the default, marked on",
+      '<a class="chip on ab-alert" href="/?status=attention">Needs you <span class="n">4</span></a>' in html)
+check("Needs you rows are grouped by reason",
+      all(f'<span class="ab-group-t">{t}</span>' in html for t in ("Failed", "Held", "Review"))
+      and 'class="ab-why"' in html and "ab-breason" not in html)
+check("default view leaves converted books out", "The Burning Room" not in html.split('<tbody id="ab-body">')[1])
+age_rule = re.search(r"\.ab-st-age\{([^}]*)\}", html)
+label_rule = re.search(r"\.ab-st-label\{([^}]*)\}", html)
+check(".ab-st-age is not the ellipsized element; the label is",
+      age_rule is not None and "ellipsis" not in age_rule.group(1) and "flex:none" in age_rule.group(1)
+      and label_rule is not None and "text-overflow:ellipsis" in label_rule.group(1))
+foot = html.split('<div class="ab-rail-foot">')[1].split("</div>")[0]
+check("rail-foot path breaks at slashes (&#8203;), titles stay plain",
+      "/&#8203;" in foot and all("&#8203;" not in t for t in re.findall(r'title="([^"]*)"', foot)))
+all_html = get("/?status=all")
+# 0.21.0 column budget: Match is the column without a width, so it gets what the others leave;
+# it must keep room for the full meter and its word (102 px, measured) at 1280 and 1440.
+# Below 1360 px the stylesheet narrows the Why column; 9 px is the page's scrollbar.
+cols = re.findall(r'<col(?: class="([^"]*)")? style="width:([^"]+)">', html.split("<colgroup>")[1].split("</colgroup>")[0])
+narrow_why = re.search(r"col\.ab-col-why\{width:([^!;}]+)", html)
+
+
+def _px(width: str, viewport: int) -> float:
+    found = re.fullmatch(r"min\((\d+)px,(\d+)vw\)", width)
+    return min(float(found.group(1)), viewport * int(found.group(2)) / 100) if found else float(width[:-2])
+
+
+for vp in (1280, 1440):
+    widths = [narrow_why.group(1) if (cls == "ab-col-why" and vp < 1360 and narrow_why) else w for cls, w in cols]
+    left = vp - 212 - 1 - 48 - 9 - sum(_px(w, vp) for w in widths)
+    check(f"column budget at {vp}: Match keeps >= 102 px for meter + word", left >= 102, f"{left:.0f} px")
+check("the Match word never shrinks, the meter does",
+      re.search(r"\.ab-match-word\{[^}]*flex:none", html) is not None
+      and re.search(r"\.ab-mmeter\{[^}]*flex:0 1 auto;overflow:hidden;min-width:0", html) is not None)
+match_cells = re.findall(r'<td class="ab-hidemd ab-match"[^>]*>(.*?)</td>', all_html)
+check("every Match cell with a meter carries its word",
+      all(re.search(r'<span class="ab-match-word ab-conf-\w+">(High|Medium|Low)</span></span>$', c)
+          for c in match_cells if "ab-mmeter" in c) and any("ab-mmeter" in c for c in match_cells),
+      str([c for c in match_cells if "ab-mmeter" in c][:2])[:300])
+check("?status=all: flat table, every book rendered", 'class="ab-group"' not in all_html and
+      all(t in all_html for t in ("The Burning Room", "61 Hours", "Quoted", "Very Long Title", "Project Hail Mary")))
+check("?status=all: no unexpanded {placeholders}",
+      not re.search(r"\{(version|rows|headers|styles|script|colgroup|query|series_item|allclear)\}", all_html))
+# ---- ingest rows (0.16.0): one badge per ingest row in the table (no shelf card since 0.21.0),
 # the container source path in its panel, and Delete marked so it opens the remove-from-Audiobind modal
 badges = html.count('class="ab-ingest-badge"')
-check("ingest badge on the row and its shelf card (and nowhere else)", badges == 2, f"found {badges}")
+check("ingest badge on the row (and nowhere else)", badges == 1, f"found {badges}")
 check("ingest badge uses a numeric ref", "&#8675; ingest" in html)
 check("ingest detail shows the container source dir",
       'Ingest source (read-only, still seeding): <span class="dim"><code>'
       "/ingest/Andy Weir - Project Hail Mary [TRACKER] {B08G9PRS1K}</code>" in html)
 markers = html.count('data-source="ingest"')
 check("ingest Delete controls marked (kebab + panel) and no library row marked", markers == 2, f"found {markers}")
-check("detail panels rendered", html.count('class="dd"') == len(BOOKS) + len(SERIES_BOOKS))
-check("no CDN references", "http://" not in html and "https://" not in html)
+check("detail panels rendered", all_html.count('class="dd"') == len(BOOKS) + len(SERIES_BOOKS)
+      and html.count('class="dd"') == 4)
+check("no CDN references", "http://" not in html + all_html and "https://" not in html + all_html)
 
 script = re.findall(r"<script>(.*?)</script>", html, re.S)
 check("exactly one inline script", len(script) == 1, f"found {len(script)}")
@@ -242,7 +287,7 @@ check("rail has a Series tab under Library with the missing badge",
       re.search(r'</span> Library.*?href="/series">\s*<span class="ab-glyph">&#9878;</span> Series\s*'
                 r'<span class="ab-count"[^>]*>2</span>.*?</span> Settings', html, re.S) is not None)
 check("library detail panel carries the series hook",
-      "Jack Reacher &mdash; you're 3 of 5" in html and 'href="/series#jack-reacher"' in html)
+      "Jack Reacher &mdash; you're 3 of 5" in all_html and 'href="/series#jack-reacher"' in all_html)
 page = get("/series")
 check("series: no unexpanded {placeholders}",
       not re.search(r"\{(version|styles|series_script|series_item|body|rail_total)\}", page))

@@ -47,6 +47,27 @@ Calm the page, one primary per view; no new features and no layout changes.
   book title now update live.
 - Removed `docs/deploy-0.20.0.sh`, which tripped the repo's own no-addresses guard (still in history).
 
+### Needs you
+One list for everything that is waiting on you, instead of the same books twice.
+- **The Needs-Attention shelf is gone.** The library now opens on **Needs you** whenever something is
+  waiting: the problem books, grouped by reason (Failed, Held, Stopped, Review), with the reason
+  explained once per group instead of once per row. When nothing needs you, it opens on All with one
+  all-clear line.
+- **A short reason per row.** A new **Why** column says what is wrong in a few words ("Damaged files",
+  "Runtime 73% long", "Not on Audible", "Low match") plus the numbers behind it, instead of a paragraph
+  under the title. The full sentence is still in the row's tooltip and in the detail panel.
+- **Match is easier to read.** For books that need you it shows the confidence word next to its meter;
+  for books already converted it shows the series position.
+- **Waiting shows how long a book has waited**, as a relative age ("7d", "4h"), never a date.
+- **One way in.** The rail has one triage entry, Needs you, instead of a separate Review / Held / Failed
+  block, and the chips read Needs you / Review / Held / Converted / All.
+- Fixed: a held book with damaged source files was told "that gap usually means a different edition".
+  It now leads with the real cause, e.g. "One of your 18 source files can't be read, which probably
+  explains why your files run 1.38 hours when Audible lists 7.72 for this edition (82% shorter)."
+- Fixed: a long status label could squeeze the age out of the Status column. That column is now
+  Waiting, which shows only the age, so the age is never cut off.
+- Fixed: paths in the rail footer wrap at a slash instead of mid-word.
+
 ### Changed
 - **The budget fails closed.** If qBittorrent cannot be read, no credit is spent that cycle; books that
   are already free still go through. A torrent that is already free never consults the budget. A row a

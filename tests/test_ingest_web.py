@@ -92,15 +92,18 @@ class TestIngestRows(IngestWebCase):
         self.assertIn("Project Hail Mary", body.group(1))
         self.assertNotIn("Library Book", body.group(1))
 
-    def test_unmatched_ingest_row_is_on_the_shelf_with_the_usual_wording(self):
+    def test_unmatched_ingest_row_is_in_needs_you_with_the_usual_wording(self):
         html = web.render(self.state)
-        shelf = html[html.index('id="ab-shelf"'):html.index("</section>", html.index('id="ab-shelf"'))]
-        card_start = shelf.index(f'data-path="{web._attr(KEY)}"')
-        card = shelf[card_start:shelf.index('<div class="ab-pactions">', card_start)]
+        self.assertNotIn('id="ab-shelf"', html)
+        body = html.split('<tbody id="ab-body">')[1].split("</tbody>")[0]
+        row_start = body.index(f'<tr class="urow" onclick="toggleRow(this, event)" data-path="{web._attr(KEY)}"')
+        self.assertLess(body.index('<span class="ab-group-t">Review</span>'), row_start)
+        row = body[row_start:body.index("</tr>", row_start)]
         why, _todo = explain("review", "LOW", "", {}, tier=str(CONFIG.auto_convert))
-        self.assertIn(web._html(why), card)
-        self.assertIn("ab-ingest-badge", card)
-        actions = shelf[card_start:]
+        self.assertIn(web._attr(why), row)  # the full sentence on the WHY cell's hover
+        self.assertIn('<span class="ab-why-l">Low match</span>', row)
+        self.assertIn("ab-ingest-badge", row)
+        actions = body[row_start:]
         for label in ("Retry now", "Convert anyway", "Edit ASIN"):
             self.assertIn(label, actions)
 

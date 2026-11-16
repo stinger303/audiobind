@@ -24,7 +24,15 @@ from . import discover as discover_mod
 from . import overrides as overrides_mod
 from . import series as series_mod
 from . import watcher as watcher_mod
-from .advice import explain
+from .advice import (
+    ATTENTION_STATUSES,
+    GROUP_REASONS,
+    GROUP_TITLES,
+    explain,
+    group_order,
+    reason_numbers,
+    short_reason,
+)
 from .config import (
     CONFIG,
     SETTING_KEYS,
@@ -200,42 +208,6 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-queue .ab-qpct{font-family:var(--ab-mono);font-size:11.5px;
   color:var(--ab-accent-bright);font-weight:500;min-width:36px}
 
-.ab-shelf{flex:none;margin:12px 24px 0;
-  background:var(--ab-surface);border:1px solid var(--ab-border);border-radius:10px;}
-.ab-shelf-head{display:flex;align-items:center;gap:10px;padding:10px 14px;
-  cursor:pointer;user-select:none;}
-.ab-shelf-head:hover{background:rgba(255,255,255,.03)}
-.ab-shelf-head h2{font-size:10.5px;font-weight:500;text-transform:uppercase;
-  letter-spacing:.7px;color:var(--ab-text4);}
-.ab-shelf-head .ab-scount{font-family:var(--ab-mono);font-size:11px;color:var(--ab-amber);
-  background:var(--ab-amber-soft);border:1px solid rgba(242,163,60,.28);
-  border-radius:4px;padding:0 6px;min-width:20px;text-align:center;}
-.ab-shelf-head .ab-shint{font-size:11.5px;color:var(--ab-text4)}
-.ab-shelf-head .ab-caret{margin-left:auto;color:var(--ab-text4);font-size:10px;
-  transition:transform .15s;flex:none;}
-.ab-shelf.ab-collapsed .ab-caret{transform:rotate(-90deg)}
-.ab-shelf.ab-collapsed .ab-shelf-body{display:none}
-.ab-shelf-body{display:flex;gap:10px;overflow-x:auto;
-  padding:12px 14px;border-top:1px solid var(--ab-border-subtle);scrollbar-width:thin;}
-.ab-shelf-empty{display:none;align-items:center;gap:8px;
-  padding:14px;font-size:12.5px;color:var(--ab-text3);}
-.ab-shelf-empty .ab-sdot{width:6px;height:6px;border-radius:50%;background:var(--ab-green);flex:none}
-.ab-problem{flex:0 0 300px;display:flex;flex-direction:column;gap:8px;
-  background:var(--ab-surface2);border:1px solid var(--ab-border);
-  border-radius:8px;padding:10px;}
-.ab-problem-head{display:flex;align-items:center;gap:8px;min-width:0}
-.ab-problem-head .pill{margin-left:auto;flex:none}
-.ab-problem .ab-pbook{display:flex;flex-direction:column;gap:1px;min-width:0}
-.ab-problem .ab-ptitle{font-weight:500;font-size:13px;color:var(--ab-text);
-  letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.ab-problem .ab-pauthor{font-size:11px;color:var(--ab-text3)}
-.ab-problem .ab-preason{font-size:11.5px;color:var(--ab-text3);line-height:1.4}
-.ab-problem .ab-preason b{font-family:var(--ab-mono);font-size:11px;font-weight:500;color:var(--ab-text2)}
-.ab-problem .ab-preason.held{color:var(--ab-amber)}
-.ab-problem .ab-preason.failed{color:var(--ab-red)}
-.ab-problem .ab-pactions{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap}
-.ab-problem .ab-pactions button{height:26px;padding:0 9px;font-size:11.5px;border-radius:5px}
-
 .ab-statsline{flex:none;display:flex;align-items:center;gap:0;
   padding:10px 24px 12px;border-bottom:1px solid var(--ab-border-subtle);
   font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text3);}
@@ -309,10 +281,6 @@ button.dry.on .ab-switch::after{left:12px}
 td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:520px}
 .ab-bookcell .ab-btitle{font-weight:500;font-size:13px;color:var(--ab-text);letter-spacing:-.1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .ab-bookcell .ab-bauthor{font-size:11.5px;color:var(--ab-text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.ab-bookcell .ab-breason{font-size:11.5px;color:var(--ab-amber);margin-top:2px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35;}
-.ab-bookcell .ab-breason b{font-weight:500;font-family:var(--ab-mono);font-size:11px;color:var(--ab-text2)}
-.ab-bookcell .ab-breason.failed{color:var(--ab-red)}
 
 .pill{display:inline-flex;align-items:center;gap:6px;
   height:22px;padding:0 9px;border-radius:999px;
@@ -338,8 +306,9 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:
 .ab-dash{color:var(--ab-text4)}
 
 /* one labeled status dot per row: color + word (+ age); only a moving state pulses */
-.ab-st{display:inline-flex;align-items:center;max-width:100%;overflow:hidden;
+.ab-st{display:inline-flex;align-items:center;gap:5px;max-width:100%;overflow:hidden;
   color:var(--ab-text2);font-size:12px;white-space:nowrap}
+.ab-st-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ab-st-dot{width:8px;height:8px;border-radius:50%;flex:none;margin-right:7px;background:var(--ab-text4)}
 .ab-st-ok .ab-st-dot{background:var(--ab-green)}
 .ab-st-hold .ab-st-dot{background:var(--ab-amber)}
@@ -348,14 +317,42 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:
 .ab-st-enc .ab-st-dot{background:var(--ab-accent-bright)}
 .ab-st-moving .ab-st-dot{animation:ab-st-pulse 1.6s ease-in-out infinite}
 @keyframes ab-st-pulse{0%,100%{opacity:1}50%{opacity:.45}}
-.ab-st-age{color:var(--ab-text4);font-size:10.5px;margin-left:5px;font-variant-numeric:tabular-nums;
-  overflow:hidden;text-overflow:ellipsis}
+.ab-st-age{flex:none;color:var(--ab-text4);font-size:10.5px;font-variant-numeric:tabular-nums}
 .ab-match{min-width:0;font-size:12px;color:var(--ab-text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ab-match-cur{color:var(--ab-blue)}
 .ab-conf-high{color:var(--ab-green)}
 .ab-conf-medium{color:var(--ab-text2)}
 .ab-conf-low{color:var(--ab-amber)}
 .ab-conf-none{color:var(--ab-text4)}
+/* 0.21.0 "Needs you": the match readout, the one-line WHY cell, the group headers */
+/* the word is content, the meter decoration: when Match is narrow the meter loses ticks
+   first, the confidence word (and the separator before it) never truncates; only a converted
+   row's series prefix may ellipsize */
+.ab-match-in{display:flex;align-items:center;min-width:0;max-width:100%;overflow:hidden}
+.ab-mmeter{display:inline-flex;flex:0 1 auto;overflow:hidden;min-width:0;gap:2px;margin-right:7px}
+.ab-mmeter b{flex:none;width:9px;height:4px;border-radius:2px;background:rgba(255,255,255,.1)}
+.ab-match-lead{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab-match-sep{flex:none;margin:0 5px}
+.ab-match-word{flex:none;white-space:nowrap}
+/* below 1360 px the Why column gives Match a little more room */
+@media (max-width:1359px){.ab-tbl col.ab-col-why{width:min(300px,20vw)!important}}
+.ab-mmeter b.ab-f{background:var(--ab-text2)}
+.ab-why{display:flex;align-items:baseline;min-width:0;overflow:hidden;white-space:nowrap;font-size:12px}
+.ab-why-l{flex:none;color:var(--ab-amber);font-weight:500}
+.ab-why-sub{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ab-text3);font-family:var(--ab-mono);font-size:11px;margin-left:8px}
+.ab-tbl tbody tr.ab-group:hover, .ab-tbl tbody tr.ab-more-row:hover{background:none}
+.ab-tbl tbody tr.ab-group td{white-space:normal;padding:18px 8px 8px;border-bottom:none}
+.ab-group-h{display:flex;align-items:center;gap:8px}
+.ab-group-t{font-size:13.5px;font-weight:600;color:var(--ab-text)}
+.ab-group-n{font-family:var(--ab-mono);font-size:11px;color:var(--ab-amber);
+  background:var(--ab-amber-soft);border:1px solid rgba(242,163,60,.28);border-radius:4px;padding:0 5px}
+.ab-group-p{margin-top:4px;font-size:12px;color:var(--ab-text3);line-height:1.5;max-width:900px}
+.ab-tbl tbody tr.ab-more-row td{padding:6px 8px 6px 58px}
+button.ab-more{height:auto;padding:4px 0;border:none;background:none;color:var(--ab-accent-bright);font-size:12.5px}
+button.ab-more:hover{background:none;color:var(--ab-text)}
+.ab-allclear{flex:none;padding:0 24px 8px;font-size:12px;color:var(--ab-text3)}
+.chip.ab-alert .n{color:var(--ab-amber)}
 
 .ab-actcol{padding:0 8px 0 0!important;width:48px;position:relative;overflow:visible!important;text-align:right}
 .ab-kebabwrap{position:relative;display:inline-block;vertical-align:middle}
@@ -720,8 +717,8 @@ function abWatcherDry(on) {
     .then(() => location.reload())
     .catch(() => location.reload());
 }
-// Retry now / Convert anyway / Use this ASIN, from a detail panel, a table row or a
-// shelf card: each of those carries data-path, so the nearest one names the book
+// Retry now / Convert anyway / Use this ASIN, from a detail panel or a table row:
+// each of those carries data-path, so the nearest one names the book
 function abUnitAction(btn, action) {
   const el = btn.closest('[data-path]');
   if (!el) return;
@@ -881,15 +878,19 @@ function abEditAsin(btn) {
   const path = el.dataset.path;
   const row = abFindRow(path);
   if (row && row.hidden) {
-    // hidden by the search box: clear the filter so the panel can show
+    // hidden by the search box or past its group's first rows: show it
+    if (row.dataset.group) {
+      const head = document.querySelector('tr.ab-group[data-group="' + row.dataset.group + '"]');
+      if (head) head.dataset.open = '1';
+    }
     const box = abSearchBox();
     if (box) box.value = '';
     try { sessionStorage.setItem(SEARCH_KEY, ''); } catch (e) {}
     abApplyView();
   }
   if (row && abFocusAsin(row)) return;
-  // the shelf lists every problem book, but the table may not have this one (another
-  // status filter, past the row limit): reload on a view that does, panel open
+  // the table may not have this one (another status filter, past the row limit):
+  // reload on a view that does, panel open
   try { sessionStorage.setItem(SEARCH_KEY, ''); } catch (e) {}
   location.href = '/?status=' + encodeURIComponent(el.dataset.status || '') +
     '&q=' + encodeURIComponent(path) + '&open=' + encodeURIComponent(path);
@@ -1105,7 +1106,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 const SEARCH_KEY = 'audiobind_query';
-const AB_NUMERIC = {status: true, tier: true, runtime: true, scan: true, title: false};
+const AB_NUMERIC = {why: true, tier: true, runtime: true, scan: true, title: false};
 let abSort = {column: window.AB_SORT_COLUMN || 'scan', dir: window.AB_SORT_DIR || 'desc'};
 function abSearchBox() { return document.getElementById('ab-search'); }
 function abRowMatches(row, terms) {
@@ -1146,10 +1147,40 @@ function abApplyView() {
     if (hit) shown += 1;
   });
   pairs.sort((p, q) => abCompare(p[0], q[0], abSort.column, abSort.dir));
-  pairs.forEach(([row, panel]) => {
-    body.appendChild(row);
-    if (panel) body.appendChild(panel);
-  });
+  const heads = [...body.querySelectorAll('tr.ab-group')];
+  if (heads.length) {
+    // "Needs you": sort inside each group, keep the groups in their order, page each one
+    heads.forEach(head => {
+      const group = head.dataset.group;
+      const more = body.querySelector('tr.ab-more-row[data-group="' + group + '"]');
+      body.appendChild(head);
+      let hits = 0, paged = 0;
+      pairs.forEach(([row, panel]) => {
+        if (row.dataset.group !== group) return;
+        if (!row.hidden) {
+          hits += 1;
+          if (!terms.length && !head.dataset.open && hits > AB_GROUP_PAGE) {
+            row.hidden = true;
+            paged += 1;
+          }
+        }
+        body.appendChild(row);
+        if (panel) body.appendChild(panel);
+      });
+      if (more) {
+        body.appendChild(more);
+        more.hidden = paged === 0;
+        const btn = more.querySelector('button.ab-more');
+        if (btn) btn.textContent = 'Show ' + paged + ' more ' + (btn.dataset.label || '');
+      }
+      head.hidden = hits === 0;
+    });
+  } else {
+    pairs.forEach(([row, panel]) => {
+      body.appendChild(row);
+      if (panel) body.appendChild(panel);
+    });
+  }
   const open = openSet();
   pairs.forEach(([row, panel]) => {
     if (!panel) return;
@@ -1168,6 +1199,13 @@ function abApplyView() {
     const arrow = th.querySelector('.ab-arrow');
     if (arrow) arrow.textContent = on ? (abSort.dir === 'desc' ? '\\u25bc' : '\\u25b2') : '';
   });
+}
+const AB_GROUP_PAGE = 12;
+function abShowMore(btn) {
+  // plain unhide: every row is already on the page, nothing is fetched
+  const head = document.querySelector('tr.ab-group[data-group="' + btn.dataset.group + '"]');
+  if (head) head.dataset.open = '1';
+  abApplyView();
 }
 function abSortBy(column) {
   if (abSort.column === column) {
@@ -1205,22 +1243,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   abApplyView();
 });
-const SHELF_KEY = 'audiobind_shelf_collapsed';
-function abShelfInit() {
-  const shelf = document.getElementById('ab-shelf');
-  if (!shelf) return;
-  const head = document.getElementById('ab-shelf-head');
-  if (!head) return;
-  let collapsed = true;  // closed unless the user opened it this session
-  try { collapsed = sessionStorage.getItem(SHELF_KEY) !== '0'; } catch (e) {}
-  if (collapsed) shelf.classList.add('ab-collapsed');
-  head.addEventListener('click', () => {
-    shelf.classList.toggle('ab-collapsed');
-    try { sessionStorage.setItem(SHELF_KEY, shelf.classList.contains('ab-collapsed') ? '1' : '0'); }
-    catch (e) {}
-  });
-}
-document.addEventListener('DOMContentLoaded', abShelfInit);
 function abBusy() {
   const box = abSearchBox();
   if (box && (document.activeElement === box || box.value.trim() !== '')) return true;
@@ -1353,23 +1375,14 @@ PAGE = """<!doctype html>
     <a class="ab-rail-item ab-active" href="/" aria-current="page">
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
+    <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
+      <span class="ab-glyph">&#9888;</span> Needs you
+      <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
     {discover_item}
     <a class="ab-rail-item" href="/settings">
       <span class="ab-glyph">&#9881;</span> Settings
       </a>
-  </nav>
-  <div class="ab-rail-label">Attention</div>
-  <nav class="ab-rail-section" aria-label="Attention">
-    <a class="ab-rail-item{rail_review_alert}" href="/?status=review">
-      <span class="ab-glyph">&#9873;</span> Review
-      <span class="ab-count">{rail_review_count}</span></a>
-    <a class="ab-rail-item{rail_held_alert}" href="/?status=held">
-      <span class="ab-glyph">&#8214;</span> Held
-      <span class="ab-count">{rail_held_count}</span></a>
-    <a class="ab-rail-item{rail_failed_alert}" href="/?status=failed">
-      <span class="ab-glyph">&times;</span> Failed
-      <span class="ab-count">{rail_failed_count}</span></a>
   </nav>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
@@ -1387,8 +1400,6 @@ PAGE = """<!doctype html>
   </header>
 
 {queue_strip}
-
-{shelf_html}
 
   <section class="ab-controls" aria-label="Controls">
     {scan_button}
@@ -1420,6 +1431,7 @@ PAGE = """<!doctype html>
     </div>
   </section>
 
+{allclear}
   <div class="ab-tablewrap">
     <table class="ab-tbl">
     <colgroup>{colgroup}<col class="ab-actcol" style="width:48px"></colgroup>
@@ -1466,23 +1478,14 @@ SETTINGS_PAGE = """<!doctype html>
     <a class="ab-rail-item{lib_active}" href="/">
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
+    <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
+      <span class="ab-glyph">&#9888;</span> Needs you
+      <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
     {discover_item}
     <a class="ab-rail-item{set_active}" href="/settings">
       <span class="ab-glyph">&#9881;</span> Settings
       </a>
-  </nav>
-  <div class="ab-rail-label">Attention</div>
-  <nav class="ab-rail-section" aria-label="Attention">
-    <a class="ab-rail-item{rail_review_alert}" href="/?status=review">
-      <span class="ab-glyph">&#9873;</span> Review
-      <span class="ab-count">{rail_review_count}</span></a>
-    <a class="ab-rail-item{rail_held_alert}" href="/?status=held">
-      <span class="ab-glyph">&#8214;</span> Held
-      <span class="ab-count">{rail_held_count}</span></a>
-    <a class="ab-rail-item{rail_failed_alert}" href="/?status=failed">
-      <span class="ab-glyph">&times;</span> Failed
-      <span class="ab-count">{rail_failed_count}</span></a>
   </nav>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
@@ -1934,23 +1937,14 @@ SERIES_PAGE = """<!doctype html>
     <a class="ab-rail-item" href="/">
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
+    <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
+      <span class="ab-glyph">&#9888;</span> Needs you
+      <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
     {discover_item}
     <a class="ab-rail-item" href="/settings">
       <span class="ab-glyph">&#9881;</span> Settings
       </a>
-  </nav>
-  <div class="ab-rail-label">Attention</div>
-  <nav class="ab-rail-section" aria-label="Attention">
-    <a class="ab-rail-item{rail_review_alert}" href="/?status=review">
-      <span class="ab-glyph">&#9873;</span> Review
-      <span class="ab-count">{rail_review_count}</span></a>
-    <a class="ab-rail-item{rail_held_alert}" href="/?status=held">
-      <span class="ab-glyph">&#8214;</span> Held
-      <span class="ab-count">{rail_held_count}</span></a>
-    <a class="ab-rail-item{rail_failed_alert}" href="/?status=failed">
-      <span class="ab-glyph">&times;</span> Failed
-      <span class="ab-count">{rail_failed_count}</span></a>
   </nav>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
@@ -2158,6 +2152,15 @@ def _attr(text: str) -> str:
     return _html(text).replace('"', "&quot;").replace("'", "&#x27;")
 
 
+def _breakable_path(p) -> str:
+    """The path HTML-escaped, with a zero-width break after every separator.
+
+    The rail footer is narrow: a long path wraps at a "/" instead of mid-word
+    ("audiob /ooks"). Only for visible text - a title attribute keeps the plain path.
+    """
+    return _html(str(p or "")).replace("/", "/&#8203;").replace("\\", "\\&#8203;")
+
+
 def _fmt_duration(seconds: float) -> str:
     seconds = int(max(0, seconds))
     if seconds < 60:
@@ -2243,21 +2246,65 @@ STATUS_DOTS = {
 WAITING_STATUSES = {"review"}
 
 
-def status_dot(status: str, updated_at=0.0, now: float | None = None) -> str:
-    """One labeled dot: color + word + age. Replaces the old per-row status pill."""
+def status_dot(status: str, updated_at=0.0, now: float | None = None, label: bool = True) -> str:
+    """One labeled dot: color + word + age. Replaces the old per-row status pill.
+
+    The word sits in its own span so a narrow column ellipsizes the word, never the age.
+    ``label=False`` is the Waiting column (0.21.0): the dot and the bare age ("6d"); the
+    word stays in the title.
+    """
     name = (status or "").lower()
-    label, family, moving = STATUS_DOTS.get(name, (name.capitalize() or "Unknown", "idle", False))
+    word, family, moving = STATUS_DOTS.get(name, (name.capitalize() or "Unknown", "idle", False))
     age = rel_age(updated_at, now, waiting=name in WAITING_STATUSES)
     classes = f"ab-st ab-st-{family}" + (" ab-st-moving" if moving else "")
-    title = label + (f" · {age}" if age else "")
+    title = word + (f" · {age}" if age else "")
+    if not label:
+        bare = short_age(updated_at, now)
+        age_html = f'<span class="ab-st-age">{_html(bare)}</span>' if bare else DASH
+        return (
+            f'<span class="{classes}" title="{_attr(title)}">'
+            f'<span class="ab-st-dot" aria-hidden="true"></span>{age_html}</span>'
+        )
     age_html = f'<span class="ab-st-age">{_html(age)}</span>' if age else ""
     return (
         f'<span class="{classes}" title="{_attr(title)}">'
-        f'<span class="ab-st-dot" aria-hidden="true"></span>{_html(label)}{age_html}</span>'
+        f'<span class="ab-st-dot" aria-hidden="true"></span>'
+        f'<span class="ab-st-label">{_html(word)}</span>{age_html}</span>'
     )
 
 
-#: confidence is always spelled out, capital C - never a bare LOW/MEDIUM/HIGH in the table
+def short_age(timestamp, now: float | None = None) -> str:
+    """The bare age for the Waiting column, always relative, never a date.
+
+    "<1m", "39m", "5h", "6d", "12d", then weeks ("5w") up to 8 weeks, months ("5mo") up to a
+    year, then years ("2y"). Empty when the time is unknown.
+    """
+    try:
+        ts = float(timestamp or 0)
+    except (TypeError, ValueError):
+        return ""
+    if ts <= 0:
+        return ""
+    now = time.time() if now is None else float(now)
+    seconds = max(0.0, now - ts)
+    days = seconds / 86400
+    if seconds < 60:
+        return "<1m"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)}h"
+    if days < 14:
+        return f"{int(days)}d"
+    if days < 56:
+        return f"{int(days // 7)}w"
+    if days < 365:
+        return f"{max(2, int(days // 30))}mo"
+    return f"{int(days // 365)}y"
+
+
+#: the long form ("High Confidence") is the cell's title and the panel's word; the cell itself
+#: shows the short word after the meter (0.21.0, the mockup's wording)
 CONFIDENCE_WORDS = {
     "HIGH": ("High Confidence", "ab-conf-high"),
     "MEDIUM": ("Medium Confidence", "ab-conf-medium"),
@@ -2279,33 +2326,54 @@ def series_label(detail: dict, overrides: dict) -> str:
 def match_cell(unit, detail: dict, overrides: dict, asin_override: str = "") -> tuple[str, str]:
     """(HTML, plain-text title) for the Match column.
 
-    A hand-set ASIN reads "Current ASIN · <n> Confidence"; an automatic match reads
-    "<series #n> · <n> Confidence". No match at all is the dash.
+    A hand-set ASIN reads "Current ASIN · <word>"; an automatic match reads
+    "<series #n> · <word>" on a converted row and just "<word>" on a row that needs you, the word being High / Medium / Low / Collection / Not on Audible.
+    The title keeps the long form ("Jack Reacher #14 · High Confidence"). No match is the dash.
     """
     conf = (unit.confidence or "").upper()
     match = (detail or {}).get("match") or {}
     conf_html = conf_text = ""
     if conf in CONFIDENCE_WORDS:
         conf_text, cls = CONFIDENCE_WORDS[conf]
-        conf_html = f'<span class="{cls}">{conf_text}</span>'
+        conf_html = f'<span class="ab-match-word {cls}">{conf_text.split()[0]}</span>'
     elif conf == "COLLECTION":
         conf_text = "Looks like a collection"
-        conf_html = f'<span class="ab-conf-none">{conf_text}</span>'
+        conf_html = '<span class="ab-match-word ab-conf-none">Collection</span>'
     elif asin_override and match.get("asin_pin_failed"):
         conf_text = "Not in Audible's catalog"
-        conf_html = f'<span class="ab-conf-low">{_html(conf_text)}</span>'
+        conf_html = '<span class="ab-match-word ab-conf-low">Not on Audible</span>'
 
     if asin_override:
-        lead_html = '<span class="ab-match-cur">Current ASIN</span>'
+        lead_html = '<span class="ab-match-lead ab-match-cur">Current ASIN</span>'
         lead_text = f"Current ASIN {asin_override} (you set it)"
     else:
         lead_text = series_label(detail, overrides) if conf_html else ""
-        lead_html = _html(lead_text)
+        lead_html = f'<span class="ab-match-lead">{_html(lead_text)}</span>' if lead_text else ""
 
     parts_html = [p for p in (lead_html, conf_html) if p]
     if not parts_html:
         return DASH, ""
-    return " &middot; ".join(parts_html), " · ".join(p for p in (lead_text, conf_text) if p)
+    title = " · ".join(p for p in (lead_text, conf_text) if p)
+    # a row that needs you shows the bare word (the series position stays in the title);
+    # a hand-set ASIN keeps its "Current ASIN · <word>" either way
+    if not asin_override and (unit.status or "").lower() in ATTENTION_STATUSES and conf_html:
+        parts_html = [conf_html]
+    # 0.21.0: a readout, not a button - segments filled to the level, the word beside it
+    level = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}.get(conf, 0)
+    meter = (
+        '<span class="ab-mmeter" aria-hidden="true">'
+        + "".join('<b class="ab-f"></b>' if i < level else "<b></b>" for i in range(3))
+        + "</span>"
+        if level
+        else ""
+    )
+    return (
+        '<span class="ab-match-in">'
+        + meter
+        + '<span class="ab-match-sep">&middot;</span>'.join(parts_html)
+        + "</span>",
+        title,
+    )
 
 
 LOCK_ON_TEXT = "Locked by you"
@@ -2339,7 +2407,7 @@ def is_ingest_row(unit) -> bool:
     return getattr(unit, "source", "") == SOURCE_INGEST or key_source(unit.path) == SOURCE_INGEST
 
 
-#: on the table row and the shelf card: an ingest book never blurs with a library one
+#: on the table row: an ingest book never blurs with a library one
 INGEST_BADGE = (
     '<span class="ab-ingest-badge" title="From the ingest folder: a downloaded torrent that is '
     'still seeding. Audiobind only reads it.">&#8675; ingest</span>'
@@ -2373,22 +2441,25 @@ def kebab_menu(unit) -> str:
 
 STATUS_ORDER =("converted", "ready", "review", "held", "failed", "interrupted")
 MAX_ROWS = 400
-MAX_SHELF_CARDS = 12
+#: rows shown per "Needs you" group before its "Show N more" button
+GROUP_PAGE = 12
 
 COLUMNS = (
-    ("title", "Book", "min(560px,30vw)", ""),
+    ("title", "Book", "min(520px,28vw)", ""),
     # fixed widths only where the content is short and must stay on one line ("13.18 h",
-    # "Converted 2d ago"); Match has no width so it absorbs whatever room is left and
-    # ellipsizes (full text on hover) - the table must never outgrow the page
-    ("status", "Status", "140px", ""),
+    # "6d"); Match has no width so it absorbs whatever room is left and ellipsizes (full
+    # text on hover) - the table must never outgrow the page
+    # Why gives way before Match does: at 1280 a 24vw Why leaves Match ~83 px, too narrow
+    # for the meter and its word (~98 px); 22vw leaves it ~109 px
+    ("why", "Why", "min(300px,22vw)", ""),
     ("tier", "Match", "", "ab-hidemd"),
     ("runtime", "Length", "84px", ""),
-    ("scan", "Last scan", "90px", "ab-hidemd"),
+    ("scan", "Waiting", "88px", ""),
 )
 COVER_WIDTH = "50px"
 TOTAL_COLUMNS = len(COLUMNS) + 1 + 1
 SORT_COLUMNS = tuple(key for key, *_ in COLUMNS)
-NUMERIC_COLUMNS = {"status", "tier", "runtime", "scan"}
+NUMERIC_COLUMNS = {"why", "tier", "runtime", "scan"}
 TIER_ORDER = ("HIGH", "MEDIUM", "LOW", "COLLECTION", "NONE")
 
 
@@ -2411,7 +2482,7 @@ def status_rank(status: str) -> int:
 
 
 def sort_value(unit, column: str):
-    if column == "status":
+    if column in ("why", "status"):
         return status_rank(unit.status)
     if column == "tier":
         return tier_rank(unit.confidence)
@@ -2757,85 +2828,6 @@ def read_sort(state) -> tuple:
     return column, direction
 
 
-def _render_shelf(problem_units: list) -> str:
-    tier = str(effective_val("auto_convert") or "high")
-    if not problem_units:
-        return (
-            '<section class="ab-shelf" id="ab-shelf" aria-label="Needs attention">'
-            '<div class="ab-shelf-head" id="ab-shelf-head" role="button" tabindex="0" '
-            'aria-expanded="false" aria-controls="ab-shelf-body">'
-            "<h2>Needs attention</h2>"
-            '<span class="ab-scount" id="ab-shelf-count">0</span>'
-            '<span class="ab-shint">nothing needs attention</span>'
-            '<span class="ab-caret" aria-hidden="true">&#9660;</span>'
-            "</div>"
-            '<div class="ab-shelf-body" id="ab-shelf-body" hidden></div>'
-            '<div class="ab-shelf-empty" id="ab-shelf-empty" style="display:flex">'
-            '<span class="ab-sdot"></span> nothing needs attention</div>'
-            "</section>"
-        )
-
-    visible = problem_units[:MAX_SHELF_CARDS]
-    more = len(problem_units) - len(visible)
-
-    cards = []
-    for unit in visible:
-        why, _todo = explain(
-            unit.status, unit.confidence or "", unit.note, json.loads(unit.detail or "{}"), tier=tier
-        )
-        reason_class = "held" if unit.status == "held" else ("failed" if unit.status == "failed" else "")
-
-        btn = '<button class="btn" title="Re-check this book against the catalog and convert it if it passes the rules." onclick="abUnitAction(this,\'retry\')">Retry now</button>'
-        force = '<button class="btn warn" title="Convert this book even though the automatic checks flagged it." onclick="abUnitAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button class="btn" title="Open this book\'s details and set its exact Audible entry." onclick="abEditAsin(this)">Edit ASIN</button>'
-
-        cards.append(
-            (
-                '<div class="ab-problem" data-path="{dp}" data-status="{st}">'
-                '<div class="ab-problem-head">{cov}'
-                '<div class="ab-pbook">'
-                '<span class="ab-ptitle">{ti}{shelf_src_badge}</span>'
-                '<span class="ab-pauthor">{au}</span></div>'
-                '<span class="pill {st}"><span class="pdot"></span>{st}</span></div>'
-                '<div class="ab-preason {rc}">{wh}</div>'
-                '<div class="ab-pactions">{btns}</div></div>'
-            ).format(
-                dp=_attr(unit.path),
-                cov=cover_html(unit),
-                ti=_html(unit.title or unit.path),
-                shelf_src_badge=INGEST_BADGE if is_ingest_row(unit) else "",
-                au=_html(unit.author or ""),
-                st=unit.status,
-                rc=reason_class,
-                wh=_html(why),
-                btns=btn + force + asin_btn,
-            )
-        )
-    cards_html = "\n".join(cards)
-    if more:
-        cards_html += (
-            '\n<div class="ab-problem" style="display:flex;align-items:center;'
-            'justify-content:center;color:var(--ab-text3);font-size:12.5px">'
-            f"+{more} more &mdash; filter in the table below</div>"
-        )
-
-    count = len(problem_units)
-    return (
-        '<section class="ab-shelf" id="ab-shelf" aria-label="Needs attention">'
-        '<div class="ab-shelf-head" id="ab-shelf-head" role="button" tabindex="0" '
-        'aria-expanded="true" aria-controls="ab-shelf-body">'
-        "<h2>Needs attention</h2>"
-        '<span class="ab-scount" id="ab-shelf-count">{c}</span>'
-        '<span class="ab-shint">action needed on {c} book{suf}</span>'
-        '<span class="ab-caret" aria-hidden="true">&#9660;</span>'
-        "</div>"
-        '<div class="ab-shelf-body" id="ab-shelf-body">{cards}</div>'
-        '<div class="ab-shelf-empty" id="ab-shelf-empty">'
-        '<span class="ab-sdot"></span> nothing needs attention</div>'
-        "</section>"
-    ).format(c=count, suf="" if count == 1 else "s", cards=cards_html)
-
-
 # --- Series shelf (approved mockups 3 and 3b, 0.15.0) -------------------------------------
 # Everything here reads the stored series listings; nothing on a render path touches the
 # network (series.aggregate queues stale listings for its background refresher instead).
@@ -2855,7 +2847,7 @@ def _series_shelf(state, refresh: bool = False) -> dict:
 
 
 def _alert_class(count) -> str:
-    """The rail's amber mark, only for an Attention item that has something in it."""
+    """The rail's amber mark, only for an item (Needs you, Series) that has something in it."""
     try:
         return " ab-alert" if int(count) > 0 else ""
     except (TypeError, ValueError):
@@ -3179,17 +3171,13 @@ def render_series(state) -> str:
         styles=STYLES,
         version=__version__,
         rail_total=sum(counts.values()),
-        rail_review_count=rc["review"],
-        rail_held_count=rc["held"],
-        rail_failed_count=rc["failed"],
-        rail_review_alert=_alert_class(rc["review"]),
-        rail_held_alert=_alert_class(rc["held"]),
-        rail_failed_alert=_alert_class(rc["failed"]),
+        rail_attention_count=rc["attention"],
+        rail_attention_alert=_alert_class(rc["attention"]),
         series_item=_series_rail_item(shelf["missing_total"], active=True),
         discover_item=_discover_rail_item(state),
-        library=_html(CONFIG.host_library or str(CONFIG.library_root)),
+        library=_breakable_path(CONFIG.host_library or str(CONFIG.library_root)),
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
-        output=_html(CONFIG.host_output or str(CONFIG.output_root)),
+        output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         body=body,
         series_script=SERIES_SCRIPT,
@@ -3216,23 +3204,14 @@ DISCOVER_PAGE = """<!doctype html>
     <a class="ab-rail-item" href="/">
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
+    <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
+      <span class="ab-glyph">&#9888;</span> Needs you
+      <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
     {discover_item}
     <a class="ab-rail-item" href="/settings">
       <span class="ab-glyph">&#9881;</span> Settings
       </a>
-  </nav>
-  <div class="ab-rail-label">Attention</div>
-  <nav class="ab-rail-section" aria-label="Attention">
-    <a class="ab-rail-item{rail_review_alert}" href="/?status=review">
-      <span class="ab-glyph">&#9873;</span> Review
-      <span class="ab-count">{rail_review_count}</span></a>
-    <a class="ab-rail-item{rail_held_alert}" href="/?status=held">
-      <span class="ab-glyph">&#8214;</span> Held
-      <span class="ab-count">{rail_held_count}</span></a>
-    <a class="ab-rail-item{rail_failed_alert}" href="/?status=failed">
-      <span class="ab-glyph">&#215;</span> Failed
-      <span class="ab-count">{rail_failed_count}</span></a>
   </nav>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
@@ -4209,17 +4188,13 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
         version=__version__,
         page_title=page_title,
         rail_total=sum(counts.values()),
-        rail_review_count=rc["review"],
-        rail_held_count=rc["held"],
-        rail_failed_count=rc["failed"],
-        rail_review_alert=_alert_class(rc["review"]),
-        rail_held_alert=_alert_class(rc["held"]),
-        rail_failed_alert=_alert_class(rc["failed"]),
+        rail_attention_count=rc["attention"],
+        rail_attention_alert=_alert_class(rc["attention"]),
         series_item=_series_rail_item(_series_shelf(state, refresh=False)["missing_total"]),
         discover_item=_discover_rail_item(state, active=active),
-        library=_html(CONFIG.host_library or str(CONFIG.library_root)),
+        library=_breakable_path(CONFIG.host_library or str(CONFIG.library_root)),
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
-        output=_html(CONFIG.host_output or str(CONFIG.output_root)),
+        output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         disc_body=body,
         discover_script=DISCOVER_SCRIPT,
@@ -4357,15 +4332,11 @@ def render_settings(state) -> str:
         series_item=_series_rail_item(_series_shelf(state, refresh=False)["missing_total"]),
         discover_item=_discover_rail_item(state),
         rail_total=total,
-        rail_review_count=rc["review"],
-        rail_held_count=rc["held"],
-        rail_failed_count=rc["failed"],
-        rail_review_alert=_alert_class(rc["review"]),
-        rail_held_alert=_alert_class(rc["held"]),
-        rail_failed_alert=_alert_class(rc["failed"]),
-        library=CONFIG.host_library or str(CONFIG.library_root),
+        rail_attention_count=rc["attention"],
+        rail_attention_alert=_alert_class(rc["attention"]),
+        library=_breakable_path(CONFIG.host_library or str(CONFIG.library_root)),
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
-        output=CONFIG.host_output or str(CONFIG.output_root),
+        output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         controls="\n".join(controls_parts),
         settings_script=SETTINGS_SCRIPT,
@@ -4508,11 +4479,79 @@ def _ingest_line() -> str:
     )
 
 
+def _group_sentence(key: str) -> str:
+    """The sentence under a group header; the runtime one names your real tolerance."""
+    sentence = GROUP_REASONS.get(key, ("", ""))[1]
+    pct = round(_tolerance() * 100)
+    if "25 % tolerance" in sentence and pct != 25:
+        sentence = sentence.replace("25 % tolerance", f"{pct} % tolerance")
+    return sentence
+
+
+def grouped_rows(units: list, row, detail_panel) -> str:
+    """The "Needs you" table body: one header per group, most severe group first.
+
+    Rows keep the order they arrive in (already sorted). A group is a status; its one
+    sentence is the one for the reason most of its rows share. Rows past GROUP_PAGE are
+    hidden behind a "Show N more" button.
+    """
+    out = []
+    for status in group_order():
+        members = [u for u in units if u.status == status]
+        if not members:
+            continue
+        keys = [short_reason(u.status, u.confidence or "", u.note, _detail_dict(u))[0] for u in members]
+        tally: dict[str, int] = {}
+        for k in keys:
+            tally[k] = tally.get(k, 0) + 1
+        lead_key = max(tally, key=lambda k: (tally[k], -keys.index(k)))
+        title = GROUP_TITLES[status]
+        out.append(
+            f'<tr class="ab-group" data-group="{status}"><td colspan="{TOTAL_COLUMNS}">'
+            f'<div class="ab-group-h"><span class="ab-group-t">{title}</span>'
+            f'<span class="ab-group-n">{len(members)}</span></div>'
+            f'<p class="ab-group-p">{_html(_group_sentence(lead_key))}</p></td></tr>'
+        )
+        for i, unit in enumerate(members):
+            out.append(row(unit, group=status, paged=i >= GROUP_PAGE) + detail_panel(unit))
+        more = len(members) - GROUP_PAGE
+        if more > 0:
+            out.append(
+                f'<tr class="ab-more-row" data-group="{status}"><td colspan="{TOTAL_COLUMNS}">'
+                f'<button type="button" class="ab-more" data-group="{status}" '
+                f'data-label="{title.lower()}" onclick="abShowMore(this)">'
+                f"Show {more} more {title.lower()}</button></td></tr>"
+            )
+    return "".join(out)
+
+
+def _detail_dict(unit) -> dict:
+    try:
+        data = json.loads(unit.detail or "{}")
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+#: chip text per status: the same words the group headers use
+STATUS_CHIP_LABELS = {
+    "converted": "Converted",
+    "ready": "Ready",
+    "review": "Review",
+    "held": "Held",
+    "failed": "Failed",
+    "interrupted": "Stopped",
+}
+
+#: ?status= values that open the "Needs you" view
+ATTENTION_ALIASES = ("attention", "needs-you")
+
+
 def render(state, status: str = "", query: str = "") -> str:
     counts = state.counts()
     stats = library_stats(state)
-    wanted = status if status in counts else ""
-    units = state.all(wanted or None)
+    status = (status or "").strip().lower()
+    all_units = state.all(None)
     total = sum(counts.values())
 
     # books with a manual conversion request are waiting on the one-at-a-time
@@ -4521,46 +4560,65 @@ def render(state, status: str = "", query: str = "") -> str:
     # (the book encoding right now is no longer in the queue, so it is added here)
     queued = in_flight_units()
     queued_by_status: dict[str, int] = {}
-    all_units = state.all(None)
     if queued:
         for u in all_units:
             if u.path in queued:
                 queued_by_status[u.status] = queued_by_status.get(u.status, 0) + 1
+    total -= sum(queued_by_status.values())
+    visible_counts = {name: counts.get(name, 0) - queued_by_status.get(name, 0) for name in counts}
+    attention_count = sum(max(0, visible_counts.get(name, 0)) for name in ATTENTION_STATUSES)
+
+    # 0.21.0: "Needs you" is the default view whenever something needs you; with nothing
+    # to do the default is All plus a one-line all-clear. ?status=all is the old All view.
+    # A server-side search (?q=) with no status looks through the whole library.
+    if status in ATTENTION_ALIASES or (not status and not query and attention_count > 0):
+        view = "attention"
+    elif status in counts:
+        view = status
+    else:
+        view = "all"
+    if view == "attention":
+        units = [u for u in all_units if u.status in ATTENTION_STATUSES]
+    elif view == "all":
+        units = list(all_units)
+    else:
+        units = state.all(view)
+    if queued:
         units = [u for u in units if u.path not in queued]
-        total -= queued_by_status.get(wanted, 0) if wanted else sum(queued_by_status.values())
-    queued_count = sum(queued_by_status.values())
 
     sort_column, sort_dir = read_sort(state)
     units = sort_units(units, sort_column, sort_dir)
     if query:
         units = [u for u in units if search_matches(u, query)]
 
-    # chips
-    chips = [
-        '<a class="chip{on}" href="/">All <span class="n">{n}</span></a>'.format(
-            on=" on" if not wanted else "", n=total
-        )
+    # chips: Needs you first, the problem statuses, the rest, All last
+    def chip(href: str, label: str, n: int, on: bool, alert: bool = False) -> str:
+        cls = "chip" + (" on" if on else "") + (" ab-alert" if alert else "")
+        return f'<a class="{cls}" href="{href}">{label} <span class="n">{n}</span></a>'
+
+    chips = []
+    if attention_count:
+        chips.append(chip("/?status=attention", "Needs you", attention_count, view == "attention", alert=True))
+    ordered = [n for n in STATUS_ORDER if n in ATTENTION_STATUSES] + [
+        n for n in STATUS_ORDER if n not in ATTENTION_STATUSES
     ]
-    for name in STATUS_ORDER:
-        visible = counts.get(name, 0) - queued_by_status.get(name, 0)
-        if not visible:
-            continue
-        chips.append(
-            '<a class="chip{on}" href="/?status={st}">{st} <span class="n">{n}</span></a>'.format(
-                on=" on" if wanted == name else "", st=name, n=visible
-            )
-        )
+    for name in ordered:
+        visible = visible_counts.get(name, 0)
+        if visible > 0:
+            chips.append(chip(f"/?status={name}", STATUS_CHIP_LABELS.get(name, name.capitalize()), visible, view == name))
+    chips.append(chip("/?status=all", "All", total, view == "all"))
     chips_html = "".join(chips)
     rc = rail_counts(state, counts)
     # stored series listings only; stale ones are refreshed in the background
     series_shelf = _series_shelf(state)
 
-    # problem units for shelf
-    shelf_order = {"failed": 0, "held": 1, "review": 2}
-    problem_units = [
-        u for u in all_units if u.status in ("held", "review", "failed") and u.path not in queued
-    ]
-    problem_units.sort(key=lambda u: (shelf_order.get(u.status, 99), unit_title_key(u)))
+    # nothing needs you: one line above the table, no box, no icon
+    allclear = ""
+    if view == "all" and not status and attention_count == 0:
+        allclear = (
+            f'<p class="ab-allclear">All clear - last scan {_html(_fmt_age(state.heartbeat_age()))}, '
+            "nothing needs you.</p>"
+        )
 
     # table
     shown = len(units)
@@ -4676,7 +4734,7 @@ def render(state, status: str = "", query: str = "") -> str:
             )
             meter = (
                 f'<div class="ab-meter">{cells}</div>'
-                '<div class="ab-meterhint">How sure we are this is the '
+                f'<div class="ab-meterhint">{unit.confidence.capitalize()} confidence &middot; How sure we are this is the '
                 "right book</div>"
             )
 
@@ -4860,7 +4918,7 @@ def render(state, status: str = "", query: str = "") -> str:
             + "</div></td></tr>"
         )
 
-    def row(unit) -> str:
+    def row(unit, group: str = "", paged: bool = False) -> str:
         tier = str(effective_val("auto_convert") or "high")
         haystack = " ".join(filter(None, [unit.title, unit.author, unit.path]))
         data = " ".join(f'data-sort-{key}="{_attr(str(sort_value(unit, key)))}"' for key in SORT_COLUMNS)
@@ -4873,36 +4931,44 @@ def render(state, status: str = "", query: str = "") -> str:
         if not isinstance(detail_data, dict):
             detail_data = {}
 
-        reason_html = ""
-        if unit.status in ("held", "review", "failed"):
+        # one short reason per row, the numbers beside it; the full sentence on hover
+        why_html = ""
+        _key, why_label = short_reason(unit.status, unit.confidence or "", unit.note, detail_data)
+        if why_label:
             why, _todo = explain(unit.status, unit.confidence or "", unit.note, detail_data, tier=tier)
-            rc = " failed" if unit.status == "failed" else ""
-            reason_html = f'<span class="ab-breason{rc}" title="{_attr(why)}">{_html(why)}</span>'
+            numbers = reason_numbers(unit.status, unit.confidence or "", unit.note, detail_data)
+            sub = f'<span class="ab-why-sub">{_html(numbers)}</span>' if numbers else ""
+            why_html = (
+                f'<div class="ab-why" title="{_attr(why)}"><span class="ab-why-l">{_html(why_label)}</span>{sub}</div>'
+            )
 
         match_html, match_title = match_cell(
             unit, detail_data, state.get_overrides(unit.path), asin_pins.get(unit.path, "")
         )
         match_attr = f' title="{_attr(match_title)}"' if match_title else ""
-        age = rel_age(unit.updated_at, now)
         row_src_badge = INGEST_BADGE if is_ingest_row(unit) else ""
+        group_attr = f' data-group="{_attr(group)}"' if group else ""
         # f-strings only: titles and paths come from folder names and the catalog
         return (
             f'<tr class="urow" onclick="toggleRow(this, event)" data-path="{_attr(unit.path)}" '
             'tabindex="0" role="button" aria-expanded="false" onkeydown="abRowKey(event,this)" '
-            f'data-search="{_attr(haystack)}" {data}>'
+            f'data-search="{_attr(haystack)}" {data}{group_attr}{" hidden" if paged else ""}>'
             f'<td class="ab-covcell"><div class="ab-covrow"><span class="ab-rowcaret" aria-hidden="true">&#9656;</span>'
             f'{cover_html(unit)}</div></td>'
             f'<td class="ab-bookcell"><span class="ab-btitle">{_html(unit.title or unit.path)}{badge}'
             f"{row_src_badge}</span>"
-            f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span>{reason_html}</td>'
-            f"<td>{status_dot(unit.status, unit.updated_at, now)}</td>"
+            f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span></td>'
+            f'<td class="ab-whycell">{why_html}</td>'
             f'<td class="ab-hidemd ab-match"{match_attr}>{match_html}</td>'
             f'<td class="ab-num">{fmt_hours(unit.hours)}</td>'
-            f'<td class="ab-hidemd ab-scan">{_html(age) or DASH}</td>'
+            f"<td>{status_dot(unit.status, unit.updated_at, now, label=False)}</td>"
             f'<td class="ab-actcol">{kebab_menu(unit)}</td></tr>'
         )
 
-    rows = "".join(row(u) + detail_panel(u) for u in units)
+    if view == "attention":
+        rows = grouped_rows(units, row, detail_panel)
+    else:
+        rows = "".join(row(u) + detail_panel(u) for u in units)
 
     # a re-opened panel shows its banner once; the flag is consumed so the next
     # page load starts collapsed again
@@ -4929,7 +4995,10 @@ def render(state, status: str = "", query: str = "") -> str:
         header(key, label, klass) for key, label, _width, klass in COLUMNS
     )
     colgroup = (f'<col style="width:{COVER_WIDTH}">') + "".join(
-        (f'<col style="width:{width}">') if width else "<col>" for _k, _l, width, _c in COLUMNS
+        (f'<col class="ab-col-{key}" style="width:{width}">' if key == "why" else f'<col style="width:{width}">')
+        if width
+        else "<col>"
+        for key, _l, width, _c in COLUMNS
     )
 
     # controls
@@ -5046,9 +5115,9 @@ def render(state, status: str = "", query: str = "") -> str:
         styles=STYLES,
         script=SCRIPT,
         version=__version__,
-        library=CONFIG.host_library or str(CONFIG.library_root),
+        library=_breakable_path(CONFIG.host_library or str(CONFIG.library_root)),
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
-        output=CONFIG.host_output or str(CONFIG.output_root),
+        output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         dry_text=dry_header,
         ingest_line=_ingest_line(),
@@ -5058,12 +5127,8 @@ def render(state, status: str = "", query: str = "") -> str:
         rail_total=total,
         series_item=_series_rail_item(series_shelf["missing_total"]),
         discover_item=_discover_rail_item(state),
-        rail_review_count=rc["review"],
-        rail_held_count=rc["held"],
-        rail_failed_count=rc["failed"],
-        rail_review_alert=_alert_class(rc["review"]),
-        rail_held_alert=_alert_class(rc["held"]),
-        rail_failed_alert=_alert_class(rc["failed"]),
+        rail_attention_count=rc["attention"],
+        rail_attention_alert=_alert_class(rc["attention"]),
         scan_button=scan_button,
         recheck_button=recheck_button,
         pause_button=pause_button,
@@ -5071,7 +5136,7 @@ def render(state, status: str = "", query: str = "") -> str:
         dry_button=dry_button,
         dry_note=dry_note,
         queue_strip=queue_strip,
-        shelf_html=_render_shelf(problem_units),
+        allclear=allclear,
         stat_hours="{}".format(stats["hours"]),
         stat_gb="{}".format(stats["gb"]),
         stat_pct="{}".format(stats["progress"]),
@@ -5108,12 +5173,13 @@ def library_stats(state) -> dict:
 
 def rail_counts(state, counts: dict) -> dict:
     """DB counts minus books currently waiting in the manual-conversion queue."""
-    adjusted = {k: counts.get(k, 0) for k in ("review", "held", "failed")}
+    adjusted = {k: counts.get(k, 0) for k in ATTENTION_STATUSES}
     queued = in_flight_units()
     if queued:
         for u in state.all(None):
             if u.path in queued and u.status in adjusted:
                 adjusted[u.status] -= 1
+    adjusted["attention"] = sum(adjusted[k] for k in ATTENTION_STATUSES)
     return adjusted
 
 

@@ -363,7 +363,7 @@ def render_with(units, pins=None, **extra):
             for path, fields in extra.get("locks", {}).items():
                 state.set_overrides(path, {f: "x" for f in fields})
                 state.lock_fields(path, fields)
-            return web.render(state)
+            return web.render(state, extra.get("status", ""))
         finally:
             state.close()
 
@@ -383,15 +383,21 @@ class TestStatusDot(unittest.TestCase):
                 UnitState(path="A/1", status="converted", title="61 Hours", hours=13.18),
                 UnitState(path="A/2", status="held", title="World War Z", hours=12.21),
                 UnitState(path="A/3", status="review", title="The Power of Habit", hours=10.49),
-            ]
+            ],
+            status="all",
         )
         self.assertNotIn('class="pill', table(page))
         for row in rows(page):
             self.assertEqual(row.count('class="ab-st-dot"'), 1)
         body = table(page)
         self.assertIn('ab-st ab-st-ok"', body)
-        self.assertIn('aria-hidden="true"></span>Converted<span class="ab-st-age">just now</span>', body)
-        self.assertIn("></span>Held<", body)
+        # 0.21.0: the Waiting column is the dot and the bare age; the word stays in the title
+        self.assertIn('aria-hidden="true"></span><span class="ab-st-age">&lt;1m</span>', body)
+        self.assertIn('title="Held · just now"', body)
+        self.assertIn(
+            'aria-hidden="true"></span><span class="ab-st-label">Converted</span><span class="ab-st-age">just now</span>',
+            web.status_dot("converted", NOW - 10, NOW),
+        )
         self.assertIn('<span class="ab-st-age">waiting &lt;1m</span>', web.status_dot("review", NOW - 10, NOW))
 
     def test_only_a_moving_state_pulses(self):
@@ -403,7 +409,7 @@ class TestStatusDot(unittest.TestCase):
     def test_the_word_always_sits_next_to_the_dot(self):
         for status, word in (("converted", "Converted"), ("held", "Held"), ("review", "Review"), ("failed", "Failed")):
             html = web.status_dot(status, NOW - 3600, NOW)
-            self.assertIn(f'</span>{word}<span class="ab-st-age">', html)
+            self.assertIn(f'<span class="ab-st-label">{word}</span><span class="ab-st-age">', html)
 
     def test_status_age_uses_the_cutoff(self):
         self.assertIn(">2d ago<", web.status_dot("converted", NOW - 2 * 86400, NOW))
@@ -438,8 +444,9 @@ class TestTableSemantics(unittest.TestCase):
                 self.assertIn('<span class="ab-arrow"></span>', inner)
 
     def test_no_new_columns(self):
-        self.assertEqual(web.SORT_COLUMNS, ("title", "status", "tier", "runtime", "scan"))
-        self.assertEqual([c[1] for c in web.COLUMNS], ["Book", "Status", "Match", "Length", "Last scan"])
+        # 0.21.0: Status and Last scan merged into Waiting; Why is the short reason
+        self.assertEqual(web.SORT_COLUMNS, ("title", "why", "tier", "runtime", "scan"))
+        self.assertEqual([c[1] for c in web.COLUMNS], ["Book", "Why", "Match", "Length", "Waiting"])
 
 
 class TestMatchWording(unittest.TestCase):
@@ -449,16 +456,22 @@ class TestMatchWording(unittest.TestCase):
             pins={"A/3": "B0FD4CV4BF"},
         )
         self.assertIn(
-            '<span class="ab-match-cur">Current ASIN</span> &middot; <span class="ab-conf-low">Low Confidence</span>',
+            '<span class="ab-match-lead ab-match-cur">Current ASIN</span><span class="ab-match-sep">&middot;</span>'
+            '<span class="ab-match-word ab-conf-low">Low</span>',
             page,
         )
+        self.assertIn('title="Current ASIN B0FD4CV4BF (you set it) · Low Confidence"', page)
 
     def test_an_automatic_match_reads_series_then_confidence(self):
         detail = json.dumps({"match": {"asin": "B003G8RX9O", "series": "Jack Reacher", "sequence": "14"}})
         page = render_with(
             [UnitState(path="A/1", status="converted", title="61 Hours", confidence="HIGH", detail=detail)]
         )
-        self.assertIn('Jack Reacher #14 &middot; <span class="ab-conf-high">High Confidence</span>', page)
+        self.assertIn(
+            '<span class="ab-match-lead">Jack Reacher #14</span><span class="ab-match-sep">&middot;</span>'
+            '<span class="ab-match-word ab-conf-high">High</span>',
+            page,
+        )
         self.assertIn('title="Jack Reacher #14 · High Confidence"', page)
 
     def test_your_series_wins_over_the_catalogs(self):
@@ -472,7 +485,8 @@ class TestMatchWording(unittest.TestCase):
                 UnitState(path="A/1", status="converted", confidence="HIGH"),
                 UnitState(path="A/2", status="review", confidence="MEDIUM"),
                 UnitState(path="A/3", status="review", confidence="LOW"),
-            ]
+            ],
+            status="all",
         )
         body = table(page)
         for word in ("High Confidence", "Medium Confidence", "Low Confidence"):

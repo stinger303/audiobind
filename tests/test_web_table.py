@@ -132,7 +132,7 @@ class TestRenderedSearchAndSort(unittest.TestCase):
             self.assertIn(f'data-column="{column}"', page)
 
     def test_rows_carry_search_and_sort_data(self):
-        page = web.render(self.state)
+        page = web.render(self.state, "all")
         self.assertIn("Michael Connelly", page)  # in the data-search haystack
         self.assertIn('data-sort-runtime="12.0"', page)
         self.assertIn('data-sort-tier="0"', page)  # HIGH
@@ -146,7 +146,7 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         self.state.set_meta("sort_column", "title")
         self.state.set_meta("sort_dir", "asc")
         self.assertEqual(web.read_sort(self.state), ("title", "asc"))
-        page = web.render(self.state)
+        page = web.render(self.state, "all")
         self.assertLess(page.index("61 Hours"), page.index("The Burning Room"))
         self.assertIn('window.AB_SORT_COLUMN = "title"', page)
 
@@ -157,7 +157,7 @@ class TestRenderedSearchAndSort(unittest.TestCase):
 
     def test_quotes_in_titles_do_not_break_attributes(self):
         self.state.save(UnitState(path='Odd/Book "Quoted"', status="ready", title='A "Quoted" Title'))
-        page = web.render(self.state)
+        page = web.render(self.state, "all")
         self.assertNotIn('data-search="A "Quoted"', page)
         self.assertIn("&quot;Quoted&quot;", page)
 
@@ -169,7 +169,7 @@ class TestRenderedSearchAndSort(unittest.TestCase):
     def test_book_cell_has_max_width_and_actcol_is_fixed(self):
         page = web.render(self.state)
         self.assertIn("max-width:520px", web.STYLES)
-        self.assertIn('style="width:min(560px,30vw)"', page)
+        self.assertIn('style="width:min(520px,28vw)"', page)
         self.assertIn("text-overflow:ellipsis", web.STYLES)
 
     def test_the_table_layout_is_fixed_so_columns_never_grow(self):
@@ -327,7 +327,7 @@ class TestSortAttributes(unittest.TestCase):
 
     def test_every_row_carries_its_sort_attributes(self):
         page = web.render(self.state)
-        for column in ("title", "status", "tier", "runtime", "scan"):
+        for column in ("title", "why", "tier", "runtime", "scan"):
             self.assertIn("data-sort-%s=" % column, page)
         self.assertNotIn("{}=", page)
 
@@ -341,7 +341,7 @@ class TestSortAttributes(unittest.TestCase):
         ]
         self.assertTrue(row, "review row not found")
         review_row = row[-1].split("</tr>")[0]
-        self.assertIn("data-sort-status=", review_row)
+        self.assertIn("data-sort-why=", review_row)
         self.assertIn("data-sort-tier=", review_row)
         self.assertNotIn("{}=", review_row)
 

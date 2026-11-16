@@ -21,13 +21,14 @@ class QuickWins(unittest.TestCase):
         self.dir.cleanup()
 
     def test_rail_alert_only_when_the_count_is_above_zero(self):
+        # 0.21.0: Needs you is the rail's one triage item (the Attention trio is gone)
         page = web.render(self.state)
-        for name in ("review", "held", "failed"):
-            self.assertIn(f'class="ab-rail-item" href="/?status={name}"', page)
+        self.assertIn('class="ab-rail-item" href="/?status=attention"', page)
         self.state.save(UnitState(path="A/1", status="failed", title="T"))
         page = web.render(self.state)
-        self.assertIn('class="ab-rail-item ab-alert" href="/?status=failed"', page)
-        self.assertIn('class="ab-rail-item" href="/?status=held"', page)
+        self.assertIn('class="ab-rail-item ab-alert" href="/?status=attention"', page)
+        for name in ("review", "held", "failed"):
+            self.assertNotIn(f'href="/?status={name}"', page.split("</aside>")[0])
 
     def test_series_item_is_never_an_alarm(self):
         self.assertNotIn("ab-alert", web._series_rail_item(5))
@@ -62,23 +63,27 @@ class QuickWins(unittest.TestCase):
         self.assertIn("--ab-text4:#7d828b", web.STYLES)
         self.assertIn(".ab-st-hold .ab-st-dot{background:var(--ab-amber)}", web.STYLES)
         self.assertIn("tr.drow,tr.urow{scroll-margin-top:40px}", web.STYLES)
-        self.assertRegex(web.STYLES, r"\.ab-breason\{[^}]*white-space:nowrap;overflow:hidden;text-overflow:ellipsis")
+        self.assertRegex(web.STYLES, r"\.ab-why-sub\{[^}]*overflow:hidden;text-overflow:ellipsis;white-space:nowrap")
+        self.assertNotIn("ab-breason", web.STYLES)
         self.assertNotIn("button.dry{", web.STYLES)  # only .dry.on is tinted
 
     def test_no_tofu_glyphs(self):
         page = web.render(self.state)
         self.assertNotIn("&#x23F8;", page)
-        self.assertIn("&#8214;", page)
+        self.assertIn("&#9888;", page)  # the rail's Needs you glyph, a numeric ref
         self.assertNotIn("ud83d", page)
         self.assertNotIn("\U0001f512", web.lock_chip("title", True))
 
     def test_reason_carries_the_full_sentence_in_its_title(self):
         self.state.save(UnitState(path="A/1", status="held", title="T", note="x"))
         page = web.render(self.state)
-        self.assertRegex(page, r'<span class="ab-breason" title="[^"]+">')
+        self.assertRegex(page, r'<div class="ab-why" title="[^"]+">')
 
-    def test_shelf_starts_collapsed_unless_opened(self):
-        self.assertIn("let collapsed = true;", web.render(self.state))
+    def test_the_shelf_and_its_collapse_state_are_gone(self):
+        page = web.render(self.state)
+        self.assertNotIn("let collapsed = true;", page)
+        self.assertNotIn("SHELF_KEY", page)
+        self.assertNotIn("abShelfInit", page)
 
 
 if __name__ == "__main__":
