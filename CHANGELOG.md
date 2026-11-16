@@ -7,6 +7,38 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.21.0-dev12] - 2026-11-16
+
+Audiobook adaptations, gated on the same regression run.
+
+### Fixed
+- **An adaptation the folder didn't ask for is never HIGH.** Three Riyria Revelations folders,
+  originally converted from the plain Tim Gerard Reynolds editions, now matched the GraphicAudio
+  dramatizations. *Rise of Empire* did so at HIGH. Its catalog search returned the dramatization
+  alone (the folder misspells the author "Micheal", so the author search finds nothing), which
+  gave it a margin of 0.978. A catalog hit whose title or subtitle says *Dramatized Adaptation*,
+  *GraphicAudio*, *Graphic Audio*, *Full Cast* or *Audio Drama* is now capped at MEDIUM, as a
+  foreign-language hit is. The exception is when the folder name, the scanner's title reading or
+  the embedded-tag title carries any of those markers. With the default `AUTO_CONVERT=high`, such
+  a hit waits for your click instead of converting unseen. It is not dropped to LOW, because title
+  and author do match. The panel note reads "catalog hit is a Dramatized Adaptation and your folder
+  does not say so", and the match evidence stores the phrase (`unasked_adaptation`). An ASIN you
+  pin is never affected.
+- Regression run (`docs/match-after-adaptations.csv` against `docs/match-after.csv`): one row
+  changed. *Rise of Empire - Riyria Revelations, Book 2* went from HIGH to MEDIUM on B09P49F6J7
+  (title 1.000, author 0.944, margin 0.978). No ASIN changed. Tiers: HIGH 65, MEDIUM 11, LOW 8,
+  NONE 7.
+
+### Measured, not changed
+- **A title reading without the " - Series, Book N" tail.** Searched live, the bare titles do
+  return the plain editions. But each then ties its dramatization exactly (both score 1.0, both
+  Audnex-corroborated). The tie-break keeps the dramatization, and the tie brings the margin to 0.
+  All three books went to LOW on the dramatization and none switched to the plain edition, so the
+  reading was not kept. The fetched responses stay in `docs/match-catalog-cache.json`.
+- **Theft of Swords and Heir of Novron already retrieve the plain edition.** It loses on score:
+  the dramatization's subtitle "Riyria Revelations, Book 1" matches the folder's "- Book 1" better
+  than the plain edition's "Volume 1". Those two stay at MEDIUM (margin 0.022) and LOW.
+
 ## [0.21.0-dev11] - 2026-11-16
 
 Matching, gated on a before/after regression run over the real library.
