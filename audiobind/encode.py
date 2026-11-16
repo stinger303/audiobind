@@ -599,7 +599,9 @@ def encode(
     want_codec = "mp3" if mp3 else "aac"
     if not any(s.get("codec_name") == want_codec for s in streams):
         raise RuntimeError(f"output has no {want_codec.upper()} audio stream")
-    if abs(duration - total_duration) > max(120, total_duration * 0.02):
+    # a merge of the same audio matches the summed sources to within container rounding;
+    # 30 s or 0.2% (72 s on ten hours) still catches one dropped file in a long book
+    if abs(duration - total_duration) > max(30, total_duration * 0.002):
         hint = ""
         for line in (errors[0] if errors else "").splitlines():
             low = line.lower()
