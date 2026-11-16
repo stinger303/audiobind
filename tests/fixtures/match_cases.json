@@ -1,0 +1,23 @@
+{
+  "_doc": "Minimal catalog data for tests/test_match_fixtures.py. Each product is a trimmed Audible search record (only what Product.from_audible reads). Every catalog search in a case returns that case's products; Audnex knows nothing.",
+  "products": {
+    "dune": {"asin": "B002V1OF70", "title": "Dune", "subtitle": "Dune, Book 1", "authors": [{"name": "Frank Herbert"}], "runtime_length_min": 1263, "language": "english"},
+    "dune_messiah": {"asin": "B002V8H660", "title": "Dune Messiah", "subtitle": "Dune, Book 2", "authors": [{"name": "Frank Herbert"}], "runtime_length_min": 530, "language": "english"},
+    "children_of_dune": {"asin": "B002V8L5SQ", "title": "Children of Dune", "subtitle": "Dune, Book 3", "authors": [{"name": "Frank Herbert"}], "runtime_length_min": 960, "language": "english"},
+    "atomic_habits": {"asin": "B07RFSSYBH", "title": "Atomic Habits", "subtitle": "An Easy & Proven Way to Build Good Habits & Break Bad Ones", "authors": [{"name": "James Clear"}], "runtime_length_min": 335, "language": "english"},
+    "atomic_summarized": {"asin": "B07SUMMRZD", "title": "Atomic Habits", "subtitle": "Summarized for Busy People", "authors": [{"name": "Goldmine Reads"}], "runtime_length_min": 41, "language": "english"},
+    "atomic_study_guide": {"asin": "B07STUDYGD", "title": "Atomic Habits", "subtitle": "Study Guide", "authors": [{"name": "James Clear"}], "runtime_length_min": 52, "language": "english"},
+    "moneyball_en": {"asin": "B005EHN61O", "title": "Moneyball", "subtitle": "The Art of Winning an Unfair Game", "authors": [{"name": "Michael Lewis"}], "runtime_length_min": 626, "language": "english"},
+    "moneyball_de": {"asin": "B0DEMONEYB", "title": "Moneyball", "subtitle": "Die Kunst, ein unfaires Spiel zu gewinnen", "authors": [{"name": "Michael Lewis"}], "runtime_length_min": 640, "language": "german"},
+    "maze_runner": {"asin": "B004AHWZKE", "title": "The Maze Runner", "subtitle": "Maze Runner, Book 1", "authors": [{"name": "James Dashner"}], "runtime_length_min": 649, "language": "english"},
+    "scorch_trials": {"asin": "B004AQY4Q2", "title": "The Scorch Trials", "subtitle": "Maze Runner, Book 2", "authors": [{"name": "James Dashner"}], "runtime_length_min": 619, "language": "english"},
+    "death_cure": {"asin": "B0068K8NZA", "title": "The Death Cure", "subtitle": "Maze Runner, Book 3", "authors": [{"name": "James Dashner"}], "runtime_length_min": 567, "language": "english"},
+    "dcc_1": {"asin": "B08V8B2CGV", "title": "Dungeon Crawler Carl", "subtitle": "Dungeon Crawler Carl, Book 1", "authors": [{"name": "Matt Dinniman"}], "runtime_length_min": 812, "language": "english"},
+    "dcc_2": {"asin": "B0934GTSGT", "title": "Carl's Doomsday Scenario", "subtitle": "Dungeon Crawler Carl, Book 2", "authors": [{"name": "Matt Dinniman"}], "runtime_length_min": 688, "language": "english"},
+    "dcc_4": {"asin": "B09GCYRZRQ", "title": "The Gate of the Feral Gods", "subtitle": "Dungeon Crawler Carl, Book 4", "authors": [{"name": "Matt Dinniman"}], "runtime_length_min": 1083, "language": "english"},
+    "hollow_world": {"asin": "B00IFL59DO", "title": "Hollow World", "authors": [{"name": "Michael J. Sullivan"}], "runtime_length_min": 751, "language": "english"},
+    "emilie_hollow": {"asin": "B09MG261RX", "title": "Emilie and the Hollow World", "authors": [{"name": "Martha Wells"}], "runtime_length_min": 590, "language": "english"},
+    "heir_dramatized": {"asin": "B09P4BYYX5", "title": "Heir of Novron [Dramatized Adaptation]", "subtitle": "Riyria Revelations, Book 3", "authors": [{"name": "Michael J. Sullivan"}], "runtime_length_min": 420, "language": "english"},
+    "heir_novron": {"asin": "B008UCYCSQ", "title": "Heir of Novron", "authors": [{"name": "Michael J. Sullivan"}], "runtime_length_min": 1907, "language": "english"}
+  }
+}
