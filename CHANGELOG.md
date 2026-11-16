@@ -7,6 +7,31 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.21.0-dev14] - 2026-11-16
+
+Support modules and the web layer: two fixes, two containment/regression proofs. The rest of the
+audit entries for these modules were already handled or did not hold up.
+
+### Fixed
+- **A catalog answer that isn't a JSON object no longer crashes the lookup.** When Audible or
+  Audnex answered with a bare list or string, `search`, `book`, `chapters` and `product_images`
+  called `.get` on it and raised. `_get_json` now treats any non-object body as a failed lookup.
+  It is not cached and not retried. The Discover queries still report it as "could not reach the
+  catalog", not as "nothing found".
+- **A GET on a POST-only route is now 405 with `Allow: POST`.** Before, only `/logout` and the
+  connection tests did this. A GET on `/api/account`, `/api/unit`, `/api/settings`,
+  `/api/control`, `/api/library/abs-layout` and the wishlist actions rendered the page shell
+  instead. One table (`POST_ONLY_ROUTES`) now covers them all.
+- **An unknown `/api/...` path now answers a JSON 404**, not the HTML page.
+
+### Tests
+- The "Needs you" runtime group sentence is pinned at 35 % and 40 %, not only 25 %. The sentence
+  already showed your configured tolerance. The new pin catches a reworded advice sentence that
+  would silently stop the swap.
+- `/cover?path=` containment is proven over HTTP. Traversal, absolute paths, NUL bytes and a
+  `cover.jpg` symlinked out of the output tree all get a 404 and never serve the file. The path is
+  only ever a key into the state DB.
+
 ## [0.21.0-dev13] - 2026-11-16
 
 Picking the right edition when an adaptation is in the running, gated on the same regression run.
