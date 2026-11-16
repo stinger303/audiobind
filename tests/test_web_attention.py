@@ -4,6 +4,7 @@ import pathlib
 import re
 import tempfile
 import unittest
+from unittest import mock
 
 from audiobind import web
 from audiobind.state import State, UnitState
@@ -107,6 +108,18 @@ class TestNeedsYouView(unittest.TestCase):
         self.assertIn("more than your 25 % tolerance", tbody)
         # the more row is the group's last row
         self.assertGreater(tbody.index('class="ab-more-row"'), tbody.rindex('<tr class="drow"'))
+
+    def test_the_runtime_group_sentence_names_the_configured_tolerance(self):
+        # advice.GROUP_REASONS carries the 25 % wording; web._group_sentence swaps in the real
+        # setting. If the advice wording ever changes, this is the test that notices the swap broke.
+        units = [UnitState(path="A/01", status="held", confidence="HIGH", title="Book",
+                           note="runtime 12.95h vs catalog 7.50h")]
+        for tolerance, shown in ((0.25, "25"), (0.35, "35"), (0.4, "40")):
+            with mock.patch.object(web, "_tolerance", return_value=tolerance):
+                tbody = body(render_with(units))
+            self.assertIn(f"more than your {shown} % tolerance", tbody, tolerance)
+            if shown != "25":
+                self.assertNotIn("25 % tolerance", tbody)
 
     def test_a_short_group_has_no_button(self):
         self.assertNotIn("ab-more", body(render_with([HELD, REVIEW])))
