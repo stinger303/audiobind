@@ -5639,6 +5639,186 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Heir+of+Novron": {
+"products": [
+{
+"asin": "B008UCYCSQ",
+"authors": [
+{
+"asin": "B002BOJ41O",
+"name": "Michael J. Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tim Gerard Reynolds"
+}
+],
+"publisher_name": "Recorded Books",
+"release_date": "2012-08-08",
+"runtime_length_min": 1908,
+"series": [
+{
+"asin": "B0081WUWRK",
+"sequence": "3",
+"title": "Riyria Revelations",
+"url": "/pd/Riyria-Revelations-Audiobook/B0081WUWRK"
+}
+],
+"subtitle": "Riyria Revelations, Volume 3",
+"title": "Heir of Novron"
+},
+{
+"asin": "B09P4BYYX5",
+"authors": [
+{
+"asin": "B002BOJ41O",
+"name": "Michael J. Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Bradley Foster Smith"
+},
+{
+"name": "Carolyn Kashner"
+},
+{
+"name": "Chris Genebach"
+},
+{
+"name": "Danny Gavigan"
+},
+{
+"name": "Duyen Washington"
+},
+{
+"name": "Dylan Lynch"
+},
+{
+"name": "Jeff Allin"
+},
+{
+"name": "Laura C. Harris"
+},
+{
+"name": "Terence Aselford"
+},
+{
+"name": "Rayner Gabriel"
+},
+{
+"name": "Matthew Aldwin McGee"
+}
+],
+"publisher_name": "Graphic Audio LLC",
+"release_date": "2022-01-03",
+"runtime_length_min": 1440,
+"series": [
+{
+"asin": "B0081WUWRK",
+"sequence": "3",
+"title": "Riyria Revelations",
+"url": "/pd/Riyria-Revelations-Audiobook/B0081WUWRK"
+}
+],
+"subtitle": "Riyria Revelations, Book 3",
+"title": "Heir of Novron [Dramatized Adaptation]"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Heir+of+Novron&author=Michael+J.+Sullivan": {
+"products": [
+{
+"asin": "B008UCYCSQ",
+"authors": [
+{
+"asin": "B002BOJ41O",
+"name": "Michael J. Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tim Gerard Reynolds"
+}
+],
+"publisher_name": "Recorded Books",
+"release_date": "2012-08-08",
+"runtime_length_min": 1908,
+"series": [
+{
+"asin": "B0081WUWRK",
+"sequence": "3",
+"title": "Riyria Revelations",
+"url": "/pd/Riyria-Revelations-Audiobook/B0081WUWRK"
+}
+],
+"subtitle": "Riyria Revelations, Volume 3",
+"title": "Heir of Novron"
+},
+{
+"asin": "B09P4BYYX5",
+"authors": [
+{
+"asin": "B002BOJ41O",
+"name": "Michael J. Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Bradley Foster Smith"
+},
+{
+"name": "Carolyn Kashner"
+},
+{
+"name": "Chris Genebach"
+},
+{
+"name": "Danny Gavigan"
+},
+{
+"name": "Duyen Washington"
+},
+{
+"name": "Dylan Lynch"
+},
+{
+"name": "Jeff Allin"
+},
+{
+"name": "Laura C. Harris"
+},
+{
+"name": "Terence Aselford"
+},
+{
+"name": "Rayner Gabriel"
+},
+{
+"name": "Matthew Aldwin McGee"
+}
+],
+"publisher_name": "Graphic Audio LLC",
+"release_date": "2022-01-03",
+"runtime_length_min": 1440,
+"series": [
+{
+"asin": "B0081WUWRK",
+"sequence": "3",
+"title": "Riyria Revelations",
+"url": "/pd/Riyria-Revelations-Audiobook/B0081WUWRK"
+}
+],
+"subtitle": "Riyria Revelations, Book 3",
+"title": "Heir of Novron [Dramatized Adaptation]"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Heir+of+Novron+-+Riyira+Revelations+Book+03": {
 "products": []
 },
@@ -9980,6 +10160,148 @@
 ],
 "subtitle": "Red Rising, Book 1",
 "title": "Red Rising (Part 2 of 2) (Dramatized Adaptation)"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Rise+of+Empire": {
+"products": [
+{
+"asin": "B0HRJHGHN3",
+"release_date": "2026-11-13",
+"runtime_length_min": 11,
+"title": "The Sinaloa Cartel's Fractured Empire: El Marino and the Rise of Los Exiliados"
+},
+{
+"asin": "B01KBD5FKK",
+"authors": [
+{
+"asin": "B001K8A9U2",
+"name": "S. C. Gwynne"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "David Drummond"
+}
+],
+"publisher_name": "Simon & Schuster Audio",
+"release_date": "2016-09-20",
+"runtime_length_min": 909,
+"subtitle": "Quanah Parker and the Rise and Fall of the Comanches, the Most Powerful Indian Tribe in American History",
+"title": "Empire of the Summer Moon"
+},
+{
+"asin": "B015QGVJ2K",
+"authors": [
+{
+"asin": "B001IGJL8W",
+"name": "Selwyn Raab"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Paul Costanzo"
+}
+],
+"publisher_name": "Tantor Audio",
+"release_date": "2015-10-06",
+"runtime_length_min": 2034,
+"subtitle": "The Rise, Decline, and Resurgence of America's Most Powerful Mafia Empires",
+"title": "Five Families"
+},
+{
+"asin": "B0081IIZ6Y",
+"authors": [
+{
+"asin": "B002BOJ41O",
+"name": "Michael J. Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tim Gerard Reynolds"
+}
+],
+"publisher_name": "Recorded Books",
+"release_date": "2012-05-09",
+"runtime_length_min": 1587,
+"series": [
+{
+"asin": "B0081WUWRK",
+"sequence": "2",
+"title": "Riyria Revelations",
+"url": "/pd/Riyria-Revelations-Audiobook/B0081WUWRK"
+}
+],
+"subtitle": "Riyria Revelations, Volume 2",
+"title": "Rise of Empire"
+},
+{
+"asin": "B0BBTC5R83",
+"authors": [
+{
+"asin": "B004P9V0SI",
+"name": "Eckart Frahm"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Matthew Lloyd Davies"
+}
+],
+"publisher_name": "Basic Books",
+"release_date": "2023-04-04",
+"runtime_length_min": 904,
+"subtitle": "The Rise and Fall of the World's First Empire",
+"title": "Assyria"
+},
+{
+"asin": "B0HRVRZ91T",
+"release_date": "2026-11-16",
+"runtime_length_min": 13,
+"title": "Sudan's Forgotten Empire: The Rise of Kerma"
+},
+{
+"asin": "B0HRVG7Q8V",
+"release_date": "2026-11-16",
+"runtime_length_min": 450,
+"title": "Rise of the Macedonian Empire-Arthur M. Curteis"
+},
+{
+"asin": "B0HRVC2DLH",
+"release_date": "2026-11-16",
+"runtime_length_min": 450,
+"title": "Rise of the Macedonian Empire-Arthur M. Curteis"
+},
+{
+"asin": "B0HR5NRGVN",
+"release_date": "2026-11-15",
+"runtime_length_min": 591,
+"title": "Napoleon and Josephine 'The Rise of the Empire'-Walter Geer"
+},
+{
+"asin": "B00WYDLPWI",
+"authors": [
+{
+"asin": "B000APEALK",
+"name": "Tom Holland"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Steven Crossley"
+}
+],
+"publisher_name": "Tantor Audio",
+"release_date": "2015-05-12",
+"runtime_length_min": 1091,
+"subtitle": "The Birth of Islam and the Rise of the Global Arab Empire",
+"title": "In the Shadow of the Sword"
 }
 ]
 },
@@ -16127,6 +16449,136 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Theft+of+Swords": {
+"products": [
+{
+"asin": "B007KSJKI8",
+"authors": [
+{
+"asin": "B002BOJ41O",
+"name": "Michael J. Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tim Gerard Reynolds"
+}
+],
+"publisher_name": "Recorded Books",
+"release_date": "2012-03-16",
+"runtime_length_min": 1358,
+"series": [
+{
+"asin": "B0081WUWRK",
+"sequence": "1",
+"title": "Riyria Revelations",
+"url": "/pd/Riyria-Revelations-Audiobook/B0081WUWRK"
+}
+],
+"subtitle": "Riyria Revelations, Volume 1",
+"title": "Theft of Swords"
+},
+{
+"asin": "B09PQ951KX",
+"authors": [
+{
+"asin": "B002BOJ41O",
+"name": "Michael J. Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Amanda Forstrom"
+},
+{
+"name": "Andrew Quilpa"
+},
+{
+"name": "Andy Brownstein"
+},
+{
+"name": "Andy Clemence"
+},
+{
+"name": "Bradley Smith"
+},
+{
+"name": "Bruce Alan Rauscher"
+},
+{
+"name": "Chris Genebach"
+},
+{
+"name": "Chris Stinson"
+},
+{
+"name": "Christopher Walker"
+},
+{
+"name": "Colleen Delany"
+},
+{
+"name": "David Jourdan"
+},
+{
+"name": "Dylan Lynch"
+},
+{
+"name": "Henry Kramer"
+},
+{
+"name": "Jeff Allin"
+},
+{
+"name": "Jonathan Feuer"
+}
+],
+"publisher_name": "GraphicAudio",
+"release_date": "2022-01-08",
+"runtime_length_min": 1019,
+"series": [
+{
+"asin": "B0081WUWRK",
+"sequence": "1",
+"title": "Riyria Revelations",
+"url": "/pd/Riyria-Revelations-Audiobook/B0081WUWRK"
+}
+],
+"subtitle": "Riyria Revelations, Book 1",
+"title": "Theft of Swords [Dramatized Adaptation]"
+},
+{
+"asin": "B005R406BM",
+"authors": [
+{
+"asin": "B002E3SBZM",
+"name": "Elizabeth Singer Hunt"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "MacLeod Andrews"
+}
+],
+"publisher_name": "Brilliance Audio",
+"release_date": "2011-10-04",
+"runtime_length_min": 65,
+"series": [
+{
+"asin": "B073WKN9C8",
+"sequence": "11",
+"title": "Secret Agent Jack Stalwart",
+"url": "/pd/Secret-Agent-Jack-Stalwart-Audiobook/B073WKN9C8"
+}
+],
+"subtitle": "Secret Agent Jack Stalwart, Book 11",
+"title": "The Theft of the Samurai Sword: Japan"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Theft+of+Swords+-+Riyria+Revelations+-+Book+1": {
 "products": [
 {
@@ -18436,6 +18888,31 @@
 "subtitle": "A Novel with Three Codas",
 "title": "Redshirts"
 },
+"https://api.audnex.us/books/B0081IIZ6Y?region=us": {
+"asin": "B0081IIZ6Y",
+"authors": [
+{
+"asin": "B002BOJ41O",
+"name": "Michael J. Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tim Gerard Reynolds"
+}
+],
+"publisherName": "Recorded Books",
+"releaseDate": "2012-05-09T00:00:00.000Z",
+"runtimeLengthMin": 1587,
+"seriesPrimary": {
+"asin": "B0081WUWRK",
+"name": "Riyria Revelations",
+"position": "2"
+},
+"subtitle": "Riyria Revelations, Volume 2",
+"title": "Rise of Empire"
+},
 "https://api.audnex.us/books/B008UCYCSQ?region=us": {
 "asin": "B008UCYCSQ",
 "authors": [
@@ -18842,6 +19319,58 @@
 "releaseDate": "2022-03-15T00:00:00.000Z",
 "runtimeLengthMin": 482,
 "title": "The Kaiju Preservation Society"
+},
+"https://api.audnex.us/books/B09P49F6J7?region=us": {
+"asin": "B09P49F6J7",
+"authors": [
+{
+"asin": "B002BOJ41O",
+"name": "Michael J. Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Andy Brownstein"
+},
+{
+"name": "Bradley Smith"
+},
+{
+"name": "Chris Genebach"
+},
+{
+"name": "Duyen Washington"
+},
+{
+"name": "Jeff Allin"
+},
+{
+"name": "Jonathan Feuer"
+},
+{
+"name": "Kimberly Gilbert"
+},
+{
+"name": "Laura C. Harris"
+},
+{
+"name": "Niusha Nawab"
+},
+{
+"name": "Terence Aselford"
+}
+],
+"publisherName": "Graphic Audio LLC",
+"releaseDate": "2022-01-03T00:00:00.000Z",
+"runtimeLengthMin": 1225,
+"seriesPrimary": {
+"asin": "B0081WUWRK",
+"name": "Riyria Revelations",
+"position": "2"
+},
+"subtitle": "Riyria Revelations, Book 2",
+"title": "Rise of Empire [Dramatized Adaptation]"
 },
 "https://api.audnex.us/books/B09P4BYYX5?region=us": {
 "asin": "B09P4BYYX5",
