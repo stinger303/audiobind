@@ -6,7 +6,9 @@ import tempfile
 import time
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
+from unittest import mock
 
 from audiobind import catalog, covers, web
 from audiobind.config import CONFIG
@@ -180,6 +182,53 @@ class TestCoverEndpointAndMarkup(CoverBase):
             sign_out_urllib()
             server.shutdown()
             server.server_close()
+
+    def test_the_path_parameter_cannot_reach_a_file_outside_the_library(self):
+        # /cover?path= is only ever a key into the state DB (covers.resolve -> state.get); the
+        # one file it can serve is cover.jpg beside a known unit's output, inside OUTPUT_ROOT
+        secret = self.root / "secret.jpg"
+        secret.write_bytes(JPEG)
+        book_dir = CONFIG.output_root / "Author" / "Linked"
+        book_dir.mkdir(parents=True)
+        (book_dir / "cover.jpg").symlink_to(secret)
+        self.state.save(UnitState(path="src/Linked", status="converted", output=str(book_dir / "Linked.m4b")))
+        self.fake_download(ok=False)
+        CONFIG.web_port = 0
+        web.Handler.state = self.state
+        server = web.serve(self.state)
+        sign_in_urllib(self.state)
+        resolved = []
+        real = web.resolve_cover
+
+        def spy(*args, **kwargs):
+            found = real(*args, **kwargs)
+            resolved.append(found)
+            return found
+
+        url = f"http://127.0.0.1:{CONFIG.web_port}/cover?path="
+        attempts = (
+            "../../etc/passwd",
+            urllib.parse.quote(str(secret), safe=""),
+            "/etc/passwd",
+            "src/Linked%00/../../secret.jpg",
+            "%00",
+            "src/Linked",  # a known unit whose cover.jpg is a symlink out of the output tree
+        )
+        try:
+            with mock.patch.object(web, "resolve_cover", side_effect=spy):
+                for attempt in attempts:
+                    with self.assertRaises(urllib.error.HTTPError, msg=attempt) as caught:
+                        with urllib.request.urlopen(url + attempt, timeout=10) as response:
+                            response.read()
+                    self.assertEqual(caught.exception.code, 404, attempt)
+                    self.assertNotEqual(caught.exception.read(), JPEG, attempt)
+                    caught.exception.close()
+        finally:
+            sign_out_urllib()
+            server.shutdown()
+            server.server_close()
+        self.assertEqual(resolved, [None] * len(attempts))
+        self.assertEqual(self.downloads, [])
 
     def test_table_and_panel_carry_cover_boxes(self):
         self.state.save(UnitState(path="A/B", status="ready", asin="B005EHN61O", title="B"))
