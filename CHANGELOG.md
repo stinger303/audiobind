@@ -7,6 +7,36 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.21.0-dev10] - 2026-11-16
+
+Pipeline flow.
+
+### Fixed
+- **A LOW folder match is re-checked against the audio files' own tags.** An ingest folder name is a
+  release name and can match the wrong book at LOW. The embedded-tag retry only ran when the folder
+  matched nothing, so that wrong match stood. It now runs on LOW too. The tags' match replaces the
+  folder's only when it grades higher, or at the same tier scores at least 0.10 better. Otherwise the
+  folder match stays, and a different book the tags pointed to is named in a note. "matched on the
+  audio file's embedded tags" now appears only when the tags' match was actually used.
+- **A crashed encode's work folder is found and removed.** The folder was named from Python's
+  `hash()`, which changes with every process, so after a restart the same book got a new folder and
+  the old one stayed in `WORK_DIR` forever. The name is now a stable SHA-1 prefix of the book's key,
+  and the folder is emptied before each encode, so a crashed run's partial file can never be taken
+  for new output. Folders left by older versions are not removed automatically; once no encode is
+  running, anything in `WORK_DIR` can be deleted.
+- **A published file is never encoded twice or forgotten.** Two cases still encoded a duplicate into
+  the current layout. One: a `ready` row (its file was already published) whose file sits under an
+  older layout. Two: a converted book that a re-check moved to review or held. That re-check also
+  cleared the row's output path while the file stayed on disk. Now any row whose recorded file still
+  exists is left unencoded, a re-check keeps the output path, and such a row is recorded `ready`
+  ("already published") when it would otherwise convert. A `converted` row is still left exactly as
+  it was. **Convert anyway** still re-encodes.
+- **M4B + MP3 publishes both files or neither.** Both formats already encoded before either was
+  published. But if the mp3's publish failed (say, the disk filled during a cross-filesystem copy),
+  the m4b stayed in the library, and the next scan took it as already published, so the mp3 was never
+  made. A failed publish now removes the files, `cover.jpg` and empty folders that this attempt
+  created. Nothing that was there before is removed.
+
 ## [0.21.0-dev9] - 2026-11-16
 
 Encode correctness.
