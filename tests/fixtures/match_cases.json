@@ -1,5 +1,5 @@
 {
-  "_doc": "Minimal catalog data for tests/test_match_fixtures.py. Each product is a trimmed Audible search record (only what Product.from_audible reads). Every catalog search in a case returns that case's products; Audnex knows nothing.",
+  "_doc": "Minimal catalog data for tests/test_match_fixtures.py. Each product is a trimmed Audible search record (only what Product.from_audible reads). Every catalog search in a case returns that case's products; Audnex knows nothing. rise_full_cast and rise_audio_drama (B0TEST* ASINs) are synthetic: adaptations marked only by a subtitle or a parenthetical; the other rise_/theft_ entries are copied from docs/match-catalog-cache.json.",
   "products": {
     "dune": {"asin": "B002V1OF70", "title": "Dune", "subtitle": "Dune, Book 1", "authors": [{"name": "Frank Herbert"}], "runtime_length_min": 1263, "language": "english"},
     "dune_messiah": {"asin": "B002V8H660", "title": "Dune Messiah", "subtitle": "Dune, Book 2", "authors": [{"name": "Frank Herbert"}], "runtime_length_min": 530, "language": "english"},
@@ -18,6 +18,12 @@
     "hollow_world": {"asin": "B00IFL59DO", "title": "Hollow World", "authors": [{"name": "Michael J. Sullivan"}], "runtime_length_min": 751, "language": "english"},
     "emilie_hollow": {"asin": "B09MG261RX", "title": "Emilie and the Hollow World", "authors": [{"name": "Martha Wells"}], "runtime_length_min": 590, "language": "english"},
     "heir_dramatized": {"asin": "B09P4BYYX5", "title": "Heir of Novron [Dramatized Adaptation]", "subtitle": "Riyria Revelations, Book 3", "authors": [{"name": "Michael J. Sullivan"}], "runtime_length_min": 420, "language": "english"},
-    "heir_novron": {"asin": "B008UCYCSQ", "title": "Heir of Novron", "authors": [{"name": "Michael J. Sullivan"}], "runtime_length_min": 1907, "language": "english"}
+    "heir_novron": {"asin": "B008UCYCSQ", "title": "Heir of Novron", "authors": [{"name": "Michael J. Sullivan"}], "runtime_length_min": 1907, "language": "english"},
+    "rise_dramatized": {"asin": "B09P49F6J7", "title": "Rise of Empire [Dramatized Adaptation]", "subtitle": "Riyria Revelations, Book 2", "authors": [{"name": "Michael J. Sullivan"}], "publisher_name": "Graphic Audio LLC", "runtime_length_min": 1225, "language": "english"},
+    "rise_plain": {"asin": "B0081IIZ6Y", "title": "Rise of Empire", "subtitle": "Riyria Revelations, Volume 2", "authors": [{"name": "Michael J. Sullivan"}], "publisher_name": "Recorded Books", "runtime_length_min": 1587, "language": "english"},
+    "theft_dramatized": {"asin": "B09PQ951KX", "title": "Theft of Swords [Dramatized Adaptation]", "subtitle": "Riyria Revelations, Book 1", "authors": [{"name": "Michael J. Sullivan"}], "publisher_name": "GraphicAudio", "runtime_length_min": 1019, "language": "english"},
+    "theft_plain": {"asin": "B007KSJKI8", "title": "Theft of Swords", "subtitle": "Riyria Revelations, Volume 1", "authors": [{"name": "Michael J. Sullivan"}], "publisher_name": "Recorded Books", "runtime_length_min": 1358, "language": "english"},
+    "rise_full_cast": {"asin": "B0TESTFULC", "title": "Rise of Empire", "subtitle": "A Full Cast Production", "authors": [{"name": "Michael J. Sullivan"}], "runtime_length_min": 900, "language": "english"},
+    "rise_audio_drama": {"asin": "B0TESTDRAM", "title": "Rise of Empire (Audio Drama)", "authors": [{"name": "Michael J. Sullivan"}], "runtime_length_min": 600, "language": "english"}
   }
 }
