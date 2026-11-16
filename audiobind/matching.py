@@ -47,8 +47,9 @@ class Match:
     #: set when the best candidate's title did not resemble the wanted one (below TITLE_FLOOR):
     #: nothing is matched then, and this is the note that names what was rejected and why
     rejected: str = ""
-    #: share of the folder title's tokens covered by the window that got the pick past TITLE_FLOOR,
-    #: when no whole-string reading did (1.0 otherwise); below 60% the grade is never HIGH
+    #: share of the folder title's tokens covered by the window behind floor_sim, measured when
+    #: the title score (whole-string readings) is below floor_sim - a window matched better than
+    #: any whole reading; 1.0 otherwise. Below MIN_HIGH_WINDOW_COVERAGE the grade is never HIGH
     title_window_coverage: float = 1.0
 
     @property
@@ -111,17 +112,24 @@ def catalog_full_titles(product: Product) -> list[str]:
     return out
 
 
+def floor_candidates(wanted: str, product: Product) -> list[str]:
+    """The catalog strings ``floor_sim`` scores: the title (and each "aka" side of it), then
+    title + subtitle only when the title alone already scored SUBTITLE_GATE. ``window_coverage``
+    walks this same list, so it can never describe a subtitle the floor score did not see."""
+    candidates = catalog_titles(product.title)
+    if product.subtitle and title_alone(wanted, product) >= SUBTITLE_GATE:
+        candidates = candidates + [f for f in catalog_full_titles(product) if f not in candidates]
+    return candidates
+
+
 def floor_sim(wanted: str, product: Product) -> float:
-    """The title score TITLE_FLOOR is applied to: best window, title (or one "aka" side of it),
-    then title + subtitle only when the title alone already scored SUBTITLE_GATE.
+    """The title score TITLE_FLOOR is applied to: the best window of ``wanted`` against any of
+    ``floor_candidates``.
 
     Only the floor gate uses this. It is never the title score: a catalog title equal to one
     window of the folder name ("Dune" inside "Dune Messiah") would score 1.0 and beat the real book.
     """
-    alone = title_alone(wanted, product)
-    if product.subtitle and alone >= SUBTITLE_GATE:
-        alone = max([alone] + [window_sim(wanted, f) for f in catalog_full_titles(product)])
-    return alone
+    return max((window_sim(wanted, c) for c in floor_candidates(wanted, product)), default=0.0)
 
 
 def title_alone(wanted: str, product: Product) -> float:
@@ -132,12 +140,16 @@ def title_alone(wanted: str, product: Product) -> float:
 
 
 def window_coverage(wanted: str, product: Product) -> float:
-    """Share of ``wanted``'s tokens covered by the window that gives ``floor_sim`` (1.0 = whole string)."""
+    """Share of ``wanted``'s tokens covered by the window that gives ``floor_sim`` (1.0 = whole string).
+
+    Same windows, same candidates (``floor_candidates``) as ``floor_sim``: a subtitle behind
+    SUBTITLE_GATE that the floor score never saw cannot widen the window either.
+    """
     tokens = (wanted or "").split()
     if not tokens:
         return 1.0
     best, best_len = -1.0, len(tokens)
-    for candidate in (*catalog_titles(product.title), *catalog_full_titles(product)):
+    for candidate in floor_candidates(wanted, product):
         for i in range(len(tokens)):
             for j in range(i + 1, len(tokens) + 1):
                 score = sim(" ".join(tokens[i:j]), candidate)
@@ -412,8 +424,8 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
     best, margin = _pick_and_margin(ranked)
 
     floor_score = floor_sim(title, best["product"])
-    # defensive: when only a window of the folder title reached the floor (no whole-string
-    # reading did), record how much of the title that window covers; grade() refuses HIGH below 60%
+    # defensive: when a window of the folder title matched better than any whole-string reading,
+    # record how much of the title that window covers; grade() refuses HIGH below 60%
     coverage = 1.0
     if best["title_sim"] < round(floor_score, 3):
         coverage = window_coverage(title, best["product"])
