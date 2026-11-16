@@ -4,6 +4,8 @@
    tags, and the tags' match replaces the folder's only when it is genuinely better.
 2. A book's work directory has the same name in every process, and is emptied before an encode,
    so a crashed run's leftovers are found, removed and never mistaken for new output.
+4. A published file recorded on a row is honoured whatever the row's status: a re-check that ends
+   in review/held keeps the output path, and no re-check encodes a duplicate into a newer layout.
 """
 
 import os
@@ -17,12 +19,14 @@ from audiobind import catalog, encode, ingest, matching, pipeline
 from audiobind.config import CONFIG
 from audiobind.catalog import Product
 from audiobind.probe import Probe
-from audiobind.state import SOURCE_INGEST
+from audiobind.state import SOURCE_INGEST, UnitState
 from audiobind.units import BookUnit, Part
 
 try:
+    from test_ingest_discovery import touch
     from test_ingest_pipeline import KEY, PHM, PipelineCase
 except ImportError:
+    from tests.test_ingest_discovery import touch
     from tests.test_ingest_pipeline import KEY, PHM, PipelineCase
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -185,6 +189,81 @@ class TestWorkDir(PipelineCase):
         self.convert()
         self.assertEqual(seen, {"stale_present": False, "work_dir_present": False})
         self.assertFalse(work.exists())
+
+
+class TestPublishedFileIsHonoured(PipelineCase):
+    WEAK = Product(asin="B0WEAK0001", title="Project Hail Mary Companion", authors=["Other Person"],
+                   hours=1.0, language="english")
+
+    @property
+    def out(self):
+        return CONFIG.output_root
+
+    def unit(self):
+        return ingest.find_any_unit(KEY)
+
+    def old_file(self):
+        old = self.out / "Andy Weir" / "Old Layout Folder" / "Project Hail Mary.m4b"
+        touch(str(old), b"old m4b")
+        return old
+
+    def old_layout_row(self):
+        old = self.old_file()
+        self.state.save(UnitState(path=KEY, status="converted", output=str(old), source="ingest",
+                                  title="Project Hail Mary", confidence="HIGH", asin=PHM.asin))
+        return old
+
+    def run_unit(self, search=None, **kw):
+        with (
+            mock.patch.object(catalog, "search", return_value=search or [PHM]),
+            mock.patch.object(catalog, "book", return_value={"title": "Project Hail Mary",
+                                                              "authors": [{"name": "Andy Weir"}]}),
+            mock.patch.object(catalog, "chapters", return_value=[]),
+            mock.patch.object(pipeline, "probe", return_value=Probe(duration=3600.0, codec="mp3", channels="2")),
+            mock.patch.object(encode, "probe_chapters", return_value=[]),
+            mock.patch.object(encode, "encode", side_effect=self.fake_encode),
+        ):
+            pipeline.process_unit(self.state, self.unit(), log=lambda *_: None, **kw)
+        return self.state.get(KEY)
+
+    def test_a_ready_row_published_under_an_older_layout_is_not_encoded_again(self):
+        self.add_torrent()
+        old = self.old_file()
+        self.state.save(UnitState(path=KEY, status="ready", output=str(old), source="ingest",
+                                  confidence="HIGH", asin=PHM.asin))
+        row = self.run_unit(manual=True)
+        self.assertEqual(self.encode_calls, [])
+        self.assertEqual((row.status, row.output), ("ready", str(old)))
+        self.assertEqual(list(self.out.rglob("*.m4b")), [old])  # no duplicate in the new layout
+
+    def test_a_converted_book_rechecked_into_review_keeps_its_output(self):
+        self.add_torrent()
+        old = self.old_layout_row()
+        row = self.run_unit(search=[self.WEAK], manual=True)
+        self.assertEqual(row.status, "review")
+        self.assertEqual(row.output, str(old))  # the row still agrees with the disk
+        self.assertTrue(old.exists())
+        # ... and a later Retry that matches again does not encode a second copy
+        row = self.run_unit(manual=True)
+        self.assertEqual(self.encode_calls, [])
+        self.assertEqual((row.status, row.output), ("ready", str(old)))
+        self.assertEqual(list(self.out.rglob("*.m4b")), [old])
+
+    def test_a_row_whose_file_is_gone_is_not_given_a_stale_output(self):
+        self.add_torrent()
+        self.old_layout_row().unlink()
+        row = self.run_unit(search=[self.WEAK], manual=True)
+        self.assertEqual((row.status, row.output), ("review", ""))
+
+    def test_convert_anyway_still_re_encodes_a_ready_row(self):
+        self.add_torrent()
+        old = self.old_file()
+        self.state.save(UnitState(path=KEY, status="ready", output=str(old), source="ingest",
+                                  confidence="HIGH", asin=PHM.asin))
+        row = self.run_unit(force=True, manual=True, reencode=True)
+        self.assertEqual(len(self.encode_calls), 1)
+        self.assertEqual(row.status, "converted")
+        self.assertNotEqual(row.output, str(old))
 
 
 if __name__ == "__main__":

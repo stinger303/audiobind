@@ -394,13 +394,15 @@ def record(
 
 
 def kept_conversion(state: State, unit: BookUnit) -> str:
-    """The output of this book's previous conversion when it is still on disk, else "".
+    """The output recorded on this book's row when that file is still on disk, else "".
 
     A re-check (Re-check all, Retry, a forced scan) only knows where the CURRENT layout files a
-    book; a book converted under an older layout would look missing there and be encoded again.
+    book; a book published under an older layout would look missing there and be encoded again.
+    Any status counts, not only ``converted``: a ``ready`` row records a file that was already
+    published, and a converted book re-checked into review or held keeps its output path.
     """
     prev = state.get(unit.state_key)
-    if prev is None or prev.status != "converted" or not prev.output:
+    if prev is None or not prev.output:
         return ""
     try:
         return prev.output if Path(prev.output).is_file() else ""
@@ -440,6 +442,12 @@ def process_unit(
             # deleted while this re-check ran: writing the row would bring the book back
             log("  removed from Audiobind while being checked - nothing recorded")
             return
+        if not kw.get("output"):
+            # a re-check that ends without converting must not forget a published file: the row
+            # would disagree with the disk, and the next re-check would encode a duplicate
+            kept_output = kept_conversion(state, unit)
+            if kept_output:
+                kw["output"] = kept_output
         record(state, audit, status, reopen=manual and status in ("review", "held", "failed"), **kw)
 
     def convert() -> None:
@@ -449,8 +457,17 @@ def process_unit(
             return
         kept = "" if reencode else kept_conversion(state, unit)
         if kept:
-            # the row is left exactly as it was: no re-encode, no duplicate, no orphaned folder
-            log(f"  already converted at {kept} - run Match Audiobookshelf layout to move it")
+            # no re-encode, no duplicate, no orphaned folder
+            prev = state.get(unit.state_key)
+            if prev is not None and prev.status == "converted":
+                # the row is left exactly as it was
+                log(f"  already converted at {kept} - run Match Audiobookshelf layout to move it")
+            else:
+                # a ready row, or a converted book an earlier re-check put in review/held: it
+                # would convert now, and its file is already published - say so, as
+                # nothing_written does when the file sits at the current layout's path
+                log(f"  already published at {kept} - not encoded again (Convert anyway re-encodes)")
+                rec("ready", output=kept, note="already published - the output file exists")
             return
         try:
             result = convert_unit(audit, log=log, cancelled=dismissed, heartbeat=state.heartbeat)
