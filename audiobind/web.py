@@ -4836,6 +4836,21 @@ STATUS_CHIP_LABELS = {
 #: Settings > Watcher connection tests (POST only): path -> what is tested
 WATCHER_TEST_ROUTES = {"/api/watcher/test-qbit": "qbit", "/api/watcher/test-tracker": "tracker"}
 
+#: routes do_POST serves and do_GET does not: a GET on one is 405 + "Allow: POST", never the page
+#: shell (/api/series, /api/wishlist, /api/watcher, /api/discover/recommendations take both)
+POST_ONLY_ROUTES = {
+    "/logout": "sign out with POST",
+    "/api/account": "account changes are a POST",
+    "/api/unit": "unit actions are a POST",
+    "/api/settings": "settings are saved with a POST",
+    "/api/wishlist/remove": "this wishlist action is a POST",
+    "/api/wishlist/retry": "this wishlist action is a POST",
+    "/api/wishlist/title": "this wishlist action is a POST",
+    "/api/library/abs-layout": "the layout tool is a POST",
+    "/api/control": "control actions are a POST",
+    **{route: "a connection test is a POST" for route in WATCHER_TEST_ROUTES},
+}
+
 #: ?status= values that open the "Needs you" view
 ATTENTION_ALIASES = ("attention", "needs-you")
 
@@ -6195,8 +6210,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send(303, b"", "text/plain", {"Location": "/"})
             return
-        if path.rstrip("/") == "/logout":
-            self._send(405, b'{"error":"sign out with POST"}', "application/json", {"Allow": "POST"})
+        if self._refuse_get_on_post_only(path):
             return
         if path in ("/favicon.svg", "/icon.svg"):
             icon = ICON_PATH
@@ -6250,9 +6264,6 @@ class Handler(BaseHTTPRequestHandler):
             rows = [discover_mod.public_row(r) for r in self.state.wishlist_all()]
             self._send(200, json.dumps({"count": len(rows), "items": rows}).encode(), "application/json")
             return
-        if path.rstrip("/") in WATCHER_TEST_ROUTES:
-            self._send(405, b'{"error":"a connection test is a POST"}', "application/json", {"Allow": "POST"})
-            return
         if path.rstrip("/") == "/api/watcher":
             self._send(200, json.dumps(watcher_mod.WATCHER.status(self.state)).encode(), "application/json")
             return
@@ -6292,8 +6303,20 @@ class Handler(BaseHTTPRequestHandler):
             body = render_settings(self.state, params.get("tab", ""))
             self._send(200, body.encode(), "text/html; charset=utf-8")
             return
+        if path.rstrip("/") == "/api" or path.startswith("/api/"):
+            # an API client asked for something that does not exist: JSON, never the page shell
+            self._send(404, b'{"error":"not found"}', "application/json")
+            return
         body = render(self.state, status, params.get("q", ""))
         self._send(200, body.encode(), "text/html; charset=utf-8")
+
+    def _refuse_get_on_post_only(self, path: str) -> bool:
+        """A GET on a POST_ONLY_ROUTES path answers 405 + Allow: POST; True when it did."""
+        message = POST_ONLY_ROUTES.get(path.rstrip("/"))
+        if message is None:
+            return False
+        self._send(405, json.dumps({"error": message}).encode(), "application/json", {"Allow": "POST"})
+        return True
 
     def _send_cover(self, asin: str, rel_path: str) -> None:
         try:
