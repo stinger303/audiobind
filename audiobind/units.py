@@ -64,6 +64,15 @@ class BookUnit:
     #: INGEST_DIR for an ingest unit (see ``source``)
     rel_path: str = ""
     source: str = SOURCE_LIBRARY
+    #: "(Read by Jeff Hays)" in the name: the narrator, never mistaken for the author
+    narrator_guess: str = ""
+    #: the swapped reading when both sides of "A - B" look equally like a name ("Past Tense - Lee
+    #: Child"); the matcher asks the catalog which reading is a real book
+    alt_author_guess: str = ""
+    alt_title_guess: str = ""
+    #: an ASIN found in brackets in an ingest name ("In Too Deep [B0CLGF5CFH]"); a candidate the
+    #: matcher checks against the title, never a pin
+    asin_hint: str = ""
 
     @property
     def state_key(self) -> str:
@@ -386,49 +395,107 @@ def author_like(text: str | None) -> float:
     return round(score, 2)
 
 
-def split_author_title(name: str) -> tuple[str | None, str | None]:
-    """Best (author, title) guess from one path segment, correcting 'Title - Author'."""
+#: "(Read by Jeff Hays)" / "(Narrated by ...)": a narrator, not an author
+_NARRATOR_RE = re.compile(r"\((?:read|narrated)\s+by\s+([^)]+)\)", re.I)
+#: "Dungeon Crawler Carl - 04 - The Gate of the Feral Gods": series, sequence, title
+_SERIES_DASH_SEQ_RE = re.compile(r"^(?P<series>.+?)\s+-\s+\d{1,3}(?:\.\d)?\s*-\s*(?P<title>.+)$")
+#: an author_like gap below this between the two sides of "A - B" leaves the orientation open
+ORIENTATION_AMBIGUITY = 0.15
+#: a bracketed ASIN (B0 + 8) or ISBN-10 in a raw ingest name
+_ASIN_HINT_RE = re.compile(r"[\[{(](B0[0-9A-Z]{8}|\d{9}[\dX])[\]})]")
+
+
+@dataclass
+class _Split:
+    author: str | None
+    title: str | None
+    narrator: str = ""
+    #: both sides of the separator, when the split was "A - B": (left, right)
+    sides: tuple[str, str] | None = None
+
+
+def _split(name: str) -> _Split:
     text = clean(name)
     text = re.sub(r"^\s*\d{1,3}\s*(?:[-–—]\s*|\.(?!\d)\s*)", "", text)
     if not text:
-        return None, None
+        return _Split(None, None)
     text = SEQ_RE.sub("", text)
+    narrator = ""
+    read_by = _NARRATOR_RE.search(text)
+    if read_by:
+        # before the " by " rule, which would make "Jeff Hays)" the author; the rest still parses
+        narrator = read_by.group(1).strip()
+        text = re.sub(r"\s+", " ", text[: read_by.start()] + " " + text[read_by.end():]).strip(" -;,")
+        if not text:
+            return _Split(None, None, narrator)
     match = re.search(r"^(?P<title>.+?)\s+by\s+(?P<author>[^-]+?)(?:\s*\(.*\))?$", text, re.I)
     if match and 1 <= len(match.group("author").split()) <= 5:
-        return match.group("author").strip(), match.group("title").strip()
+        return _Split(match.group("author").strip(), match.group("title").strip(), narrator)
     for sep in (" - ", " \u2013 ", " \u2014 ", " -", "- ", "; ", " ; "):
         if sep in text:
             left, right = text.split(sep, 1)
             left, right = left.strip(" -;"), right.strip(" -;")
             if not left or not right:
                 continue
-            if author_like(right) - author_like(left) >= 0.15:
-                return right, left
-            return left, right
-    return None, text
+            if author_like(right) - author_like(left) >= ORIENTATION_AMBIGUITY:
+                return _Split(right, left, narrator, (left, right))
+            return _Split(left, right, narrator, (left, right))
+    return _Split(None, text, narrator)
+
+
+def split_author_title(name: str) -> tuple[str | None, str | None]:
+    """Best (author, title) guess from one path segment, correcting 'Title - Author'."""
+    split = _split(name)
+    return split.author, split.title
 
 
 def _guess(unit: BookUnit, guess_path: str = "", ingest: bool = False) -> None:
-    segments = [p for p in Path(guess_path or unit.rel_path).parts if p]
+    raw_segments = [p for p in Path(guess_path or unit.rel_path).parts if p]
+    segments = list(raw_segments)
     if ingest:
         # torrent names carry tags and sequence prefixes; library names never go through this
         segments = [clean_torrent_name(p) for p in segments]
+        # clean_torrent_name drops bracketed tags, a real ASIN with them: read it from the raw name
+        for raw in reversed(raw_segments):
+            hint = _ASIN_HINT_RE.search(raw)
+            if hint:
+                unit.asin_hint = hint.group(1)
+                break
+    elif segments:
+        # a loose library file is named with its extension: "Island of Glass.m4b"
+        base, ext = os.path.splitext(segments[-1])
+        if base and ext.lower() in AUDIO_EXT:
+            segments[-1] = base
     stem = segments[-1] if segments else unit.name
     parent = segments[-2] if len(segments) > 1 else ""
     grandparent = segments[-3] if len(segments) > 2 else ""
 
-    author_stem, title_stem = split_author_title(stem)
+    # "Dungeon Crawler Carl - 04 - The Gate of the Feral Gods": the left side is a series, not an author
+    series_stem = ""
+    dash_seq = _SERIES_DASH_SEQ_RE.match(clean(stem))
+    if dash_seq:
+        series_stem = dash_seq.group("series").strip()
+        inner = _split(dash_seq.group("title"))
+        title_part = inner.title if inner.author is None else clean(dash_seq.group("title"))
+        stem_split = _Split(None, title_part, inner.narrator)
+    else:
+        stem_split = _split(stem)
+    author_stem, title_stem = stem_split.author, stem_split.title
     author_parent, title_parent = split_author_title(parent) if parent else (None, None)
     author_grandparent, _ = split_author_title(grandparent) if grandparent else (None, None)
 
+    def not_series(candidate: str | None) -> bool:
+        return not (series_stem and norm(candidate) == norm(series_stem))
+
     author = ""
     for candidate in (author_stem, author_parent, author_grandparent):
-        if candidate and author_like(candidate) >= 0.3:
+        if candidate and author_like(candidate) >= 0.3 and not_series(candidate):
             author = candidate
             break
     if not author:
         for candidate in (parent, grandparent):
-            if candidate and author_like(clean(candidate)) >= 0.6 and len(clean(candidate).split()) <= 3:
+            if (candidate and author_like(clean(candidate)) >= 0.6 and len(clean(candidate).split()) <= 3
+                    and not_series(clean(candidate))):
                 author = clean(candidate)
                 break
 
@@ -440,15 +507,25 @@ def _guess(unit: BookUnit, guess_path: str = "", ingest: bool = False) -> None:
     if not title:
         title = clean(title_parent or parent or stem)
 
-    series = ""
+    series = series_stem
     for candidate in (parent, grandparent):
+        if series:
+            break
         if candidate and SERIES_DIR_RE.search(candidate) and author_like(candidate) < 0.5:
             series = clean(candidate)
-            break
 
     unit.author_guess = clean(author)
     unit.title_guess = clean(title)
     unit.series_guess = series
+    unit.narrator_guess = clean(stem_split.narrator)
+
+    # "Past Tense - Lee Child": both sides look about as much like a name, so the left-is-author
+    # default is a coin toss; keep the swapped reading for the matcher to put to the catalog
+    if stem_split.sides and author == author_stem and title_stem and unit.title_guess == clean(title_stem):
+        left, right = stem_split.sides
+        if abs(author_like(left) - author_like(right)) < ORIENTATION_AMBIGUITY:
+            unit.alt_author_guess = clean(title_stem)
+            unit.alt_title_guess = clean(author_stem)
 
 
 def looks_like_collection(unit: BookUnit, avg_hours: float) -> bool:

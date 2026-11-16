@@ -126,8 +126,10 @@ def _match_embedded(unit: BookUnit, local_hours: float) -> matching.Match | None
     author, title = ingest.embedded_names(unit)
     if not (author or title):
         return None
+    # the folder name's swapped reading belongs to the folder name, not to the tags
     retry_unit = dataclasses.replace(
-        unit, author_guess=author or unit.author_guess, title_guess=title or unit.title_guess
+        unit, author_guess=author or unit.author_guess, title_guess=title or unit.title_guess,
+        alt_author_guess="", alt_title_guess="",
     )
     if (norm(retry_unit.author_guess), norm(retry_unit.title_guess)) == (
         norm(unit.author_guess),

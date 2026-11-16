@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from . import catalog
 from .catalog import Product
 from .units import BookUnit
-from .util import norm, sim
+from .util import norm, sim, title_sim
 
 
 @dataclass
@@ -74,14 +74,61 @@ def window_sim(wanted: str, candidate: str) -> float:
     )
 
 
+#: the catalog title alone must score this before title + subtitle is scored at all: a subtitle
+#: that merely names the query ("... Hunting Lee Child's Jack Reacher ...") never carries a title
+SUBTITLE_GATE = 0.60
+#: "Count to Ten aka Private Delhi": an alternate name inside a catalog title
+_AKA_RE = re.compile(r"\s+(?:aka|a\.k\.a\.?)\s+", re.IGNORECASE)
+
+
+def strip_brackets(text: str) -> str:
+    """``text`` with bracketed / braced / parenthetical groups removed ("Lock In (Narrated by X)" -> "Lock In")."""
+    return re.sub(r"\s+", " ", _BRACKETED.sub(" ", text or "")).strip(" -_.")
+
+
+def catalog_titles(title: str) -> list[str]:
+    """The catalog title, plus each side of an "aka" in it, each scored on its own - and each of
+    those again with its bracketed / parenthetical groups removed, so a narrator or edition tag
+    on the catalog side never keeps a plain folder name from matching."""
+    title = (title or "").strip()
+    sides = [s.strip() for s in _AKA_RE.split(title)] if _AKA_RE.search(title) else []
+    out: list[str] = []
+    for t in [title] + [s for s in sides if s and s != title]:
+        for v in (t, strip_brackets(t)):
+            if v and v not in out:
+                out.append(v)
+    return out
+
+
+def catalog_full_titles(product: Product) -> list[str]:
+    """Title + subtitle, and the same with brackets removed. Only ever scored behind SUBTITLE_GATE,
+    which is measured on the title alone, so a stripped subtitle never stands in for a title."""
+    full = f"{product.title} {product.subtitle}".strip()
+    out = [full]
+    stripped = strip_brackets(full)
+    if stripped and stripped != full:
+        out.append(stripped)
+    return out
+
+
 def floor_sim(wanted: str, product: Product) -> float:
-    """The title score TITLE_FLOOR is applied to: best window, title or title + subtitle.
+    """The title score TITLE_FLOOR is applied to: best window, title (or one "aka" side of it),
+    then title + subtitle only when the title alone already scored SUBTITLE_GATE.
 
     Only the floor gate uses this. It is never the title score: a catalog title equal to one
     window of the folder name ("Dune" inside "Dune Messiah") would score 1.0 and beat the real book.
     """
-    return max(window_sim(wanted, product.title),
-               window_sim(wanted, f"{product.title} {product.subtitle}".strip()))
+    alone = title_alone(wanted, product)
+    if product.subtitle and alone >= SUBTITLE_GATE:
+        alone = max([alone] + [window_sim(wanted, f) for f in catalog_full_titles(product)])
+    return alone
+
+
+def title_alone(wanted: str, product: Product) -> float:
+    """How well the catalog title by itself (or one "aka" side of it) matches the best window of
+    ``wanted`` - the SUBTITLE_GATE measure. A window, so "Moneyball The Art of Winning" still lets
+    "Moneyball" + its subtitle count; a decoy whose title appears nowhere in the query never does."""
+    return max(window_sim(wanted, t) for t in catalog_titles(product.title))
 
 
 def window_coverage(wanted: str, product: Product) -> float:
@@ -90,7 +137,7 @@ def window_coverage(wanted: str, product: Product) -> float:
     if not tokens:
         return 1.0
     best, best_len = -1.0, len(tokens)
-    for candidate in (product.title, f"{product.title} {product.subtitle}".strip()):
+    for candidate in (*catalog_titles(product.title), *catalog_full_titles(product)):
         for i in range(len(tokens)):
             for j in range(i + 1, len(tokens) + 1):
                 score = sim(" ".join(tokens[i:j]), candidate)
@@ -106,25 +153,39 @@ _BRACKETED = re.compile(r"\[[^\]]*\]|\{[^}]*\}|\([^)]*\)")
 _LEADING_SEQ = re.compile(r"^\s*\d{1,3}(?:\.\d)?\s*(?:-|–|—|\.)\s*(?=\S)")
 #: "<Series> NN - <Title>"
 _SERIES_SEQ_TITLE = re.compile(r"^(?P<x>.+?)\s+\d{1,3}(?:\.\d)?\s*(?:-|–|—|\.)\s*(?P<y>\S.*)$")
+#: "Private 18 Private Rome": a bare "<word> NN <rest>", no dash
+_WORD_SEQ_REST = re.compile(r"^(?P<x>[A-Za-z]+)\s+\d{1,3}(?:\.\d)?\s+(?P<y>[A-Za-z].*)$")
 #: the series part and the title part must be this alike before the title part stands alone
 SERIES_ECHO_SIM = 0.8
+
+
+def _echoes(series: str, title: str) -> bool:
+    """The series part is echoed by the title part: alike, or every series word is in the title
+    ("Private" in "Private Dublin" - sim no longer gives one word inside two a containment boost)."""
+    words = set(norm(series).split())
+    return sim(series, title) >= SERIES_ECHO_SIM or bool(words) and words <= set(norm(title).split())
 
 
 def title_variants(title: str) -> list[str]:
     """The query title plus its normalised readings, each scored whole-string against a candidate.
 
     a. the raw title; b. bracketed groups and parentheticals removed; c. a leading sequence
-    (``NN - `` / ``NN. ``) removed; d. ``<X> NN - <Y>`` with X and Y alike -> Y, the real title
-    ("Dungeon Crawler Carl 01 - Dungeon Crawler Carl" -> "Dungeon Crawler Carl").
+    (``NN - `` / ``NN. ``) removed; d. ``<X> NN - <Y>`` with X echoed in Y -> Y, the real title
+    ("Dungeon Crawler Carl 01 - Dungeon Crawler Carl" -> "Dungeon Crawler Carl"); e. a bare
+    ``<word> NN <rest>`` with a rest of two words or more -> rest ("Private 18 Private Rome" ->
+    "Private Rome").
     """
     raw = (title or "").strip()
     variants = [raw]
-    stripped = re.sub(r"\s+", " ", _BRACKETED.sub(" ", raw)).strip(" -_.")
+    stripped = strip_brackets(raw)
     variants.append(stripped)
     variants.append(_LEADING_SEQ.sub("", stripped).strip())
     echo = _SERIES_SEQ_TITLE.match(stripped)
-    if echo and sim(echo.group("x"), echo.group("y")) >= SERIES_ECHO_SIM:
+    if echo and _echoes(echo.group("x"), echo.group("y")):
         variants.append(echo.group("y").strip())
+    bare = _WORD_SEQ_REST.match(stripped)
+    if bare and len(bare.group("y").split()) >= 2:
+        variants.append(bare.group("y").strip())
     out: list[str] = []
     for v in variants:
         if v and v not in out:
@@ -133,9 +194,14 @@ def title_variants(title: str) -> list[str]:
 
 
 def title_score(wanted: str, product: Product) -> float:
-    """The title score: best WHOLE-STRING ``sim`` of any variant against title or title + subtitle."""
-    targets = (product.title, f"{product.title} {product.subtitle}".strip())
-    return max((sim(v, t) for v in title_variants(wanted) for t in targets), default=0.0)
+    """The title score: best WHOLE-STRING ``title_sim`` of any variant against the catalog title
+    (or one "aka" side of it), then title + subtitle only when the title alone (``title_alone``)
+    reached SUBTITLE_GATE."""
+    variants = title_variants(wanted)
+    best = max((title_sim(v, t) for v in variants for t in catalog_titles(product.title)), default=0.0)
+    if product.subtitle and max(best, title_alone(wanted, product)) >= SUBTITLE_GATE:
+        best = max([best] + [title_sim(v, f) for v in variants for f in catalog_full_titles(product)])
+    return best
 
 
 #: the scorer's multiplier for a product whose catalog language is not English
@@ -260,13 +326,10 @@ def corroborated(product: Product) -> bool:
     return True
 
 
-def match_from_asin(asin: str, local_hours: float = 0.0) -> Match:
-    """Build a confident match from an ASIN the user supplied."""
-    book = catalog.book(asin)
-    if not book.get("asin"):
-        return Match()
+def _product_from_book(book: dict) -> Product:
+    """A Product from an Audnex book record."""
     series = book.get("seriesPrimary") or {}
-    product = catalog.Product(
+    return catalog.Product(
         asin=book["asin"],
         title=book.get("title", ""),
         subtitle=book.get("subtitle") or "",
@@ -280,6 +343,14 @@ def match_from_asin(asin: str, local_hours: float = 0.0) -> Match:
         publisher=book.get("publisherName") or "",
         image=book.get("image") or "",
     )
+
+
+def match_from_asin(asin: str, local_hours: float = 0.0) -> Match:
+    """Build a confident match from an ASIN the user supplied."""
+    book = catalog.book(asin)
+    if not book.get("asin"):
+        return Match()
+    product = _product_from_book(book)
     match = Match(
         product=product,
         score=1.0,
@@ -295,6 +366,10 @@ def match_from_asin(asin: str, local_hours: float = 0.0) -> Match:
     )
     match.confidence = "HIGH"
     return match
+
+
+#: the swapped title/author reading is searched only when the primary reading's best score is under this
+ARBITRATE_BELOW = 0.90
 
 
 def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0) -> Match:
@@ -313,44 +388,18 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
         author = infer_author_from_series(unit.series_guess)
         author_from_series = bool(author)
 
-    queries: list[dict] = []
-    if title:
-        queries.append({"title": title})
-        words = title.split()
-        if len(words) > 5:
-            queries.append({"title": " ".join(words[:5])})
-    if author and title:
-        queries.append({"title": title, "author": author})
-    if author:
-        queries.append({"author": author})
-
-    scored: dict[str, dict] = {}
-    for query in queries:
-        for product in catalog.search(limit=10, **query):
-            if product.asin in scored:
-                continue
-            # whole-string over a few normalised readings of the folder title: release tags and a
-            # "Series NN - Title" echo are dropped, but a catalog title that is only one window of
-            # the folder name ("Dune" in "Dune Messiah") never scores as an exact match
-            title_sim = title_score(title, product)
-            author_sim = max([sim(author, a) for a in product.authors] or [0.0]) if author else 0.0
-            # without a known author the title is the only evidence we have
-            total = 0.60 * title_sim + 0.40 * author_sim if author else title_sim
-            penalized = language_penalized(product.language)
-            if penalized:
-                total *= LANGUAGE_PENALTY
-            scored[product.asin] = {
-                "product": product,
-                "score": round(total, 3),
-                "title_sim": round(title_sim, 3),
-                "author_sim": round(author_sim, 3),
-                "language_penalized": penalized,
-                "runtime_delta_pct": runtime_delta_pct(local_hours, product.hours),
-                # tie-breakers only: the raw whole-string title, then the runtime gap
-                "whole_sim": sim(title, product.title) if title else 0.0,
-            }
-        if scored and max(s["score"] for s in scored.values()) >= 0.95 and len(scored) >= 3:
-            break
+    hint = unit.asin_hint
+    scored = _score_reading(title, author, local_hours, hint)
+    alt_title = unit.alt_title_guess
+    if alt_title and _top_score(scored) < ARBITRATE_BELOW:
+        # "Past Tense - Lee Child": both sides look like names, but only a weak primary reading
+        # pays for the swapped one; a confident reading never does. The swapped reading must
+        # score strictly higher to win
+        alt_author = unit.alt_author_guess
+        alt_scored = _score_reading(alt_title, alt_author, local_hours, hint)
+        if _top_score(alt_scored) > _top_score(scored):
+            title, author, scored = alt_title, alt_author, alt_scored
+            author_from_series = False
 
     if not scored:
         return Match(author_from_series=author_from_series, query_title=title, query_author=author)
@@ -415,6 +464,131 @@ def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0
         for s in [s for s in ranked if s is not best][:4]
     ]
     return match
+
+
+#: the most catalog searches one reading of a unit may make, the keyword fallback included
+MAX_QUERIES = 8
+#: how many title_variants readings are each asked of the catalog
+MAX_VARIANT_QUERIES = 4
+#: rip noise that never appears in a catalog title; "read by ..." / "narrated by ..." run to the end
+_RIP_NOISE_RE = re.compile(
+    r"\bchapterized\b|\b\d+\s*kbps\b|\bby\s+chapter\b|\(\s*mp3\s*\)|\b(?:read|narrated)\s+by\b.*$",
+    re.IGNORECASE,
+)
+
+
+def strip_rip_noise(title: str) -> str:
+    """"Killing Floor Chapterized 64kbps (Read by Dick Hill)" -> "Killing Floor"."""
+    text = _RIP_NOISE_RE.sub(" ", title or "")
+    text = re.sub(r"\(\s*\)", " ", text)
+    return re.sub(r"\s+", " ", text).strip(" -_.,;(")
+
+
+def search_queries(title: str, author: str) -> tuple[list[dict], int, str]:
+    """The catalog searches for one reading: (queries, how many lead with variant readings, the
+    cleaned title the keyword fallback uses).
+
+    In order, deduplicated: each title_variants reading (at most MAX_VARIANT_QUERIES), the
+    rip-noise-stripped best reading, title + author for the raw title and the best reading, then
+    the author alone. Title queries are trimmed so the list plus the one keyword fallback never
+    exceed MAX_QUERIES. Audible's ``title=`` filter is strict ("Private 20 - Private Dublin" finds
+    nothing), so the readings are what find the book.
+    """
+    titled: list[dict] = []
+
+    def add(query: dict) -> None:
+        if query not in titled:
+            titled.append(query)
+
+    cleaned = ""
+    n_variants = 0
+    if title:
+        variants = title_variants(title)[:MAX_VARIANT_QUERIES]
+        for variant in variants:
+            add({"title": variant})
+        n_variants = len(titled)
+        cleaned = strip_rip_noise(variants[-1]) or variants[-1]
+        add({"title": cleaned})
+        if author:
+            add({"title": title, "author": author})
+            add({"title": cleaned, "author": author})
+    tail = [{"author": author}] if author else []
+    titled = titled[: MAX_QUERIES - 1 - len(tail)]  # one slot stays free for the keyword fallback
+    return titled + tail, min(n_variants, len(titled)), cleaned
+
+
+def _score_product(product: Product, title: str, author: str, local_hours: float) -> dict:
+    # whole-string over a few normalised readings of the folder title: release tags and a
+    # "Series NN - Title" echo are dropped, but a catalog title that is only one window of
+    # the folder name ("Dune" in "Dune Messiah") never scores as an exact match
+    t_sim = title_score(title, product)
+    a_sim = max([sim(author, a) for a in product.authors] or [0.0]) if author else 0.0
+    # without a known author the title is the only evidence we have
+    total = 0.60 * t_sim + 0.40 * a_sim if author else t_sim
+    penalized = language_penalized(product.language)
+    if penalized:
+        total *= LANGUAGE_PENALTY
+    return {
+        "product": product,
+        "score": round(total, 3),
+        "title_sim": round(t_sim, 3),
+        "author_sim": round(a_sim, 3),
+        "language_penalized": penalized,
+        "runtime_delta_pct": runtime_delta_pct(local_hours, product.hours),
+        # tie-breakers only: the raw whole-string title, then the runtime gap
+        "whole_sim": sim(title, product.title) if title else 0.0,
+    }
+
+
+def _hint_entry(asin: str, title: str, author: str, local_hours: float) -> dict | None:
+    """The scored entry for an ASIN found in the torrent name, or None.
+
+    A candidate, never a pin: it enters the pool at score 1.0 / title 1.0 only when the catalog
+    knows the ASIN and its title clears TITLE_FLOOR against the wanted one; grade() still decides.
+    """
+    try:
+        book = catalog.book(asin)
+    except Exception:  # a lookup failure is "no hint", never a crash in matching
+        return None
+    if not isinstance(book, dict) or not book.get("asin"):
+        return None
+    product = _product_from_book(book)
+    if not title or floor_sim(title, product) < TITLE_FLOOR:
+        return None
+    entry = _score_product(product, title, author, local_hours)
+    entry.update(score=1.0, title_sim=1.0)
+    return entry
+
+
+def _score_reading(title: str, author: str, local_hours: float, asin_hint: str = "") -> dict[str, dict]:
+    """Every candidate the catalog offers for one (title, author) reading, scored."""
+    scored: dict[str, dict] = {}
+    if asin_hint:
+        entry = _hint_entry(asin_hint, title, author, local_hours)
+        if entry:
+            scored[entry["product"].asin] = entry
+    queries, n_variants, cleaned = search_queries(title, author)
+    titled_found = 0
+    for i, query in enumerate(queries):
+        found = catalog.search(limit=10, **query)
+        if "title" in query:
+            titled_found += len(found)
+        for product in found:
+            if product.asin not in scored:
+                scored[product.asin] = _score_product(product, title, author, local_hours)
+        # the early stop waits for every variant reading: a 0.95 on the raw title must not
+        # keep the cleaner readings from being asked
+        if i + 1 >= n_variants and _top_score(scored) >= 0.95 and len(scored) >= 3:
+            break
+    if title and cleaned and titled_found == 0 and len(queries) < MAX_QUERIES:
+        for product in catalog.search(limit=10, keywords=cleaned):
+            if product.asin not in scored:
+                scored[product.asin] = _score_product(product, title, author, local_hours)
+    return scored
+
+
+def _top_score(scored: dict[str, dict]) -> float:
+    return max((s["score"] for s in scored.values()), default=-1.0)
 
 
 def _rank_key(entry: dict) -> tuple:

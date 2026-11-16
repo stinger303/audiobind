@@ -13,8 +13,23 @@ NOISE_RE = re.compile(
     re.I,
 )
 YEAR_RE = re.compile(r"[\(\[]\s*(19|20)\d{2}\s*[\)\]]")
-# leading track/series number, only when a real title follows it (keeps "1984", "2001")
-SEQ_RE = re.compile(r"^\s*(?:book\s*)?\d{1,3}(?:\.\d)?\s*[-–—.)]*\s*(?=[A-Za-z])", re.I)
+#: a number followed by one of these is the title itself ("13 Hours", "7 Habits"), never a sequence
+SEQ_UNIT_WORDS = (
+    "hours days minutes seconds weeks months years miles steps rules laws ways things secrets "
+    "lessons reasons questions habits"
+).split()
+# leading track/series number, only when a real title follows it (keeps "1984", "2001").
+# "Book 3 Dune" and "3. Dune" / "01 - Dune" always strip; with no separator the number must be
+# two digits or a decimal ("20 Make Me", "02 Die Trying", "15.5 Second Son") and must not be
+# followed by a unit word, so "13 Hours" and "3 Body Problem" survive
+SEQ_RE = re.compile(
+    r"^\s*(?:"
+    r"book\s*\d{1,3}(?:\.\d)?\s*[-–—.)]*\s*"
+    r"|\d{1,3}(?:\.\d)?\s*[-–—.)]+\s*"
+    r"|(?:\d{2,3}(?:\.\d)?|\d\.\d)\s*(?!(?:" + "|".join(SEQ_UNIT_WORDS) + r")\b)"
+    r")(?=[A-Za-z])",
+    re.I,
+)
 PART_RE = re.compile(r"(?i)(part|pt|disc|disk|cd|vol|volume)\s*\.?\s*\d*")
 
 STOPWORDS = {
@@ -104,8 +119,48 @@ def sim(a: str | None, b: str | None) -> float:
     if at and bt:
         ratio = max(ratio, len(at & bt) / max(len(at), len(bt)) * 0.95)
     if a in b or b in a:
-        ratio = max(ratio, 0.85)
+        # containment counts by the share of words it covers, and only for a multi-word side:
+        # "Dune" inside "Dune Messiah" is one word of two, not a near-match
+        at_, bt_ = a.split(), b.split()
+        short, long_ = (at_, bt_) if len(at_) <= len(bt_) else (bt_, at_)
+        if len(short) >= 2:
+            ratio = max(ratio, 0.85 * len(short) / max(len(long_), 1))
     return round(min(ratio, 1.0), 3)
+
+
+#: a stopword counts this much in title_sim's weighted Dice; a content word counts 1.0
+TITLE_STOPWORD_WEIGHT = 0.2
+_LEADING_ARTICLE_RE = re.compile(r"^(?:the|a|an)\s+(?=\S)")
+
+
+def _weighted_dice(a: str, b: str) -> float:
+    from collections import Counter
+
+    ca, cb = Counter(a.split()), Counter(b.split())
+
+    def weight(counts: Counter) -> float:
+        return sum((TITLE_STOPWORD_WEIGHT if t in STOPWORDS else 1.0) * n for t, n in counts.items())
+
+    total = weight(ca) + weight(cb)
+    return 2 * weight(ca & cb) / total if total else 0.0
+
+
+def title_sim(a: str | None, b: str | None) -> float:
+    """Title similarity in [0, 1]: a weighted Dice over words, article- and stopword-aware.
+
+    Stopwords weigh 0.2 and content words 1.0, a repeated word counts once per occurrence, and a
+    leading "the" / "a" / "an" may be dropped from both sides ("Midnight Line" ~ "The Midnight
+    Line"). The character ratio is a floor, so a typo still scores ("Steeleart" ~ "Steelheart").
+    Unlike ``sim`` there is no containment boost: "Dune" is half of "Dune Messiah", not 0.85 of it.
+    """
+    a, b = norm(a), norm(b)
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+    pairs = [(a, b), (_LEADING_ARTICLE_RE.sub("", a), _LEADING_ARTICLE_RE.sub("", b))]
+    value = max(max(_weighted_dice(x, y), SequenceMatcher(None, x, y).ratio()) for x, y in pairs)
+    return round(min(value, 1.0), 3)
 
 
 def natkey(text: str) -> list:

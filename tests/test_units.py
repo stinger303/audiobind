@@ -134,3 +134,61 @@ class TestActionChoice(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestParsingHygiene(unittest.TestCase):
+    """0.21.0-dev7: numeric titles, loose-file extensions, narrators, series prefixes, orientation."""
+
+    def guess(self, rel, ingest=False):
+        from audiobind.units import BookUnit, _guess
+
+        unit = BookUnit(path="X", name=os.path.basename(rel), parent="", parts=[], rel_path=rel)
+        _guess(unit, ingest=ingest)
+        return unit
+
+    def test_a_number_that_is_the_title_survives(self):
+        self.assertEqual(split_author_title("13 Hours"), (None, "13 Hours"))
+        self.assertEqual(split_author_title("3 Body Problem"), (None, "3 Body Problem"))
+        self.assertEqual(self.guess("13 Hours").title_guess, "13 Hours")
+
+    def test_a_sequence_number_still_strips(self):
+        self.assertEqual(split_author_title("01 - Convergence"), (None, "Convergence"))
+        self.assertEqual(split_author_title("3. Title"), (None, "Title"))
+        self.assertEqual(split_author_title("20 Make Me"), (None, "Make Me"))
+        self.assertEqual(split_author_title("04 - The Gate of the Feral Gods"), (None, "The Gate of the Feral Gods"))
+
+    def test_a_loose_library_file_loses_its_extension(self):
+        with tempfile.TemporaryDirectory() as root:
+            open(os.path.join(root, "Nora Roberts - Island of Glass.m4b"), "wb").close()
+            (unit,) = discover_units(root, [".*"])
+        self.assertEqual(unit.title_guess, "Island of Glass")
+        self.assertEqual(self.guess("Island of Glass.m4b").title_guess, "Island of Glass")
+
+    def test_a_narrator_is_not_the_author(self):
+        self.assertEqual(split_author_title("Killing Floor (Read by Jeff Hays)"), (None, "Killing Floor"))
+        unit = self.guess("Killing Floor (Read by Jeff Hays)")
+        self.assertEqual((unit.author_guess, unit.title_guess, unit.narrator_guess), ("", "Killing Floor", "Jeff Hays"))
+        unit = self.guess("The Martian (Narrated by R. C. Bray)")
+        self.assertEqual((unit.author_guess, unit.narrator_guess), ("", "R. C. Bray"))
+
+    def test_a_series_prefix_is_not_the_author(self):
+        unit = self.guess("Dungeon Crawler Carl - 04 - The Gate of the Feral Gods")
+        self.assertEqual(unit.series_guess, "Dungeon Crawler Carl")
+        self.assertEqual(unit.title_guess, "The Gate of the Feral Gods")
+        self.assertEqual(unit.author_guess, "")
+        # a parent folder named for the series is not an author either
+        unit = self.guess("Dungeon Crawler Carl/Dungeon Crawler Carl - 04 - The Gate of the Feral Gods")
+        self.assertEqual(unit.author_guess, "")
+
+    def test_an_ambiguous_orientation_keeps_the_swapped_reading(self):
+        unit = self.guess("Past Tense - Lee Child")
+        self.assertEqual((unit.alt_author_guess, unit.alt_title_guess), ("Lee Child", "Past Tense"))
+        unit = self.guess("Influx - Daniel Suarez")
+        self.assertEqual((unit.author_guess, unit.title_guess), ("Daniel Suarez", "Influx"))
+        self.assertEqual((unit.alt_author_guess, unit.alt_title_guess), ("", ""))
+
+    def test_a_bracketed_asin_in_an_ingest_name_is_a_hint(self):
+        self.assertEqual(self.guess("In Too Deep [B0CLGF5CFH]", ingest=True).asin_hint, "B0CLGF5CFH")
+        self.assertEqual(self.guess("In Too Deep [B0CLGF5CFH]", ingest=True).title_guess, "In Too Deep")
+        self.assertEqual(self.guess("In Too Deep [CA]", ingest=True).asin_hint, "")
+        self.assertEqual(self.guess("In Too Deep [B0CLGF5CFH]").asin_hint, "")  # library names: never

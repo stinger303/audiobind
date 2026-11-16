@@ -151,7 +151,11 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
     return None
 
 
-def search(title: str | None = None, author: str | None = None, limit: int = 10) -> list[Product]:
+def search(
+    title: str | None = None, author: str | None = None, limit: int = 10, keywords: str | None = None
+) -> list[Product]:
+    """The matcher's catalog search; a failure is an empty list. ``keywords`` is the catalog's
+    loose free-text filter (the matcher's last resort when every strict ``title=`` query is empty)."""
     params = {
         "num_results": limit,
         "products_sort_by": "Relevance",
@@ -162,6 +166,8 @@ def search(title: str | None = None, author: str | None = None, limit: int = 10)
         params["title"] = title
     if author:
         params["author"] = author
+    if keywords:
+        params["keywords"] = keywords
     data = _get_json(AUDIBLE + "?" + urllib.parse.urlencode(params)) or {}
     return [Product.from_audible(p) for p in (data.get("products") or [])]
 

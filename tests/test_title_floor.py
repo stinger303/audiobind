@@ -161,8 +161,9 @@ class TestScoreUsesTheFloorMeasure(unittest.TestCase):
             self.assertEqual(m.rejected, "", wanted)
             # the floor (best window) is what lets the mangled name through; title_sim is whole-string
             self.assertGreaterEqual(matching.floor_sim(wanted, m.product), matching.TITLE_FLOOR, wanted)
-        # a near title is not inflated: no window of "Count to Ten" beats the whole string
-        self.assertEqual(run("Count to Ten", prod("B0COUNT001", "Count to Ten aka Private Delhi")).title_sim, 0.85)
+        # 0.21.0-dev7: each side of an "aka" is scored on its own, so "Count to Ten" is exactly one
+        # of the catalog title's names (it was 0.85 from sim's removed character-substring floor)
+        self.assertEqual(run("Count to Ten", prod("B0COUNT001", "Count to Ten aka Private Delhi")).title_sim, 1.0)
 
 
 if __name__ == "__main__":

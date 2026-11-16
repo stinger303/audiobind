@@ -110,3 +110,226 @@ class TestAsinPin(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------- 0.21.0-dev7: the matcher's inputs
+from unittest import mock  # noqa: E402
+
+from audiobind import catalog, matching  # noqa: E402
+from audiobind.units import BookUnit  # noqa: E402
+from audiobind.util import norm, sim  # noqa: E402
+
+
+def book_unit(title, author="", **extra):
+    return BookUnit(path="X", name="X", parent="", parts=[], title_guess=title, author_guess=author, **extra)
+
+
+def patterson(asin, title, hours=8.0):
+    return Product(asin=asin, title=title, authors=["James Patterson"], hours=hours, language="english")
+
+
+class StrictCatalog:
+    """A fake catalog.search with Audible's strict ``title=`` filter: a title query finds a book
+    only when it is (nearly) the book's own title. Every call is recorded."""
+
+    def __init__(self, books, keywords_find=()):
+        self.books = list(books)
+        self.keywords_find = list(keywords_find)
+        self.calls: list[dict] = []
+
+    def __call__(self, title=None, author=None, limit=10, keywords=None):
+        self.calls.append({k: v for k, v in (("title", title), ("author", author), ("keywords", keywords)) if v})
+        if keywords:
+            return [b for b in self.keywords_find if norm(keywords) in norm(f"{b.title} {' '.join(b.authors)}")]
+        found = []
+        for b in self.books:
+            if title and norm(title) != norm(b.title):
+                continue
+            if author and not any(sim(author, a) >= 0.85 for a in b.authors):
+                continue
+            found.append(b)
+        return found[:limit]
+
+
+class TestCatalogParentheticals(unittest.TestCase):
+    LOCK_IN = Product(asin="B0LOCKIN01", title="Lock In (Narrated by Wil Wheaton)", authors=["John Scalzi"])
+
+    def test_a_narrator_parenthetical_on_the_catalog_side_is_ignored(self):
+        self.assertGreaterEqual(matching.title_score("Lock In", self.LOCK_IN), 0.95)
+        self.assertGreaterEqual(matching.floor_sim("Lock In", self.LOCK_IN), 0.95)
+        self.assertEqual(matching.window_coverage("Lock In", self.LOCK_IN), 1.0)
+
+    def test_stripping_does_not_loosen_a_sequel(self):
+        self.assertLess(matching.floor_sim("Dune", Product(asin="B0DUNEMSG1", title="Dune Messiah")), 0.60)
+        self.assertLess(matching.floor_sim("Dune", Product(asin="B0DUNEMSG2", title="Dune Messiah (Unabridged)")), 0.60)
+
+    def test_a_stripped_subtitle_cannot_stand_in_for_a_title(self):
+        decoy = Product(asin="B0DECOY002", title="Fall From Grace", subtitle="(Lee Child)", authors=["X"])
+        self.assertLess(matching.floor_sim("Lee Child", decoy), 0.60)
+        self.assertLess(matching.title_score("Lee Child", decoy), 0.60)
+
+
+class TestSubtitleCannotCarryTheTitle(unittest.TestCase):
+    def test_a_subtitle_that_names_the_query_earns_nothing(self):
+        decoy = Product(asin="B0DECOY001", title="Fall From Grace",
+                        subtitle="A Thriller for Fans Hunting Lee Child's Jack Reacher", authors=["Someone Else"])
+        self.assertLess(matching.floor_sim("Lee Child", decoy), 0.60)
+        self.assertLess(matching.title_score("Lee Child", decoy), 0.60)
+
+    def test_a_subtitle_still_counts_once_the_title_does(self):
+        moneyball = Product(asin="B005EHN61O", title="Moneyball", subtitle="The Art of Winning an Unfair Game")
+        # the folder carries title + subtitle: the catalog title is a window of it, so the gate opens
+        self.assertGreaterEqual(matching.title_score("Moneyball The Art of Winning an Unfair Game", moneyball), 0.95)
+        self.assertGreaterEqual(matching.floor_sim("Moneyball The Art of Winning an Unfair Game", moneyball), 0.95)
+
+    def test_each_side_of_an_aka_is_scored_on_its_own(self):
+        self.assertEqual(matching.catalog_titles("Count to Ten aka Private Delhi"),
+                         ["Count to Ten aka Private Delhi", "Count to Ten", "Private Delhi"])
+        self.assertEqual(matching.catalog_titles("Moneyball"), ["Moneyball"])
+        aka = patterson("B0COUNT001", "Count to Ten a.k.a. Private Delhi")
+        self.assertEqual(matching.title_score("Private Delhi", aka), 1.0)
+        # and no containment boost comes back with it
+        self.assertLess(matching.title_score("Dune", Product(title="Dune Messiah")), 0.85)
+
+
+class TestRetrieval(unittest.TestCase):
+    DUBLIN = patterson("B00DUBLIN1", "Private Dublin")
+    OTHERS = [patterson("B0STEP0001", "Step on a Crack"), patterson("B0SPIDER01", "Along Came a Spider")]
+
+    def run_match(self, unit, fake):
+        with mock.patch.object(catalog, "search", fake), mock.patch.object(catalog, "book", lambda asin: {}):
+            return matching.match_unit(unit)
+
+    def test_a_variant_query_finds_the_book_the_raw_title_cannot(self):
+        fake = StrictCatalog([self.DUBLIN, *self.OTHERS])
+        m = self.run_match(book_unit("Private 20 - Private Dublin", "James Patterson"), fake)
+        self.assertEqual(fake.calls[0], {"title": "Private 20 - Private Dublin"})
+        self.assertIn({"title": "Private Dublin"}, fake.calls)
+        self.assertEqual(m.asin, "B00DUBLIN1")
+        self.assertLessEqual(len(fake.calls), matching.MAX_QUERIES)
+
+    def test_a_bare_word_number_title_is_a_variant(self):
+        self.assertIn("Private Rome", matching.title_variants("Private 18 Private Rome"))
+        self.assertNotIn("Yossarian", matching.title_variants("Catch 22 Yossarian"))
+
+    def test_rip_noise_is_stripped_for_a_query(self):
+        self.assertEqual(matching.strip_rip_noise("Killing Floor Chapterized 64kbps (Read by Dick Hill)"),
+                         "Killing Floor")
+        self.assertEqual(matching.strip_rip_noise("Die Trying by chapter (MP3)"), "Die Trying")
+        queries, _n, cleaned = matching.search_queries("Killing Floor chapterized", "Lee Child")
+        self.assertEqual(cleaned, "Killing Floor")
+        self.assertIn({"title": "Killing Floor"}, queries)
+        self.assertIn({"title": "Killing Floor", "author": "Lee Child"}, queries)
+        self.assertEqual(queries[-1], {"author": "Lee Child"})
+
+    def test_a_raw_hit_does_not_stop_the_variants_being_asked(self):
+        raw = [patterson(f"B0RAW0000{i}", "Private 20 - Private Dublin") for i in range(3)]
+        fake = StrictCatalog([*raw, self.DUBLIN])
+        self.run_match(book_unit("Private 20 - Private Dublin", "James Patterson"), fake)
+        self.assertIn({"title": "Private Dublin"}, fake.calls)
+
+    def test_the_keyword_fallback_runs_only_when_every_title_query_is_empty(self):
+        fake = StrictCatalog([], keywords_find=[self.DUBLIN])
+        m = self.run_match(book_unit("Private 20 - Private Dublin"), fake)
+        self.assertEqual(fake.calls[-1], {"keywords": "Private Dublin"})
+        self.assertEqual(m.asin, "B00DUBLIN1")
+        self.assertLessEqual(len(fake.calls), matching.MAX_QUERIES)
+
+        fake = StrictCatalog([self.DUBLIN], keywords_find=[self.DUBLIN])
+        self.run_match(book_unit("Private Dublin"), fake)
+        self.assertFalse(any("keywords" in c for c in fake.calls))
+
+    def test_the_query_set_is_capped(self):
+        queries, _n, _cleaned = matching.search_queries(
+            "Private 20 - Private Dublin [CA] (Unabridged) chapterized", "James Patterson")
+        self.assertLessEqual(len(queries), matching.MAX_QUERIES - 1)  # one slot for the keyword fallback
+        self.assertEqual(queries[-1], {"author": "James Patterson"})
+
+
+class TestOrientation(unittest.TestCase):
+    PAST_TENSE = Product(asin="B07FPM4J8V", title="Past Tense", authors=["Lee Child"], hours=13.0,
+                         language="english")
+
+    def test_the_catalog_decides_which_side_is_the_author(self):
+        fake = StrictCatalog([self.PAST_TENSE])
+        unit = book_unit("Lee Child", "Past Tense", alt_author_guess="Lee Child", alt_title_guess="Past Tense")
+        with mock.patch.object(catalog, "search", fake), mock.patch.object(catalog, "book", lambda asin: {}):
+            m = matching.match_unit(unit)
+        self.assertEqual(m.asin, "B07FPM4J8V")
+        self.assertEqual((m.query_title, m.query_author), ("Past Tense", "Lee Child"))
+
+    def test_a_clear_reading_asks_no_second_set(self):
+        fake = StrictCatalog([self.PAST_TENSE])
+        with mock.patch.object(catalog, "search", fake), mock.patch.object(catalog, "book", lambda asin: {}):
+            m = matching.match_unit(book_unit("Past Tense", "Lee Child"))
+        self.assertEqual(m.asin, "B07FPM4J8V")
+        self.assertFalse(any(c.get("author") == "Past Tense" for c in fake.calls))
+
+    def test_a_confident_primary_reading_issues_no_swapped_queries(self):
+        stone = Product(asin="B0STONE001", title="Stone Cold", authors=["David Baldacci"], hours=11.0,
+                        language="english")
+        fake = StrictCatalog([stone])
+        unit = book_unit("Stone Cold", "David Baldacci",
+                         alt_author_guess="Stone Cold", alt_title_guess="David Baldacci")
+        with mock.patch.object(catalog, "search", fake), mock.patch.object(catalog, "book", lambda asin: {}):
+            m = matching.match_unit(unit)
+        self.assertEqual(m.asin, "B0STONE001")
+        self.assertGreaterEqual(m.score, matching.ARBITRATE_BELOW)
+        swapped = [c for c in fake.calls if c.get("title") == "David Baldacci" or c.get("author") == "Stone Cold"]
+        self.assertEqual(swapped, [])
+        solo = StrictCatalog([stone])
+        with mock.patch.object(catalog, "search", solo), mock.patch.object(catalog, "book", lambda asin: {}):
+            matching.match_unit(book_unit("Stone Cold", "David Baldacci"))
+        self.assertEqual(fake.calls, solo.calls)  # exactly the primary pass, nothing more
+
+    def test_a_weak_primary_reading_does_issue_swapped_queries(self):
+        fake = StrictCatalog([self.PAST_TENSE])
+        unit = book_unit("Lee Child", "Past Tense", alt_author_guess="Lee Child", alt_title_guess="Past Tense")
+        with mock.patch.object(catalog, "search", fake), mock.patch.object(catalog, "book", lambda asin: {}):
+            m = matching.match_unit(unit)
+        self.assertTrue(any(c.get("title") == "Past Tense" for c in fake.calls))
+        self.assertEqual((m.asin, m.query_title, m.query_author), ("B07FPM4J8V", "Past Tense", "Lee Child"))
+        self.assertEqual(m.product.title, "Past Tense")
+        self.assertEqual(m.product.authors, ["Lee Child"])
+
+    def test_no_alt_guess_means_no_second_pass_even_when_weak(self):
+        fake = StrictCatalog([])
+        with mock.patch.object(catalog, "search", fake), mock.patch.object(catalog, "book", lambda asin: {}):
+            matching.match_unit(book_unit("Lee Child", "Past Tense"))
+        self.assertFalse(any(c.get("title") == "Past Tense" for c in fake.calls))
+
+    def test_a_tie_keeps_the_original_reading(self):
+        fake = StrictCatalog([])
+        unit = book_unit("Past Tense", "Lee Child", alt_author_guess="Past Tense", alt_title_guess="Lee Child")
+        with mock.patch.object(catalog, "search", fake), mock.patch.object(catalog, "book", lambda asin: {}):
+            m = matching.match_unit(unit)
+        self.assertEqual((m.query_title, m.query_author), ("Past Tense", "Lee Child"))
+
+
+class TestAsinHint(unittest.TestCase):
+    def book(self, title):
+        return {"asin": "B0CLGF5CFH", "title": title, "authors": [{"name": "Lee Child"}],
+                "runtimeLengthMin": 600, "language": "english"}
+
+    def run_hint(self, title_on_record):
+        fake = StrictCatalog([])
+        with mock.patch.object(catalog, "search", fake), \
+                mock.patch.object(catalog, "book", lambda asin: self.book(title_on_record)):
+            return matching.match_unit(book_unit("In Too Deep", asin_hint="B0CLGF5CFH"))
+
+    def test_a_hint_whose_title_fails_the_floor_is_ignored(self):
+        m = self.run_hint("A Completely Different Book")
+        self.assertIsNone(m.product)
+        self.assertEqual(m.confidence, "NONE")
+
+    def test_a_hint_whose_title_passes_is_a_graded_candidate_not_a_pin(self):
+        m = self.run_hint("In Too Deep")
+        self.assertEqual(m.asin, "B0CLGF5CFH")
+        self.assertEqual((m.score, m.title_sim), (1.0, 1.0))
+        self.assertFalse(m.asin_override)
+        self.assertEqual(m.confidence, grade(m))
+        self.assertEqual(m.confidence, "MEDIUM")  # title-only: never HIGH from a name alone
+
+
+if __name__ == "__main__":
+    unittest.main()

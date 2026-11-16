@@ -36,7 +36,7 @@ GUILTY_TAGS = {"title": "The Guilty (Unabridged)", "artist": "David Baldacci; Ky
 def search_only(product, title_word):
     """A fake catalog.search that knows one book, found only by a title containing ``title_word``."""
 
-    def fake(title=None, author=None, limit=10):
+    def fake(title=None, author=None, limit=10, keywords=None):
         return [product] if title and title_word.lower() in title.lower() else []
 
     return fake
