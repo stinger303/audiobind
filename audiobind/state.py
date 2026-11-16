@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS units (
     asin_override TEXT DEFAULT '',
     overrides   TEXT DEFAULT '',
     alternates  TEXT DEFAULT '',
-    source      TEXT DEFAULT 'library'
+    source      TEXT DEFAULT 'library',
+    pin_failures INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -254,6 +255,8 @@ class State:
             ("alternates", "TEXT DEFAULT ''"),
             # every row that predates ingest came from the library, which is what the default says
             ("source", "TEXT DEFAULT 'library'"),
+            # 0.21.0-dev11: checks in a row the hand-set ASIN had no catalog data (save() never writes it)
+            ("pin_failures", "INTEGER DEFAULT 0"),
         ):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE units ADD COLUMN {name} {ddl}")
@@ -480,12 +483,33 @@ class State:
         return json.loads(row["value"]) if row else default
 
     def set_asin_override(self, path: str, asin: str) -> None:
+        """The operator's ASIN pin. Setting one (even the same one again) starts its dead-pin
+        count over: the operator has asked for it to be tried afresh."""
         with self._lock:
             self.connection.execute(
-                "INSERT INTO units (path, status, asin_override, updated_at, source) VALUES (?,?,?,?,?) "
-                "ON CONFLICT(path) DO UPDATE SET asin_override = excluded.asin_override",
+                "INSERT INTO units (path, status, asin_override, updated_at, source, pin_failures) "
+                "VALUES (?,?,?,?,?,0) "
+                "ON CONFLICT(path) DO UPDATE SET asin_override = excluded.asin_override, pin_failures = 0",
                 (path, "review", asin, time.time(), key_source(path)),
             )
+
+    def get_pin_failures(self, path: str) -> int:
+        """Checks in a row on which this book's hand-set ASIN had no catalog data."""
+        with self._lock:
+            row = self.connection.execute("SELECT pin_failures FROM units WHERE path = ?", (path,)).fetchone()
+        return int(row["pin_failures"] or 0) if row else 0
+
+    def record_pin_failure(self, path: str) -> int:
+        """One more check with no catalog data for the pin; returns the new count."""
+        with self._lock:
+            self.connection.execute(
+                "UPDATE units SET pin_failures = COALESCE(pin_failures, 0) + 1 WHERE path = ?", (path,)
+            )
+        return self.get_pin_failures(path)
+
+    def reset_pin_failures(self, path: str) -> None:
+        with self._lock:
+            self.connection.execute("UPDATE units SET pin_failures = 0 WHERE path = ?", (path,))
 
     def get_asin_override(self, path: str) -> str:
         with self._lock:
@@ -700,7 +724,9 @@ class State:
             if cursor.rowcount == 0:
                 return False
             if field == "asin":
-                self.connection.execute("UPDATE units SET asin_override = '' WHERE path = ?", (path,))
+                self.connection.execute(
+                    "UPDATE units SET asin_override = '', pin_failures = 0 WHERE path = ?", (path,)
+                )
                 return True
             row = self.connection.execute(
                 "SELECT overrides, detail FROM units WHERE path = ?", (path,)

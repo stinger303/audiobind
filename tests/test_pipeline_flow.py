@@ -60,7 +60,7 @@ class TestEmbeddedRetryOnLow(unittest.TestCase):
         unit = unit or ingest_unit()
         calls = []
 
-        def match_unit(u, override="", local_hours=0.0):
+        def match_unit(u, override="", local_hours=0.0, pin_failures=0):
             calls.append(u)
             return folder if len(calls) == 1 else embedded
 

@@ -60,8 +60,11 @@ class Audit:
         return matching.runtime_ok(self.hours, self.match.product.hours, effective_val("max_runtime_delta"))
 
 
-def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
-    """Read-only assessment: durations, codecs, catalog match, what we would do."""
+def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -> Audit:
+    """Read-only assessment: durations, codecs, catalog match, what we would do.
+
+    ``pin_failures``: how many checks in a row ``asin_override`` has had no catalog data (see
+    matching.PIN_GIVE_UP_AFTER)."""
     audit = Audit(unit=unit)
     total = 0.0
     for path in unit.files:
@@ -77,8 +80,15 @@ def audit_unit(unit: BookUnit, asin_override: str = "") -> Audit:
     audit.hours = round(total / 3600, 2)
     audit.src_mb = round(sum(os.path.getsize(f) for f in unit.files if os.path.exists(f)) / 1e6, 1)
 
-    audit.match = matching.match_unit(unit, asin_override, local_hours=audit.hours)
-    if unit.source == SOURCE_INGEST and not asin_override and audit.match.confidence in ("NONE", "LOW"):
+    audit.match = matching.match_unit(unit, asin_override, local_hours=audit.hours, pin_failures=pin_failures)
+    abandoned = audit.match.pin_abandoned
+    if abandoned:
+        audit.notes.append(
+            f"ASIN {abandoned} you set had no catalog data on {pin_failures + 1} checks in a row - "
+            "matched without it; not converted automatically"
+        )
+    searched = not asin_override or bool(abandoned)
+    if unit.source == SOURCE_INGEST and searched and audit.match.confidence in ("NONE", "LOW"):
         # a release name can match the wrong book at LOW as easily as it matches nothing, so the
         # files' own tags get a say in both cases - but only a genuinely better match replaces
         # the folder's
@@ -351,6 +361,8 @@ def record(
                 "image": audit.match.product.image if audit.match.product else "",
                 # a user-pinned ASIN that had no catalog data; nothing was matched
                 "asin_pin_failed": audit.match.asin_pin_failed,
+                # that pin, once it was dead too many checks in a row and stopped blocking a search
+                "asin_pin_abandoned": audit.match.pin_abandoned,
                 # the evidence behind the pick, shown in the "why this match" panel
                 "score": audit.match.score,
                 "margin": audit.match.margin,
@@ -549,7 +561,16 @@ def process_unit(
         rec("held", note=unsafe)
         state.heartbeat()
         return audit
-    audit = audit_unit(unit, state.get_asin_override(unit.state_key))
+    asin_override = state.get_asin_override(unit.state_key)
+    audit = audit_unit(
+        unit, asin_override, pin_failures=state.get_pin_failures(unit.state_key) if asin_override else 0
+    )
+    if asin_override:
+        # counted before anything is recorded, so a crash later in this check still counts it
+        if audit.match.asin_pin_failed or audit.match.pin_abandoned:
+            state.record_pin_failure(unit.state_key)
+        elif audit.match.asin_override:
+            state.reset_pin_failures(unit.state_key)  # live again: "in a row" starts over
     audit.overrides = state.get_overrides(unit.state_key)
     if audit.overrides:
         audit.notes.append("operator metadata overrides applied")
@@ -564,7 +585,10 @@ def process_unit(
     elif force and audit.match.product:
         log("  forced by operator - converting regardless of tier/hold")
         convert()
-    elif audit.action in ("merge+convert", "convert", "remux") and audit.confidence in effective_auto_tiers():
+    elif (audit.action in ("merge+convert", "convert", "remux") and audit.confidence in effective_auto_tiers()
+          and not audit.match.pin_abandoned):
+        # a match made after giving up on a dead pin is never converted unseen: the operator
+        # asked for one edition, and this search may have found another
         convert()
     elif audit.confidence == "NONE" and audit.match.rejected:
         log(f"  held: {audit.match.rejected}")

@@ -257,7 +257,7 @@ class TestRecheckEndpoint(LiveServerCase):
         seen = []
         done = threading.Event()
 
-        def fake_audit(unit, asin_override=""):
+        def fake_audit(unit, asin_override="", pin_failures=0):
             seen.append(asin_override)
             done.set()
             raise RuntimeError("stop after the audit call")

@@ -25,6 +25,9 @@ class Match:
     language: str = "english"
     #: set when a user-pinned ASIN had no catalog data; nothing is matched then (no search)
     asin_pin_failed: str = ""
+    #: set when a user-pinned ASIN had no catalog data for PIN_GIVE_UP_AFTER checks in a row: the
+    #: pin stopped blocking and this match is a normal search (the pipeline never auto-converts it)
+    pin_abandoned: str = ""
     confidence: str = "NONE"
     #: True when the scorer applied the non-English x0.85 penalty to this product
     language_penalized: bool = False
@@ -384,16 +387,37 @@ def match_from_asin(asin: str, local_hours: float = 0.0) -> Match:
 ARBITRATE_BELOW = 0.90
 
 
-def match_unit(unit: BookUnit, asin_override: str = "", local_hours: float = 0.0) -> Match:
+#: a hand-set ASIN with no catalog data on this many checks in a row stops blocking a normal match
+PIN_GIVE_UP_AFTER = 3
+
+
+def match_unit(
+    unit: BookUnit, asin_override: str = "", local_hours: float = 0.0, pin_failures: int = 0
+) -> Match:
     """``local_hours`` (the probed length of the files) only feeds the evidence panel's
-    runtime deltas; it never changes a score or the confidence grade."""
+    runtime deltas; it never changes a score or the confidence grade.
+
+    ``pin_failures`` is how many checks in a row before this one found no catalog data for
+    ``asin_override``. The pin is always tried first; a live pin always wins.
+    """
     if asin_override:
         forced = match_from_asin(asin_override, local_hours)
         if forced.product:
             return forced
-        # a dead pin (or a catalog hiccup) must never fall through to a search
-        # that could auto-convert a different edition - review instead
-        return Match(asin_pin_failed=asin_override)
+        if pin_failures + 1 < PIN_GIVE_UP_AFTER:
+            # a dead pin (or a catalog hiccup) must never fall through to a search
+            # that could auto-convert a different edition - review instead
+            return Match(asin_pin_failed=asin_override)
+        # dead on PIN_GIVE_UP_AFTER checks in a row: match normally so the panel offers a real
+        # candidate instead of the same dead-pin message forever (never auto-converted)
+        match = _search_match(unit, local_hours)
+        match.pin_abandoned = asin_override
+        return match
+    return _search_match(unit, local_hours)
+
+
+def _search_match(unit: BookUnit, local_hours: float) -> Match:
+    """The catalog search match for a unit with no (usable) ASIN pin."""
     author, title = unit.author_guess, unit.title_guess
     author_from_series = False
     if not author and unit.series_guess:
