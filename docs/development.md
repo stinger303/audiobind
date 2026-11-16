@@ -6,8 +6,12 @@
 
 ```bash
 python -m unittest discover -s tests -v
+python -m tests.matchbench          # the match-test programme's scoreboard and gate
 docker build -t audiobind:dev .
 ```
+
+Any change that can move a match must pass the match-test programme: see
+[match-testing.md](match-testing.md).
 
 ## Notes on correctness
 

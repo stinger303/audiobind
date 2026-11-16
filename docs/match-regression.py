@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Match regression harness: grade every book in a state database, against a frozen catalog.
 
+SUPERSEDED by the match-test programme (``python -m tests.matchbench``, docs/match-testing.md),
+which runs the same frozen catalog offline in CI, with labels, recall and a gate. Kept because the
+0.21.0 changelog cites its CSVs; it still works against a live state DB.
+
 Repo tooling, not a test. For every ``units`` row with a path, rebuild the ``BookUnit`` the
 scanner would have built (``units._name_units``: the same name cleaning and guessing, no new
 parser), call ``matching.match_unit(unit, row.asin_override, local_hours=row.hours)`` and write
