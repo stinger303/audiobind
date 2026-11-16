@@ -11,6 +11,9 @@ All notable changes to this project are documented here. This project follows
 
 - The ASIN link opens the right Audible page again — the old address form stopped working.
 - The Settings number-field unit labels read correctly now ("1 credit", "1 book", not "1 credits").
+- A non-English listing no longer skips the title, author and margin checks: it has to clear them like any other, and is then capped at MEDIUM — so a weak foreign hit grades LOW instead of MEDIUM.
+- The "why this match" panel names the grade it was given and the margin behind it, and the big number reads "title-only score" when your folder names no author.
+- A runner-up with the same score but a different author is no longer called "another edition" — the caption says to check which one you have.
 
 ### Added
 - **The watcher budgets the account instead of only obeying the site's moment-to-moment answers.** A

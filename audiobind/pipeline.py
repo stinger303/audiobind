@@ -276,6 +276,7 @@ def record(
                 "asin_pin_failed": audit.match.asin_pin_failed,
                 # the evidence behind the pick, shown in the "why this match" panel
                 "score": audit.match.score,
+                "margin": audit.match.margin,
                 "title_sim": audit.match.title_sim,
                 "author_sim": audit.match.author_sim,
                 "author_known": audit.match.author_known,

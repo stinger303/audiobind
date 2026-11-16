@@ -475,13 +475,13 @@ def grade(match: Match) -> str:
         # the best hit is a summary / review / zero-runtime stub: a person decides. LOW, not
         # MEDIUM, so no auto-convert tier (not even "medium") converts it unseen
         return "LOW"
-    if not (match.language or "english").lower().startswith("english"):
-        # a foreign-language hit must never auto-convert at HIGH confidence
-        return "MEDIUM"
+    # a foreign-language hit must never auto-convert at HIGH confidence: it still has to clear
+    # the normal title / author / margin gates, and is then capped at MEDIUM
+    foreign = not (match.language or "english").lower().startswith("english")
     title, author = match.title_sim, match.author_sim
     window_only = match.title_window_coverage < MIN_HIGH_WINDOW_COVERAGE
     if match.author_known:
-        if title >= 0.88 and author >= 0.85 and match.margin >= 0.05 and not window_only:
+        if title >= 0.88 and author >= 0.85 and match.margin >= 0.05 and not window_only and not foreign:
             return "HIGH"
         if title >= 0.85 and author >= 0.60 and match.margin > 0:
             return "MEDIUM"

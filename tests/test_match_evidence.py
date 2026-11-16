@@ -233,6 +233,16 @@ class TestRivalReasons(unittest.TestCase):
         line = self.reason(alt(score=1.0), winner=1.0)
         self.assertIn("Same score as the pick", line)
 
+    def test_tie_with_a_different_author_says_so(self):
+        line = web.rival_reason(alt(score=1.0), 10.5, 0.25, winner_score=1.0, same_author=False)
+        self.assertEqual(
+            line, "Same score as the pick, but a different author — check which one you have"
+        )
+
+    def test_tie_with_the_same_author_is_another_edition(self):
+        line = web.rival_reason(alt(score=1.0), 10.5, 0.25, winner_score=1.0, same_author=True)
+        self.assertEqual(line, "Same score as the pick — most likely another edition of the same book")
+
     def test_legacy_row_has_no_reason(self):
         self.assertEqual(self.reason({"asin": "B0X", "title": "X", "score": 0.7}), "")
 
@@ -314,6 +324,25 @@ class TestEvidencePanel(unittest.TestCase):
         page = web.render(self.state)
         start = page.index('<div class="ab-ev">')
         return page[start : page.index('<div class="ab-edit"', start)]
+
+    def test_an_author_unknown_row_says_title_only_score(self):
+        self.save(detail=evidence_detail(author_known=False))
+        self.assertIn("title-only score", text(self.panel()))
+
+    def test_the_panel_names_the_grade_and_margin(self):
+        self.save(detail=evidence_detail(confidence="MEDIUM", margin=0.15))
+        panel = text(self.panel())
+        self.assertIn("graded MEDIUM", panel)
+        self.assertIn("margin 0.15 over the next different book", panel)
+
+    def test_an_older_row_without_a_margin_prints_none(self):
+        self.save()
+        self.assertNotIn("over the next different book", self.panel())
+
+    def test_a_different_author_rival_is_named(self):
+        rival = alt(asin="B0LOCKE", title="The Power of Habit", authors=["Adriana Locke"], score=1.0)
+        self.save(alternates=[rival])
+        self.assertIn("but a different author", self.panel())
 
     def test_mockup_copy_with_the_review_unit_data(self):
         self.save()

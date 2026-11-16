@@ -9,6 +9,16 @@ def product(title="Moneyball", author="Michael Lewis", hours=10.43):
 
 
 class TestGrade(unittest.TestCase):
+    def test_foreign_language_still_has_to_clear_the_gates(self):
+        german = Product(asin="B0DE", title="Moneyball", authors=["Michael Lewis"], hours=10.0, language="german")
+        weak = Match(product=german, title_sim=0.42, author_sim=1.0, margin=0.2, author_known=True, language="german")
+        self.assertEqual(grade(weak), "LOW")
+
+    def test_foreign_language_is_capped_at_medium(self):
+        german = Product(asin="B0DE", title="Moneyball", authors=["Michael Lewis"], hours=10.0, language="german")
+        strong = Match(product=german, title_sim=0.95, author_sim=0.95, margin=0.2, author_known=True, language="german")
+        self.assertEqual(grade(strong), "MEDIUM")
+
     def test_title_and_author_agree(self):
         match = Match(product=product(), title_sim=1.0, author_sim=1.0, margin=0.4, author_known=True)
         self.assertEqual(grade(match), "HIGH")

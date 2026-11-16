@@ -2644,6 +2644,8 @@ def rival_reason(
     winner_score: float = 1.0,
     author_known: bool = True,
     winner_corroborated: bool = False,
+    *,
+    same_author: bool = True,
 ) -> str:
     """One plain-English line (HTML) saying why this candidate lost to the pick.
 
@@ -2680,6 +2682,8 @@ def rival_reason(
     if clauses:
         return ", ".join(clauses)
     if _num(alt.get("score")) >= _num(winner_score):
+        if not same_author:
+            return "Same score as the pick, but a different author — check which one you have"
         return "Same score as the pick — most likely another edition of the same book"
     if not author_known:
         return f"Weaker title match — title <b>{_pct(title)}%</b>"
@@ -2739,7 +2743,13 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
         score_html = '<div class="ab-evv">&mdash;</div><div class="ab-evl">you picked this edition</div>'
     else:
         mid = "" if score >= 0.85 else " ab-mid"
-        score_html = f'<div class="ab-evv{mid}">{score:.2f}</div><div class="ab-evl">match score</div>'
+        label = "match score" if author_known else "title-only score"
+        score_html = f'<div class="ab-evv{mid}">{score:.2f}</div><div class="ab-evl">{label}</div>'
+        grade = str(match.get("confidence") or "").upper()
+        if grade:
+            facts.append(f"graded {_html(grade)}")
+        if "margin" in match:
+            facts.append(f"margin {_num(match.get('margin')):.2f} over the next different book")
     win = (
         '<div class="ab-evwin">'
         + cover_html(unit)
@@ -2835,6 +2845,7 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
     if others:
         rows = []
         for alt in others:
+            alt_authors = alt.get("authors") or []
             reason = rival_reason(
                 alt,
                 local_hours,
@@ -2842,6 +2853,10 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
                 winner_score=score,
                 author_known=author_known,
                 winner_corroborated=winner_corroborated,
+                # unknown author on either side: don't accuse
+                same_author=not authors
+                or not alt_authors
+                or matching.norm(authors[0]) == matching.norm(str(alt_authors[0])),
             )
             if not reason:
                 reason = _html("; ".join(str(a) for a in (alt.get("authors") or [])))
