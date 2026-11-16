@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
+import errno
 import json
 import os
 import re
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -630,12 +633,47 @@ def encode(
     return result
 
 
+def _place(source: Path, dest: Path, move: bool) -> None:
+    """Put ``source`` at ``dest`` so that ``dest`` is never a partial file.
+
+    A move on the same filesystem is a single rename. Otherwise the bytes go to a
+    temporary file in ``dest``'s own directory (same filesystem, so the final rename is
+    atomic), are fsynced, and only then renamed over ``dest``; any failure removes the
+    temporary file and re-raises, leaving ``dest`` as it was.
+    """
+    if move:
+        try:
+            os.replace(source, dest)
+            return
+        except OSError as exc:
+            if exc.errno != errno.EXDEV:
+                raise
+    fd, temp = tempfile.mkstemp(prefix=f".{dest.name}.", suffix=".part", dir=dest.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle, open(source, "rb") as src:
+            shutil.copyfileobj(src, handle, 1024 * 1024)
+            handle.flush()
+            os.fsync(handle.fileno())
+        shutil.copystat(source, temp)
+        os.replace(temp, dest)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temp)
+        raise
+    if move:
+        os.unlink(source)
+
+
 def publish_result(result: EncodeResult, out_path: Path) -> EncodeResult:
-    """Move a verified encode into the library (and drop cover.jpg beside it)."""
+    """Move a verified encode into the library (and drop cover.jpg beside it).
+
+    Atomic: the library never holds a half-written file, and cover.jpg is only
+    written once the audio is in place.
+    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(result.path), str(out_path))
+    _place(Path(result.path), out_path, move=True)
     if result.cover is not None:
-        shutil.copy2(result.cover, out_path.parent / "cover.jpg")
+        _place(Path(result.cover), out_path.parent / "cover.jpg", move=False)
     result.path = out_path
     result.size = out_path.stat().st_size
     return result

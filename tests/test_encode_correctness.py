@@ -90,5 +90,89 @@ class DurationCheckTests(EncodeHarness):
             self.run_encode(total=600.0, output=565.0)
 
 
+# ---------------------------------------------------------------- 2. atomic publish
+class PublishTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        root = pathlib.Path(self.dir.name)
+        self.work = root / "work"
+        self.work.mkdir()
+        self.library = root / "library" / "Author" / "Book"
+        self.out = self.library / "Book.m4b"
+        self.audio = self.work / "output.m4b"
+        self.audio.write_bytes(b"a" * 300_000)
+        self.cover = self.work / "cover.jpg"
+        self.cover.write_bytes(b"c" * 5000)
+        self.result = encode.EncodeResult(
+            path=self.audio, duration=60.0, size=300_000, chapters=1, chapters_source="x", cover=self.cover
+        )
+        real_replace = encode.os.replace
+
+        def cross_device_replace(src, dst):
+            # the work dir is "another filesystem": only renames inside the library work
+            if pathlib.Path(src).parent != pathlib.Path(dst).parent:
+                raise OSError(encode.errno.EXDEV, "Invalid cross-device link")
+            return real_replace(src, dst)
+
+        self.cross_device = mock.patch.object(encode.os, "replace", side_effect=cross_device_replace)
+
+    def test_same_filesystem_is_a_rename(self):
+        with mock.patch.object(encode.shutil, "copyfileobj", wraps=encode.shutil.copyfileobj) as copy:
+            result = encode.publish_result(self.result, self.out)
+        self.assertEqual(result.path, self.out)
+        self.assertEqual(self.out.stat().st_size, 300_000)
+        self.assertFalse(self.audio.exists())
+        self.assertEqual((self.library / "cover.jpg").read_bytes(), b"c" * 5000)
+        self.assertEqual(copy.call_count, 1)  # only the cover is copied; the audio was renamed
+
+    def test_cross_filesystem_publish_writes_the_whole_file(self):
+        with self.cross_device:
+            result = encode.publish_result(self.result, self.out)
+        self.assertEqual(result.size, 300_000)
+        self.assertEqual(self.out.read_bytes(), b"a" * 300_000)
+        self.assertFalse(self.audio.exists())
+        self.assertTrue((self.library / "cover.jpg").exists())
+        self.assertEqual(sorted(p.name for p in self.library.iterdir()), ["Book.m4b", "cover.jpg"])
+
+    def test_a_copy_that_dies_midway_leaves_nothing_in_the_library(self):
+        def dying_copy(src, dst, length=0):
+            dst.write(src.read(100_000))
+            raise OSError(28, "No space left on device")
+
+        with self.cross_device, mock.patch.object(encode.shutil, "copyfileobj", side_effect=dying_copy):
+            with self.assertRaises(OSError):
+                encode.publish_result(self.result, self.out)
+        self.assertFalse(self.out.exists())
+        self.assertEqual(list(self.library.iterdir()), [])  # no stray temp file, no cover
+        self.assertEqual(self.audio.stat().st_size, 300_000)  # the source survives for a retry
+
+    def test_an_old_file_is_replaced_whole_or_not_at_all(self):
+        self.library.mkdir(parents=True)
+        self.out.write_bytes(b"old")
+
+        def dying_copy(src, dst, length=0):
+            dst.write(src.read(10))
+            raise OSError(5, "Input/output error")
+
+        with self.cross_device, mock.patch.object(encode.shutil, "copyfileobj", side_effect=dying_copy):
+            with self.assertRaises(OSError):
+                encode.publish_result(self.result, self.out)
+        self.assertEqual(self.out.read_bytes(), b"old")
+        self.assertEqual([p.name for p in self.library.iterdir()], ["Book.m4b"])
+
+    def test_cover_is_written_only_after_the_audio(self):
+        order = []
+        real = encode._place
+
+        def spy(source, dest, move):
+            order.append((dest.name, self.out.exists()))
+            return real(source, dest, move)
+
+        with mock.patch.object(encode, "_place", side_effect=spy):
+            encode.publish_result(self.result, self.out)
+        self.assertEqual(order, [("Book.m4b", False), ("cover.jpg", True)])
+
+
 if __name__ == "__main__":
     unittest.main()
