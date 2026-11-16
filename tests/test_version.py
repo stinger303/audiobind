@@ -20,7 +20,8 @@ class TestVersionAgrees(unittest.TestCase):
         # only the [project] table's version line, not a dependency pin
         head = text.split("[project]", 1)[1].split("\n[", 1)[0]
         match = re.search(r'^version\s*=\s*"([^"]+)"', head, re.M)
-        self.assertIsNotNone(match, "no version line in [project]")
+        if match is None:
+            self.fail("no version line in [project]")
         self.assertEqual(match.group(1), __version__,
                          "pyproject.toml and audiobind.__version__ disagree - bump both")
 
