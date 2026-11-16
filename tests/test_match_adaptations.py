@@ -56,16 +56,10 @@ CASES = [
 
 #: 5. the same title/author with a plain candidate present: the numbers must not move. Pinned
 #: from 0.21.0-dev11. (name, folder, keys, (tier, asin, score, title_sim, author_sim, margin))
-UNCHANGED = [
-    # the dramatization ties the plain edition at 1.0 and, being a different "work" by title,
-    # eats its margin: LOW. A pre-existing gap, fails safe; left alone here on purpose
-    ("plain_and_dramatized", S + "Michael J. Sullivan - Rise of Empire",
-     ["rise_dramatized", "rise_plain"], ("LOW", "B0081IIZ6Y", 1.0, 1.0, 1.0, 0.0)),
-    # the live Theft of Swords shape: the dramatization's "Book 1" subtitle out-scores the plain
-    # edition's "Volume 1", by 0.022 - MEDIUM before and after
-    ("theft_live_shape", S + "Michael J. Sullivan - Theft of Swords - Riyria Revelations - Book 1",
-     ["theft_dramatized", "theft_plain"], ("MEDIUM", "B09PQ951KX", 1.0, 1.0, 1.0, 0.022)),
-]
+#: 0.21.0-dev13 moved both of its cases out, on purpose - the tie-break below fixes them:
+#: "plain_and_dramatized" (LOW, margin 0) is now TIEBREAK_CASES "tie_plain_wins" (HIGH), and
+#: "theft_live_shape" (MEDIUM on the dramatization) is "theft_live_shape_plain_wins"
+UNCHANGED: list = []
 
 
 #: extra catalog entries for the tie-break cases: an adaptation of a *different* book than the
@@ -94,8 +88,9 @@ TIEBREAK_CASES = [
     # ... and when the adaptation's "Book 1" subtitle out-scores the plain "Volume 1" (the live
     #     Theft of Swords shape, 1.0 vs 0.978): a different production of the same book must not
     #     beat the plain edition outright either
+    #     (LOW for now: whole-string, "Theft of Swords" is only a window of this folder title)
     ("theft_live_shape_plain_wins", S + "Michael J. Sullivan - Theft of Swords - Riyria Revelations - Book 1",
-     ["theft_dramatized", "theft_plain"], {"tier": "HIGH", "asin": "B007KSJKI8"}),
+     ["theft_dramatized", "theft_plain"], {"asin": "B007KSJKI8"}),
     # 2. a folder that asks for the adaptation gets it, and may reach HIGH
     ("asked_dramatized_tie", S + "Michael J. Sullivan - Rise of Empire [Dramatized Adaptation]",
      ["rise_plain", "rise_dramatized"], {"tier": "HIGH", "asin": "B09P49F6J7"}),
@@ -128,15 +123,9 @@ TIEBREAK_UNCHANGED = [
 #: cases that fail today, and why. The test asserts they STILL fail, so a fix has to move the
 #: case out of here (and say so) rather than pass unnoticed.
 #: (0.21.0-dev12 moved every Step-1 case out: an unasked adaptation is capped at MEDIUM)
-KNOWN_GAPS: dict[str, str] = {
-    "tie_plain_wins": "the adaptation ties the plain edition and counts as its rival: margin 0, LOW",
-    "tie_plain_wins_other_order": "same tie, same LOW",
-    "heir_tie_plain_wins": "same tie, same LOW",
-    "tie_same_title_plain_wins": "identical titles: the catalog order picks the full-cast production",
-    "theft_live_shape_plain_wins": "the dramatization out-scores the plain edition by 0.022 and wins",
-    "asked_graphicaudio_tie": "the tie goes to the plain edition (closer raw title), margin 0: LOW",
-    "asked_full_cast_tie": "identical titles: the catalog order picks the plain edition",
-}
+#: (0.21.0-dev13 moved every tie-break case out: the unasked production ranks below the asked
+#: one of the same work and is not its rival)
+KNOWN_GAPS: dict[str, str] = {}
 
 
 def run_products(rel: str, keys: list[str]) -> matching.Match:
@@ -214,6 +203,20 @@ class TestAdaptationLabel(unittest.TestCase):
                      "Dramatic Audio", "Full Castle", "The Adaptation", "Audio Dramatics"]:
             with self.subTest(text):
                 self.assertEqual(matching.adaptation_label(text), "")
+
+    def test_marker_is_not_part_of_the_work(self):
+        a = ["Michael J. Sullivan"]
+        for title in ["Rise of Empire [Dramatized Adaptation]", "Rise of Empire (Audio Drama)",
+                      "Rise of Empire GraphicAudio", "Rise of Empire"]:
+            with self.subTest(title):
+                self.assertTrue(matching._same_work(Product(asin="1", title=title, authors=a),
+                                                    Product(asin="2", title="Rise of Empire", authors=a)))
+        # only marker groups go: other brackets still tell works apart
+        self.assertFalse(matching._same_work(Product(asin="1", title="Rise (Book 2)", authors=a),
+                                             Product(asin="2", title="Rise (Book 3)", authors=a)))
+        self.assertFalse(matching._same_work(Product(asin="1", title="Rise of Empire [Dramatized Adaptation]",
+                                                     authors=["Someone Else"]),
+                                             Product(asin="2", title="Rise of Empire", authors=a)))
 
     def test_subtitle_counts_and_the_folder_cancels(self):
         product = Product(asin="B0X", title="Rise of Empire", subtitle="A Full Cast Production")

@@ -262,7 +262,10 @@ def infer_author_from_series(series: str) -> str:
 
 
 def _same_work(a: Product, b: Product) -> bool:
-    return norm(a.title) == norm(b.title) and norm((a.authors or [""])[0]) == norm((b.authors or [""])[0])
+    """Same title and lead author. An adaptation marker in the title is not part of the work:
+    "Rise of Empire [Dramatized Adaptation]" is another production of "Rise of Empire"."""
+    return (_work_title(a.title) == _work_title(b.title)
+            and norm((a.authors or [""])[0]) == norm((b.authors or [""])[0]))
 
 
 #: title words that mark a catalog entry as something written *about* a book, not an edition of it
@@ -325,6 +328,19 @@ def adaptation_label(*texts: str) -> str:
         if any(pattern.search(t or "") for t in texts):
             return label
     return ""
+
+
+#: a bracketed / parenthesised group, for dropping the ones that only carry an adaptation marker
+_GROUP = re.compile(r"\[[^\]]*\]|\([^)]*\)|\{[^}]*\}")
+
+
+def _work_title(title: str) -> str:
+    """``norm(title)`` without its adaptation markers: a group that carries one is dropped
+    whole ("[Dramatized Adaptation]", "(Audio Drama)"), a bare marker phrase is dropped."""
+    text = _GROUP.sub(lambda g: " " if adaptation_label(g.group(0)) else g.group(0), title or "")
+    for pattern, _label in _ADAPTATION_MARKERS:
+        text = pattern.sub(" ", text)
+    return norm(text)
 
 
 def unasked_adaptation(product: Product, wanted: tuple[str, ...]) -> str:
@@ -476,9 +492,19 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
         return Match(author_from_series=author_from_series, query_title=title, query_author=author)
 
     products = [s["product"] for s in scored.values()]
+    # the folder's own words: its name, the scanner's title reading(s) and the reading searched
+    # (for an ingest retry, title_guess is the embedded-tag title)
+    wanted = (unit.name, unit.title_guess, unit.alt_title_guess, title)
+    asks_adaptation = bool(adaptation_label(*wanted))
     for entry in scored.values():
         entry["knockoff"] = is_knockoff(entry["product"], products)
         entry["corroborated"] = None  # None = never asked Audnex
+        # the production the folder did not ask for: an adaptation for a plain folder, a plain
+        # edition for a folder that names an adaptation
+        entry["unwanted_production"] = (
+            bool(adaptation_label(entry["product"].title, entry["product"].subtitle)) != asks_adaptation
+        )
+    _rank_productions(scored.values())
     ranked = sorted(scored.values(), key=_rank_key, reverse=True)
     best, margin = _pick_and_margin(ranked)
 
@@ -511,11 +537,7 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
         knockoff=best["knockoff"],
         corroborated=best["corroborated"],
         title_window_coverage=round(coverage, 3),
-        # the folder's own words: its name, the scanner's title reading(s) and the reading
-        # searched (for an ingest retry, title_guess is the embedded-tag title)
-        unasked_adaptation=unasked_adaptation(
-            best["product"], (unit.name, unit.title_guess, unit.alt_title_guess, title)
-        ),
+        unasked_adaptation=unasked_adaptation(best["product"], wanted),
     )
     match.confidence = grade(match)
     # keep the runners-up (other editions of the same work, near misses) so the
@@ -667,10 +689,41 @@ def _top_score(scored: dict[str, dict]) -> float:
     return max((s["score"] for s in scored.values()), default=-1.0)
 
 
+def _rank_productions(entries) -> None:
+    """Set each entry's ``rank_score``: its score, except that a production the folder did not
+    ask for (``unwanted_production``) never ranks above the wanted production of the same work.
+
+    Its rank score is held to the best wanted, non-knockoff same-work peer's score, and
+    _rank_key breaks the then-equal scores toward the wanted one: a GraphicAudio dramatization
+    whose "Book 1" subtitle out-scores the plain edition's "Volume 1" still sorts just below it
+    for a plain folder - and stays above everything the plain edition beats. Against a
+    different work only an exact score tie is broken this way. The score itself is untouched.
+    """
+    entries = list(entries)
+    for entry in entries:
+        entry["rank_score"] = entry["score"]
+        if not entry.get("unwanted_production"):
+            continue
+        peers = [
+            p["score"]
+            for p in entries
+            if not p.get("unwanted_production") and not p.get("knockoff")
+            and _same_work(p["product"], entry["product"])
+        ]
+        if peers:
+            entry["rank_score"] = min(entry["score"], max(peers))
+
+
 def _rank_key(entry: dict) -> tuple:
-    """Score first; equal scores go to the closer raw title, then the closer runtime."""
+    """Rank score first (see _rank_productions); equal scores go to the production the folder
+    asked for, then the closer raw title, then the closer runtime."""
     delta = entry.get("runtime_delta_pct")
-    return (entry["score"], entry.get("whole_sim", 0.0), -abs(delta) if delta is not None else float("-inf"))
+    return (
+        entry.get("rank_score", entry["score"]),
+        not entry.get("unwanted_production", False),
+        entry.get("whole_sim", 0.0),
+        -abs(delta) if delta is not None else float("-inf"),
+    )
 
 
 #: grade() never says HIGH when the floor was only reached by a window covering less of the title
