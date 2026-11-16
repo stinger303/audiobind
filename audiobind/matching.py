@@ -174,6 +174,12 @@ _LEADING_SEQ = re.compile(r"^\s*\d{1,3}(?:\.\d)?\s*(?:-|–|—|\.)\s*(?=\S)")
 _SERIES_SEQ_TITLE = re.compile(r"^(?P<x>.+?)\s+\d{1,3}(?:\.\d)?\s*(?:-|–|—|\.)\s*(?P<y>\S.*)$")
 #: "Private 18 Private Rome": a bare "<word> NN <rest>", no dash
 _WORD_SEQ_REST = re.compile(r"^(?P<x>[A-Za-z]+)\s+\d{1,3}(?:\.\d)?\s+(?P<y>[A-Za-z].*)$")
+#: "<Title> - <Series>, Book N", "<Title> - <Series> - Book N", "<Title> — <Series> Book N"
+_SERIES_BOOK_TAIL = re.compile(
+    r"^(?P<t>\S.*?)\s+[-–—]\s+(?P<s>[^-–—]*[A-Za-z][^-–—]*?)\s*(?:,|\s[-–—])?\s*"
+    r"\b(?:book|volume|vol\.?)\s*\d{1,3}(?:\.\d)?\s*$",
+    re.IGNORECASE,
+)
 #: the series part and the title part must be this alike before the title part stands alone
 SERIES_ECHO_SIM = 0.8
 
@@ -192,7 +198,8 @@ def title_variants(title: str) -> list[str]:
     (``NN - `` / ``NN. ``) removed; d. ``<X> NN - <Y>`` with X echoed in Y -> Y, the real title
     ("Dungeon Crawler Carl 01 - Dungeon Crawler Carl" -> "Dungeon Crawler Carl"); e. a bare
     ``<word> NN <rest>`` with a rest of two words or more -> rest ("Private 18 Private Rome" ->
-    "Private Rome").
+    "Private Rome"); f. a trailing `` - <Series>, Book N`` tail dropped ("Rise of Empire -
+    Riyria Revelations, Book 2" -> "Rise of Empire").
     """
     raw = (title or "").strip()
     variants = [raw]
@@ -205,6 +212,9 @@ def title_variants(title: str) -> list[str]:
     bare = _WORD_SEQ_REST.match(stripped)
     if bare and len(bare.group("y").split()) >= 2:
         variants.append(bare.group("y").strip())
+    tail = _SERIES_BOOK_TAIL.match(stripped)
+    if tail:
+        variants.append(tail.group("t").strip())
     out: list[str] = []
     for v in variants:
         if v and v not in out:

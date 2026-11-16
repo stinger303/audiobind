@@ -212,6 +212,20 @@ class TestRetrieval(unittest.TestCase):
         self.assertIn("Private Rome", matching.title_variants("Private 18 Private Rome"))
         self.assertNotIn("Yossarian", matching.title_variants("Catch 22 Yossarian"))
 
+    def test_a_series_book_tail_is_dropped_as_a_variant(self):
+        for title, bare in [
+            ("Rise of Empire - Riyria Revelations, Book 2", "Rise of Empire"),
+            ("Theft of Swords - Riyria Revelations - Book 1", "Theft of Swords"),
+            ("Heir of Novron - Riyira Revelations Book 03", "Heir of Novron"),
+            ("Heir of Novron — Riyria Revelations Volume 3", "Heir of Novron"),
+        ]:
+            with self.subTest(title):
+                self.assertEqual(matching.title_variants(title), [title, bare])
+        # no series words before "Book N", or no dash: nothing to drop
+        for title in ["Title - Book 2", "The Book 2", "Dune"]:
+            with self.subTest(title):
+                self.assertEqual(matching.title_variants(title), [title])
+
     def test_rip_noise_is_stripped_for_a_query(self):
         self.assertEqual(matching.strip_rip_noise("Killing Floor Chapterized 64kbps (Read by Dick Hill)"),
                          "Killing Floor")

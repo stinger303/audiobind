@@ -88,9 +88,10 @@ TIEBREAK_CASES = [
     # ... and when the adaptation's "Book 1" subtitle out-scores the plain "Volume 1" (the live
     #     Theft of Swords shape, 1.0 vs 0.978): a different production of the same book must not
     #     beat the plain edition outright either
-    #     (LOW for now: whole-string, "Theft of Swords" is only a window of this folder title)
+    #     (HIGH since the " - <Series> - Book N" tail is dropped as a title reading: before that,
+    #     "Theft of Swords" was only a window of this folder title and graded LOW)
     ("theft_live_shape_plain_wins", S + "Michael J. Sullivan - Theft of Swords - Riyria Revelations - Book 1",
-     ["theft_dramatized", "theft_plain"], {"asin": "B007KSJKI8"}),
+     ["theft_dramatized", "theft_plain"], {"tier": "HIGH", "asin": "B007KSJKI8"}),
     # 2. a folder that asks for the adaptation gets it, and may reach HIGH
     ("asked_dramatized_tie", S + "Michael J. Sullivan - Rise of Empire [Dramatized Adaptation]",
      ["rise_plain", "rise_dramatized"], {"tier": "HIGH", "asin": "B09P49F6J7"}),
@@ -177,10 +178,22 @@ class TestAdaptationFixtures(unittest.TestCase):
                 self.assertEqual((m.confidence, m.asin, m.score, m.title_sim, m.author_sim, m.margin), want)
 
     def test_live_rise_of_empire_from_frozen_cache(self):
-        # the real catalog response: the dramatization alone, margin 0.978. It was HIGH
+        # the real catalog responses. The author search finds nothing ("Micheal"), so the
+        # dramatization was the only candidate: HIGH, then (0.21.0-dev12) MEDIUM. The bare-title
+        # reading now also finds the plain edition, which ties it and wins the tie (0.21.0-dev13)
         match = frozen_match(S + "Micheal J. Sullivan - Rise of Empire - Riyria Revelations, Book 2")
-        want = {"max_tier": "MEDIUM", "asin": "B09P49F6J7"}
+        want = {"tier": "HIGH", "asin": "B0081IIZ6Y"}
         self.check("live_rise_of_empire", case_problems(match, want), f"{match.confidence} {match.asin}")
+
+    def test_live_riyria_from_frozen_cache(self):
+        # the other two live folders: each picks its plain edition, never the dramatization
+        for rel, asin in [
+            (S + "Michael J. Sullivan - Theft of Swords - Riyria Revelations - Book 1", "B007KSJKI8"),
+            (S + "Michael J. Sullivan - Heir of Novron - Riyira Revelations Book 03", "B008UCYCSQ"),
+        ]:
+            with self.subTest(rel):
+                match = frozen_match(rel)
+                self.assertEqual((match.confidence, match.asin), ("HIGH", asin))
 
 
 class TestAdaptationLabel(unittest.TestCase):
