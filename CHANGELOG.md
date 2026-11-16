@@ -7,6 +7,35 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.21.0-dev13] - 2026-11-16
+
+Picking the right edition when an adaptation is in the running, gated on the same regression run.
+
+### Fixed
+- **A plain edition beats an adaptation you didn't ask for.** 0.21.0-dev12 stopped the GraphicAudio
+  dramatization from auto-converting, but it still won the pick. When the catalog also returned the
+  plain edition, the two tied (same score, title 1.0). The tie went to the dramatization, and the
+  tie drove the margin to 0. An adaptation the folder doesn't ask for is now handled the way a
+  knockoff is: it never ranks above the plain edition of the same book, even when its "Book 1"
+  subtitle out-scores the plain "Volume 1". It also never counts as that edition's rival for the
+  margin, so the plain edition can reach HIGH. The reverse also holds: a folder that names an
+  adaptation (`[Dramatized Adaptation]`, `GraphicAudio`, `Full Cast`, ...) gets the adaptation over
+  the plain edition. An adaptation found with no plain edition beside it is still offered, still
+  capped at MEDIUM.
+- **"Title - Series, Book N" folders find the bare title.** A trailing ` - <Series>, Book N` tail
+  (also ` - <Series> - Book N`, ` — <Series> Book N`, Volume / Vol.) is now dropped as an extra
+  title reading. This is what finds the plain *Rise of Empire* for a folder whose misspelt author
+  ("Micheal") finds nothing.
+- Regression run (`docs/match-after-tiebreak.csv` against `docs/match-after-adaptations.csv`): four
+  rows changed, all Riyria.
+  - *Rise of Empire*: B09P49F6J7 MEDIUM → B0081IIZ6Y HIGH (margin 0.978 → 0.572).
+  - *Theft of Swords*: B09PQ951KX MEDIUM → B007KSJKI8 HIGH (margin 0.022 → 0.519).
+  - *Heir of Novron*: B09P4BYYX5 LOW → B008UCYCSQ HIGH (margin 0.058 → 0.269).
+  - *The Crown Tower*: B00DZ0G088 LOW → HIGH, same ASIN (its dramatization had tied it; margin
+    0 → 0.378).
+
+  Tiers: HIGH 69, MEDIUM 9, LOW 6, NONE 7.
+
 ## [0.21.0-dev12] - 2026-11-16
 
 Audiobook adaptations, gated on the same regression run.
