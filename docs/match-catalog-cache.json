@@ -1,4 +1,7 @@
 {
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=Better+Off+Dead": {
+"products": []
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=Dave+Ramsey": {
 "products": [
 {
@@ -486,6 +489,502 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=James+Patterson": {
+"products": [
+{
+"asin": "B0HCNCSGYM",
+"authors": [
+{
+"name": "James Patterson"
+},
+{
+"name": "Emily Raymond"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "January LaVoy"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2027-04-19",
+"runtime_length_min": 720,
+"series": [
+{
+"asin": "B0073XF7R8",
+"sequence": "27",
+"title": "Women's Murder Club",
+"url": "/pd/Womens-Murder-Club-Audiobook/B0073XF7R8"
+}
+],
+"subtitle": "A Women's Murder Club Thriller",
+"title": "27 Stars"
+},
+{
+"asin": "B0GL9748LQ",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B00MRF1LH2",
+"name": "Nancy Allen"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Marsai Martin"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-11-23",
+"runtime_length_min": 619,
+"subtitle": "A Thriller",
+"title": "The Murder Trial"
+},
+{
+"asin": "B0H9SX9ZN4",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Duane Swierczynski"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Christina Ricci"
+},
+{
+"name": "David Oyelowo"
+},
+{
+"name": "David Denman"
+},
+{
+"name": "Marcus Henderson"
+},
+{
+"name": "full cast"
+}
+],
+"publisher_name": "Audible Originals",
+"release_date": "2026-08-13",
+"runtime_length_min": 183,
+"title": "Harker"
+},
+{
+"asin": "B0FVWB1XP8",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B09B7TPYRQ",
+"name": "Viola Davis"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Viola Davis"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-03-09",
+"runtime_length_min": 680,
+"subtitle": "A Novel",
+"title": "Judge Stone"
+},
+{
+"asin": "B0GK583G6M",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Max DiLallo"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Justin Hartley"
+},
+{
+"name": "Stana Katic"
+},
+{
+"name": "Elizabeth Rodriguez"
+},
+{
+"name": "Rhenzy Feliz"
+},
+{
+"name": "full cast"
+}
+],
+"publisher_name": "Audible Originals",
+"release_date": "2026-02-19",
+"runtime_length_min": 225,
+"title": "Trapped"
+},
+{
+"asin": "B0FH5N56Z8",
+"authors": [
+{
+"asin": "B0BRJVS2R9",
+"name": "James Patterson"
+},
+{
+"asin": "B001HD351U",
+"name": "Mike Lupica"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tom Pelphrey"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-07-13",
+"runtime_length_min": 650,
+"subtitle": "A Thriller",
+"title": "The Country Road Murders"
+},
+{
+"asin": "B0GL9H5D9M",
+"authors": [
+{
+"asin": "B0BRJVS2R9",
+"name": "James Patterson"
+},
+{
+"asin": "B0DS4ZCR6H",
+"name": "David Ellis"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Sam Claflin"
+},
+{
+"name": "Lorelei King"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-09-21",
+"runtime_length_min": 782,
+"title": "The Munich Affair"
+},
+{
+"asin": "B0GQF1S51J",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dion Graham"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-10-19",
+"runtime_length_min": 492,
+"series": [
+{
+"asin": "B005NABWDQ",
+"sequence": "36",
+"title": "Alex Cross Adventures",
+"url": "/pd/Alex-Cross-Audiobook/B005NABWDQ"
+}
+],
+"subtitle": "An Alex Cross Thriller",
+"title": "The Family Cross"
+},
+{
+"asin": "B0GQD2XYF5",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B0GZYMSKXY",
+"name": "Brian Sitts"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Christine Lakin"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-10-27",
+"runtime_length_min": 541,
+"series": [
+{
+"asin": "B0CXTV54Z9",
+"sequence": "3",
+"title": "Holmes, Margaret & Poe",
+"url": "/pd/Holmes-Margaret-Poe-Audiobook/B0CXTV54Z9"
+}
+],
+"subtitle": "A Holmes, Margaret & Poe Mystery",
+"title": "The Girl in the Lake"
+},
+{
+"asin": "B002V081PI",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B001H6OACK",
+"name": "Michael Ledwidge"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "John Slattery"
+},
+{
+"name": "Reg Rogers"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2007-02-05",
+"runtime_length_min": 414,
+"series": [
+{
+"asin": "B005NAT5Y4",
+"sequence": "1",
+"title": "A Michael Bennett Thriller",
+"url": "/pd/A-Michael-Bennett-Thriller-Audiobook/B005NAT5Y4"
+}
+],
+"title": "Step on a Crack"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=James+Patterson%2C+Adam+Hamdy": {
+"products": [
+{
+"asin": "B0H7RGY4GG",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Trevor White"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2027-09-13",
+"runtime_length_min": 720,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "20",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Dublin"
+},
+{
+"asin": "B0GX7MH2TQ",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-12-14",
+"runtime_length_min": 420,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "19",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Monaco"
+},
+{
+"asin": "B0FH5NRBDW",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Adam Sims"
+},
+{
+"name": "Rachel Handshaw"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-01-14",
+"runtime_length_min": 517,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "18",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Rome"
+},
+{
+"asin": "B0BK2QTNK9",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeremy Irvine"
+},
+{
+"name": "Olga Koch"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2023-06-13",
+"runtime_length_min": 542,
+"series": [
+{
+"asin": "B0CXTTSNQ7",
+"sequence": "1",
+"title": "Private Russia",
+"url": "/pd/Private-Russia-Audiobook/B0CXTTSNQ7"
+},
+{
+"asin": "B006VZNHIU",
+"sequence": "15",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private Moscow"
+},
+{
+"asin": "B0C5JWPPW8",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Trevor White"
+},
+{
+"name": "Kate Handford"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2024-01-30",
+"runtime_length_min": 444,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "16",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+},
+{
+"asin": "B0CXTSMJJ7",
+"sequence": "1",
+"title": "Private Middle East",
+"url": "/pd/Private-Middle-East-Audiobook/B0CXTSMJJ7"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Missing Persons"
+},
+{
+"asin": "B0GL99KHWL",
+"authors": [
+{
+"name": "James Patterson"
+},
+{
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"publisher_name": "Little, Brown & Company",
+"release_date": "2028-03-06",
+"runtime_length_min": 540,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "17",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private Beijing"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=James+Patterson%2C+Mark+Sullivan": {
 "products": [
 {
@@ -742,6 +1241,300 @@
 }
 ],
 "title": "Private games (Dutch Edition)"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=James+Patterson+%28+%29": {
+"products": [
+{
+"asin": "B0HCNCSGYM",
+"authors": [
+{
+"name": "James Patterson"
+},
+{
+"name": "Emily Raymond"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "January LaVoy"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2027-04-19",
+"runtime_length_min": 720,
+"series": [
+{
+"asin": "B0073XF7R8",
+"sequence": "27",
+"title": "Women's Murder Club",
+"url": "/pd/Womens-Murder-Club-Audiobook/B0073XF7R8"
+}
+],
+"subtitle": "A Women's Murder Club Thriller",
+"title": "27 Stars"
+},
+{
+"asin": "B0GL9748LQ",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B00MRF1LH2",
+"name": "Nancy Allen"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Marsai Martin"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-11-23",
+"runtime_length_min": 619,
+"subtitle": "A Thriller",
+"title": "The Murder Trial"
+},
+{
+"asin": "B0H9SX9ZN4",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Duane Swierczynski"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Christina Ricci"
+},
+{
+"name": "David Oyelowo"
+},
+{
+"name": "David Denman"
+},
+{
+"name": "Marcus Henderson"
+},
+{
+"name": "full cast"
+}
+],
+"publisher_name": "Audible Originals",
+"release_date": "2026-08-13",
+"runtime_length_min": 183,
+"title": "Harker"
+},
+{
+"asin": "B0FVWB1XP8",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B09B7TPYRQ",
+"name": "Viola Davis"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Viola Davis"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-03-09",
+"runtime_length_min": 680,
+"subtitle": "A Novel",
+"title": "Judge Stone"
+},
+{
+"asin": "B0GK583G6M",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Max DiLallo"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Justin Hartley"
+},
+{
+"name": "Stana Katic"
+},
+{
+"name": "Elizabeth Rodriguez"
+},
+{
+"name": "Rhenzy Feliz"
+},
+{
+"name": "full cast"
+}
+],
+"publisher_name": "Audible Originals",
+"release_date": "2026-02-19",
+"runtime_length_min": 225,
+"title": "Trapped"
+},
+{
+"asin": "B0FH5N56Z8",
+"authors": [
+{
+"asin": "B0BRJVS2R9",
+"name": "James Patterson"
+},
+{
+"asin": "B001HD351U",
+"name": "Mike Lupica"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tom Pelphrey"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-07-13",
+"runtime_length_min": 650,
+"subtitle": "A Thriller",
+"title": "The Country Road Murders"
+},
+{
+"asin": "B0GL9H5D9M",
+"authors": [
+{
+"asin": "B0BRJVS2R9",
+"name": "James Patterson"
+},
+{
+"asin": "B0DS4ZCR6H",
+"name": "David Ellis"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Sam Claflin"
+},
+{
+"name": "Lorelei King"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-09-21",
+"runtime_length_min": 782,
+"title": "The Munich Affair"
+},
+{
+"asin": "B0GQF1S51J",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dion Graham"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-10-19",
+"runtime_length_min": 492,
+"series": [
+{
+"asin": "B005NABWDQ",
+"sequence": "36",
+"title": "Alex Cross Adventures",
+"url": "/pd/Alex-Cross-Audiobook/B005NABWDQ"
+}
+],
+"subtitle": "An Alex Cross Thriller",
+"title": "The Family Cross"
+},
+{
+"asin": "B0GQD2XYF5",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B0GZYMSKXY",
+"name": "Brian Sitts"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Christine Lakin"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-10-27",
+"runtime_length_min": 541,
+"series": [
+{
+"asin": "B0CXTV54Z9",
+"sequence": "3",
+"title": "Holmes, Margaret & Poe",
+"url": "/pd/Holmes-Margaret-Poe-Audiobook/B0CXTV54Z9"
+}
+],
+"subtitle": "A Holmes, Margaret & Poe Mystery",
+"title": "The Girl in the Lake"
+},
+{
+"asin": "B002V081PI",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B001H6OACK",
+"name": "Michael Ledwidge"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "John Slattery"
+},
+{
+"name": "Reg Rogers"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2007-02-05",
+"runtime_length_min": 414,
+"series": [
+{
+"asin": "B005NAT5Y4",
+"sequence": "1",
+"title": "A Michael Bennett Thriller",
+"url": "/pd/A-Michael-Bennett-Thriller-Audiobook/B005NAT5Y4"
+}
+],
+"title": "Step on a Crack"
 }
 ]
 },
@@ -1605,6 +2398,329 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=Lee+Child%2C+Andrew+Child": {
+"products": [
+{
+"asin": "B0GM4YP19S",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B0C5VS4NYJ",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2026-10-20",
+"runtime_length_min": 749,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "31",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "A Reacher Novel",
+"title": "Chain Reaction"
+},
+{
+"asin": "B0DTZ6C6Z6",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2025-11-11",
+"runtime_length_min": 588,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "30",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "A Reacher Novel",
+"title": "Exit Strategy"
+},
+{
+"asin": "B0CRCHD41B",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2024-10-22",
+"runtime_length_min": 598,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "29",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "A Reacher Novel",
+"title": "In Too Deep"
+},
+{
+"asin": "B0BRQRHHZN",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2023-10-24",
+"runtime_length_min": 554,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "28",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "A Jack Reacher Novel",
+"title": "The Secret"
+},
+{
+"asin": "059333972X",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2020-10-27",
+"runtime_length_min": 639,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "25",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 25",
+"title": "The Sentinel"
+},
+{
+"asin": "0593452747",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2021-10-26",
+"runtime_length_min": 551,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "26",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 26",
+"title": "Better Off Dead"
+},
+{
+"asin": "B0GZ3RKTLN",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B0C5VS4NYJ",
+"name": "Andrew Child"
+},
+{
+"name": "Wulf Bergner — Translator"
+}
+],
+"language": "german",
+"narrators": [
+{
+"name": "Tobias Kluckert"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2026-11-09",
+"runtime_length_min": 548,
+"series": [
+{
+"asin": "B084ZPFTLY",
+"sequence": "29",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B084ZPFTLY"
+}
+],
+"subtitle": "Ein Jack-Reacher-Roman - Hart, härter, Reacher – Die Bestsellerromane zur Streamingserie »Reacher« vom Master of Crime!",
+"title": "Der tote Agent"
+},
+{
+"asin": "0593339991",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2020-10-27",
+"runtime_length_min": 363,
+"series": [
+{
+"asin": "B005NBR8AQ",
+"sequence": "25",
+"title": "Jack Reacher (abridged)",
+"url": "/pd/Jack-Reacher-abridged-Audiobook/B005NBR8AQ"
+}
+],
+"subtitle": "A Jack Reacher Novel",
+"title": "The Sentinel"
+},
+{
+"asin": "B0HQRD3SMJ",
+"authors": [
+{
+"name": "Lee Child"
+},
+{
+"name": "Andrew Child"
+},
+{
+"name": "Wulf Bergner — Translator"
+}
+],
+"language": "german",
+"narrators": [
+{
+"name": "Tobias Kluckert"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2027-05-10",
+"runtime_length_min": 600,
+"subtitle": "Ein Jack-Reacher-Roman - 30 Jahre Jack Reacher – 30 Fälle für den kompromisslosesten Helden der Action-Literatur!",
+"title": "Der Söldner"
+},
+{
+"asin": "B0GYFVXR17",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B0C5VS4NYJ",
+"name": "Andrew Child"
+},
+{
+"name": "Wulf Bergner — Translator"
+}
+],
+"language": "german",
+"narrators": [
+{
+"name": "Tobias Kluckert"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2026-11-09",
+"runtime_length_min": 495,
+"series": [
+{
+"asin": "B0DNJXTF28",
+"sequence": "29",
+"title": "Jack Reacher (Gekürzt)",
+"url": "/pd/Jack-Reacher-Gekuerzt-Audiobook/B0DNJXTF28"
+}
+],
+"subtitle": "Ein Jack-Reacher-Roman - Hart, härter, Reacher – Die Bestsellerromane zur Streamingserie »Reacher« vom Master of Crime!",
+"title": "Der tote Agent"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=Mara+Leveritt": {
 "products": [
 {
@@ -1958,6 +3074,640 @@
 ],
 "subtitle": "Frontlines, Book 6",
 "title": "Points of Impact"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=Matt+Dinniman": {
+"products": [
+{
+"asin": "B09GCYRZRQ",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-09-16",
+"runtime_length_min": 1083,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "4",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 4",
+"title": "The Gate of the Feral Gods"
+},
+{
+"asin": "B0CDXWSS5D",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "Patrick Warburton"
+},
+{
+"name": "Travis Baldree"
+},
+{
+"name": "Annie Ellicott"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2023-09-01",
+"runtime_length_min": 1606,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "6",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 6",
+"title": "The Eye of the Bedlam Bride"
+},
+{
+"asin": "B0DK282SYV",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "Travis Baldree"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2025-02-11",
+"runtime_length_min": 1720,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "7",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 7",
+"title": "This Inevitable Ruin"
+},
+{
+"asin": "B0FXY6DVJS",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2026-05-12",
+"runtime_length_min": 1227,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "8",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 8",
+"title": "A Parade of Horribles"
+},
+{
+"asin": "B094XCNV6G",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "The Critical Drinker"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-05-14",
+"runtime_length_min": 1014,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "3",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 3",
+"title": "The Dungeon Anarchist's Cookbook"
+},
+{
+"asin": "B09ZJ82C7Y",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2022-05-26",
+"runtime_length_min": 1413,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "5",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 5",
+"title": "The Butcher's Masquerade"
+},
+{
+"asin": "B0934GTSGT",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-04-22",
+"runtime_length_min": 688,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "2",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 2",
+"title": "Carl's Doomsday Scenario"
+},
+{
+"asin": "B08V8B2CGV",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-01-28",
+"runtime_length_min": 811,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "1",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 1",
+"title": "Dungeon Crawler Carl"
+},
+{
+"asin": "B0FBJ2WFHK",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Travis Baldree"
+},
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Penguin Audio",
+"release_date": "2026-02-10",
+"runtime_length_min": 648,
+"title": "Operation Bounce House"
+},
+{
+"asin": "B072XTFXLG",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Andrea Parsneau"
+}
+],
+"publisher_name": "Matt Dinniman",
+"release_date": "2017-06-22",
+"runtime_length_min": 753,
+"series": [
+{
+"asin": "B07FFFG8HC",
+"sequence": "1",
+"title": "Dominion of Blades",
+"url": "/pd/Dominion-of-Blades-Audiobook/B07FFFG8HC"
+}
+],
+"subtitle": "A LitRPG Adventure",
+"title": "Dominion of Blades"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=Michael+Connelly": {
+"products": [
+{
+"asin": "B0HLZ2JPS1",
+"authors": [
+{
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"publisher_name": "Little, Brown & Company",
+"release_date": "2027-05-25",
+"runtime_length_min": 720,
+"series": [
+{
+"asin": "B0HM3BR4TL",
+"sequence": "3",
+"title": "Catalina",
+"url": "/pd/Catalina-Audiobook/B0HM3BR4TL"
+}
+],
+"subtitle": "A Catalina Novel",
+"title": "Daybreak"
+},
+{
+"asin": "B0GR6S1M2B",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Titus Welliver"
+},
+{
+"name": "Cameron Monaghan"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-10-27",
+"runtime_length_min": 516,
+"series": [
+{
+"asin": "B005NAMKAU",
+"sequence": "26",
+"title": "A Harry Bosch Novel",
+"url": "/pd/A-Harry-Bosch-Novel-Audiobook/B005NAMKAU"
+}
+],
+"subtitle": "A Harry Bosch Novel",
+"title": "The Hollow"
+},
+{
+"asin": "B0H9MLV6MV",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Da'Vine Joy Randolph"
+},
+{
+"name": "Michael Cudlitz"
+},
+{
+"name": "LisaGay Hamilton"
+},
+{
+"name": "Madison Lintz"
+},
+{
+"name": "Whitmer Thomas"
+},
+{
+"name": "Laurence Fishburne"
+},
+{
+"name": "Denise Sanchez"
+},
+{
+"name": "John Zdrojeski"
+},
+{
+"name": "Verona Blue"
+},
+{
+"name": "Amy Hill"
+},
+{
+"name": "Carl Lumbly"
+},
+{
+"name": "Brielle Santos"
+},
+{
+"name": "Titus Welliver"
+},
+{
+"name": "Eamon Welliver"
+},
+{
+"name": "Will Reiland"
+}
+],
+"publisher_name": "Audible Originals",
+"release_date": "2026-09-24",
+"runtime_length_min": 142,
+"series": [
+{
+"asin": "B0HB6Z8LGD",
+"sequence": "",
+"title": "The Safe Man",
+"url": "/pd/The-Safe-Man-Audiobook/B0HB6Z8LGD"
+}
+],
+"subtitle": "A Safe Man Story",
+"title": "The Eternal Realm"
+},
+{
+"asin": "B002VACGL8",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dick Hill"
+}
+],
+"publisher_name": "Brilliance Audio",
+"release_date": "2008-06-17",
+"runtime_length_min": 829,
+"series": [
+{
+"asin": "B005NAMKAU",
+"sequence": "1",
+"title": "A Harry Bosch Novel",
+"url": "/pd/A-Harry-Bosch-Novel-Audiobook/B005NAMKAU"
+}
+],
+"title": "The Black Echo: Harry Bosch Series, Book 1"
+},
+{
+"asin": "B0CZQ52FP2",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+},
+{
+"asin": "B00BS86OEE",
+"name": "Terrill Lee Lankford"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jack Quaid"
+},
+{
+"name": "Titus Welliver"
+},
+{
+"name": "full cast"
+}
+],
+"publisher_name": "Audible Originals",
+"release_date": "2024-05-16",
+"series": [
+{
+"asin": "B0HB6Z8LGD",
+"sequence": "1",
+"title": "The Safe Man",
+"url": "/pd/The-Safe-Man-Audiobook/B0HB6Z8LGD"
+}
+],
+"title": "The Safe Man"
+},
+{
+"asin": "1713502674",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Titus Welliver"
+}
+],
+"publisher_name": "Brilliance Audio",
+"release_date": "2020-03-31",
+"runtime_length_min": 894,
+"series": [
+{
+"asin": "B005NAMKAU",
+"sequence": "1",
+"title": "A Harry Bosch Novel",
+"url": "/pd/A-Harry-Bosch-Novel-Audiobook/B005NAMKAU"
+}
+],
+"subtitle": "Harry Bosch, Book 1",
+"title": "The Black Echo: Special Edition"
+},
+{
+"asin": "B0DNV1L72N",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Will Damron"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2025-05-20",
+"runtime_length_min": 551,
+"series": [
+{
+"asin": "B0FHQRRYHN",
+"sequence": "1",
+"title": "Detective Stilwell",
+"url": "/pd/Detective-Stilwell-Audiobook/B0FHQRRYHN"
+},
+{
+"asin": "B0HM3BR4TL",
+"sequence": "1",
+"title": "Catalina",
+"url": "/pd/Catalina-Audiobook/B0HM3BR4TL"
+}
+],
+"subtitle": "A Catalina Novel",
+"title": "Nightshade"
+},
+{
+"asin": "B0BT26TPP1",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Peter Giles"
+},
+{
+"name": "Titus Welliver"
+},
+{
+"name": "Christine Lakin"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2023-11-07",
+"runtime_length_min": 630,
+"series": [
+{
+"asin": "B005NAT706",
+"sequence": "7",
+"title": "A Lincoln Lawyer Novel",
+"url": "/pd/A-Lincoln-Lawyer-Novel-Audiobook/B005NAT706"
+}
+],
+"title": "Resurrection Walk"
+},
+{
+"asin": "B0DYQDB78W",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Peter Giles"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2025-10-21",
+"runtime_length_min": 650,
+"series": [
+{
+"asin": "B005NAT706",
+"sequence": "8",
+"title": "A Lincoln Lawyer Novel",
+"url": "/pd/A-Lincoln-Lawyer-Novel-Audiobook/B005NAT706"
+}
+],
+"subtitle": "A Lincoln Lawyer Novel",
+"title": "The Proving Ground"
+},
+{
+"asin": "B005SFW11I",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Len Cariou"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2011-10-04",
+"runtime_length_min": 197,
+"series": [
+{
+"asin": "B005NAMKAU",
+"sequence": "",
+"title": "A Harry Bosch Novel",
+"url": "/pd/A-Harry-Bosch-Novel-Audiobook/B005NAMKAU"
+}
+],
+"subtitle": "Three Harry Bosch Stories",
+"title": "Suicide Run"
 }
 ]
 },
@@ -2779,6 +4529,21 @@
 "release_date": "2010-07-06",
 "runtime_length_min": 894,
 "title": "The Search"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&author=Past+Tense": {
+"products": [
+{
+"asin": "B0GD22H6BG",
+"authors": [
+{
+"name": "Past Tense Future Perfect"
+}
+],
+"language": "english",
+"release_date": "2025-12-29",
+"title": "Incoming"
 }
 ]
 },
@@ -4105,7 +5870,176 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&keywords=Jack+Morgan+02+-+Private+No+1+Suspect": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&keywords=James+Patterson+-+Private+Down+Under+96K": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&keywords=James+Patterson+-+Private+India+-+City+On+Fire+64K": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&keywords=Private+Moscow+Private%2C+Book+15": {
+"products": [
+{
+"asin": "B0BK2QTNK9",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeremy Irvine"
+},
+{
+"name": "Olga Koch"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2023-06-13",
+"runtime_length_min": 542,
+"series": [
+{
+"asin": "B0CXTTSNQ7",
+"sequence": "1",
+"title": "Private Russia",
+"url": "/pd/Private-Russia-Audiobook/B0CXTTSNQ7"
+},
+{
+"asin": "B006VZNHIU",
+"sequence": "15",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private Moscow"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&keywords=Reacher+31+-+Chain+Reaction": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&keywords=Steeleart+Reckoners+Brandon+Sanderson": {
+"products": [
+{
+"asin": "B00ECDZ08I",
+"authors": [
+{
+"asin": "B001IGFHW6",
+"name": "Brandon Sanderson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "MacLeod Andrews"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2013-09-24",
+"runtime_length_min": 762,
+"series": [
+{
+"asin": "B00F9C5JB4",
+"sequence": "1",
+"title": "Reckoners",
+"url": "/pd/Reckoners-Audiobook/B00F9C5JB4"
+}
+],
+"subtitle": "The Reckoners, Book 1",
+"title": "Steelheart"
+},
+{
+"asin": "841803713X",
+"authors": [
+{
+"asin": "B001IGFHW6",
+"name": "Brandon Sanderson"
+},
+{
+"asin": "B001K11L4M",
+"name": "Rafael Marín Trechera - translator"
+}
+],
+"language": "spanish",
+"narrators": [
+{
+"name": "Íñigo Montero"
+}
+],
+"publisher_name": "Penguin Random House Audio",
+"release_date": "2021-03-18",
+"runtime_length_min": 743,
+"series": [
+{
+"asin": "B08WC32MWP",
+"sequence": "1",
+"title": "Reckoners (Spanish Edition)",
+"url": "/pd/Trilogia-de-los-Reckoners-The-Reckoners-Audiobook/B08WC32MWP"
+}
+],
+"subtitle": "Trilogía de los Reckoners 1 [The Reckoners, Book 1]",
+"title": "Steelheart (Reckoners 1)"
+},
+{
+"asin": "B01IPMOOKG",
+"authors": [
+{
+"asin": "B004QF87Q4",
+"name": "Kathryn Le Veque"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Brian J. Gill"
+}
+],
+"publisher_name": "Kathryn Le Veque Novels",
+"release_date": "2016-07-20",
+"runtime_length_min": 1017,
+"series": [
+{
+"asin": "B01GOOZIQ6",
+"sequence": "3",
+"title": "The de Lohr Dynasty",
+"url": "/pd/The-de-Lohr-Dynasty-Audiobook/B01GOOZIQ6"
+}
+],
+"subtitle": "de Lohr Dynasty, Book 3",
+"title": "Steelheart"
+},
+{
+"asin": "B00BMBCJQY",
+"authors": [
+{
+"asin": "B000APAA1O",
+"name": "William C. Dietz"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Bill Quinn"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2013-03-06",
+"runtime_length_min": 683,
+"title": "Steelheart"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&keywords=The+Guardians%3B+3+Island+of+Glass": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&keywords=The+Guilty+Will+Robie%2C+Book+4": {
 "products": []
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&keywords=Vince+Flynn+Novels+14+books+Complete+Collection": {
@@ -4214,6 +6148,70 @@
 "runtime_length_min": 463,
 "subtitle": "The Inside Account of What Really Happened In Benghazi",
 "title": "13 Hours"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=14+61+Hours": {
+"products": [
+{
+"asin": "B003G8RX9O",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dick Hill"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2010-05-18",
+"runtime_length_min": 793,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "14",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 14",
+"title": "61 Hours"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=14+61+Hours&author=Lee+Child": {
+"products": [
+{
+"asin": "B003G8RX9O",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dick Hill"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2010-05-18",
+"runtime_length_min": 793,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "14",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 14",
+"title": "61 Hours"
 }
 ]
 },
@@ -4326,6 +6324,124 @@
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=3_-_Wrap_Up&author=Udemy": {
 "products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=A+Parade+of+Horribles": {
+"products": [
+{
+"asin": "B0FXY6DVJS",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2026-05-12",
+"runtime_length_min": 1227,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "8",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 8",
+"title": "A Parade of Horribles"
+},
+{
+"asin": "B0HR4Z3H1K",
+"release_date": "2026-11-13",
+"runtime_length_min": 84,
+"title": "Ep 71: A PARADE OF HORRIBLES | Ch 78 - 82"
+},
+{
+"asin": "B0HQPHHK33",
+"release_date": "2026-11-06",
+"runtime_length_min": 96,
+"title": "Ep 70: A PARADE OF HORRIBLES | Ch 73 - 77"
+},
+{
+"asin": "B0HPTB6ZJ9",
+"release_date": "2026-10-30",
+"runtime_length_min": 94,
+"title": "Ep 69: A PARADE OF HORRIBLES | Ch 67 - 72"
+},
+{
+"asin": "B0H8Z3GC3S",
+"release_date": "2026-09-25",
+"runtime_length_min": 81,
+"title": "Ep 64: A PARADE OF HORRIBLES | Ch 39 - 44"
+},
+{
+"asin": "B0HN7N613C",
+"release_date": "2026-10-16",
+"runtime_length_min": 84,
+"title": "Ep 67: A PARADE OF HORRIBLES | Ch 57 - 60"
+},
+{
+"asin": "B0HHNSQQKV",
+"release_date": "2026-09-25",
+"runtime_length_min": 42,
+"title": "#420 A Parade of Horribles by Matt Dinniman"
+},
+{
+"asin": "B0HNKRZCHB",
+"release_date": "2026-10-23",
+"runtime_length_min": 108,
+"title": "Ep 68: A PARADE OF HORRIBLES | Ch 61 - 66"
+},
+{
+"asin": "B0HLT52MBT",
+"release_date": "2026-10-02",
+"runtime_length_min": 100,
+"title": "Ep 65: A PARADE OF HORRIBLES | Ch 45 - 51"
+},
+{
+"asin": "B0HMHWF6BD",
+"release_date": "2026-10-09",
+"runtime_length_min": 78,
+"title": "Ep 66: A PARADE OF HORRIBLES | Interlude MINUS - Ch 56"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=A+Parade+of+Horribles+-+Dungeon+Crawler+Carl%2C+Book+8": {
+"products": [
+{
+"asin": "B0FXY6DVJS",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2026-05-12",
+"runtime_length_min": 1227,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "8",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 8",
+"title": "A Parade of Horribles"
+}
+]
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=A+Wanted+Man": {
 "products": [
@@ -4535,6 +6651,732 @@
 ],
 "subtitle": "Jack Reacher, Book 11",
 "title": "Bad Luck and Trouble"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Better+Off+Dead": {
+"products": [
+{
+"asin": "0593452747",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2021-10-26",
+"runtime_length_min": 551,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "26",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 26",
+"title": "Better Off Dead"
+},
+{
+"asin": "B0HRHV3S85",
+"authors": [
+{
+"name": "J. A Wynters"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Independently Published",
+"release_date": "2026-11-13",
+"runtime_length_min": 354,
+"subtitle": "(Small Town romance, Post-apocalyptic second chance Romance, ROM COM)",
+"title": "Better Off Dead"
+},
+{
+"asin": "B09MYLVWG8",
+"authors": [
+{
+"asin": "B001HMKSFC",
+"name": "Laurie Kaye Abraham"
+},
+{
+"name": "David A. Ansell MD - foreword"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Lisa Reneé Pitts"
+}
+],
+"publisher_name": "Tantor Audio",
+"release_date": "2021-12-21",
+"runtime_length_min": 867,
+"subtitle": "The Failure of Health Care in Urban America",
+"title": "Mama Might Be Better Off Dead"
+},
+{
+"asin": "B00UK49TXA",
+"authors": [
+{
+"asin": "B004JLYPFW",
+"name": "Ann Charles"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Caroline Shaffer"
+}
+],
+"publisher_name": "Made for Success, Inc. and Blackstone Audio, Inc.",
+"release_date": "2015-03-19",
+"runtime_length_min": 809,
+"series": [
+{
+"asin": "B00F54MCXY",
+"sequence": "4",
+"title": "The Deadwood Mystery Series",
+"url": "/pd/Deadwood-Mysteries-Audiobook/B00F54MCXY"
+}
+],
+"subtitle": "Deadwood, Book 4",
+"title": "Better off Dead in Deadwood"
+},
+{
+"asin": "B07BN2TXNG",
+"authors": [
+{
+"asin": "B001IO8DJW",
+"name": "Michael Fleeman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Michael Kinzie"
+}
+],
+"publisher_name": "WildBlue Press",
+"release_date": "2018-03-27",
+"runtime_length_min": 560,
+"title": "Better Off Dead: A Sordid True Story of Sex, Sin, and Murder"
+},
+{
+"asin": "B00HDJCTFK",
+"authors": [
+{
+"asin": "B003VI5C60",
+"name": "H. P. Mallory"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Betsy Hogg"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2013-12-19",
+"runtime_length_min": 577,
+"series": [
+{
+"asin": "B00KAJOQ2Y",
+"sequence": "1",
+"title": "Lily Harper",
+"url": "/pd/Lily-Harper-Audiobook/B00KAJOQ2Y"
+}
+],
+"subtitle": "Lily Harper, Book 1",
+"title": "Better Off Dead"
+},
+{
+"asin": "B0H6VJPR1Z",
+"authors": [
+{
+"name": "Peggy Poe Stern"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Moody Valley",
+"release_date": "2026-06-28",
+"runtime_length_min": 627,
+"subtitle": "Fighting Fate, Round One",
+"title": "Better Off Dead"
+},
+{
+"asin": "B0B2KQD8HF",
+"authors": [
+{
+"name": "Duane Swierczynski"
+},
+{
+"name": "Eric Nguyen"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Eric Messner"
+},
+{
+"name": "James Konicek"
+},
+{
+"name": "James Lewis"
+},
+{
+"name": "Peter Holdway"
+},
+{
+"name": "Ryan Carlo Dalusung"
+},
+{
+"name": "Steven Carpenter"
+},
+{
+"name": "Rayner Gabriel"
+},
+{
+"name": "Natalie Van Sistine"
+},
+{
+"name": "Gabriel Michael"
+},
+{
+"name": "Andrew James Spooner"
+},
+{
+"name": "Stephanie Németh-Parker"
+}
+],
+"publisher_name": "Graphic Audio LLC",
+"release_date": "2022-07-01",
+"runtime_length_min": 81,
+"series": [
+{
+"asin": "B09MJDQ4PJ",
+"sequence": "4",
+"title": "X Series",
+"url": "/pd/X-Series-Audiobook/B09MJDQ4PJ"
+}
+],
+"subtitle": "Dark Horse: X, Book 4",
+"title": "X Volume 4: Better Off Dead (Dramatized Adaptation)"
+},
+{
+"asin": "B0CW7KBC2T",
+"authors": [
+{
+"asin": "B08KLCTJFH",
+"name": "Sinister Smile Press"
+},
+{
+"asin": "B084QG2HB4",
+"name": "Nick Roberts"
+},
+{
+"name": "Rob Bliss"
+},
+{
+"name": "John Oakes"
+},
+{
+"name": "Mia Dalia"
+},
+{
+"name": "Steve Loiaconi"
+},
+{
+"asin": "B0B5WGRKL1",
+"name": "A.M. Symes"
+},
+{
+"asin": "B00GKT7JN6",
+"name": "Victoria Dalpe"
+},
+{
+"asin": "B001KHVFCE",
+"name": "Elana Gomel"
+},
+{
+"asin": "B07F5DKMK4",
+"name": "Scott Harper"
+},
+{
+"name": "Laurence Jones"
+},
+{
+"name": "Trevor James Zaple"
+},
+{
+"asin": "B071HYLBN3",
+"name": "Brian J. Smith"
+},
+{
+"asin": "B0CPVWNJV8",
+"name": "Merdhin Wylde"
+},
+{
+"name": "Paul O’Neill"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Cassandra Arnold"
+}
+],
+"publisher_name": "Sinister Smile Press LLC",
+"release_date": "2024-02-22",
+"runtime_length_min": 601,
+"series": [
+{
+"asin": "B0875S8R95",
+"sequence": "9",
+"title": "The Better Off Dead Series",
+"url": "/pd/The-Better-Off-Dead-Series-Audiobook/B0875S8R95"
+}
+],
+"subtitle": "Tales of Death and Destruction (The Better Off Dead Series, Book 9)",
+"title": "If I Die Before I Wake"
+},
+{
+"asin": "B0G3Q4WDKY",
+"authors": [
+{
+"asin": "B0DM9MNZ89",
+"name": "Sean Watkin"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jane Hamlet"
+}
+],
+"publisher_name": "Bolinda audio",
+"release_date": "2026-01-22",
+"runtime_length_min": 579,
+"series": [
+{
+"asin": "B0DWS92KN6",
+"sequence": "2",
+"title": "DCI de Silva Crime Thrillers",
+"url": "/pd/DCI-de-Silva-Crime-Thrillers-Audiobook/B0DWS92KN6"
+}
+],
+"subtitle": "DCI de Silva Crime Thrillers, Book 2",
+"title": "Better off Dead"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Better+Off+Dead&author=Lee+Child%2C+Andrew+Child": {
+"products": [
+{
+"asin": "0593452747",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2021-10-26",
+"runtime_length_min": 551,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "26",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 26",
+"title": "Better Off Dead"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Blue+Moon": {
+"products": [
+{
+"asin": "B09L58YCR6",
+"authors": [
+{
+"asin": "B00G2DKSBU",
+"name": "Lucy Score"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Lila Winters"
+}
+],
+"publisher_name": "That's What She Said Publishing, Inc.",
+"release_date": "2021-11-05",
+"runtime_length_min": 522,
+"series": [
+{
+"asin": "B09LCF4R3G",
+"sequence": "1",
+"title": "Blue Moon",
+"url": "/pd/Blue-Moon-Audiobook/B09LCF4R3G"
+}
+],
+"subtitle": "A Small Town Love Story (Blue Moon, Book 1)",
+"title": "No More Secrets"
+},
+{
+"asin": "B0H2742X8H",
+"authors": [
+{
+"asin": "B073QRX9K1",
+"name": "Steve Higgs"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Gill Mills"
+},
+{
+"name": "Charles Robert Fox"
+}
+],
+"publisher_name": "Canopy Audiobooks, Steve Higgs",
+"release_date": "2026-05-18",
+"runtime_length_min": 4401,
+"series": [
+{
+"asin": "B07HSXJJND",
+"sequence": "1-10",
+"title": "Blue Moon Investigations",
+"url": "/pd/Blue-Moon-Investigations-Audiobook/B07HSXJJND"
+}
+],
+"title": "Blue Moon Investigations Ten Book Bundle"
+},
+{
+"asin": "1524774367",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2019-10-29",
+"runtime_length_min": 681,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "24",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 24",
+"title": "Blue Moon"
+},
+{
+"asin": "B0GNBBWT18",
+"authors": [
+{
+"asin": "B001ILFNIY",
+"name": "Kristan Higgins"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Xe Sands"
+}
+],
+"publisher_name": "Recorded Books",
+"release_date": "2026-04-06",
+"runtime_length_min": 388,
+"title": "Once in a Blue Moon"
+},
+{
+"asin": "B0HM6VTQ9P",
+"authors": [
+{
+"asin": "B073QRX9K1",
+"name": "steve higgs"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Gill Mills"
+}
+],
+"publisher_name": "Canopy Audiobooks,Steve Higgs",
+"release_date": "2026-10-07",
+"runtime_length_min": 311,
+"series": [
+{
+"asin": "B07HSXJJND",
+"sequence": "13",
+"title": "Blue Moon Investigations",
+"url": "/pd/Blue-Moon-Investigations-Audiobook/B07HSXJJND"
+}
+],
+"title": "Lord Hale's Monster: Blue Moon Investigations Book 13 - A Snarky Paranormal Detective Mystery"
+},
+{
+"asin": "B09N53MDNT",
+"authors": [
+{
+"asin": "B00G2DKSBU",
+"name": "Lucy Score"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tanya Eby"
+}
+],
+"publisher_name": "That's What She Said Publishing, Inc.",
+"release_date": "2021-12-06",
+"runtime_length_min": 551,
+"series": [
+{
+"asin": "B09LCF4R3G",
+"sequence": "2",
+"title": "Blue Moon",
+"url": "/pd/Blue-Moon-Audiobook/B09LCF4R3G"
+}
+],
+"subtitle": "A Small Town Love Story (Blue Moon)",
+"title": "Fall into Temptation"
+},
+{
+"asin": "B0HL11J641",
+"authors": [
+{
+"asin": "B073QRX9K1",
+"name": "steve higgs"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Gill Mills"
+},
+{
+"name": "Charles Robert Fox"
+}
+],
+"publisher_name": "Canopy Audiobooks, Steve Higgs",
+"release_date": "2026-09-25",
+"runtime_length_min": 3085,
+"series": [
+{
+"asin": "B07HSXJJND",
+"sequence": "11-20",
+"title": "Blue Moon Investigations",
+"url": "/pd/Blue-Moon-Investigations-Audiobook/B07HSXJJND"
+}
+],
+"subtitle": "A Humorous Fantasy Adventure Series",
+"title": "Blue Moon Investigations: A Second Ten Book Bundle"
+},
+{
+"asin": "B0BL8RG62W",
+"authors": [
+{
+"asin": "B00G2DKSBU",
+"name": "Lucy Score"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Lila Winters"
+}
+],
+"publisher_name": "That's What She Said Publishing,Inc.",
+"release_date": "2022-11-02",
+"runtime_length_min": 732,
+"series": [
+{
+"asin": "B09LCF4R3G",
+"sequence": "6",
+"title": "Blue Moon",
+"url": "/pd/Blue-Moon-Audiobook/B09LCF4R3G"
+}
+],
+"subtitle": "Blue Moon, Volume 6",
+"title": "The Fine Art of Faking It"
+},
+{
+"asin": "B0HRSXMY29",
+"release_date": "2023-01-16",
+"runtime_length_min": 11,
+"title": "The Blue Fairy Book - East of the Sun and West of the Moon, Pt. 1"
+},
+{
+"asin": "B0HRKZR8CD",
+"release_date": "2023-01-20",
+"runtime_length_min": 10,
+"title": "The Blue Fairy Book - East of the Sun and West of the Moon, Pt. 3"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Brass+Verdict": {
+"products": [
+{
+"asin": "B002V1AE98",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Peter Giles"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2008-10-14",
+"runtime_length_min": 714,
+"series": [
+{
+"asin": "B005NAT706",
+"sequence": "2",
+"title": "A Lincoln Lawyer Novel",
+"url": "/pd/A-Lincoln-Lawyer-Novel-Audiobook/B005NAT706"
+}
+],
+"subtitle": "A Novel",
+"title": "The Brass Verdict"
+},
+{
+"asin": "B07D5HJ9Z2",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Peter Giles"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2018-09-11",
+"runtime_length_min": 681,
+"series": [
+{
+"asin": "B005NAT706",
+"sequence": "2",
+"title": "A Lincoln Lawyer Novel",
+"url": "/pd/A-Lincoln-Lawyer-Novel-Audiobook/B005NAT706"
+}
+],
+"title": "The Brass Verdict: Booktrack Edition"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Brass+Verdict&author=Michael+Connelly": {
+"products": [
+{
+"asin": "B002V1AE98",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Peter Giles"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2008-10-14",
+"runtime_length_min": 714,
+"series": [
+{
+"asin": "B005NAT706",
+"sequence": "2",
+"title": "A Lincoln Lawyer Novel",
+"url": "/pd/A-Lincoln-Lawyer-Novel-Audiobook/B005NAT706"
+}
+],
+"subtitle": "A Novel",
+"title": "The Brass Verdict"
+},
+{
+"asin": "B07D5HJ9Z2",
+"authors": [
+{
+"asin": "B000APETH0",
+"name": "Michael Connelly"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Peter Giles"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2018-09-11",
+"runtime_length_min": 681,
+"series": [
+{
+"asin": "B005NAT706",
+"sequence": "2",
+"title": "A Lincoln Lawyer Novel",
+"url": "/pd/A-Lincoln-Lawyer-Novel-Audiobook/B005NAT706"
+}
+],
+"title": "The Brass Verdict: Booktrack Edition"
 }
 ]
 },
@@ -5332,6 +8174,455 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Dungeon+Crawler+Carl": {
+"products": [
+{
+"asin": "B09GCYRZRQ",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-09-16",
+"runtime_length_min": 1083,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "4",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 4",
+"title": "The Gate of the Feral Gods"
+},
+{
+"asin": "B0CDXWSS5D",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "Patrick Warburton"
+},
+{
+"name": "Travis Baldree"
+},
+{
+"name": "Annie Ellicott"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2023-09-01",
+"runtime_length_min": 1606,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "6",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 6",
+"title": "The Eye of the Bedlam Bride"
+},
+{
+"asin": "B0DK282SYV",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "Travis Baldree"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2025-02-11",
+"runtime_length_min": 1720,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "7",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 7",
+"title": "This Inevitable Ruin"
+},
+{
+"asin": "B0FXY6DVJS",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2026-05-12",
+"runtime_length_min": 1227,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "8",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 8",
+"title": "A Parade of Horribles"
+},
+{
+"asin": "B094XCNV6G",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "The Critical Drinker"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-05-14",
+"runtime_length_min": 1014,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "3",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 3",
+"title": "The Dungeon Anarchist's Cookbook"
+},
+{
+"asin": "B09ZJ82C7Y",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2022-05-26",
+"runtime_length_min": 1413,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "5",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 5",
+"title": "The Butcher's Masquerade"
+},
+{
+"asin": "B0934GTSGT",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-04-22",
+"runtime_length_min": 688,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "2",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 2",
+"title": "Carl's Doomsday Scenario"
+},
+{
+"asin": "B08V8B2CGV",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-01-28",
+"runtime_length_min": 811,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "1",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 1",
+"title": "Dungeon Crawler Carl"
+},
+{
+"asin": "B0HPQGYKH9",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "spanish",
+"narrators": [
+{
+"name": "Paris Roa"
+},
+{
+"name": "Cristina Tenorio"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2026-11-03",
+"runtime_length_min": 1635,
+"series": [
+{
+"asin": "B0FG88VDL6",
+"sequence": "5",
+"title": "Dungeon Crawler Carl (Spanish Edition)",
+"url": "/pd/Dungeon-Crawler-Carl-Spanish-Edition-Audiobook/B0FG88VDL6"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Libro 5",
+"title": "El baile de máscaras del carnicero"
+},
+{
+"asin": "B0HP2C1J1N",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+},
+{
+"asin": "B0GZZMKV3Z",
+"name": "Marta Olivi - traduttore"
+}
+],
+"language": "italian",
+"narrators": [
+{
+"name": "Gianandrea Muià"
+},
+{
+"name": "Arianna Craviotto"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2026-10-27",
+"runtime_length_min": 1285,
+"series": [
+{
+"asin": "B0FW5LRQ71",
+"sequence": "4",
+"title": "Dungeon Crawler Carl (Italian Edition)",
+"url": "/pd/Dungeon-Crawler-Carl-Italian-Edition-Audiobook/B0FW5LRQ71"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Vol. 4",
+"title": "Il varco degli dèi selvaggi"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Dungeon+Crawler+Carl%2C+Book+2+-+Carl%27s+Doomsday+Scenario": {
+"products": [
+{
+"asin": "B0934GTSGT",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-04-22",
+"runtime_length_min": 688,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "2",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 2",
+"title": "Carl's Doomsday Scenario"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Dungeon+Crawler+Carl%2C+Book+2+-+Carl%27s+Doomsday+Scenario&author=Matt+Dinniman": {
+"products": [
+{
+"asin": "B0934GTSGT",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-04-22",
+"runtime_length_min": 688,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "2",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 2",
+"title": "Carl's Doomsday Scenario"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Dungeon+Crawler+Carl%2C+Book+3+-+The+Dungeon+Anarchist%27s+Cookbook": {
+"products": [
+{
+"asin": "B094XCNV6G",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "The Critical Drinker"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-05-14",
+"runtime_length_min": 1014,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "3",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 3",
+"title": "The Dungeon Anarchist's Cookbook"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Dungeon+Crawler+Carl%2C+Book+3+-+The+Dungeon+Anarchist%27s+Cookbook&author=Matt+Dinniman": {
+"products": [
+{
+"asin": "B094XCNV6G",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "The Critical Drinker"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-05-14",
+"runtime_length_min": 1014,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "3",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 3",
+"title": "The Dungeon Anarchist's Cookbook"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Dungeon+Crawler+Carl+01+-+Dungeon+Crawler+Carl": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Dungeon+Crawler+Carl+01+-+Dungeon+Crawler+Carl+%28Jeff+Hays%29": {
+"products": []
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Echo+Burning": {
 "products": [
 {
@@ -5458,6 +8749,304 @@
 "runtime_length_min": 82,
 "subtitle": "Digging the Wells of Revival and a Burning Passion for Soul Winning",
 "title": "ECHOES FROM ETERNITY"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Exit+Strategy_+A+Reacher+Novel": {
+"products": [
+{
+"asin": "B0DTZ6C6Z6",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2025-11-11",
+"runtime_length_min": 588,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "30",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "A Reacher Novel",
+"title": "Exit Strategy"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Fall+Of+Giants": {
+"products": [
+{
+"asin": "B0042ZEIDO",
+"authors": [
+{
+"asin": "B0H8X2LJKR",
+"name": "Ken Follett"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "John Lee"
+}
+],
+"publisher_name": "Penguin Audio",
+"release_date": "2010-09-28",
+"runtime_length_min": 1838,
+"series": [
+{
+"asin": "B005NACXL6",
+"sequence": "1",
+"title": "Century Trilogy",
+"url": "/pd/Century-Trilogy-Audiobook/B005NACXL6"
+}
+],
+"subtitle": "Book One of the Century Trilogy",
+"title": "Fall of Giants"
+},
+{
+"asin": "B0HRB44Z55",
+"release_date": "2026-11-13",
+"runtime_length_min": 45,
+"title": "Commanders-Giants TNF Recap + Trade Deadline Fantasy Fallout!"
+},
+{
+"asin": "B0HRW12LQN",
+"release_date": "2026-11-16",
+"runtime_length_min": 2,
+"title": "Eagles Mailbag: Joe Milton's Future, Giants Loss Fallout & Steelers Preview | Beatline Eagles"
+},
+{
+"asin": "B0HRT882ML",
+"release_date": "2026-11-16",
+"runtime_length_min": 70,
+"title": "Jets can't match Bills, Giants fallout, Yankees make a move and Mets get set for Skubal sweepstakes"
+},
+{
+"asin": "B0HRT23CSK",
+"release_date": "2026-11-16",
+"runtime_length_min": 28,
+"title": "Cowboys fall to Niners, Giants still in 1st place"
+},
+{
+"asin": "B0HR6FYKFB",
+"release_date": "2026-11-16",
+"runtime_length_min": 2,
+"title": "Giants Fall to Commanders Amid Fourth-Down Scrutiny • Odafe Oweh Contract Debate | Sports News"
+},
+{
+"asin": "B0HRNR2LY4",
+"release_date": "2026-11-14",
+"runtime_length_min": 2,
+"title": "Little Giant Ladder Recall: Fall Hazard"
+},
+{
+"asin": "B0HR5XB8L6",
+"release_date": "2026-11-13",
+"runtime_length_min": 3,
+"title": "Giants Fall Short in TNF Thriller: McCarthy's Fight, Commanders' Rally | Beatline Giants"
+},
+{
+"asin": "B0178DLXXO",
+"authors": [
+{
+"asin": "B000APHCPQ",
+"name": "Ken Follett"
+},
+{
+"name": "Anuvela"
+}
+],
+"language": "spanish",
+"narrators": [
+{
+"name": "Xavi Fernández"
+}
+],
+"publisher_name": "Penguin Random House Grupo Editorial, S. A. U.",
+"release_date": "2015-11-17",
+"runtime_length_min": 2270,
+"series": [
+{
+"asin": "B01DO9GNKO",
+"sequence": "1",
+"title": "The Century (Spanish Edition)",
+"url": "/pd/El-siglo-The-Century-Audiobook/B01DO9GNKO"
+}
+],
+"subtitle": "The Century 1",
+"title": "La caída de los gigantes [Fall of Giants]"
+},
+{
+"asin": "B00AOB2VS4",
+"authors": [
+{
+"asin": "B0060RTCJC",
+"name": "Scott Roberts"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Charles Bice"
+}
+],
+"publisher_name": "New Page Books",
+"release_date": "2012-12-17",
+"runtime_length_min": 459,
+"subtitle": "The Untold Story of Fallen Angels, Giants on the Earth, and Their Extraterrestrial Origins",
+"title": "The Rise and Fall of the Nephilim"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=God+Delusion": {
+"products": [
+{
+"asin": "B0036MX44S",
+"authors": [
+{
+"asin": "B000AQ3RBI",
+"name": "Richard Dawkins"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Richard Dawkins"
+},
+{
+"name": "Lalla Ward"
+}
+],
+"publisher_name": "Tantor Audio",
+"release_date": "2008-07-17",
+"runtime_length_min": 832,
+"title": "The God Delusion"
+},
+{
+"asin": "B0CCG2XMNQ",
+"authors": [
+{
+"asin": "B089HSPM6K",
+"name": "Natsume Akatsuki"
+},
+{
+"asin": "B0GZYPLGWS",
+"name": "Kurone Mishima"
+},
+{
+"name": "Kevin Steinbach - translator"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Arnie Pantoja"
+},
+{
+"name": "Erica Mendez"
+}
+],
+"publisher_name": "Yen Audio",
+"release_date": "2023-09-19",
+"runtime_length_min": 258,
+"series": [
+{
+"asin": "B0CG9M8NJ5",
+"sequence": "2",
+"title": "Konosuba: God's Blessing on This Wonderful World!",
+"url": "/pd/Konosuba-Gods-Blessing-on-This-Wonderful-World-Audiobook/B0CG9M8NJ5"
+}
+],
+"subtitle": "Love, Witches & Other Delusions!",
+"title": "Konosuba: God's Blessing on This Wonderful World!, Vol. 2"
+},
+{
+"asin": "B0CX25FPXL",
+"authors": [
+{
+"name": "John Milor"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Army of God",
+"release_date": "2024-03-04",
+"runtime_length_min": 676,
+"subtitle": "Revealing the Strange God of the Antichrist",
+"title": "The Strong Delusion"
+},
+{
+"asin": "B0CY9BGMHL",
+"authors": [
+{
+"name": "J. Steve Miller"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Wisdom Creek Press LLC",
+"release_date": "2025-03-01",
+"runtime_length_min": 164,
+"title": "Richard Dawkins and His God Delusion: A Preliminary Critique of His Truth Claims"
+},
+{
+"asin": "B0HR7H67LK",
+"release_date": "2026-11-11",
+"runtime_length_min": 29,
+"title": "Will God Send You a Strong Delusion| Pastor_L.Feldick"
+},
+{
+"asin": "B0HR52ZRCW",
+"release_date": "2026-11-10",
+"runtime_length_min": 29,
+"title": "Why Does God Send a Strong Delusion| Pastor_L.Feldick"
+},
+{
+"asin": "B0HR1L2VFZ",
+"release_date": "2026-11-09",
+"runtime_length_min": 37,
+"title": "The Strong Delusion: Why God Sends People THE LIE"
+},
+{
+"asin": "B0HR1C4Y9B",
+"release_date": "2026-11-09",
+"runtime_length_min": 37,
+"title": "The Strong Delusion: Why God Sends People THE LIE"
+},
+{
+"asin": "B0HN83GY6T",
+"release_date": "2026-11-09",
+"runtime_length_min": 28,
+"title": "The God Delusion is 20 Years Old: Dr. Craig Responds to Richard Dawkins"
+},
+{
+"asin": "B0D7NS84WF",
+"release_date": "2024-06-20",
+"runtime_length_min": 5,
+"title": "Rapture-Harpozo We are leaving soon! Great Deception & Delusion SHOCKING C 4 yourself. God's word!"
 }
 ]
 },
@@ -6354,6 +9943,284 @@
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=How+To+Quit+Without+Feeling+Shit": {
 "products": []
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=In+Too+Deep": {
+"products": [
+{
+"asin": "B0CRCHD41B",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2024-10-22",
+"runtime_length_min": 598,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "29",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "A Reacher Novel",
+"title": "In Too Deep"
+},
+{
+"asin": "B0FWKM5RFR",
+"authors": [
+{
+"name": "Atreus Rosewood"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "UwU Publishing",
+"release_date": "2025-12-20",
+"runtime_length_min": 313,
+"subtitle": "MM Contemporary Rockstar Billionaire Age Gap Romance",
+"title": "In Too Deep"
+},
+{
+"asin": "B0B75ZJH1Z",
+"authors": [
+{
+"asin": "B003HKIXYA",
+"name": "Daryl Banner"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Chris Chambers"
+},
+{
+"name": "Kai Rubio"
+}
+],
+"publisher_name": "Tantor Media",
+"release_date": "2022-08-02",
+"runtime_length_min": 488,
+"series": [
+{
+"asin": "B0B76V1425",
+"sequence": "1",
+"title": "Texas Beach Town Romance",
+"url": "/pd/Texas-Beach-Town-Romance-Audiobook/B0B76V1425"
+}
+],
+"subtitle": "Texas Beach Town Romance, Book 1",
+"title": "In Too Deep"
+},
+{
+"asin": "B07QQHL9QZ",
+"authors": [
+{
+"asin": "B00W1PEOOK",
+"name": "Ali Parker"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Lacy Laurel"
+},
+{
+"name": "Gregory Salinas"
+}
+],
+"publisher_name": "BrixBaxter Publishing",
+"release_date": "2019-04-17",
+"runtime_length_min": 802,
+"series": [
+{
+"asin": "B07QNM5WVH",
+"sequence": "1",
+"title": "In Too Deep",
+"url": "/pd/In-Too-Deep-Audiobook/B07QNM5WVH"
+}
+],
+"subtitle": "A Billionaire Bad Boy Rom Com",
+"title": "The Billionaire Affair"
+},
+{
+"asin": "B0145HUFXU",
+"authors": [
+{
+"asin": "B0046GKSDS",
+"name": "Kate Sherwood"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "K.C. Kelly"
+}
+],
+"publisher_name": "Dreamspinner Press LLC",
+"release_date": "2015-08-20",
+"runtime_length_min": 509,
+"title": "In Too Deep"
+},
+{
+"asin": "B002V8H92G",
+"authors": [
+{
+"asin": "B002L9IMP8",
+"name": "Geronimo Stilton"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Edward Herrmann"
+}
+],
+"publisher_name": "Listening Library",
+"release_date": "2006-09-01",
+"runtime_length_min": 203,
+"series": [
+{
+"asin": "B007Z930O2",
+"sequence": "4-6",
+"title": "Geronimo Stilton",
+"url": "/pd/Geronimo-Stilton-Audiobook/B007Z930O2"
+}
+],
+"subtitle": "#4: I'm Too Fond of My Fur; #5: Four Mice Deep in the Jungle; #6: Paws Off, Cheddarface!",
+"title": "Geronimo Stilton: Books 4-6"
+},
+{
+"asin": "B0DGWMX7G5",
+"authors": [
+{
+"asin": "B07YRWGFDG",
+"name": "Julie Olivia"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "John William Maddux"
+},
+{
+"name": "Andria Mae"
+}
+],
+"publisher_name": "Julie Olivia",
+"release_date": "2025-01-21",
+"runtime_length_min": 518,
+"series": [
+{
+"asin": "B0DGX43XJ7",
+"sequence": "1",
+"title": "Into You",
+"url": "/pd/Into-You-Audiobook/B0DGX43XJ7"
+}
+],
+"subtitle": "Into You, Book 1",
+"title": "In Too Deep"
+},
+{
+"asin": "1039401384",
+"authors": [
+{
+"asin": "B00HS2YW6Q",
+"name": "T.J. Brearton"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Bailey Carr"
+}
+],
+"publisher_name": "Podium Audio",
+"release_date": "2021-04-27",
+"runtime_length_min": 516,
+"series": [
+{
+"asin": "B08TMB4C1W",
+"sequence": "3",
+"title": "Shannon Ames",
+"url": "/pd/Shannon-Ames-Audiobook/B08TMB4C1W"
+}
+],
+"subtitle": "Shannon Ames, Book 3",
+"title": "In Too Deep"
+},
+{
+"asin": "B0036I54R2",
+"authors": [
+{
+"asin": "B001IGWXBE",
+"name": "Jude Watson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "David Pittu"
+}
+],
+"publisher_name": "Scholastic Audio Books",
+"release_date": "2009-11-06",
+"runtime_length_min": 310,
+"series": [
+{
+"asin": "B005NA2RNU",
+"sequence": "6",
+"title": "The 39 Clues",
+"url": "/pd/39-Clues-Series-1-Audiobook/B005NA2RNU"
+}
+],
+"title": "In Too Deep (The 39 Clues, Book 6)"
+},
+{
+"asin": "B0H6CK18K4",
+"authors": [
+{
+"asin": "B008GO4WJ2",
+"name": "N.R. Walker"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Glen Lloyd"
+}
+],
+"publisher_name": "BlueHeart Press",
+"release_date": "2026-06-23",
+"runtime_length_min": 391,
+"series": [
+{
+"asin": "B0GXZ6C7F5",
+"sequence": "2",
+"title": "Tenebrae Cove",
+"url": "/pd/Tenebrae-Cove-Audiobook/B0GXZ6C7F5"
+}
+],
+"subtitle": "Tenebrae Cove Series, Book 2",
+"title": "In Too Deep"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Influx": {
 "products": [
 {
@@ -6512,6 +10379,12 @@
 "title": "Sentinel"
 }
 ]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Jack+Morgan+02+-+Private+No+1+Suspect": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Jack+Morgan+02+-+Private+No+1+Suspect&author=James+Patterson": {
+"products": []
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Jack+Reacher": {
 "products": [
@@ -6858,6 +10731,12 @@
 "title": "Three Jack Reacher Novellas (with Bonus Jack Reacher's Rules)"
 }
 ]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=James+Patterson+-+Private+Down+Under+96K": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=James+Patterson+-+Private+India+-+City+On+Fire+64K": {
+"products": []
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Killing+Floor": {
 "products": [
@@ -7308,6 +11187,312 @@
 ]
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=King+and+Maxwell&author=David+Bldacci": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Lee+Child": {
+"products": [
+{
+"asin": "B0HBX6SC9Q",
+"authors": [
+{
+"asin": "B0CR2WQ147",
+"name": "Sam Cogley"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Davis Brooks"
+}
+],
+"publisher_name": "Boldwood Books",
+"release_date": "2026-11-09",
+"runtime_length_min": 521,
+"series": [
+{
+"asin": "B0FDX3P8D4",
+"sequence": "3",
+"title": "Dane Winter",
+"url": "/pd/Dane-Winter-Audiobook/B0FDX3P8D4"
+}
+],
+"subtitle": "The BRAND NEW 2026 gritty action thriller of conspiracy, survival and revenge, perfect for fans of Lee Child",
+"title": "Cold Justice"
+},
+{
+"asin": "B0HLTJNBHH",
+"authors": [
+{
+"asin": "B005H1FSZE",
+"name": "Diane Capri"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Corey M. Snow"
+}
+],
+"publisher_name": "Diane Capri LLC d/b/a AugustBooks",
+"release_date": "2026-11-19",
+"runtime_length_min": 180,
+"series": [
+{
+"asin": "B00HYJB0F4",
+"sequence": "27",
+"title": "The Hunt for Jack Reacher Series",
+"url": "/pd/The-Hunt-for-Jack-Reacher-Audiobook/B00HYJB0F4"
+}
+],
+"subtitle": "Hunting Lee Child's Jack Reacher (The Hunt for Jack Reacher Series, Book 27)",
+"title": "Jack Be Quick"
+},
+{
+"asin": "B0HR4BQDDF",
+"release_date": "2026-11-12",
+"runtime_length_min": 1,
+"title": "Surprise Honors Fallen Navy SEAL Marc Lee • Two Children Struck by Vehicle in Phoenix | Phoenix News"
+},
+{
+"asin": "B0G8D7DFP9",
+"authors": [
+{
+"asin": "B01BVEWRMW",
+"name": "Leye Adenle"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Nathan Luwa"
+}
+],
+"publisher_name": "Simon & Schuster Audio UK",
+"release_date": "2026-09-10",
+"runtime_length_min": 638,
+"series": [
+{
+"asin": "B0H4L8K2GN",
+"sequence": "1",
+"title": "Bobby Fatokun",
+"url": "/pd/Bobby-Fatokun-Audiobook/B0H4L8K2GN"
+}
+],
+"subtitle": "The gripping new thriller from 'crime fiction's best new voice for years' (Lee Child)",
+"title": "Fall From Grace"
+},
+{
+"asin": "B08S6MZ4NV",
+"authors": [
+{
+"asin": "B005H1FSZE",
+"name": "Diane Capri"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Corey M. Snow"
+}
+],
+"publisher_name": "Diane Capri LLC d/b/a August Books",
+"release_date": "2021-01-25",
+"runtime_length_min": 457,
+"series": [
+{
+"asin": "B00HYJB0F4",
+"sequence": "1",
+"title": "The Hunt for Jack Reacher Series",
+"url": "/pd/The-Hunt-for-Jack-Reacher-Audiobook/B00HYJB0F4"
+}
+],
+"subtitle": "The Hunt for Jack Reacher Series, Book 1",
+"title": "Don't Know Jack: Hunting Lee Child's Jack Reacher"
+},
+{
+"asin": "B09SBJBLX8",
+"authors": [
+{
+"asin": "B005H1FSZE",
+"name": "Diane Capri"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Corey M. Snow"
+}
+],
+"publisher_name": "Diane Capri LLC d/b/a August Books",
+"release_date": "2022-03-08",
+"runtime_length_min": 462,
+"series": [
+{
+"asin": "B00HYJB0F4",
+"sequence": "18",
+"title": "The Hunt for Jack Reacher Series",
+"url": "/pd/The-Hunt-for-Jack-Reacher-Audiobook/B00HYJB0F4"
+}
+],
+"subtitle": "Hunting Lee Child's Jack Reacher (The Hunt for Jack Reacher Series, Book 17)",
+"title": "Jack Knife"
+},
+{
+"asin": "B0FC35MPVY",
+"authors": [
+{
+"asin": "B005H1FSZE",
+"name": "Diane Capri"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Corey M. Snow"
+}
+],
+"publisher_name": "AugustBooks",
+"release_date": "2025-06-18",
+"runtime_length_min": 478,
+"series": [
+{
+"asin": "B00HYJB0F4",
+"sequence": "24",
+"title": "The Hunt for Jack Reacher Series",
+"url": "/pd/The-Hunt-for-Jack-Reacher-Audiobook/B00HYJB0F4"
+}
+],
+"subtitle": "Hunting Lee Child's Jack Reacher (The Hunt for Jack Reacher Series, Book 24)",
+"title": "Jack Rabbit"
+},
+{
+"asin": "B0DL6H7SDQ",
+"authors": [
+{
+"asin": "B005H1FSZE",
+"name": "Diane Capri"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Corey M. Snow"
+}
+],
+"publisher_name": "AugustBooks",
+"release_date": "2024-11-19",
+"runtime_length_min": 503,
+"series": [
+{
+"asin": "B00HYJB0F4",
+"sequence": "23",
+"title": "The Hunt for Jack Reacher Series",
+"url": "/pd/The-Hunt-for-Jack-Reacher-Audiobook/B00HYJB0F4"
+}
+],
+"subtitle": "Hunting Lee Child's Jack Reacher (The Hunt for Jack Reacher Series, Book 23)",
+"title": "Tracking Jack"
+},
+{
+"asin": "B0BFK1DFYT",
+"authors": [
+{
+"asin": "B005H1FSZE",
+"name": "Diane Capri"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Corey M. Snow"
+}
+],
+"publisher_name": "Diane Capri LLC d/b/a August Books",
+"release_date": "2022-10-25",
+"runtime_length_min": 508,
+"series": [
+{
+"asin": "B00HYJB0F4",
+"sequence": "19",
+"title": "The Hunt for Jack Reacher Series",
+"url": "/pd/The-Hunt-for-Jack-Reacher-Audiobook/B00HYJB0F4"
+}
+],
+"subtitle": "Hunting Lee Child’s Jack Reacher (The Hunt for Jack Reacher Series, Book 18)",
+"title": "Lone Star Jack"
+},
+{
+"asin": "B0G87RS154",
+"authors": [
+{
+"asin": "B005H1FSZE",
+"name": "Diane Capri"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Corey M. Snow"
+}
+],
+"publisher_name": "AugustBooks",
+"release_date": "2025-12-17",
+"runtime_length_min": 191,
+"series": [
+{
+"asin": "B00HYJB0F4",
+"sequence": "25",
+"title": "The Hunt for Jack Reacher Series",
+"url": "/pd/The-Hunt-for-Jack-Reacher-Audiobook/B00HYJB0F4"
+}
+],
+"subtitle": "Hunting Lee Child's Jack Reacher (The Hunt for Jack Reacher Series, Book 25)",
+"title": "Jumping Jack"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Lee+Child%2C+Andrew+Child": {
+"products": [
+{
+"asin": "B0HNNM3SDT",
+"release_date": "2026-10-21",
+"runtime_length_min": 38,
+"title": "Andrew Child & Lee Child on CHAIN REACTION & Reacher vs. the Digital Age"
+},
+{
+"asin": "B0FGY83K4T",
+"authors": [
+{
+"asin": "B01EOBZH7Q",
+"name": "Andrew Warren"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Harding"
+}
+],
+"publisher_name": "Boldwood Books",
+"release_date": "2025-09-24",
+"runtime_length_min": 465,
+"series": [
+{
+"asin": "B071XKHNY2",
+"sequence": "5",
+"title": "Thomas Caine Thrillers",
+"url": "/pd/Thomas-Caine-Thriller-Series-Audiobook/B071XKHNY2"
+}
+],
+"subtitle": "For fans of Lee Child & David Baldacci — don’t miss this explosive new release from Andrew Warren",
+"title": "Hell and Ice"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Lee+Child%2C+Andrew+Child&author=Better+Off+Dead": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Lee+Child&author=Past+Tense": {
 "products": []
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Legend": {
@@ -7919,6 +12104,379 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Make+Me": {
+"products": [
+{
+"asin": "B011PVUGUG",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dick Hill"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2015-09-08",
+"runtime_length_min": 843,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "20",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 20",
+"title": "Make Me"
+},
+{
+"asin": "B0HNVHDJ4S",
+"authors": [
+{
+"asin": "B00JEESPSW",
+"name": "Ember Leigh"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jill Smith"
+},
+{
+"name": "Conan Kennedy"
+}
+],
+"publisher_name": "Books on Vine",
+"release_date": "2026-10-22",
+"runtime_length_min": 440,
+"series": [
+{
+"asin": "B0GYGC389M",
+"sequence": "1",
+"title": "Bayshore",
+"url": "/pd/Bayshore-Audiobook/B0GYGC389M"
+}
+],
+"title": "Make Me Lose: a small-town enemies-to-lovers romance (Bayshore Book 1)"
+},
+{
+"asin": "B0HMQ7T94P",
+"authors": [
+{
+"asin": "B0DDYB38F3",
+"name": "Dany Crooks"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Amy Hall"
+},
+{
+"name": "Michael Pierce"
+}
+],
+"publisher_name": "Simon Maverick",
+"release_date": "2027-01-05",
+"runtime_length_min": 840,
+"series": [
+{
+"asin": "B0HMWQP253",
+"sequence": "1",
+"title": "The Headliners Duology",
+"url": "/pd/The-Headliners-Duology-Audiobook/B0HMWQP253"
+}
+],
+"title": "Make Me Laugh"
+},
+{
+"asin": "B0HRVCB5VX",
+"release_date": "2026-11-16",
+"runtime_length_min": 26,
+"title": "Mind Webs - Singularities Make Me Nervous"
+},
+{
+"asin": "B0HRVBL1BX",
+"release_date": "2026-11-16",
+"runtime_length_min": 53,
+"title": "StJohn Deakins: Make the Machine Work for People - Hello Me - Episode 4"
+},
+{
+"asin": "B0HRTZY72L",
+"release_date": "2026-11-16",
+"runtime_length_min": 0,
+"title": "#293- POCD Makes Me Distrust My Feelings Or Attractions"
+},
+{
+"asin": "B0HRTQZ43G",
+"release_date": "2026-11-16",
+"runtime_length_min": 14,
+"title": "Ep. 305 ~ Give me 15 Minutes and I’ll Make you Dangerously Confident ~ Leila Hormozi!"
+},
+{
+"asin": "B0HRKQG5LB",
+"release_date": "2026-11-15",
+"runtime_length_min": 24,
+"title": "Stories 5 - Failure makes me unacceptable"
+},
+{
+"asin": "B0HRB2CSZT",
+"release_date": "2026-11-15",
+"runtime_length_min": 3,
+"title": "Make A Difference Minute: Just Wait. Let Me Try."
+},
+{
+"asin": "B0HR7JJRTW",
+"release_date": "2026-11-16",
+"runtime_length_min": 238,
+"title": "Murder Makes Me Mad-Ferguson Findley"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Midnight+Line": {
+"products": [
+{
+"asin": "B071D1Q7ZT",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dick Hill"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2017-11-07",
+"runtime_length_min": 786,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "22",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 22",
+"title": "The Midnight Line"
+},
+{
+"asin": "B0HRKK2ZSF",
+"release_date": "2026-11-13",
+"runtime_length_min": 9,
+"title": "Midnight Maas: Why We Line Up for Fantasy | Culture Shift"
+},
+{
+"asin": "B09Z746BYV",
+"authors": [
+{
+"asin": "B09YT6PGTT",
+"name": "K. Loraine"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Shane East"
+},
+{
+"name": "Stella Hunter"
+},
+{
+"name": "Aaron Shedlock"
+}
+],
+"publisher_name": "Kim Loraine",
+"release_date": "2022-04-29",
+"runtime_length_min": 705,
+"series": [
+{
+"asin": "B086DS5VPM",
+"sequence": "4-5",
+"title": "The Blackthorne Vampires",
+"url": "/pd/The-Blackthorne-Vampires-Audiobook/B086DS5VPM"
+}
+],
+"subtitle": "Blackthorne Bloodlines",
+"title": "The Midnight Duet"
+},
+{
+"asin": "B0HHKXDKKP",
+"authors": [
+{
+"name": "TJ Green"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Diana Croft"
+}
+],
+"publisher_name": "Mountolive Publishing",
+"release_date": "2026-09-28",
+"runtime_length_min": 738,
+"series": [
+{
+"asin": "B0CXYVRFSN",
+"sequence": "3",
+"title": "Moonfell Witches",
+"url": "/pd/Moonfell-Witches-Audiobook/B0CXYVRFSN"
+}
+],
+"subtitle": "Dual Timeline Witch Mystery",
+"title": "Gilded Moon: Midnight, Masks, and Mirrors"
+},
+{
+"asin": "B071CR63RR",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dick Hill"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2017-11-07",
+"runtime_length_min": 430,
+"series": [
+{
+"asin": "B005NBR8AQ",
+"sequence": "22",
+"title": "Jack Reacher (abridged)",
+"url": "/pd/Jack-Reacher-abridged-Audiobook/B005NBR8AQ"
+}
+],
+"subtitle": "A Jack Reacher Novel",
+"title": "The Midnight Line"
+},
+{
+"asin": "B0CJD6VKV8",
+"authors": [
+{
+"asin": "B0DCZMD5DG",
+"name": "John J. Sullivan"
+},
+{
+"name": "Jim Mattis - introduction"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "John J. Sullivan"
+},
+{
+"name": "Matt Godfrey"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2024-08-06",
+"runtime_length_min": 1079,
+"subtitle": "A Memoir from the Front Lines of Russia's War Against the West",
+"title": "Midnight in Moscow"
+},
+{
+"asin": "B087XWBRCX",
+"authors": [
+{
+"asin": "B00VSDBGWY",
+"name": "K. Loraine"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Shane East"
+},
+{
+"name": "Stella Hunter"
+}
+],
+"publisher_name": "Audibly Addicted Productions",
+"release_date": "2020-07-15",
+"runtime_length_min": 353,
+"series": [
+{
+"asin": "B086DS5VPM",
+"sequence": "4",
+"title": "The Blackthorne Vampires",
+"url": "/pd/The-Blackthorne-Vampires-Audiobook/B086DS5VPM"
+}
+],
+"title": "Midnight Prince: Blackthorne Bloodlines #1 (The Blackthorne Vampires)"
+},
+{
+"asin": "B0GZ6SSF9W",
+"authors": [
+{
+"name": "Sage Hayes"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Independently Published",
+"release_date": "2026-05-01",
+"runtime_length_min": 383,
+"title": "Second Line After Midnight"
+},
+{
+"asin": "B0GLR5MTFH",
+"authors": [
+{
+"name": "Lester Wolfe"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Independently Published",
+"release_date": "2026-02-05",
+"runtime_length_min": 174,
+"subtitle": "A Hopeful Small Town First Contact Sci-Fi Novella",
+"title": "COZY UFO - Hotline at Midnight"
+},
+{
+"asin": "B0GNJDXNW6",
+"authors": [
+{
+"name": "K.R.M. Morgan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Independently Published",
+"release_date": "2026-02-15",
+"runtime_length_min": 102,
+"subtitle": "A Supernatural Time-Loop Thriller",
+"title": "The Midnight Line"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Moneyball": {
 "products": [
 {
@@ -8305,6 +12863,178 @@
 "release_date": "2025-09-21",
 "runtime_length_min": 81,
 "title": "JACK REACHER: NEVER GO BACK (2016) Movie Reaction! | First Time Watch! | Tom Cruise | Cobie Smulders"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Night+School": {
+"products": [
+{
+"asin": "B01JKE3C24",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dick Hill"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2016-11-07",
+"runtime_length_min": 787,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "21",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 21",
+"title": "Night School"
+},
+{
+"asin": "B0HRW1CTX1",
+"release_date": "2026-11-16",
+"runtime_length_min": 1,
+"title": "Four Boys Charged Over Edinburgh Bonfire Night Disorder • West Lothian School Installs Community Defibrillator | Edinburgh News"
+},
+{
+"asin": "B0HRNXD43L",
+"release_date": "2026-11-14",
+"runtime_length_min": 114,
+"title": "High School Game Night 11-13-26"
+},
+{
+"asin": "B0HRNTZ7QQ",
+"release_date": "2026-11-14",
+"runtime_length_min": 59,
+"title": "High School Sports Saturday With Tate Mathews 11-14 -26 “Bad Night for Midstate 6A, but Smyrna Rolls and Brentwood Academy Grinds Toward a Lipscomb Rematch”"
+},
+{
+"asin": "B0HRG24K3F",
+"release_date": "2026-11-12",
+"runtime_length_min": 24,
+"title": "Best Ball Night School: Midterms-Survive and Thrive"
+},
+{
+"asin": "B0HR4F7K2Z",
+"release_date": "2026-11-13",
+"runtime_length_min": 10,
+"title": "Reporter’s Notebook: One Facebook Post and a Chaotic School Board Night"
+},
+{
+"asin": "B0FJBLDFKJ",
+"authors": [
+{
+"asin": "B093KBZBTJ",
+"name": "T. L. Huchu"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Kimberly Mandindo"
+}
+],
+"publisher_name": "Macmillan Audio",
+"release_date": "2025-12-02",
+"runtime_length_min": 737,
+"series": [
+{
+"asin": "B088SH7CBD",
+"sequence": "5",
+"title": "Edinburgh Nights",
+"url": "/pd/Edinburgh-Nights-Audiobook/B088SH7CBD"
+}
+],
+"title": "Secrets of the First School"
+},
+{
+"asin": "B07QKGP88B",
+"authors": [
+{
+"name": "Dr. Harper"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Richard Lam"
+}
+],
+"publisher_name": "Dr. Harper Therapy",
+"release_date": "2019-04-11",
+"runtime_length_min": 254,
+"series": [
+{
+"asin": "B088KQSL5D",
+"sequence": "1",
+"title": "Dr. Harper Therapy",
+"url": "/pd/Dr-Harper-Therapy-Audiobook/B088KQSL5D"
+}
+],
+"subtitle": "6 Patient Files That Will Keep You up at Night",
+"title": "I'm a Therapist, and My Patient Is Going to Be the Next School Shooter"
+},
+{
+"asin": "B07DRN3DNR",
+"authors": [
+{
+"name": "Heather Turgeon MFT"
+},
+{
+"name": "Julie Wright MFT"
+},
+{
+"name": "Daniel J. Siegel — Introduction M.D."
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Heather Turgeon MFT"
+},
+{
+"name": "Julie Wright MFT"
+}
+],
+"publisher_name": "Penguin Audio",
+"release_date": "2018-07-10",
+"runtime_length_min": 518,
+"subtitle": "The Science-Backed Guide to Helping Your Baby Get a Good Night's Sleep-Newborn to School Age",
+"title": "The Happy Sleeper"
+},
+{
+"asin": "B01M0YDVT2",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dick Hill"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2016-11-07",
+"runtime_length_min": 434,
+"series": [
+{
+"asin": "B005NBR8AQ",
+"sequence": "21",
+"title": "Jack Reacher (abridged)",
+"url": "/pd/Jack-Reacher-abridged-Audiobook/B005NBR8AQ"
+}
+],
+"subtitle": "A Jack Reacher Novel",
+"title": "Night School"
 }
 ]
 },
@@ -9049,6 +13779,355 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Partials": {
+"products": [
+{
+"asin": "B0HRX325WF",
+"release_date": "2026-11-16",
+"runtime_length_min": 6,
+"title": "[Puerto Rico] Education Daily — November 16, 2026: A Partial Payment Is Not a Solution"
+},
+{
+"asin": "B0HRKCNSBX",
+"release_date": "2026-11-15",
+"runtime_length_min": 11,
+"title": "Magnificent Montague - Edwin Montague Day (partial)"
+},
+{
+"asin": "B0HRP7FDM5",
+"release_date": "2026-11-15",
+"runtime_length_min": 56,
+"title": "Law: Partial and Impartial (Remastered)"
+},
+{
+"asin": "B0HRN9CND8",
+"release_date": "2026-11-15",
+"runtime_length_min": 56,
+"title": "Law: Partial and Impartial (Remastered)"
+},
+{
+"asin": "B0HRKBMKF1",
+"release_date": "2026-11-13",
+"runtime_length_min": 2,
+"title": "Case by case | Court of Appeal clarifies public prior use test in partial revocation of Agfa patent"
+},
+{
+"asin": "B0HRFZBDCD",
+"release_date": "2026-11-12",
+"runtime_length_min": 82,
+"title": "1979 NEW YORK METS Old Timers Game 7 14 79 Shea Stadium Original WOR Broadcast (partial)"
+},
+{
+"asin": "B007BH41NW",
+"authors": [
+{
+"asin": "B002S2VIBS",
+"name": "Dan Wells"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Julia Whelan"
+}
+],
+"publisher_name": "HarperCollins",
+"release_date": "2012-02-28",
+"runtime_length_min": 846,
+"series": [
+{
+"asin": "B00BLOPC0M",
+"sequence": "1",
+"title": "Partials",
+"url": "/pd/Partials-Audiobook/B00BLOPC0M"
+}
+],
+"title": "Partials"
+},
+{
+"asin": "1982583401",
+"authors": [
+{
+"asin": "B001HCV73O",
+"name": "Emily Hahn"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Nancy Wu"
+}
+],
+"publisher_name": "Blackstone Audio, Inc.",
+"release_date": "2018-11-13",
+"runtime_length_min": 1321,
+"subtitle": "A Partial Autobiography",
+"title": "China to Me"
+},
+{
+"asin": "B0C6YSQW8L",
+"authors": [
+{
+"asin": "B001JPA8PC",
+"name": "Dan Stone"
+},
+{
+"asin": "B001HD2WLE",
+"name": "David Gregory"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Brian Marchand"
+}
+],
+"publisher_name": "Grace Ministries Inc.",
+"release_date": "2023-06-02",
+"runtime_length_min": 500,
+"subtitle": "When the Partial Gospel Has Worn You Out",
+"title": "The Rest of the Gospel"
+},
+{
+"asin": "B00I8V4YFK",
+"authors": [
+{
+"asin": "B002S2VIBS",
+"name": "Dan Wells"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Julia Whelan"
+}
+],
+"publisher_name": "HarperCollins",
+"release_date": "2014-03-11",
+"runtime_length_min": 759,
+"series": [
+{
+"asin": "B00BLOPC0M",
+"sequence": "3",
+"title": "Partials",
+"url": "/pd/Partials-Audiobook/B00BLOPC0M"
+}
+],
+"title": "Ruins"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Past+Tense": {
+"products": [
+{
+"asin": "B07DK1BBS6",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2018-11-05",
+"runtime_length_min": 771,
+"series": [
+{
+"asin": "B005NASKDG",
+"sequence": "23",
+"title": "Jack Reacher",
+"url": "/pd/Jack-Reacher-Audiobook/B005NASKDG"
+}
+],
+"subtitle": "Jack Reacher, Book 23",
+"title": "Past Tense"
+},
+{
+"asin": "B0HRNCBN5D",
+"release_date": "2026-11-14",
+"runtime_length_min": 7,
+"title": "Yesterday in German: The Past Tense Made Simple"
+},
+{
+"asin": "B0778CJHV9",
+"authors": [
+{
+"asin": "B008L9Q4ES",
+"name": "Christopher G. Nuttall"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tavia Gilbert"
+}
+],
+"publisher_name": "Podium Audio",
+"release_date": "2017-11-21",
+"runtime_length_min": 791,
+"series": [
+{
+"asin": "B01KKQ92JS",
+"sequence": "10",
+"title": "Schooled in Magic",
+"url": "/pd/Schooled-in-Magic-Audiobook/B01KKQ92JS"
+}
+],
+"subtitle": "Schooled in Magic, Book 10",
+"title": "Past Tense"
+},
+{
+"asin": "B07HKNV7CL",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2018-11-05",
+"runtime_length_min": 389,
+"series": [
+{
+"asin": "B005NBR8AQ",
+"sequence": "23",
+"title": "Jack Reacher (abridged)",
+"url": "/pd/Jack-Reacher-abridged-Audiobook/B005NBR8AQ"
+}
+],
+"subtitle": "A Jack Reacher Novel",
+"title": "Past Tense"
+},
+{
+"asin": "B004P7WS68",
+"authors": [
+{
+"asin": "B001IQZB9U",
+"name": "Catherine Aird"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Ric Jerrom"
+}
+],
+"publisher_name": "Blackstone Audio, Inc.",
+"release_date": "2011-03-01",
+"runtime_length_min": 438,
+"series": [
+{
+"asin": "B01M8Q28UZ",
+"sequence": "22",
+"title": "The Calleshire Chronicles",
+"url": "/pd/The-Calleshire-Chronicles-Audiobook/B01M8Q28UZ"
+}
+],
+"title": "Past Tense"
+},
+{
+"asin": "B007Y8MSME",
+"authors": [
+{
+"asin": "B000AP8PHA",
+"name": "Richard Peck"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Various"
+}
+],
+"publisher_name": "Listening Library",
+"release_date": "2012-05-01",
+"runtime_length_min": 284,
+"title": "Past Perfect, Present Tense"
+},
+{
+"asin": "B0B29G86B9",
+"authors": [
+{
+"asin": "B0106FXD2U",
+"name": "Olly Richards"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Olly Richards"
+},
+{
+"name": "Susana López-Muñoz de Arce"
+}
+],
+"publisher_name": "StoryLearning Press",
+"release_date": "2022-05-25",
+"runtime_length_min": 69,
+"subtitle": "Master the Spanish Past Tenses in 30 Days (30-Day Mastery)",
+"title": "30-Day Mastery: Perfect Past Tenses"
+},
+{
+"asin": "B09FNZ4QH5",
+"authors": [
+{
+"asin": "B0106FXD2U",
+"name": "Olly Richards"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Olly Richards"
+},
+{
+"name": "Thierry Saboulard"
+}
+],
+"publisher_name": "StoryLearning Press",
+"release_date": "2021-09-10",
+"runtime_length_min": 54,
+"subtitle": "Master the Passé Composé and Imparfait in 30 Days: 30-Day Mastery | French Edition, Book 3",
+"title": "30-Day Mastery: Perfect Past Tenses"
+},
+{
+"asin": "B0HPMGGWY5",
+"release_date": "2026-10-28",
+"runtime_length_min": 5,
+"title": "Past Tense Adventures: Travel, Work, and Memories in Spanish"
+},
+{
+"asin": "B0H54SW773",
+"authors": [
+{
+"name": "Kaya Srilas"
+}
+],
+"language": "french",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Independently Published",
+"release_date": "2026-06-13",
+"runtime_length_min": 699,
+"subtitle": "650+ Practical Words for Feeling & Real-Life French | Expressions & Past Tenses | DELF A2, TEF & TCF",
+"title": "French Vocabulary Builder A2.2: Horizons / Constructeur de vocabulaire français A2.2 : Horizons"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Patrick+Rothfuss": {
 "products": []
 },
@@ -9253,6 +14332,589 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private": {
+"products": [
+{
+"asin": "B0HR6YR929",
+"authors": [
+{
+"name": "Nina Sestina"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Independently Published",
+"release_date": "2026-11-10",
+"runtime_length_min": 28,
+"subtitle": "Forbidden Age Gap Pregnancy",
+"title": "The Professor's Private Cheerleader"
+},
+{
+"asin": "B0GZHW1192",
+"authors": [
+{
+"asin": "B07HNJ5FNV",
+"name": "Casey McQuiston"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Ben Balmaceda"
+},
+{
+"name": "Ben Starr"
+},
+{
+"name": "Billie Aken-Tyers"
+},
+{
+"name": "Capri Campeau"
+},
+{
+"name": "Kristen Sieh"
+},
+{
+"name": "Luke Neville"
+},
+{
+"name": "Nathan Luwa"
+}
+],
+"publisher_name": "Macmillan Audio",
+"release_date": "2026-12-01",
+"runtime_length_min": 284,
+"title": "Red, White & Royal Blue: The Private Correspondence"
+},
+{
+"asin": "B0FQ3RS6M2",
+"authors": [
+{
+"name": "Spy Force Detective"
+}
+],
+"language": "english",
+"release_date": "2025-09-07",
+"title": "Private detective in Chandigarh"
+},
+{
+"asin": "B0HR5YFBTF",
+"release_date": "2026-11-12",
+"runtime_length_min": 2,
+"title": "BLACKPINK's Jisoo and TWICE's Nayeon recall YG's public score sheets and JYP's private evaluations"
+},
+{
+"asin": "B0HR47HCH7",
+"release_date": "2026-11-12",
+"runtime_length_min": 0,
+"title": "[Đánh giá] Raising Private Capital (Matt Faircloth) Tóm tắt."
+},
+{
+"asin": "B0HPYG5YL9",
+"authors": [
+{
+"name": "Reggie Steele"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Independently Published",
+"release_date": "2026-10-31",
+"runtime_length_min": 213,
+"subtitle": "A public view into the private world of gay exhibitionists",
+"title": "XXXPLOITS OF EXHIBITIONISTS"
+},
+{
+"asin": "B0042FWTTE",
+"authors": [
+{
+"asin": "B000APXTVM",
+"name": "Bill Bryson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Bill Bryson"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2010-10-05",
+"runtime_length_min": 993,
+"subtitle": "A Short History of Private Life",
+"title": "At Home"
+},
+{
+"asin": "B0HPS7HPWP",
+"authors": [
+{
+"name": "John H. Johnson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "AI Voice E Money"
+}
+],
+"publisher_name": "FlightsPath Audiobooks",
+"release_date": "2026-10-30",
+"runtime_length_min": 188,
+"subtitle": "Pass Your Private Pilot Exam and Checkride",
+"title": "FlightsPath"
+},
+{
+"asin": "B0HDFS42S5",
+"authors": [
+{
+"name": "Christopher Hale"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Hidden Voices",
+"release_date": "2026-08-14",
+"runtime_length_min": 114,
+"title": "Private Pilot Test Guide: Audio Prep for the Written Exam and Checkride With Clear Explanations, Memory Aids, and Real-World Flight Scenarios"
+},
+{
+"asin": "B0HMSLVKRV",
+"authors": [
+{
+"asin": "B004Q69AJQ",
+"name": "Dan Ames"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Eric Priessman"
+}
+],
+"publisher_name": "Slogan Books,New York,NY",
+"release_date": "2026-10-12",
+"runtime_length_min": 324,
+"series": [
+{
+"asin": "B0HMWHCM4Z",
+"sequence": "1",
+"title": "John Rockne",
+"url": "/pd/John-Rockne-Audiobook/B0HMWHCM4Z"
+}
+],
+"title": "Dead Wood (A Hardboiled Private Investigator Mystery Series): John Rockne Mysteries 1"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private&author=James+Patterson": {
+"products": [
+{
+"asin": "B003QKSO4K",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B001H6SAH6",
+"name": "Maxine Paetro"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Peter Hermann"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2010-06-28",
+"runtime_length_min": 424,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "1",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private"
+},
+{
+"asin": "B0H7RGY4GG",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Trevor White"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2027-09-13",
+"runtime_length_min": 720,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "20",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Dublin"
+},
+{
+"asin": "B00F0WPOPY",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B001H6SAH6",
+"name": "Maxine Paetro"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Emma Galvin"
+}
+],
+"publisher_name": "Jimmy Patterson",
+"release_date": "2013-10-07",
+"runtime_length_min": 457,
+"series": [
+{
+"asin": "B0163K51XG",
+"sequence": "2",
+"title": "Confessions",
+"url": "/pd/Confessions-Audiobook/B0163K51XG"
+}
+],
+"title": "Confessions: The Private School Murders"
+},
+{
+"asin": "B0GX7MH2TQ",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-12-14",
+"runtime_length_min": 420,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "19",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Monaco"
+},
+{
+"asin": "B01944PE94",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B0C6R3C19F",
+"name": "Mark Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jay Snyder"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2016-03-14",
+"runtime_length_min": 564,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "11",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+},
+{
+"asin": "B0CWVVZJ3S",
+"sequence": "4",
+"title": "Private Europe",
+"url": "/pd/Private-Europe-Audiobook/B0CWVVZJ3S"
+}
+],
+"title": "Private Paris"
+},
+{
+"asin": "B01G44EVOG",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jay Snyder"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2016-06-27",
+"runtime_length_min": 473,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "12",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+},
+{
+"asin": "B0CXTXP71C",
+"sequence": "1",
+"title": "Private Brazil",
+"url": "/pd/Private-Brazil-Audiobook/B0CXTXP71C"
+}
+],
+"title": "The Games"
+},
+{
+"asin": "B09C91DQ57",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B0C6R3C19F",
+"name": "Mark Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Paul Panting"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2021-08-12",
+"runtime_length_min": 577,
+"series": [
+{
+"asin": "B0CWVVZJ3S",
+"sequence": "2",
+"title": "Private Europe",
+"url": "/pd/Private-Europe-Audiobook/B0CWVVZJ3S"
+},
+{
+"asin": "B006VZNHIU",
+"sequence": "3",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private Games: Booktrack Edition"
+},
+{
+"asin": "B006MI3KDS",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Maxine Paetro"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Shepherd"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2012-01-02",
+"runtime_length_min": 438,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "4",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private: #1 Suspect"
+},
+{
+"asin": "B0BWQ3JN1H",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B0C6R3C19F",
+"name": "Mark Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "January LaVoy"
+},
+{
+"name": "Ari Fliakos"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2023-05-09",
+"runtime_length_min": 482,
+"series": [
+{
+"asin": "B0CWVVZJ3S",
+"sequence": "3",
+"title": "Private Europe",
+"url": "/pd/Private-Europe-Audiobook/B0CWVVZJ3S"
+},
+{
+"asin": "B006VZNHIU",
+"sequence": "5",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private Berlin: Booktrack Edition"
+},
+{
+"asin": "B009ON9S0C",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Mark Pearson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Rupert Degas"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2012-12-04",
+"runtime_length_min": 405,
+"series": [
+{
+"asin": "B0CWVVZJ3S",
+"sequence": "1",
+"title": "Private Europe",
+"url": "/pd/Private-Europe-Audiobook/B0CWVVZJ3S"
+},
+{
+"asin": "B006VZNHIU",
+"sequence": "2",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private London"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+01+-+Private": {
+"products": [
+{
+"asin": "B0GGS4H7BS",
+"release_date": "2026-01-14",
+"runtime_length_min": 8,
+"title": "Le placement à suivre : Private Equity, un placement incontournable ? - 14/01"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+01+-+Private&author=James+Patterson": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+02+-+Private+London": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+18+Private+Rome": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+18+Private+Rome&author=James+Patterson+%28+%29": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+19+-+Private+Monaco+-+Chapterized": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+19+-+Private+Monaco+-+Chapterized&author=James+Patterson": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+20+-+Private+Dublin": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Beijing": {
+"products": [
+{
+"asin": "B0GL99KHWL",
+"authors": [
+{
+"name": "James Patterson"
+},
+{
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"publisher_name": "Little, Brown & Company",
+"release_date": "2028-03-06",
+"runtime_length_min": 540,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "17",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private Beijing"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Berlin": {
 "products": [
 {
@@ -9340,6 +15002,134 @@
 "release_date": "2026-11-11",
 "runtime_length_min": 23,
 "title": "Sneaker, Start-ups und altes Geld: Wie Metzler das Private Banking in Berlin erobern will"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Down+Under": {
+"products": [
+{
+"asin": "B00LTZU74E",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Michael White"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tim Wright"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2014-08-26",
+"runtime_length_min": 409,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "6",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+},
+{
+"asin": "B0CXTSYLGS",
+"sequence": "1",
+"title": "Private Australia",
+"url": "/pd/Private-Australia-Audiobook/B0CXTSYLGS"
+}
+],
+"title": "Private Down Under"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Down+Under&author=James+Patterson": {
+"products": [
+{
+"asin": "B00LTZU74E",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Michael White"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Tim Wright"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2014-08-26",
+"runtime_length_min": 409,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "6",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+},
+{
+"asin": "B0CXTSYLGS",
+"sequence": "1",
+"title": "Private Australia",
+"url": "/pd/Private-Australia-Audiobook/B0CXTSYLGS"
+}
+],
+"title": "Private Down Under"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Dublin": {
+"products": [
+{
+"asin": "B0H7RGY4GG",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Trevor White"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2027-09-13",
+"runtime_length_min": 720,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "20",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Dublin"
+},
+{
+"asin": "B0HNH1X12R",
+"release_date": "2026-11-04",
+"runtime_length_min": 11,
+"title": "Plans for a private security firm to help patrol Dublin streets"
+},
+{
+"asin": "B0HNQXZD4Q",
+"release_date": "2026-11-04",
+"runtime_length_min": 16,
+"title": "Private security to patrol Dublin City Centre - do we need it?"
 }
 ]
 },
@@ -9566,6 +15356,94 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+India+-+City+On+Fire": {
+"products": [
+{
+"asin": "B00OAOK1JM",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B0042D1A3C",
+"name": "Ashwin Sanghi"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Amerjit Deu"
+},
+{
+"name": "Raj Ghatak"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2014-11-11",
+"runtime_length_min": 468,
+"series": [
+{
+"asin": "B0CXTTY8M2",
+"sequence": "1",
+"title": "Private India",
+"url": "/pd/Private-India-Audiobook/B0CXTTY8M2"
+},
+{
+"asin": "B006VZNHIU",
+"sequence": "8",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private India: City on Fire"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+India+-+City+On+Fire&author=James+Patterson": {
+"products": [
+{
+"asin": "B00OAOK1JM",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B0042D1A3C",
+"name": "Ashwin Sanghi"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Amerjit Deu"
+},
+{
+"name": "Raj Ghatak"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2014-11-11",
+"runtime_length_min": 468,
+"series": [
+{
+"asin": "B0CXTTY8M2",
+"sequence": "1",
+"title": "Private India",
+"url": "/pd/Private-India-Audiobook/B0CXTTY8M2"
+},
+{
+"asin": "B006VZNHIU",
+"sequence": "8",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private India: City on Fire"
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+L.A": {
 "products": [
 {
@@ -9738,6 +15616,404 @@
 "title": "Private L.A."
 }
 ]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+London": {
+"products": [
+{
+"asin": "B009ON9S0C",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Mark Pearson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Rupert Degas"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2012-12-04",
+"runtime_length_min": 405,
+"series": [
+{
+"asin": "B0CWVVZJ3S",
+"sequence": "1",
+"title": "Private Europe",
+"url": "/pd/Private-Europe-Audiobook/B0CWVVZJ3S"
+},
+{
+"asin": "B006VZNHIU",
+"sequence": "2",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private London"
+},
+{
+"asin": "B0BVKNXFXG",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Mark Pearson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Rupert Degas"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2023-04-11",
+"runtime_length_min": 406,
+"series": [
+{
+"asin": "B0CWVVZJ3S",
+"sequence": "1",
+"title": "Private Europe",
+"url": "/pd/Private-Europe-Audiobook/B0CWVVZJ3S"
+},
+{
+"asin": "B006VZNHIU",
+"sequence": "2",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private London: Booktrack Edition"
+},
+{
+"asin": "B0C3RWNMX3",
+"authors": [
+{
+"name": "Seth Alexander Thévoz"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Seth Alexander Thévoz"
+}
+],
+"publisher_name": "Little, Brown Audio",
+"release_date": "2023-05-25",
+"runtime_length_min": 590,
+"subtitle": "The Secret Life of London Private Members' Clubs",
+"title": "Behind Closed Doors"
+},
+{
+"asin": "B0DC1ZXZ7Y",
+"authors": [
+{
+"name": "Addas"
+}
+],
+"language": "english",
+"release_date": "2024-08-02",
+"title": "UK London Private Hire: Your Gateway to Luxury Chauffeur Services"
+},
+{
+"asin": "B0DBZZ7MYF",
+"authors": [
+{
+"name": "Backlinks Podcastnew"
+}
+],
+"language": "english",
+"release_date": "2024-08-02",
+"title": "UK London Private Hire: Your Gateway to Luxury Chauffeur Services"
+},
+{
+"asin": "B0D7MBQJRS",
+"release_date": "2024-06-20",
+"runtime_length_min": 3,
+"title": "Enda Brady: UK correspondent on Just Stop Oil breaking onto a London airfield hours after Taylor Swift's private jet touched down"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Monaco": {
+"products": [
+{
+"asin": "B0GX7MH2TQ",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-12-14",
+"runtime_length_min": 420,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "19",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Monaco"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Monaco&author=James+Patterson": {
+"products": [
+{
+"asin": "B0GX7MH2TQ",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-12-14",
+"runtime_length_min": 420,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "19",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Monaco"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Monaco+-+Chapterized": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Moscow+Private%2C+Book+15": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Moscow+Private%2C+Book+15&author=James+Patterson%2C+Adam+Hamdy": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Paris": {
+"products": [
+{
+"asin": "B01944PE94",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B0C6R3C19F",
+"name": "Mark Sullivan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jay Snyder"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2016-03-14",
+"runtime_length_min": 564,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "11",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+},
+{
+"asin": "B0CWVVZJ3S",
+"sequence": "4",
+"title": "Private Europe",
+"url": "/pd/Private-Europe-Audiobook/B0CWVVZJ3S"
+}
+],
+"title": "Private Paris"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Rome": {
+"products": [
+{
+"asin": "B0FH5NRBDW",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Adam Sims"
+},
+{
+"name": "Rachel Handshaw"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-01-14",
+"runtime_length_min": 517,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "18",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Rome"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Rome&author=James+Patterson+%28+%29": {
+"products": [
+{
+"asin": "B0FH5NRBDW",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Adam Sims"
+},
+{
+"name": "Rachel Handshaw"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2026-01-14",
+"runtime_length_min": 517,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "18",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"subtitle": "A Private Novel",
+"title": "Private Rome"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Private+Vegas": {
+"products": [
+{
+"asin": "B00QL85DFW",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B001H6SAH6",
+"name": "Maxine Paetro"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jay Snyder"
+}
+],
+"publisher_name": "Little, Brown & Company",
+"release_date": "2015-01-26",
+"runtime_length_min": 449,
+"series": [
+{
+"asin": "B006VZNHIU",
+"sequence": "9",
+"title": "Private",
+"url": "/pd/Private-Audiobook/B006VZNHIU"
+}
+],
+"title": "Private Vegas"
+},
+{
+"asin": "B002V1LG6S",
+"authors": [
+{
+"name": "Jorg Bobsin"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jorg Bobsin"
+}
+],
+"publisher_name": "Satisfaction Guaranteed, LLC",
+"release_date": "2008-10-27",
+"runtime_length_min": 15,
+"subtitle": "Mr Las Vegas -totaly private!",
+"title": "In Confidence With....Wayne Newton"
+},
+{
+"asin": "B0CY9M96JL",
+"authors": [
+{
+"name": "Pablo Poveda"
+}
+],
+"language": "italian",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Independently Published",
+"release_date": "2025-07-31",
+"runtime_length_min": 490,
+"subtitle": "Un caso pericoloso a Madrid per il detective privato Maldonado",
+"title": "Morte a Las Vegas"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Reacher+31+-+Chain+Reaction": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Reacher+31+-+Chain+Reaction&author=Lee+Child%2C+Andrew+Child": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Reacher+31+-+Chain+Reaction+%28M4B%29": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Reacher+31+-+Chain+Reaction+%28M4B%29&author=Lee+Child%2C+Andrew+Child": {
+"products": []
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Red+Rising": {
 "products": [
@@ -11133,6 +17409,9 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Steeleart+Reckoners+Brandon+Sanderson": {
+"products": []
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=Stone+Cold": {
 "products": [
 {
@@ -11997,6 +18276,38 @@
 "runtime_length_min": 424,
 "subtitle": "A Novel",
 "title": "A Guardian and a Thief: Oprah's Book Club"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Butcher%27s+Masquerade+Dungeon+Crawler+Carl%2C+Book+5": {
+"products": [
+{
+"asin": "B09ZJ82C7Y",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2022-05-26",
+"runtime_length_min": 1413,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "5",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 5",
+"title": "The Butcher's Masquerade"
 }
 ]
 },
@@ -13701,6 +20012,59 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Eye+of+the+Bedlam+Bride": {
+"products": [
+{
+"asin": "B0CDXWSS5D",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "Patrick Warburton"
+},
+{
+"name": "Travis Baldree"
+},
+{
+"name": "Annie Ellicott"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2023-09-01",
+"runtime_length_min": 1606,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "6",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 6",
+"title": "The Eye of the Bedlam Bride"
+},
+{
+"asin": "B0HRVTLCWQ",
+"release_date": "2026-11-16",
+"runtime_length_min": 19,
+"title": "“LitRPG Isn’t Great Writing”? Dungeon Crawler Carl Book 6 Disagrees | Random Review: The Eye of the Bedlam Bride | Original Geek"
+},
+{
+"asin": "B0HQFBM8XZ",
+"release_date": "2026-05-31",
+"runtime_length_min": 0,
+"title": "[Review] The Eye of the Bedlam Bride (Matt Dinniman) Summarized."
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Fault+In+Our+Stars": {
 "products": [
 {
@@ -13911,6 +20275,56 @@
 "release_date": "2007-01-08",
 "runtime_length_min": 635,
 "title": "The Folk of the Fringe"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Gate+of+the+Feral+Gods": {
+"products": [
+{
+"asin": "B09GCYRZRQ",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2021-09-16",
+"runtime_length_min": 1083,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "4",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 4",
+"title": "The Gate of the Feral Gods"
+},
+{
+"asin": "B0HLS42JBV",
+"release_date": "2026-10-02",
+"runtime_length_min": 63,
+"title": "The Gate of the Feral Gods: Part One"
+},
+{
+"asin": "B0HQDD3R2V",
+"release_date": "2026-05-31",
+"runtime_length_min": 0,
+"title": "[Review] The Gate of the Feral Gods (Matt Dinniman) Summarized."
+},
+{
+"asin": "B0HPSKRXF8",
+"release_date": "2026-10-30",
+"runtime_length_min": 59,
+"title": "The Gate of the Feral Gods: Part Two"
 }
 ]
 },
@@ -14193,6 +20607,9 @@
 "products": []
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Guardians%3B+3+Island+of+Glass&author=Nora+Roberts": {
+"products": []
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Guilty+Will+Robie%2C+Book+4": {
 "products": []
 },
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Hard+Way": {
@@ -15303,6 +21720,74 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Power+of+Habit+Why+We+Do+What+We+Do+in+Life+and+Business": {
+"products": [
+{
+"asin": "B0FD4CV4BF",
+"authors": [
+{
+"asin": "B006X0XPLM",
+"name": "Charles Duhigg"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Charles Duhigg"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2025-09-09",
+"runtime_length_min": 557,
+"subtitle": "Why We Do What We Do in Life and Business",
+"title": "The Power of Habit"
+},
+{
+"asin": "B0827YCSPX",
+"authors": [
+{
+"name": "Dean's Library"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dean Bokhari"
+}
+],
+"publisher_name": "Author's Republic",
+"release_date": "2019-12-02",
+"runtime_length_min": 33,
+"subtitle": "Why We Do What We Do in Life and Business by Charles Duhigg",
+"title": "Summary: The Power of Habit"
+},
+{
+"asin": "B0719G814K",
+"authors": [
+{
+"name": "Start Publishing Notes"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Michael Gilboe"
+}
+],
+"publisher_name": "Start Publishing Notes",
+"release_date": "2017-05-16",
+"runtime_length_min": 34,
+"subtitle": "Why We Do What We Do in Life and Business",
+"title": "Summary, Analysis, and Review of Charles Duhigg's The Power of Habit"
+},
+{
+"asin": "B0HQDT3CC9",
+"release_date": "2026-03-03",
+"runtime_length_min": 0,
+"title": "[Review] The Power of Habit: Why We Do What We Do in Life and Business (Charles Duhigg) Summarized."
+}
+]
+},
 "https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Reversal": {
 "products": [
 {
@@ -15408,6 +21893,78 @@
 ],
 "subtitle": "Reversal of Fortune, Book 2",
 "title": "A Much Maligned Miss"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Sentinel+A+Jack+Reacher+Novel": {
+"products": [
+{
+"asin": "0593339991",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2020-10-27",
+"runtime_length_min": 363,
+"series": [
+{
+"asin": "B005NBR8AQ",
+"sequence": "25",
+"title": "Jack Reacher (abridged)",
+"url": "/pd/Jack-Reacher-abridged-Audiobook/B005NBR8AQ"
+}
+],
+"subtitle": "A Jack Reacher Novel",
+"title": "The Sentinel"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Sentinel+A+Jack+Reacher+Novel&author=Lee+Child%2C+Andrew+Child": {
+"products": [
+{
+"asin": "0593339991",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2020-10-27",
+"runtime_length_min": 363,
+"series": [
+{
+"asin": "B005NBR8AQ",
+"sequence": "25",
+"title": "Jack Reacher (abridged)",
+"url": "/pd/Jack-Reacher-abridged-Audiobook/B005NBR8AQ"
+}
+],
+"subtitle": "A Jack Reacher Novel",
+"title": "The Sentinel"
 }
 ]
 },
@@ -15532,6 +22089,219 @@
 }
 ],
 "title": "The shadow of what was lost – Teil eins der Licanius-Trilogie"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=The+Subtle+Art+of+Not+Giving+a+F_ck": {
+"products": [
+{
+"asin": "B01I28NFEE",
+"authors": [
+{
+"asin": "B00BIJOMOC",
+"name": "Mark Manson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Roger Wayne"
+}
+],
+"publisher_name": "Harper",
+"release_date": "2016-09-13",
+"runtime_length_min": 317,
+"subtitle": "A Counterintuitive Approach to Living a Good Life",
+"title": "The Subtle Art of Not Giving a F*ck"
+},
+{
+"asin": "B09JR27SKD",
+"authors": [
+{
+"asin": "B00BIJOMOC",
+"name": "Mark Manson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Mark Manson"
+}
+],
+"publisher_name": "Harper",
+"release_date": "2022-05-03",
+"runtime_length_min": 81,
+"title": "The Subtle Art of Not Giving a F*ck Journal"
+},
+{
+"asin": "B0G5TKR2MD",
+"authors": [
+{
+"name": "Mark Manson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Mark Manson"
+}
+],
+"publisher_name": "Harper",
+"release_date": "2027-01-26",
+"runtime_length_min": 720,
+"subtitle": "A Counterintuitive Approach to Living a Good Life",
+"title": "The Subtle Art of Not Giving a F*ck, Revised and Updated Edition"
+},
+{
+"asin": "B0HB3TWHHC",
+"authors": [
+{
+"name": "Adrienne Devore"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisher_name": "Independently Published",
+"release_date": "2026-07-23",
+"runtime_length_min": 54,
+"subtitle": "Why Trying Less and Caring More (About the Right Things) Will Change E",
+"title": "The Subtle Art of Not Giving a F*ck: A Deep Dive Into Mark Manson's Counterintuitive Guide to a Meaningful Life"
+},
+{
+"asin": "B0CMRNXJ78",
+"authors": [
+{
+"asin": "B00BIJOMOC",
+"name": "Mark Manson"
+}
+],
+"language": "marathi",
+"narrators": [
+{
+"name": "Sachin Suresh"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2023-11-09",
+"runtime_length_min": 454,
+"series": [
+{
+"asin": "B0CK4M3Z5F",
+"sequence": "",
+"title": "The Subtle Art of Not Giving a F*ck",
+"url": "/pd/The-Subtle-Art-of-Not-Giving-a-F-ck-Audiobook/B0CK4M3Z5F"
+}
+],
+"subtitle": "Counterintuitive Approach to Living a Good Life",
+"title": "The Subtle Art of Not Giving a F*ck (Marathi Edition)"
+},
+{
+"asin": "B0CK3BTCKC",
+"authors": [
+{
+"asin": "B00BIJOMOC",
+"name": "Mark Manson"
+}
+],
+"language": "hindi",
+"narrators": [
+{
+"name": "Anamaya Verma"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2023-09-29",
+"runtime_length_min": 598,
+"series": [
+{
+"asin": "B0CK4M3Z5F",
+"sequence": "",
+"title": "The Subtle Art of Not Giving a F*ck",
+"url": "/pd/The-Subtle-Art-of-Not-Giving-a-F-ck-Audiobook/B0CK4M3Z5F"
+}
+],
+"subtitle": "A Book About Hope",
+"title": "Everything Is F*cked (Hindi Edition)"
+},
+{
+"asin": "B0CNB7GXX9",
+"authors": [
+{
+"name": "Ideabrew Studios"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Ideabrew Studios"
+}
+],
+"publisher_name": "Harper Collins",
+"release_date": "2023-11-15",
+"runtime_length_min": 33,
+"subtitle": "Stop Stressing, Start Living.",
+"title": "Summary of The Subtle Art of Not Giving a F*ck"
+},
+{
+"asin": "B07N98P3TF",
+"authors": [
+{
+"name": "Eric Townsend"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jim D. Johnston"
+}
+],
+"publisher_name": "Combray Media",
+"release_date": "2019-02-04",
+"runtime_length_min": 122,
+"subtitle": "The Subtle Art of Not Giving a F*ck, How to Win Friends and Influence People, You Are a Badass, and The Compound Effect",
+"title": "Summary Collection"
+},
+{
+"asin": "9390351596",
+"authors": [
+{
+"name": "Mark Manson"
+},
+{
+"name": "Jatin Vora"
+}
+],
+"language": "english",
+"publisher_name": "HarperCollins India",
+"release_date": "2021-02-24",
+"runtime_length_min": 448,
+"title": "The Subtle Art Of Not Giving A F*ck (Gujarati)"
+},
+{
+"asin": "B0FRCXR4PH",
+"authors": [
+{
+"name": "Марк Мэнсон"
+},
+{
+"name": "Mark Manson"
+}
+],
+"language": "russian",
+"narrators": [
+{
+"name": "Алекс Лайт"
+}
+],
+"publisher_name": "ÐÐ»ÑŒÐ¿Ð¸Ð½Ð° ÐŸÐ°Ð±Ð»Ð¸ÑˆÐµÑ€",
+"release_date": "2025-09-17",
+"runtime_length_min": 316,
+"subtitle": "Парадоксальный способ жить счастливо [A Counterintuitive Approach to Living a Good Life]",
+"title": "Тонкое искусство пофигизма [The Subtle Art of Not Giving a F*ck]"
 }
 ]
 },
@@ -16724,6 +23494,76 @@
 ],
 "subtitle": "Riyria Revelations, Book 1",
 "title": "Theft of Swords [Dramatized Adaptation]"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=This+Inevitable+Ruin": {
+"products": [
+{
+"asin": "B0DK282SYV",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "Travis Baldree"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2025-02-11",
+"runtime_length_min": 1720,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "7",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 7",
+"title": "This Inevitable Ruin"
+}
+]
+},
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=This+Inevitable+Ruin&author=Matt+Dinniman": {
+"products": [
+{
+"asin": "B0DK282SYV",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+},
+{
+"name": "Travis Baldree"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2025-02-11",
+"runtime_length_min": 1720,
+"series": [
+{
+"asin": "B0937JMKYV",
+"sequence": "7",
+"title": "Dungeon Crawler Carl",
+"url": "/pd/Dungeon-Crawler-Carl-Audiobook/B0937JMKYV"
+}
+],
+"subtitle": "Dungeon Crawler Carl, Book 7",
+"title": "This Inevitable Ruin"
 }
 ]
 },
@@ -18677,6 +25517,163 @@
 }
 ]
 },
+"https://api.audible.com/1.0/catalog/products?num_results=10&products_sort_by=Relevance&response_groups=product_desc%2Cmedia%2Cseries%2Ccontributors%2Cproduct_extended_attrs&image_sizes=500%2C1000&title=power+of+habit": {
+"products": [
+{
+"asin": "B002V5HAL4",
+"authors": [
+{
+"asin": "B0H6499LD2",
+"name": "Stephen R. Covey"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Stephen R. Covey"
+}
+],
+"publisher_name": "Simon & Schuster Audio",
+"release_date": "2004-10-01",
+"runtime_length_min": 784,
+"subtitle": "Powerful Lessons in Personal Change",
+"title": "The 7 Habits of Highly Effective People"
+},
+{
+"asin": "B0FD4CV4BF",
+"authors": [
+{
+"asin": "B006X0XPLM",
+"name": "Charles Duhigg"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Charles Duhigg"
+}
+],
+"publisher_name": "Random House Audio",
+"release_date": "2025-09-09",
+"runtime_length_min": 557,
+"subtitle": "Why We Do What We Do in Life and Business",
+"title": "The Power of Habit"
+},
+{
+"asin": "B0HRTS8RMT",
+"release_date": "2026-11-16",
+"runtime_length_min": 47,
+"title": "#700 - The Powerful Practice of Habit"
+},
+{
+"asin": "B0HRSDX21Z",
+"release_date": "2026-11-15",
+"runtime_length_min": 29,
+"title": "10 Powerful Habits of People Who Age Well"
+},
+{
+"asin": "B0HRNYYC1Z",
+"release_date": "2020-07-15",
+"runtime_length_min": 8,
+"title": "Break the Carbohydrate Addiction Habit and Increase Your Willpower Now"
+},
+{
+"asin": "B0HRKPRGP1",
+"release_date": "2026-11-13",
+"runtime_length_min": 9,
+"title": "16 Powerful Habit Replacements for Smoking Cigarettes"
+},
+{
+"asin": "B0B8QN2K1Q",
+"authors": [
+{
+"asin": "B001JP2TS6",
+"name": "Craig Groeschel"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Craig Groeschel"
+}
+],
+"publisher_name": "Zondervan",
+"release_date": "2023-02-14",
+"runtime_length_min": 342,
+"subtitle": "Mastering the Habits That Matter Most",
+"title": "The Power to Change"
+},
+{
+"asin": "B09F9ZZS3B",
+"authors": [
+{
+"asin": "B07Y3W81DD",
+"name": "George Campbell"
+},
+{
+"asin": "B07Y8WH8F1",
+"name": "Jim Packard"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "George Campbell"
+},
+{
+"name": "Jim Packard"
+},
+{
+"name": "Cindy Telisak"
+}
+],
+"publisher_name": "George Campbell",
+"release_date": "2021-09-02",
+"runtime_length_min": 195,
+"subtitle": "A Remarkably Simple Process for Harnessing the Power of Habit, Eliminating Self Sabotage and Achieving Your Goals",
+"title": "The Consistency Chain for Network Marketing"
+},
+{
+"asin": "B07L614945",
+"authors": [
+{
+"name": "Stephen Patterson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Russell Newton"
+}
+],
+"publisher_name": "Stephen Patterson",
+"release_date": "2018-12-10",
+"runtime_length_min": 181,
+"subtitle": "Achieve Any Goal with Powerful Long Term Daily Habits and Exercises",
+"title": "Self-Discipline: Blueprint to Success in 10 Days for Entrepreneurs, Weight Loss and Overcome Procrastination, Laziness, Addiction"
+},
+{
+"asin": "B0CN1KMV8G",
+"authors": [
+{
+"asin": "B0CR1VQ3XD",
+"name": "Dr Gina Cleo"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dr Gina Cleo"
+}
+],
+"publisher_name": "Audible Studios",
+"release_date": "2024-01-03",
+"runtime_length_min": 499,
+"subtitle": "Simple Steps to Rewire Your Brain for Powerful Habit Change",
+"title": "The Habit Revolution"
+}
+]
+},
 "https://api.audnex.us/books/0593339126?region=us": {
 "asin": "0593339126",
 "authors": [
@@ -18701,6 +25698,77 @@
 },
 "subtitle": "A Jack Reacher Novel",
 "title": "The Enemy"
+},
+"https://api.audnex.us/books/0593339991?region=us": {
+"asin": "0593339991",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisherName": "Random House Audio",
+"releaseDate": "2020-10-27T00:00:00.000Z",
+"runtimeLengthMin": 363,
+"seriesPrimary": {
+"asin": "B005NBR8AQ",
+"name": "Jack Reacher (abridged)",
+"position": "25"
+},
+"subtitle": "A Jack Reacher Novel",
+"title": "The Sentinel"
+},
+"https://api.audnex.us/books/1039401384?region=us": {
+"asin": "1039401384",
+"authors": [
+{
+"asin": "B00HS2YW6Q",
+"name": "T.J. Brearton"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Bailey Carr"
+}
+],
+"publisherName": "Podium Audio",
+"releaseDate": "2021-04-27T00:00:00.000Z",
+"runtimeLengthMin": 516,
+"seriesPrimary": {
+"asin": "B08TMB4C1W",
+"name": "Shannon Ames",
+"position": "3"
+},
+"subtitle": "Shannon Ames, Book 3",
+"title": "In Too Deep"
+},
+"https://api.audnex.us/books/9390351596?region=us": {
+"asin": "9390351596",
+"authors": [
+{
+"name": "Mark Manson"
+},
+{
+"name": "Jatin Vora"
+}
+],
+"language": "english",
+"narrators": [],
+"publisherName": "HarperCollins India",
+"releaseDate": "2021-02-24T00:00:00.000Z",
+"runtimeLengthMin": 448,
+"title": "The Subtle Art Of Not Giving A F*ck (Gujarati)"
 },
 "https://api.audnex.us/books/B002V1AE98?region=us": {
 "asin": "B002V1AE98",
@@ -19208,6 +26276,25 @@
 "runtimeLengthMin": 991,
 "title": "The Liar"
 },
+"https://api.audnex.us/books/B0145HUFXU?region=us": {
+"asin": "B0145HUFXU",
+"authors": [
+{
+"asin": "B0046GKSDS",
+"name": "Kate Sherwood"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "K.C. Kelly"
+}
+],
+"publisherName": "Dreamspinner Press LLC",
+"releaseDate": "2015-08-20T00:00:00.000Z",
+"runtimeLengthMin": 509,
+"title": "In Too Deep"
+},
 "https://api.audnex.us/books/B0160FSUW8?region=us": {
 "asin": "B0160FSUW8",
 "authors": [
@@ -19301,6 +26388,31 @@
 "subtitle": "Too Much Time, Small Wars, Not a Drill and Bonus Jack Reacher Stories",
 "title": "Three More Jack Reacher Novellas"
 },
+"https://api.audnex.us/books/B071D1Q7ZT?region=us": {
+"asin": "B071D1Q7ZT",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dick Hill"
+}
+],
+"publisherName": "Random House Audio",
+"releaseDate": "2017-11-07T00:00:00.000Z",
+"runtimeLengthMin": 786,
+"seriesPrimary": {
+"asin": "B005NASKDG",
+"name": "Jack Reacher",
+"position": "22"
+},
+"subtitle": "Jack Reacher, Book 22",
+"title": "The Midnight Line"
+},
 "https://api.audnex.us/books/B098G33RYH?region=us": {
 "asin": "B098G33RYH",
 "authors": [
@@ -19319,6 +26431,25 @@
 "releaseDate": "2022-03-15T00:00:00.000Z",
 "runtimeLengthMin": 482,
 "title": "The Kaiju Preservation Society"
+},
+"https://api.audnex.us/books/B09JR27SKD?region=us": {
+"asin": "B09JR27SKD",
+"authors": [
+{
+"asin": "B00BIJOMOC",
+"name": "Mark Manson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Mark Manson"
+}
+],
+"publisherName": "Harper",
+"releaseDate": "2022-05-03T00:00:00.000Z",
+"runtimeLengthMin": 81,
+"title": "The Subtle Art of Not Giving a F*ck Journal"
 },
 "https://api.audnex.us/books/B09P49F6J7?region=us": {
 "asin": "B09P49F6J7",
@@ -19569,6 +26700,34 @@
 "subtitle": "The Riyria Chronicles, Book 1",
 "title": "The Crown Tower (Dramatized Adaptation)"
 },
+"https://api.audnex.us/books/B0B75ZJH1Z?region=us": {
+"asin": "B0B75ZJH1Z",
+"authors": [
+{
+"asin": "B003HKIXYA",
+"name": "Daryl Banner"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Chris Chambers"
+},
+{
+"name": "Kai Rubio"
+}
+],
+"publisherName": "Tantor Media",
+"releaseDate": "2022-08-02T00:00:00.000Z",
+"runtimeLengthMin": 488,
+"seriesPrimary": {
+"asin": "B0B76V1425",
+"name": "Texas Beach Town Romance",
+"position": "1"
+},
+"subtitle": "Texas Beach Town Romance, Book 1",
+"title": "In Too Deep"
+},
 "https://api.audnex.us/books/B0B8387XQX?region=us": {
 "asin": "B0B8387XQX",
 "authors": [
@@ -19593,6 +26752,65 @@
 },
 "subtitle": "The Dispatcher, Book 3",
 "title": "Travel by Bullet"
+},
+"https://api.audnex.us/books/B0BK2QTNK9?region=us": {
+"asin": "B0BK2QTNK9",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeremy Irvine"
+},
+{
+"name": "Olga Koch"
+}
+],
+"publisherName": "Little, Brown & Company",
+"releaseDate": "2023-06-13T00:00:00.000Z",
+"runtimeLengthMin": 542,
+"seriesPrimary": {
+"asin": "B006VZNHIU",
+"name": "Private",
+"position": "15"
+},
+"title": "Private Moscow"
+},
+"https://api.audnex.us/books/B0BRQRHHZN?region=us": {
+"asin": "B0BRQRHHZN",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+},
+{
+"asin": "B08ZL6PLM5",
+"name": "Andrew Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Scott Brick"
+}
+],
+"publisherName": "Random House Audio",
+"releaseDate": "2023-10-24T00:00:00.000Z",
+"runtimeLengthMin": 554,
+"seriesPrimary": {
+"asin": "B005NASKDG",
+"name": "Jack Reacher",
+"position": "28"
+},
+"subtitle": "A Jack Reacher Novel",
+"title": "The Secret"
 },
 "https://api.audnex.us/books/B0BVGTFDWN?region=us": {
 "asin": "B0BVGTFDWN",
@@ -19705,6 +26923,35 @@
 "subtitle": "Red Rising, Book 1",
 "title": "Red Rising (Part 2 of 2) (Dramatized Adaptation)"
 },
+"https://api.audnex.us/books/B0CLGF5CFH?region=us": null,
+"https://api.audnex.us/books/B0DGWMX7G5?region=us": {
+"asin": "B0DGWMX7G5",
+"authors": [
+{
+"asin": "B07YRWGFDG",
+"name": "Julie Olivia"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "John William Maddux"
+},
+{
+"name": "Andria Mae"
+}
+],
+"publisherName": "Julie Olivia",
+"releaseDate": "2025-01-21T00:00:00.000Z",
+"runtimeLengthMin": 518,
+"seriesPrimary": {
+"asin": "B0DGX43XJ7",
+"name": "Into You",
+"position": "1"
+},
+"subtitle": "Into You, Book 1",
+"title": "In Too Deep"
+},
 "https://api.audnex.us/books/B0DPR5N5J5?region=us": {
 "asin": "B0DPR5N5J5",
 "authors": [
@@ -19792,6 +27039,7 @@
 "runtimeLengthMin": 649,
 "title": "The Twisted Women's Book Club"
 },
+"https://api.audnex.us/books/B0DTZ6J2SG?region=us": null,
 "https://api.audnex.us/books/B0FD4CV4BF?region=us": {
 "asin": "B0FD4CV4BF",
 "authors": [
@@ -19811,6 +27059,105 @@
 "runtimeLengthMin": 557,
 "subtitle": "Why We Do What We Do in Life and Business",
 "title": "The Power of Habit"
+},
+"https://api.audnex.us/books/B0FH5NRBDW?region=us": {
+"asin": "B0FH5NRBDW",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B003VNGL9M",
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Adam Sims"
+},
+{
+"name": "Rachel Handshaw"
+}
+],
+"publisherName": "Little, Brown & Company",
+"releaseDate": "2026-01-14T00:00:00.000Z",
+"runtimeLengthMin": 517,
+"seriesPrimary": {
+"asin": "B006VZNHIU",
+"name": "Private",
+"position": "18"
+},
+"subtitle": "A Private Novel",
+"title": "Private Rome"
+},
+"https://api.audnex.us/books/B0FVWB1XP8?region=us": {
+"asin": "B0FVWB1XP8",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+},
+{
+"asin": "B09B7TPYRQ",
+"name": "Viola Davis"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Viola Davis"
+}
+],
+"publisherName": "Little, Brown & Company",
+"releaseDate": "2026-03-09T00:00:00.000Z",
+"runtimeLengthMin": 680,
+"subtitle": "A Novel",
+"title": "Judge Stone"
+},
+"https://api.audnex.us/books/B0FXY6DVJS?region=us": {
+"asin": "B0FXY6DVJS",
+"authors": [
+{
+"asin": "B002BLP1QY",
+"name": "Matt Dinniman"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Hays"
+}
+],
+"publisherName": "Audible Studios",
+"releaseDate": "2026-05-12T00:00:00.000Z",
+"runtimeLengthMin": 1227,
+"seriesPrimary": {
+"asin": "B0937JMKYV",
+"name": "Dungeon Crawler Carl",
+"position": "8"
+},
+"subtitle": "Dungeon Crawler Carl, Book 8",
+"title": "A Parade of Horribles"
+},
+"https://api.audnex.us/books/B0GL9748LQ?region=us": {
+"asin": "B0GL9748LQ",
+"authors": [
+{
+"name": "James Patterson"
+},
+{
+"name": "Nancy Allen"
+}
+],
+"language": "english",
+"narrators": [],
+"publisherName": "Little, Brown & Company",
+"releaseDate": "2026-11-23T00:00:00.000Z",
+"runtimeLengthMin": 570,
+"subtitle": "A Thriller",
+"title": "The Murder Trial"
 },
 "https://api.audnex.us/books/B0GM4YP19S?region=us": {
 "asin": "B0GM4YP19S",
@@ -19840,6 +27187,126 @@
 },
 "subtitle": "A Reacher Novel",
 "title": "Chain Reaction"
+},
+"https://api.audnex.us/books/B0GNJDXNW6?region=us": {
+"asin": "B0GNJDXNW6",
+"authors": [
+{
+"name": "K.R.M. Morgan"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Virtual Voice"
+}
+],
+"publisherName": "Independently Published",
+"releaseDate": "2026-02-15T00:00:00.000Z",
+"runtimeLengthMin": 102,
+"subtitle": "A Supernatural Time-Loop Thriller",
+"title": "The Midnight Line"
+},
+"https://api.audnex.us/books/B0GQD2XYF5?region=us": {
+"asin": "B0GQD2XYF5",
+"authors": [
+{
+"name": "James Patterson"
+},
+{
+"name": "Brian Sitts"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Christine Lakin"
+}
+],
+"publisherName": "Little, Brown & Company",
+"releaseDate": "2026-10-06T00:00:00.000Z",
+"runtimeLengthMin": 540,
+"seriesPrimary": {
+"asin": "B0CXTV54Z9",
+"name": "Holmes, Margaret & Poe",
+"position": "3"
+},
+"subtitle": "A Holmes, Margaret & Poe Mystery",
+"title": "The Girl in the Lake"
+},
+"https://api.audnex.us/books/B0GQF1S51J?region=us": {
+"asin": "B0GQF1S51J",
+"authors": [
+{
+"name": "James Patterson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Dion Graham"
+}
+],
+"publisherName": "Little, Brown & Company",
+"releaseDate": "2026-10-19T00:00:00.000Z",
+"runtimeLengthMin": 570,
+"seriesPrimary": {
+"asin": "B005NABWDQ",
+"name": "Alex Cross Adventures",
+"position": "36"
+},
+"subtitle": "An Alex Cross Thriller",
+"title": "The Family Cross"
+},
+"https://api.audnex.us/books/B0GX7MH2TQ?region=us": {
+"asin": "B0GX7MH2TQ",
+"authors": [
+{
+"name": "James Patterson"
+},
+{
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [],
+"publisherName": "Little, Brown & Company",
+"releaseDate": "2026-12-14T00:00:00.000Z",
+"runtimeLengthMin": 420,
+"seriesPrimary": {
+"asin": "B006VZNHIU",
+"name": "Private",
+"position": "19"
+},
+"subtitle": "A Private Novel",
+"title": "Private Monaco"
+},
+"https://api.audnex.us/books/B0H7RGY4GG?region=us": {
+"asin": "B0H7RGY4GG",
+"authors": [
+{
+"name": "James Patterson"
+},
+{
+"name": "Adam Hamdy"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Trevor White"
+}
+],
+"publisherName": "Little, Brown & Company",
+"releaseDate": "2027-03-01T00:00:00.000Z",
+"runtimeLengthMin": 720,
+"seriesPrimary": {
+"asin": "B006VZNHIU",
+"name": "Private",
+"position": "20"
+},
+"subtitle": "A Private Novel",
+"title": "Private Dublin"
 },
 "https://api.audnex.us/books/B0H9821TST?region=us": {
 "asin": "B0H9821TST",
