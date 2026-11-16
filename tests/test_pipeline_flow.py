@@ -6,6 +6,8 @@
    so a crashed run's leftovers are found, removed and never mistaken for new output.
 4. A published file recorded on a row is honoured whatever the row's status: a re-check that ends
    in review/held keeps the output path, and no re-check encodes a duplicate into a newer layout.
+5. (Every format still encodes before anything publishes - deliberate.) A later format that
+   fails to *publish* takes the formats already placed by that call back out of the library.
 """
 
 import os
@@ -264,6 +266,78 @@ class TestPublishedFileIsHonoured(PipelineCase):
         self.assertEqual(len(self.encode_calls), 1)
         self.assertEqual(row.status, "converted")
         self.assertNotEqual(row.output, str(old))
+
+
+class TestAllFormatsOrNone(PipelineCase):
+    """m4b+mp3 with the real publish_result; only the file placement is made to fail."""
+
+    def convert(self, fail_ext=None, setting="M4B + MP3"):
+        unit = ingest.find_any_unit(KEY)
+        audit = pipeline.Audit(unit=unit, match=matching.Match(product=PHM, confidence="HIGH"), action="convert")
+        cover = self.root / "cover-src.jpg"
+        cover.write_bytes(b"jpg")
+        self.work_dirs = []
+
+        def fake_encode(unit, match, book, work_dir, out_path, **kw):
+            work_dir.mkdir(parents=True, exist_ok=True)
+            self.work_dirs.append(work_dir)
+            temp = work_dir / f"output.{kw['fmt']}"
+            temp.write_bytes(kw["fmt"].encode())
+            return encode.EncodeResult(path=temp, duration=7200.0, size=3, chapters=2,
+                                       chapters_source="test", cover=cover)
+
+        real_place = encode._place
+
+        def place(source, dest, move):
+            if fail_ext and dest.suffix == fail_ext:
+                raise OSError(28, "No space left on device")
+            return real_place(source, dest, move)
+
+        with (
+            mock.patch.object(catalog, "book", return_value={"title": "Project Hail Mary",
+                                                              "authors": [{"name": "Andy Weir"}]}),
+            mock.patch.object(pipeline, "effective_val",
+                              side_effect=lambda k: setting if k == "output_format" else None),
+            mock.patch.object(encode, "plan_chapters", return_value=mock.Mock(chapters=[])),
+            mock.patch.object(encode, "encode", side_effect=fake_encode),
+            mock.patch.object(encode, "_place", side_effect=place),
+        ):
+            return pipeline.convert_unit(audit, log=lambda *_: None)
+
+    def library_files(self):
+        return sorted(p.relative_to(CONFIG.output_root).as_posix()
+                      for p in CONFIG.output_root.rglob("*") if p.is_file())
+
+    def test_both_formats_publish_together(self):
+        self.add_torrent()
+        self.convert()
+        files = self.library_files()
+        self.assertTrue(any(f.endswith(".m4b") for f in files), files)
+        self.assertTrue(any(f.endswith(".mp3") for f in files), files)
+
+    def test_a_failed_mp3_publish_takes_the_m4b_back_out(self):
+        self.add_torrent()
+        CONFIG.output_root.mkdir(parents=True, exist_ok=True)
+        before = set(CONFIG.output_root.rglob("*"))
+        with self.assertRaises(OSError):
+            self.convert(fail_ext=".mp3")
+        self.assertEqual(self.library_files(), [])  # no m4b, no cover.jpg
+        self.assertEqual(set(CONFIG.output_root.rglob("*")), before)  # no stray author/title folders
+        self.assertTrue(self.work_dirs)
+        self.assertTrue(all(not w.exists() for w in self.work_dirs))  # the work dir is gone too
+
+    def test_files_that_were_already_there_are_never_removed(self):
+        self.add_torrent()
+        # a cover and a file the owner already had in the book's folder (no m4b, so it encodes)
+        folder = CONFIG.output_root / "Andy Weir" / "Project Hail Mary"
+        folder.mkdir(parents=True)
+        (folder / "cover.jpg").write_bytes(b"theirs")
+        (folder / "notes.txt").write_bytes(b"theirs")
+        with self.assertRaises(OSError):
+            self.convert(fail_ext=".mp3")
+        # (publishing refreshes cover.jpg, as it always has; the rollback just never deletes it)
+        self.assertEqual((folder / "notes.txt").read_bytes(), b"theirs")
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), ["cover.jpg", "notes.txt"])
 
 
 if __name__ == "__main__":

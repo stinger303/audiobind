@@ -266,8 +266,7 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None):
                     publish=False,
                     sequence=sequence,
                 )
-            for fmt in formats:  # the m4b (archival copy) goes first
-                encode.publish_result(results[fmt], paths[fmt])
+            _publish_all(formats, results, paths)
             result = results[formats[0]]
             encode.write_abs_metadata(
                 out_path.parent / "metadata.json", book, match, plan.chapters, result.duration
@@ -282,6 +281,44 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None):
             shutil.rmtree(work_dir, ignore_errors=True)
             CONTROL.set_heartbeat(None)
             CONTROL.end_unit()
+
+
+def _publish_all(formats: list[str], results: dict, paths: dict) -> None:
+    """Publish every verified format, the m4b (archival copy) first - all of them or none.
+
+    If a later format fails to publish (a cross-filesystem copy that runs out of space), the
+    files this call already placed are removed again, with a cover.jpg and any folders it
+    created, so the library never keeps an m4b without the mp3 the owner asked for - which the
+    next scan would otherwise take as "already published" and never finish. Files that were
+    there before are never removed.
+    """
+    folder = paths[formats[0]].parent
+    new_dirs = []
+    probe_dir = folder
+    root = Path(CONFIG.output_root)
+    while not probe_dir.exists() and probe_dir not in (root, probe_dir.parent):
+        new_dirs.append(probe_dir)  # deepest first
+        probe_dir = probe_dir.parent
+    cover = folder / "cover.jpg"
+    preexisting = {path for path in [*paths.values(), cover] if path.exists()}
+    placed = []
+    try:
+        for fmt in formats:
+            encode.publish_result(results[fmt], paths[fmt])
+            placed.append(paths[fmt])
+    except BaseException:
+        for path in [*placed, cover]:
+            if path not in preexisting:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        for directory in new_dirs:
+            try:
+                directory.rmdir()  # only ever an empty folder this call made
+            except OSError:
+                break
+        raise
 
 
 def record(
