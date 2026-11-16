@@ -161,6 +161,72 @@ class StderrTests(EncodeHarness):
         self.assertIsInstance(outcome.get("error"), Stopped)
 
 
+# ---------------------------------------------------------------- 5. no zero-length chapters
+class ZeroLengthChapterTests(unittest.TestCase):
+    def assert_contiguous(self, chapters, duration):
+        self.assertTrue(all(c["end"] > c["start"] for c in chapters), chapters)
+        self.assertEqual(chapters[0]["start"], 0.0)
+        for current, following in zip(chapters, chapters[1:]):
+            self.assertEqual(current["end"], following["start"])
+        self.assertEqual(chapters[-1]["end"], duration)
+
+    def test_audnex_zero_length_entry_is_dropped(self):
+        data = [{"lengthMs": 100000, "title": "A"}, {"lengthMs": 0, "title": "Credits"}, {"lengthMs": 200000, "title": "B"}]
+        chapters = encode._audnex_chapters(data, 300.0)
+        self.assertEqual([c["title"] for c in chapters], ["A", "B"])
+        self.assert_contiguous(chapters, 300.0)
+
+    def test_audnex_two_chapters_on_one_offset(self):
+        data = [
+            {"startOffsetMs": 0, "lengthMs": 100000, "title": "A"},
+            {"startOffsetMs": 100000, "lengthMs": 0, "title": "X"},
+            {"startOffsetMs": 100000, "lengthMs": 200000, "title": "B"},
+        ]
+        chapters = encode._audnex_chapters(data, 300.0)
+        self.assertEqual([c["title"] for c in chapters], ["A", "B"])
+        self.assert_contiguous(chapters, 300.0)
+
+    def test_audnex_zero_length_last_entry(self):
+        data = [{"lengthMs": 300000, "title": "A"}, {"lengthMs": 0, "title": "End"}]
+        chapters = encode._audnex_chapters(data, 300.0)
+        self.assertEqual([c["title"] for c in chapters], ["A"])
+        self.assert_contiguous(chapters, 300.0)
+
+    def test_per_file_zero_duration_file_gets_no_chapter(self):
+        unit = BookUnit(path="/s", name="B", parent="", parts=[Part("B", ["/s/1.mp3", "/s/2.mp3", "/s/3.mp3"])])
+        durations = {"/s/1.mp3": 100.0, "/s/2.mp3": 0.0, "/s/3.mp3": 100.0}
+        with mock.patch.object(encode, "probe_chapters", return_value=[]):
+            chapters, source = encode.build_chapters([], 200.0, unit, durations)
+        self.assertEqual([c["title"] for c in chapters], ["1", "3"])
+        self.assertEqual(source, "per-file (2 chapters)")
+        self.assert_contiguous(chapters, 200.0)
+
+    def test_embedded_tag_past_the_file_end_is_dropped(self):
+        unit = BookUnit(path="/s", name="B", parent="", parts=[Part("B", ["/s/1.m4b"])])
+        tags = [
+            {"start_time": "0", "end_time": "50"},
+            {"start_time": "50", "end_time": "100"},
+            {"start_time": "120", "end_time": "130", "tags": {"title": "ghost"}},
+        ]
+        with mock.patch.object(encode, "probe_chapters", return_value=tags):
+            chapters = encode._source_chapters(unit, {"/s/1.m4b": 100.0})
+        self.assertEqual([c["title"] for c in chapters], ["Chapter 1", "Chapter 2"])
+        self.assert_contiguous(chapters, 100.0)
+
+    def test_sub_millisecond_chapter_is_dropped(self):
+        # START/END are written as whole ms; 0.0004 s would become START == END
+        data = [{"lengthMs": 100000, "title": "A"}, {"lengthMs": 0.4, "title": "blip"}, {"lengthMs": 200000, "title": "B"}]
+        chapters = encode._audnex_chapters(data, 300.0004)
+        self.assertNotIn("blip", [c["title"] for c in chapters])
+
+    def test_ordinary_plans_are_unchanged(self):
+        data = [{"lengthMs": 100000, "title": "One"}, {"lengthMs": 200000, "title": "Two"}]
+        self.assertEqual(
+            encode._audnex_chapters(data, 300.0),
+            [{"start": 0.0, "end": 100.0, "title": "One"}, {"start": 100.0, "end": 300.0, "title": "Two"}],
+        )
+
+
 # ---------------------------------------------------------------- 2. atomic publish
 class PublishTests(unittest.TestCase):
     def setUp(self):

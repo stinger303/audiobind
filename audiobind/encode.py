@@ -96,6 +96,11 @@ def plan_chapters(unit: BookUnit, asin: str, durations: dict[str, float] | None 
     return ChapterPlan(chapters=chapters, source=source, durations=durations)
 
 
+def _empty(start: float, end: float) -> bool:
+    """True when a chapter spans no time once written as whole ms (ffmetadata START/END)."""
+    return int(end * 1000) <= int(start * 1000)
+
+
 def _source_chapters(unit: BookUnit, durations: dict[str, float] | None = None) -> list[dict]:
     """Chapter markers embedded in the source files themselves.
 
@@ -120,16 +125,12 @@ def _source_chapters(unit: BookUnit, durations: dict[str, float] | None = None) 
                 end = float(item.get("end_time") or 0)
             except (TypeError, ValueError):
                 continue
-            if end <= start:
+            placed_start = round(cursor + min(start, length), 3)
+            placed_end = round(cursor + min(end, length), 3)
+            if _empty(placed_start, placed_end):  # includes a tag past the file's end, clamped
                 continue
             title = ((item.get("tags") or {}).get("title") or f"Chapter {len(chapters) + 1}").strip()
-            chapters.append(
-                {
-                    "start": round(cursor + min(start, length), 3),
-                    "end": round(cursor + min(end, length), 3),
-                    "title": title,
-                }
-            )
+            chapters.append({"start": placed_start, "end": placed_end, "title": title})
         cursor += length
     return chapters if len(chapters) >= 2 else []
 
@@ -180,7 +181,11 @@ def _audnex_chapters(audnex_chapters: list[dict], duration: float) -> list[dict]
         current["end"] = following["start"]  # a gap belongs to the chapter before it
     if chapters:
         chapters[-1]["end"] = round(duration, 3)
-    return chapters
+    # a zero-length entry (lengthMs 0, or two chapters on one offset) would be an empty
+    # chapter in the output; dropping it leaves the timeline contiguous, because the
+    # chapter before it already ends where the next one starts
+    chapters = [c for c in chapters if not _empty(c["start"], c["end"])]
+    return chapters or None
 
 
 def build_chapters(
@@ -223,13 +228,9 @@ def build_chapters(
     chapters, cursor = [], 0.0
     for path in unit.files:  # concat order - see _source_chapters
         length = durations.get(path, 0.0)
-        chapters.append(
-            {
-                "start": round(cursor, 3),
-                "end": round(cursor + length, 3),
-                "title": os.path.splitext(os.path.basename(path))[0][:90],
-            }
-        )
+        start, end = round(cursor, 3), round(cursor + length, 3)
+        if not _empty(start, end):  # a file that measured 0 s gets no empty chapter
+            chapters.append({"start": start, "end": end, "title": os.path.splitext(os.path.basename(path))[0][:90]})
         cursor += length
     return chapters, f"per-file ({len(chapters)} chapters)"
 
