@@ -68,10 +68,83 @@ UNCHANGED = [
 ]
 
 
+#: extra catalog entries for the tie-break cases: an adaptation of a *different* book than the
+#: folder's, which must keep counting as a rival like any other work
+EXTRA = {
+    "dune_messiah_dramatized": dict(FIXTURES["dune_messiah"], asin="B0TESTDMDA",
+                                    title="Dune Messiah [Dramatized Adaptation]", runtime_length_min=500),
+}
+FIXTURES_PLUS = {**FIXTURES, **EXTRA}
+
+#: the tie-break: an adaptation the folder did not ask for never outranks a plain edition of the
+#: same book and never counts as its rival; a folder that asks for one gets it.
+#: (name, library folder, catalog product keys - in catalog order, expectation)
+TIEBREAK_CASES = [
+    # 1. a plain folder, the plain edition and an adaptation scoring identically: the plain one,
+    #    at HIGH. Both catalog orders, so the pick never rides on which came back first
+    ("tie_plain_wins", S + "Michael J. Sullivan - Rise of Empire",
+     ["rise_dramatized", "rise_plain"], {"tier": "HIGH", "asin": "B0081IIZ6Y"}),
+    ("tie_plain_wins_other_order", S + "Michael J. Sullivan - Rise of Empire",
+     ["rise_plain", "rise_dramatized"], {"tier": "HIGH", "asin": "B0081IIZ6Y"}),
+    ("heir_tie_plain_wins", S + "Michael J. Sullivan - Heir of Novron",
+     ["heir_dramatized", "heir_novron"], {"tier": "HIGH", "asin": "B008UCYCSQ"}),
+    # ... also when the marker is only in the subtitle, so the titles are identical
+    ("tie_same_title_plain_wins", S + "Michael J. Sullivan - Rise of Empire",
+     ["rise_full_cast", "rise_plain"], {"tier": "HIGH", "asin": "B0081IIZ6Y"}),
+    # ... and when the adaptation's "Book 1" subtitle out-scores the plain "Volume 1" (the live
+    #     Theft of Swords shape, 1.0 vs 0.978): a different production of the same book must not
+    #     beat the plain edition outright either
+    ("theft_live_shape_plain_wins", S + "Michael J. Sullivan - Theft of Swords - Riyria Revelations - Book 1",
+     ["theft_dramatized", "theft_plain"], {"tier": "HIGH", "asin": "B007KSJKI8"}),
+    # 2. a folder that asks for the adaptation gets it, and may reach HIGH
+    ("asked_dramatized_tie", S + "Michael J. Sullivan - Rise of Empire [Dramatized Adaptation]",
+     ["rise_plain", "rise_dramatized"], {"tier": "HIGH", "asin": "B09P49F6J7"}),
+    ("asked_graphicaudio_tie", S + "Michael J. Sullivan - Rise of Empire (GraphicAudio)",
+     ["rise_plain", "rise_dramatized"], {"tier": "HIGH", "asin": "B09P49F6J7"}),
+    ("asked_full_cast_tie", S + "Michael J. Sullivan - Rise of Empire (Full Cast)",
+     ["rise_plain", "rise_full_cast"], {"tier": "HIGH", "asin": "B0TESTFULC"}),
+    # 3. the adaptation alone is still returned, still capped at MEDIUM - also beside a plain
+    #    book that is a different work (the author's other titles): that one must not take its place
+    ("adaptation_alone_medium", S + "Michael J. Sullivan - Rise of Empire",
+     ["rise_dramatized"], {"tier": "MEDIUM", "asin": "B09P49F6J7"}),
+    ("adaptation_beside_other_plain_book", S + "Michael J. Sullivan - Rise of Empire",
+     ["rise_dramatized", "hollow_world"], {"tier": "MEDIUM", "asin": "B09P49F6J7"}),
+]
+
+#: 4. a plain edition that genuinely scores better: pick and numbers pinned from 0.21.0-dev12.
+#: (name, folder, keys, (tier, asin, score, title_sim, author_sim, margin))
+TIEBREAK_UNCHANGED = [
+    ("plain_better_than_other_books_adaptation", S + "Michael J. Sullivan - Hollow World",
+     ["rise_dramatized", "hollow_world"], ("HIGH", "B00IFL59DO", 1.0, 1.0, 1.0, 0.461)),
+    ("dune_beside_messiah_adaptation", "Frank Herbert/Frank Herbert - Dune",
+     ["dune_messiah_dramatized", "dune", "dune_messiah", "children_of_dune"],
+     ("HIGH", "B002V1OF70", 1.0, 1.0, 1.0, 0.2)),
+    # an adaptation of a different book is still a rival: it alone sets this margin
+    ("other_books_adaptation_still_a_rival", "Frank Herbert/Frank Herbert - Dune",
+     ["dune_messiah_dramatized", "dune"], ("HIGH", "B002V1OF70", 1.0, 1.0, 1.0, 0.2)),
+]
+
+
 #: cases that fail today, and why. The test asserts they STILL fail, so a fix has to move the
 #: case out of here (and say so) rather than pass unnoticed.
 #: (0.21.0-dev12 moved every Step-1 case out: an unasked adaptation is capped at MEDIUM)
-KNOWN_GAPS: dict[str, str] = {}
+KNOWN_GAPS: dict[str, str] = {
+    "tie_plain_wins": "the adaptation ties the plain edition and counts as its rival: margin 0, LOW",
+    "tie_plain_wins_other_order": "same tie, same LOW",
+    "heir_tie_plain_wins": "same tie, same LOW",
+    "tie_same_title_plain_wins": "identical titles: the catalog order picks the full-cast production",
+    "theft_live_shape_plain_wins": "the dramatization out-scores the plain edition by 0.022 and wins",
+    "asked_graphicaudio_tie": "the tie goes to the plain edition (closer raw title), margin 0: LOW",
+    "asked_full_cast_tie": "identical titles: the catalog order picks the plain edition",
+}
+
+
+def run_products(rel: str, keys: list[str]) -> matching.Match:
+    """run_case over FIXTURES plus this file's EXTRA entries, in the given catalog order."""
+    products = [Product.from_audible(FIXTURES_PLUS[k]) for k in keys]
+    with mock.patch.object(catalog, "search", lambda *a, **k: list(products)), \
+            mock.patch.object(catalog, "book", lambda asin: {}):
+        return matching.match_unit(library_unit(rel))
 
 
 def frozen_match(rel: str) -> matching.Match:
@@ -99,6 +172,19 @@ class TestAdaptationFixtures(unittest.TestCase):
         for name, rel, keys, want in UNCHANGED:
             with self.subTest(name):
                 m = run_case(rel, keys)
+                self.assertEqual((m.confidence, m.asin, m.score, m.title_sim, m.author_sim, m.margin), want)
+
+    def test_tiebreak_cases(self):
+        for name, rel, keys, want in TIEBREAK_CASES:
+            with self.subTest(name):
+                match = run_products(rel, keys)
+                got = f"{match.confidence} {match.asin or '-'} score={match.score} margin={match.margin}"
+                self.check(name, case_problems(match, want), got)
+
+    def test_tiebreak_plain_better_unchanged(self):
+        for name, rel, keys, want in TIEBREAK_UNCHANGED:
+            with self.subTest(name):
+                m = run_products(rel, keys)
                 self.assertEqual((m.confidence, m.asin, m.score, m.title_sim, m.author_sim, m.margin), want)
 
     def test_live_rise_of_empire_from_frozen_cache(self):
