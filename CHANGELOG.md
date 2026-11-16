@@ -7,6 +7,48 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.22.0-dev1] - 2026-11-16
+
+**A permanent test programme for the matcher.** No app behaviour changed: this release builds the
+instrument, not the fix. `python -m tests.matchbench` replays the owner's whole 123-row library and 42
+adversarial cases through the real matcher, offline, against the frozen catalog, and prints a
+scoreboard with five stages: corpus admitted, retrieval recall, pick accuracy, grade safety, and
+explanation. The suite enforces its gate: a wrong answer at HIGH outside the known-defects list, a
+recall or pick regression, an explanation that contradicts its grade, or any per-row decision change
+not accepted with a written reason fails the build. See [docs/match-testing.md](docs/match-testing.md).
+
+### Added
+- `tests/matchbench/`: corpus (imported from the state DB, ingest rows included, so all 123 rows are
+  graded instead of 91), labels with provenance (owner, pin, review, db-approved, db-auto), the
+  adversarial suite with its catalog model, known defects, and the accepted baseline.
+- Pinned rows are matched without their pin and scored against it: 13 of 15 owner pins are found.
+- `refresh` (fill cache gaps, additions only), `drift` (re-fetch everything live, report what would
+  move), `import`, `accept`, `calibrate`.
+- `tests/test_matchbench.py`: the gate, plus tests of the instrument itself. Deliberately broken
+  matchers (dropped query variants, a reckless grade, a reversed tie-break) must each be caught;
+  output must be identical under different hash seeds.
+- CI prints the scoreboard as its own step.
+
+### Found, not fixed (the owner decides)
+- **Wrong at MEDIUM:** *World War Z* gets the 5.98h abridged edition, though the 12.15h Complete
+  Edition matches the files. *The Sentinel* gets a 6.05h edition; the 10.65h one matches. Cause:
+  by contract, the files' runtime never feeds the pick.
+- **Wrong at LOW:** *Private Moscow* gets *Private Monaco*. *King and Maxwell* gets half of a split
+  edition. *Jack Reacher's Rules* gets the omnibus that contains it.
+- **Retrieval misses on owner pins:** *Private: #1 Suspect* ("No 1") and *The Guilty* ("The Guilty
+  Will Robie, Book 4" finds nothing).
+- **Right but graded LOW (ties):** *Red Rising* ties its "(Part 1 of 2)" dramatization. *The Subtle Art…*
+  ties a Gujarati edition tagged English. A study guide ties the real book. Two narrations tie.
+- **Foreign libraries:** a German folder picks the English translation over the exact German title,
+  because the language penalty applies whatever language the library is in.
+- **Torrent noise:** "Chapterized" is stripped for searching but not for scoring.
+- **An ASIN in the name is ignored** when Audnex has no record, even if the search itself returned
+  that ASIN.
+
+### Catalog cache
+- 111 additions, 0 modifications (300 responses). Two frozen Audnex `None` answers were confirmed 404s.
+
+
 ## [0.21.0] - 2026-11-16
 
 Five audit batches, one release. Each batch was its own pass with a green suite, and the matcher
