@@ -7,6 +7,31 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.21.0-dev9] - 2026-11-16
+
+Encode correctness.
+
+### Fixed
+- **A finished book reaches the library whole or not at all.** Publishing moved the encode with
+  `shutil.move`, which across filesystems is a copy and a delete: a copy that died (disk full, I/O
+  error) left a truncated m4b at the library path. A cross-filesystem publish now copies to a
+  temporary file in the destination folder, fsyncs it and renames it into place; any failure removes
+  the temporary file and leaves the old file (if any) untouched. `cover.jpg` is written the same way,
+  and only once the audio is in place. On one filesystem it is still a single rename.
+- **A chatty ffmpeg can no longer hang an encode.** ffmpeg's stderr went to a pipe drained by a
+  thread; if that reader stalled, the 64 KB pipe filled and ffmpeg blocked forever. stderr now goes to
+  `ffmpeg-stderr.log` in the work folder and its tail is read after ffmpeg exits, so the failure
+  message still carries the reason. The drain thread is gone. Stop still stops.
+- **No zero-length chapters.** An Audnex chapter with `lengthMs` 0 (or two chapters on one offset), a
+  source file that measured 0 s in per-file mode, or an embedded chapter tag past the end of its file
+  each produced a chapter with `start == end`. Such chapters are now dropped; the chapter before
+  still runs to where the next one starts.
+
+### Changed
+- **The dropped-file check is tighter.** The merged output must match the summed source durations
+  within 30 s or 0.2% (72 s on a ten-hour book). The old allowance was 2 minutes or 2% (12 minutes
+  on ten hours), wide enough to pass an encode that had lost a whole 15-minute file.
+
 ## [0.21.0-dev8] - 2026-11-16
 
 Data safety in the state database.
