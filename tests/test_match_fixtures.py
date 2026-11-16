@@ -72,6 +72,11 @@ GRADE_CASES = [
                                           title_window_coverage=0.50, language="german"), "LOW"),
     ("foreign_full_coverage_capped_medium", dict(title_sim=0.95, author_sim=0.95, margin=0.20,
                                                  author_known=True, language="german"), "MEDIUM"),
+    ("title_only_window_only_held_low", dict(title_sim=0.97, margin=0.20, author_known=False,
+                                             title_window_coverage=0.50), "LOW"),
+    ("title_only_full_coverage_medium", dict(title_sim=0.97, margin=0.20, author_known=False), "MEDIUM"),
+    ("window_only_at_the_threshold_is_not_window_only", dict(title_sim=0.90, author_sim=0.70, margin=0.10,
+                                                             author_known=True, title_window_coverage=0.60), "MEDIUM"),
 ]
 
 
@@ -88,10 +93,6 @@ KNOWN_GAPS = {
     # (the right side looks like a name, the left has a digit), so the echo never reaches the
     # matcher; the parent folder's real author is ignored. Fails safe: graded LOW.
     "series_echo_author_in_parent": "scanner takes the echoed series for the author",
-    # window-only match at MEDIUM - matching.grade's MEDIUM branch skips the window_only check
-    "window_only_dramatization": "MEDIUM branch skips window_only",
-    "grade:window_only_clears_medium_numbers": "MEDIUM branch skips window_only",
-    "grade:window_only_foreign_held_low": "MEDIUM branch skips window_only",
 }
 
 

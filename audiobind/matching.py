@@ -669,11 +669,14 @@ def grade(match: Match) -> str:
     if match.author_known:
         if title >= 0.88 and author >= 0.85 and match.margin >= 0.05 and not window_only and not foreign:
             return "HIGH"
-        if title >= 0.85 and author >= 0.60 and match.margin > 0:
+        # MEDIUM is one config change from auto-converting: a catalog title that is only one
+        # window of the folder name is held at LOW here too. A foreign hit may still reach MEDIUM
+        if title >= 0.85 and author >= 0.60 and match.margin > 0 and not window_only:
             return "MEDIUM"
         return "LOW"
-    # title-only: an exact title with a decisive margin, author taken from the catalog
-    if title >= 0.96 and match.margin >= 0.10:
+    # title-only: an exact title with a decisive margin, author taken from the catalog (never a
+    # window-only one, for the same reason as above)
+    if title >= 0.96 and match.margin >= 0.10 and not window_only:
         return "MEDIUM"
     return "LOW"
 

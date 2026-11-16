@@ -405,7 +405,8 @@ class TitleScoreTests(unittest.TestCase):
     def test_window_only_floor_never_grades_high(self):
         m = matching.Match(product=DUNE, title_sim=0.95, author_sim=1.0, author_known=True, margin=0.5,
                            title_window_coverage=0.5)
-        self.assertEqual(matching.grade(m), "MEDIUM")
+        # 0.21.0-dev11: window-only is held at LOW, not MEDIUM (MEDIUM can auto-convert)
+        self.assertEqual(matching.grade(m), "LOW")
         m.title_window_coverage = 1.0
         self.assertEqual(matching.grade(m), "HIGH")
 
