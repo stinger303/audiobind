@@ -2,16 +2,30 @@
 
 1. An ingest unit whose folder name matched only at LOW is also re-checked against its embedded
    tags, and the tags' match replaces the folder's only when it is genuinely better.
+2. A book's work directory has the same name in every process, and is emptied before an encode,
+   so a crashed run's leftovers are found, removed and never mistaken for new output.
 """
 
+import os
+import pathlib
+import subprocess
+import sys
 import unittest
 from unittest import mock
 
-from audiobind import ingest, matching, pipeline
+from audiobind import catalog, encode, ingest, matching, pipeline
+from audiobind.config import CONFIG
 from audiobind.catalog import Product
 from audiobind.probe import Probe
 from audiobind.state import SOURCE_INGEST
 from audiobind.units import BookUnit, Part
+
+try:
+    from test_ingest_pipeline import KEY, PHM, PipelineCase
+except ImportError:
+    from tests.test_ingest_pipeline import KEY, PHM, PipelineCase
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
 
 WRONG = Product(asin="B0WRONG001", title="Project Hail Mary Companion", authors=["Other Person"], hours=2.0)
 RIGHT = Product(asin="B08G9PRS1K", title="Project Hail Mary", authors=["Andy Weir"], hours=2.0)
@@ -112,6 +126,65 @@ class TestEmbeddedRetryOnLow(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         _, calls = self.audit(folder, better, unit=ingest_unit(source="library"))
         self.assertEqual(len(calls), 1)
+
+
+class TestWorkDir(PipelineCase):
+    def convert(self):
+        unit = ingest.find_any_unit(KEY)
+        audit = pipeline.Audit(unit=unit, match=matching.Match(product=PHM, confidence="HIGH"), action="convert")
+        with (
+            mock.patch.object(catalog, "book", return_value={"title": "Project Hail Mary",
+                                                              "authors": [{"name": "Andy Weir"}]}),
+            mock.patch.object(catalog, "chapters", return_value=[]),
+            mock.patch.object(encode, "probe_chapters", return_value=[]),
+            mock.patch.object(encode, "plan_chapters", return_value=mock.Mock(chapters=[])),
+            mock.patch.object(encode, "encode", side_effect=self.fake_encode),
+        ):
+            return pipeline.convert_unit(audit, log=lambda *_: None)
+
+    def test_the_same_book_gets_the_same_directory_on_every_call(self):
+        self.add_torrent()
+        self.convert()
+        for out in CONFIG.output_root.rglob("*.m4b"):
+            out.unlink()  # so the second call encodes again instead of "already published"
+        self.convert()
+        first, second = (call["work_dir"].parent for call in self.encode_calls)
+        self.assertEqual(first, second)
+        self.assertEqual(first, pipeline.work_dir_for(ingest.find_any_unit(KEY)))
+        self.assertFalse(first.exists())  # and the finally still removes it
+
+    def test_the_name_does_not_depend_on_the_process_hash_seed(self):
+        code = (
+            "import sys; from audiobind import pipeline; from audiobind.units import BookUnit;"
+            "u = BookUnit(path='', name='', parent='', parts=[], rel_path=sys.argv[1], source='ingest');"
+            "print(pipeline.work_dir_for(u).name)"
+        )
+        names = set()
+        for seed in ("1", "2", "12345"):
+            env = dict(os.environ, PYTHONHASHSEED=seed)
+            out = subprocess.run([sys.executable, "-c", code, "Some Book"], cwd=REPO, env=env,
+                                 capture_output=True, text=True, check=True)
+            names.add(out.stdout.strip())
+        self.assertEqual(len(names), 1, names)
+
+    def test_a_crashed_runs_leftovers_are_gone_before_the_new_encode(self):
+        self.add_torrent()
+        work = pipeline.work_dir_for(ingest.find_any_unit(KEY))
+        stale = work / "m4b" / "output.m4b"
+        stale.parent.mkdir(parents=True)
+        stale.write_bytes(b"half an encode from before the crash")
+        seen = {}
+        real = self.fake_encode
+
+        def encode_checking(unit, match, book, work_dir, out_path, **kw):
+            seen["stale_present"] = stale.exists()
+            seen["work_dir_present"] = work.exists()
+            return real(unit, match, book, work_dir, out_path, **kw)
+
+        self.fake_encode = encode_checking
+        self.convert()
+        self.assertEqual(seen, {"stale_present": False, "work_dir_present": False})
+        self.assertFalse(work.exists())
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import os
 import shutil
@@ -185,6 +186,13 @@ def choose_action(unit: BookUnit, confidence: str, runtime_matches: bool, codecs
     return "merge+convert" if unit.multi_part else "convert"
 
 
+def work_dir_for(unit: BookUnit) -> Path:
+    """The book's scratch directory under WORK_DIR: the same name for the same book in every
+    process. (``hash()`` of a str is salted per process, so a restart used to pick a new name and
+    strand the old directory where nothing would ever find or delete it.)"""
+    return CONFIG.work_dir / hashlib.sha1(unit.state_key.encode("utf-8")).hexdigest()[:8]
+
+
 def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None):
     """Encode, verify and file one book. Returns the EncodeResult (or None in a dry run).
 
@@ -220,7 +228,7 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None):
             log(f"  [dry-run] would write {path}")
         return None  # nothing was written, so it is not "converted"
 
-    work_dir = CONFIG.work_dir / f"{abs(hash(unit.state_key)) % 10**8:08x}"
+    work_dir = work_dir_for(unit)
     with CONVERT_LOCK:
         # checked again under the lock: a manual action and the daemon can both reach
         # this point for the same book, and only the first may encode it
@@ -231,6 +239,9 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None):
         if cancelled is not None and cancelled():
             log("  removed from Audiobind while waiting for the encoder - not converted")
             return None
+        # a crashed or restarted run leaves its work directory behind under this same name:
+        # start clean, so none of its partial files can be taken for this encode's output
+        shutil.rmtree(work_dir, ignore_errors=True)
         CONTROL.begin_unit(unit.state_key, title)
         CONTROL.set_heartbeat(heartbeat)
         try:
