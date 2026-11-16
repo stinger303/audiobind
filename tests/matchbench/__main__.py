@@ -1,4 +1,5 @@
-"""python -m tests.matchbench [check|accept|import|refresh|drift|results] - see docs/match-testing.md."""
+"""python -m tests.matchbench [check|accept|labels|mutate|import|refresh|drift|calibrate|results]
+- see docs/match-testing.md."""
 
 from __future__ import annotations
 
@@ -12,11 +13,20 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m tests.matchbench", description=__doc__)
     sub = ap.add_subparsers(dest="cmd")
     check = sub.add_parser("check", help="run offline, print the scoreboard, exit 1 if the gate fails (default)")
-    check.add_argument("-v", "--verbose", action="store_true", help="also list the declared-unlabelled rows")
+    check.add_argument("-v", "--verbose", action="store_true",
+                       help="also list the weak labels and the full out-of-scope reasons")
     acc = sub.add_parser("accept", help="make this run the baseline; every changed row records --why")
     acc.add_argument("--why", required=True)
     acc.add_argument("--allow-regression", action="store_true",
                      help="accept a row that left the pool or stopped being right (the owner's call)")
+    lab = sub.add_parser("labels", help="labels.csv upkeep: --write adds DB-labelled rows and rewrites the "
+                                        "evidence columns (never a label itself)")
+    lab.add_argument("--write", action="store_true", required=True)
+    mut = sub.add_parser("mutate", help="re-run the corpus with one constant moved at a time and print the delta "
+                                        "(pre-release check; not part of the CI gate)")
+    mut.add_argument("--only", default="", help="only constants whose name contains this")
+    mut.add_argument("--record", action="store_true", help="write the profile to mutations.csv")
+    mut.add_argument("--check", action="store_true", help="exit 1 if the profile differs from mutations.csv")
     imp = sub.add_parser("import", help="merge a state database into corpus.csv (read-only on the DB)")
     imp.add_argument("--db", required=True)
     imp.add_argument("--drop-missing", action="store_true")
@@ -32,6 +42,13 @@ def main(argv=None) -> int:
     if cmd == "import":
         print(bench.import_db(args.db, args.drop_missing))
         return 0
+    if cmd == "labels":
+        print(bench.write_labels())
+        return 0
+    if cmd == "mutate":
+        text, code = bench.mutate(args.only, args.record, args.check)
+        print(text)
+        return code
     if cmd == "refresh":
         print(bench.refresh())
         return 0

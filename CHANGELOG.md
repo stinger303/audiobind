@@ -7,6 +7,66 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.22.0-dev2] - 2026-11-16
+
+**The match bench, round 2: independent ground truth, the decision that actually converts, and
+thresholds that cannot move unnoticed.** No app behaviour changed. The bench now separates what a
+person stands behind from the matcher's own past answers, models what the pipeline would write into
+the library, and fails closed on a stale baseline or a missing catalog response.
+See [docs/match-testing.md](docs/match-testing.md).
+
+### Added
+- **Label provenance (stage L).** `labels.csv` has one line per corpus row with a `label_source`:
+  `owner`, `pin`, `db-approved`, `db-auto`, `inferred` (was `review`) or `out-of-scope` (with the
+  reason). DB-sourced lines must agree with the state DB. Every line carries its evidence tuple:
+  files' runtime vs the label's, delta, folder author/title vs the catalog's, the narrator, and a
+  verdict. The evidence is recomputed on every run, and a stale column fails the gate
+  (`labels --write` rewrites only those columns).
+- **Contradiction check.** A label fails the gate when the label's runtime is outside the
+  configured tolerance, the folder names an author the label does not resemble, at most half the
+  label's title words are in the folder name, or one ASIN labels two different books. An `inferred`
+  label must also be corroborated: within 5 % on runtime, or mirroring a trusted label on the same
+  files. It may override a DB label only when the DB label's own evidence contradicts it.
+- **Provenance split.** The scoreboard quotes pick accuracy over the trusted sources (owner + pin +
+  db-approved) and reports db-auto and inferred separately, as what they are.
+- **Decision stage (stage F).** For every row, what the pipeline would do (`convert`, `remux`,
+  `hold`, `review`) via `pipeline.Audit.runtime_matches` and `choose_action` with the configured
+  tolerance and auto-convert tiers. `would_convert_wrong` must be 0. Also reported:
+  `would_hold_wrong`, wrong picks the runtime check held, unseen writes the labels cannot grade,
+  rows with an unknown runtime (which `runtime_ok` passes silently; an unseen write with an unknown
+  runtime fails the gate), the medium-tier what-if, and F's reach (rows whose pool holds a wrong
+  candidate inside the tolerance). The baseline records each row's decision.
+- **`mutate`** moves each gate constant down and up (17 constants: `TITLE_FLOOR`, `SUBTITLE_GATE`,
+  `MIN_HIGH_WINDOW_COVERAGE`, `LANGUAGE_PENALTY`, all seven of grade()'s inline gates through a
+  verified mirror, `EMBEDDED_SCORE_EDGE`, `PIN_GIVE_UP_AFTER`, the runtime tolerance through the
+  settings path, `ARBITRATE_BELOW`, both corroboration constants). It prints flipped rows and the
+  deltas, classifies each constant (load-bearing / slack / one-sided / NO EFFECT), and records the
+  profile in `mutations.csv`. `mutate --check` diffs against it. About 50 s; a pre-release check,
+  not part of the CI gate.
+
+### Changed
+- **Fail closed.** A baseline whose rows or columns disagree with the run fails as STALE instead of
+  comparing the intersection. A catalog lookup missing from the frozen cache is a bench error on
+  the row that caused it (verdict `error`, tier `ERR`), never a quiet NONE. A changed label is
+  reported as a label change, not as a matcher regression.
+
+### Found, not fixed (the owner decides)
+- **Round-1 labels withdrawn:** *Private Dublin* (12.0h vs 7.43h files, -38 %, contradicts),
+  *Make Me* (-17 %, not corroborated), *Unlocked* (its ASIN is in no frozen response). With the
+  six round-1 unlabelled rows they are out of scope with their numbers: 9 rows, 0 unlabelled.
+- **Trusted accuracy is 27/29 (93.1 %).** The two misses are owner pins the matcher never finds
+  (*Private: #1 Suspect*, *The Guilty*). The 95 % headline of round 1 included the matcher's own
+  past answers.
+- **63 of 73 unseen writes are graded only by db-auto labels.** Eight db-auto rows (six of them
+  Reacher) convert at -6 to -21 % runtime; five Reacher rows sit at -16 to -21 %, the signature of another
+  narration. The 25 % tolerance cannot
+  tell, and nothing independent says whether they are right.
+- **Mutation:** `EMBEDDED_SCORE_EDGE`, `PIN_GIVE_UP_AFTER` and `ARBITRATE_BELOW` have no effect on
+  the corpus or the adversarial cases. No single grade-gate move produces a wrong write: the runtime
+  tolerance, not the grade, stops wrong picks on this corpus.
+- `runtime_ok` returns True when the catalog runtime is 0, so such a book would convert unchecked
+  (no current row does; the bench now fails on one).
+
 ## [0.22.0-dev1] - 2026-11-16
 
 **A permanent test programme for the matcher.** No app behaviour changed: this release builds the

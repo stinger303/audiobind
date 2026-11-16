@@ -4,10 +4,13 @@
 every stage and match the accepted baseline; its scoreboard is printed to the log.
 
 The rest test the instrument, not the matcher: it must be deterministic, offline, and it must
-actually catch the failures it claims to catch - each mutation below breaks the matcher on
-purpose (inside the test only) and the gate has to notice.
+actually catch the failures it claims to catch - each mutation below breaks the matcher, a label,
+the baseline or the cache on purpose (inside the test only) and the gate has to notice.
+``python -m tests.matchbench mutate`` (the constant-by-constant sweep) is a pre-release check and
+deliberately not run here; only its machinery is tested.
 """
 
+import csv
 import os
 import subprocess
 import sys
@@ -16,17 +19,37 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from audiobind import catalog, matching
+from audiobind import config, matching
 from audiobind.catalog import Product
 from audiobind.matching import Match, grade
+from audiobind.units import BookUnit, Part
 from tests.matchbench import bench
 
 REPO = Path(__file__).resolve().parent.parent
 
 
-def _run():
-    run, frozen = bench.run_bench()
+def _run(**kwargs):
+    run, frozen = bench.run_bench(**kwargs)
     return run, bench.gate(run, bench.load_baseline()), frozen
+
+
+def _label_lines():
+    return bench.read_csv(bench.LABELS)
+
+
+def _write_labels(tmp: str, lines: list[dict]) -> Path:
+    path = Path(tmp) / "labels.csv"
+    bench.write_csv(path, bench.LABEL_FIELDS, lines)
+    return path
+
+
+def _edit(lines, key, **changes):
+    out = [dict(r) for r in lines]
+    for r in out:
+        if r["key"] == key:
+            r.update(changes)
+            return out
+    raise KeyError(key)
 
 
 class TestGate(unittest.TestCase):
@@ -50,6 +73,12 @@ class TestGate(unittest.TestCase):
         g = bench.gate(run, bench.load_baseline())
         self.assertTrue(run.misses)
         self.assertTrue(any("not in the frozen cache" in f for f in g.failures))
+
+    def test_every_corpus_row_has_exactly_one_label_line_and_no_row_is_unlabelled(self):
+        run, _, _ = _run()
+        self.assertEqual(run.admission, [])
+        self.assertEqual(sum(o.label.kind == "unlabelled" for o in run.corpus), 0)
+        self.assertEqual(len(_label_lines()), len(run.corpus))
 
 
 class TestDeterminism(unittest.TestCase):
@@ -94,6 +123,26 @@ class TestTheInstrumentCatchesFailures(unittest.TestCase):
             run, g, _ = _run()
         self.assertTrue(any(f.startswith("D wrong at HIGH") for f in g.failures))
         self.assertTrue(any(f.startswith("E ") and "HIGH despite" in f for f in g.failures))
+        # a tier-only change writes nothing wrong on this corpus: every wrong pick it promotes is
+        # off on runtime and held. Recorded so the day that changes is visible.
+        self.assertEqual(bench.score(run.corpus).convert_wrong, 0)
+        self.assertGreater(bench.score(run.corpus).hold_saved, 2)
+
+    def test_a_pick_bug_that_writes_the_wrong_edition_fails_stage_f(self):
+        """Take the runner-up instead of the best: same title, another edition, inside the runtime
+        tolerance - converted unseen. Only the decision stage measures that."""
+        real = matching._pick_and_margin
+
+        def runner_up(ranked):
+            best, margin = real(ranked)
+            others = [e for e in ranked if e is not best]
+            return (others[0], margin) if others else (best, margin)
+
+        with mock.patch.object(matching, "_pick_and_margin", runner_up):
+            run, g, _ = _run()
+        damage = [f for f in g.failures if f.startswith("F would_convert_wrong:")]
+        self.assertTrue(any("Three Body Problem" in f for f in damage), damage)
+        self.assertGreater(bench.score(run.corpus).hold_saved, 0)  # the runtime check held the rest
 
     def test_a_tie_break_change_is_a_decision_change(self):
         real = matching._rank_key
@@ -151,26 +200,39 @@ class TestLabels(unittest.TestCase):
         {"key": "D", "status": "converted", "db_tier": "HIGH", "db_asin": "B4", "pin": "B5"},
     ]
 
-    def test_a_row_without_a_label_is_refused(self):
-        labels, problems = bench.resolve_labels(self.CORPUS, [])
-        self.assertEqual([p for p in problems if "'C'" in p and "no label" in p].__len__(), 1)
-        self.assertEqual((labels["A"].src, labels["B"].src, labels["D"].src), ("db-auto", "db-approved", "pin"))
-        self.assertEqual(labels["D"].asins, ("B5",))
+    @staticmethod
+    def line(key, expect, src, note="n"):
+        return {"key": key, "expect": expect, "label_source": src, "classes": "", "note": note}
 
-    def test_orphans_conflicts_and_precedence(self):
-        rows = [
-            {"key": "C", "expect": "unlabelled", "source": "", "classes": "", "note": "owner"},
-            {"key": "A", "expect": "not:B1", "source": "review", "classes": "x", "note": ""},
-            {"key": "D", "expect": "B9", "source": "review", "classes": "", "note": ""},
-            {"key": "B", "expect": "unlabelled", "source": "", "classes": "", "note": ""},
-            {"key": "Z", "expect": "B1", "source": "owner", "classes": "", "note": ""},
-        ]
+    def test_a_row_without_a_line_is_refused(self):
+        labels, problems = bench.resolve_labels(self.CORPUS, [self.line("A", "B1", "db-auto")])
+        self.assertTrue(any("'C'" in p and "no line" in p for p in problems))
+        self.assertEqual(labels["C"].kind, "unlabelled")
+        self.assertEqual(labels["A"].src, "db-auto")
+
+    def test_db_sources_must_agree_with_the_db(self):
+        rows = [self.line("A", "B1", "db-approved"),  # the DB says db-auto
+                self.line("B", "B9", "db-approved"),  # the DB says B2
+                self.line("C", "B3", "db-auto"),      # the DB labels nothing
+                self.line("D", "B5", "pin")]
+        _, problems = bench.resolve_labels(self.CORPUS, rows)
+        for key in "ABC":
+            self.assertTrue(any(f"'{key}'" in p and "the DB says" in p for p in problems), (key, problems))
+        self.assertFalse(any("'D'" in p for p in problems))
+
+    def test_sources_out_of_scope_orphans_and_pins(self):
+        rows = [self.line("A", "not:B1", "inferred"),
+                self.line("B", "B2", "review"),             # round-1 name, no longer a source
+                self.line("C", "", bench.OUT_OF_SCOPE, note=""),
+                self.line("D", "B9", "inferred"),           # overrides the owner's pin
+                self.line("Z", "B1", "owner")]
         labels, problems = bench.resolve_labels(self.CORPUS, rows)
-        self.assertEqual(labels["A"].text(), "not:B1")  # review outranks db-auto
-        self.assertEqual(labels["D"].text(), "B5")  # a pin outranks review
+        self.assertEqual(labels["A"].text(), "not:B1")
+        self.assertTrue(any("'B'" in p and "label_source 'review'" in p for p in problems))
+        self.assertTrue(any("'C'" in p and "without a reason" in p for p in problems))
+        self.assertTrue(any("'D'" in p and "only the owner" in p for p in problems))
         self.assertTrue(any("'Z'" in p and "orphan" in p for p in problems))
-        self.assertTrue(any("'B'" in p and "declared unlabelled" in p for p in problems))
-        self.assertFalse(any("'C'" in p for p in problems))
+        self.assertEqual(labels["C"].kind, "out")
 
     def test_verdicts(self):
         product = Product(asin="B1", title="T")
@@ -181,34 +243,280 @@ class TestLabels(unittest.TestCase):
             (bench.Label("none"), "MEDIUM", "wrong"),
             (bench.Label("not", ("B1",)), "LOW", "wrong"),
             (bench.Label("not", ("B2",)), "HIGH", "unknown"),
+            (bench.Label("out", src=bench.OUT_OF_SCOPE), "HIGH", "out-of-scope"),
         ]
         for label, tier, want in cases:
             out = bench.Outcome(key="k", label=label, match=Match(product=product), tier=tier)
             self.assertEqual(out.verdict, want, (label, tier))
         self.assertEqual(bench.Outcome(key="k", label=bench.Label("asin", ("B1",)), match=Match()).verdict, "missed")
+        errored = bench.Outcome(key="k", label=bench.Label("asin", ("B1",)), match=Match(product=product),
+                                error="1 catalog lookup(s) missing")
+        self.assertEqual(errored.verdict, "error")
 
 
-class TestExplanationMirror(unittest.TestCase):
-    def test_limiting_reasons_agree_with_grade(self):
-        """Stage E's reasons mirror grade(): no reason <=> HIGH, on a grid of evidence."""
+class TestEvidence(unittest.TestCase):
+    """Stage L: every label's evidence is recomputed, and a contradicted label fails the gate."""
+
+    def unit(self, name, author="", title=""):
+        return BookUnit(path="/library/" + name, name=name, parent="/library", parts=[Part(name=name, files=["/x.mp3"])],
+                        author_guess=author, title_guess=title or name)
+
+    def test_containment_tolerates_misspelling_order_stopwords_and_zero_padding(self):
+        self.assertEqual(bench.containment("David Baldacci", "David Bldacci"), 1.0)
+        self.assertEqual(bench.containment("Liu Cixin", "Cixin Liu"), 1.0)
+        self.assertEqual(bench.containment("The God Delusion", "God Delusion"), 1.0)
+        self.assertEqual(bench.containment("Private: #1 Suspect", "Jack Morgan 02 - Private No 01 Suspect"), 1.0)
+        self.assertEqual(bench.containment("The Missing", "The Guardians; 3 Island of Glass"), 0.0)
+        self.assertIsNone(bench.containment("The", "anything"))
+
+    def evidence(self, label, product, hours="10.00", author="Lee Child", title="Make Me"):
+        row = {"key": "k", "hours": hours}
+        unit = self.unit(f"{author} - {title}", author, title)
+        return bench.label_evidence(row, unit, label, {product.asin: product}, 0.25)
+
+    def test_a_label_off_by_more_than_the_tolerance_is_contradicted(self):
+        p = Product(asin="B1", title="Make Me", authors=["Lee Child"], hours=14.0)
+        ev = self.evidence(bench.Label("asin", ("B1",), "inferred"), p, hours="10.00")
+        self.assertEqual(ev.verdict, "contradicted")
+        self.assertIn("runtime", ev.contradictions[0])
+        self.assertIn("-29%", ev.contradictions[0])
+
+    def test_another_author_or_another_title_is_contradicted(self):
+        p = Product(asin="B1", title="Make Me", authors=["Somebody Else"], hours=10.0)
+        ev = self.evidence(bench.Label("asin", ("B1",), "inferred"), p)
+        self.assertEqual(ev.verdict, "contradicted")
+        self.assertTrue(ev.contradictions[0].startswith("author"))
+        p = Product(asin="B1", title="The Missing", authors=["Lee Child"], hours=10.0)
+        ev = self.evidence(bench.Label("asin", ("B1",), "inferred"), p)
+        self.assertTrue(any(c.startswith("title") for c in ev.contradictions))
+
+    def test_corroborated_consistent_and_unverifiable(self):
+        p = Product(asin="B1", title="Make Me", authors=["Lee Child"], hours=10.2)
+        self.assertEqual(self.evidence(bench.Label("asin", ("B1",), "inferred"), p).verdict, "corroborated")
+        p = Product(asin="B1", title="Make Me", authors=["Lee Child"], hours=12.0)
+        ev = self.evidence(bench.Label("asin", ("B1",), "inferred"), p)
+        self.assertEqual(ev.verdict, "consistent")
+        self.assertFalse(ev.runtime_corroborates)
+        ev = self.evidence(bench.Label("asin", ("B404",), "inferred"), p)
+        self.assertEqual(ev.verdict, "unverifiable")
+
+    def test_a_not_label_whose_excluded_edition_agrees_everywhere_is_contradicted(self):
+        p = Product(asin="B1", title="Make Me", authors=["Lee Child"], hours=10.0)
+        self.assertEqual(self.evidence(bench.Label("not", ("B1",), "inferred"), p).verdict, "contradicted")
+        p = Product(asin="B1", title="Make Me", authors=["Lee Child"], hours=5.0)
+        self.assertEqual(self.evidence(bench.Label("not", ("B1",), "inferred"), p).verdict, "consistent")
+
+    def gate_with(self, lines):
+        with tempfile.TemporaryDirectory() as tmp:
+            run, _ = bench.run_bench(labels_path=_write_labels(tmp, lines))
+        return bench.gate(run, bench.load_baseline())
+
+    def test_a_contradicted_label_in_labels_csv_fails_the_gate_with_the_numbers(self):
+        # point Private Beijing's label at Private Dublin: wrong title, 12.0h vs 8.84h files
+        lines = _edit(_label_lines(), "ingest:17 Private Beijing", expect="B0H7RGY4GG")
+        g = self.gate_with(lines)
+        hits = [f for f in g.failures if f.startswith("L contradiction: ingest:17 Private Beijing")]
+        self.assertTrue(any("runtime" in f and "-26%" in f for f in hits), hits)
+        self.assertTrue(any("title" in f for f in hits), hits)
+
+    def test_one_asin_on_two_different_books_fails(self):
+        lines = _edit(_label_lines(), "ingest:24 Blue Moon", expect="B0GL99KHWL")  # Private Beijing's ASIN
+        g = self.gate_with(lines)
+        self.assertTrue(any("B0GL99KHWL labels two different books" in f for f in g.failures))
+
+    def test_the_same_book_in_two_places_may_share_an_asin(self):
+        run, _, _ = _run()
+        self.assertFalse(any("labels two different books" in c for c in run.labels.contradictions))
+        shared = [o.key for o in run.corpus if o.label.kind == "asin" and "B0FD4CV4BF" in o.label.asins]
+        self.assertEqual(len(shared), 3)
+
+    def test_an_uncorroborated_inferred_label_fails(self):
+        # Make Me: the only US edition is -17% - inside tolerance, outside the inferred band
+        lines = _edit(_label_lines(), "ingest:20 Make Me", expect="B011PVUGUG", label_source="inferred")
+        g = self.gate_with(lines)
+        self.assertTrue(any("ingest:20 Make Me" in f and "not corroborated" in f for f in g.failures), g.failures)
+
+    def test_an_inferred_label_may_not_override_a_db_label_its_evidence_supports(self):
+        lines = _edit(_label_lines(), "Marie Lu/Legend", expect="not:B006BCXJ90", label_source="inferred", note="x")
+        g = self.gate_with(lines)
+        self.assertTrue(any("Marie Lu/Legend" in f and "overrides the DB's" in f for f in g.failures), g.failures)
+
+    def test_stale_evidence_columns_fail(self):
+        lines = _edit(_label_lines(), "Marie Lu/Legend", label_h="9.99")
+        g = self.gate_with(lines)
+        self.assertTrue(any(f.startswith("L stale evidence: Marie Lu/Legend") for f in g.failures))
+
+    def test_inferred_labels_all_carry_their_evidence_tuple(self):
+        for line in _label_lines():
+            if line["label_source"] == "inferred" and line["expect"] not in ("none",):
+                for col in ("local_h", "label_asin", "label_h", "delta_pct", "label_title", "title_match", "evidence"):
+                    self.assertTrue(line[col], (line["key"], col))
+
+
+class TestDecision(unittest.TestCase):
+    """Stage F: what the pipeline would do, with the configured tolerance."""
+
+    def test_the_tolerance_comes_from_the_settings_path(self):
+        base, _ = bench.run_bench()
+        holds = bench.score(base.corpus).decisions["hold"]
+        had = "runtime_delta" in config._EFFECTIVE
+        config._EFFECTIVE["runtime_delta"] = 5  # what the settings page stores: a percent
+        try:
+            tight, _ = bench.run_bench()
+        finally:
+            if not had:
+                config._EFFECTIVE.pop("runtime_delta", None)
+        self.assertEqual(tight.tolerance, 0.05)
+        self.assertEqual(tight.tolerance_source, "settings override")
+        self.assertGreater(bench.score(tight.corpus).decisions["hold"], holds)
+        self.assertGreater(bench.score(tight.corpus).hold_wrong, 0)
+
+    def test_decide_follows_choose_action_and_lists_unknown_runtime(self):
+        unit = BookUnit(path="/library/x", name="x", parent="/library", parts=[Part(name="x", files=["/a.mp3"])])
+        m4b = BookUnit(path="/ingest/x.m4b", name="x", parent="/ingest", parts=[Part(name="x", files=["/x.m4b"])])
+        p = Product(asin="B1", title="T", hours=10.0)
+        self.assertEqual(bench.decide(unit, Match(product=p), "HIGH", 10.1)[:3], ("convert", "convert", "agree"))
+        self.assertEqual(bench.decide(m4b, Match(product=p), "HIGH", 10.1)[0], "remux")
+        self.assertEqual(bench.decide(unit, Match(product=p), "HIGH", 5.0)[0], "hold")
+        self.assertEqual(bench.decide(unit, Match(product=p), "MEDIUM", 10.0)[0], "review")  # AUTO_CONVERT=high
+        unknown = Product(asin="B2", title="T", hours=0.0)
+        decision, _, state, _ = bench.decide(unit, Match(product=unknown), "HIGH", 10.0)
+        self.assertEqual((decision, state), ("convert", "unknown"))  # runtime_ok passes it: the bench says so
+
+    def test_an_unseen_write_with_unknown_runtime_fails_the_gate(self):
+        run, _ = bench.run_bench()
+        o = next(o for o in run.corpus if o.decision == "convert")
+        o.runtime = "unknown"
+        g = bench.gate(run, bench.load_baseline())
+        self.assertTrue(any(o.key in f and "runtime unknown" in f for f in g.failures))
+
+    def test_the_baseline_records_every_decision(self):
+        rows = bench.read_csv(bench.BASELINE)
+        self.assertTrue(all(r["decision"] in ("convert", "remux", "hold", "review") for r in rows))
+
+
+class TestFailClosed(unittest.TestCase):
+    def test_a_baseline_missing_a_row_fails_loudly(self):
+        run, _ = bench.run_bench()
+        baseline = bench.load_baseline()
+        dropped = sorted(baseline)[3]
+        del baseline[dropped]
+        g = bench.gate(run, baseline)
+        self.assertTrue(any("STALE" in f and dropped in f for f in g.failures))
+
+    def test_a_baseline_with_an_extra_row_fails_loudly(self):
+        run, _ = bench.run_bench()
+        baseline = dict(bench.load_baseline(), ghost={"key": "ghost"})
+        g = bench.gate(run, baseline)
+        self.assertTrue(any("STALE" in f and "ghost" in f for f in g.failures))
+
+    def test_a_baseline_missing_a_column_fails_loudly(self):
+        run, _ = bench.run_bench()
+        header = [c for c in bench.RESULT_FIELDS if c != "decision"]
+        g = bench.gate(run, bench.load_baseline(), header)
+        self.assertTrue(any("STALE" in f and "decision" in f for f in g.failures))
+
+    def test_a_cache_miss_is_a_bench_error_on_its_row_not_a_none(self):
+        data = bench.load_catalog()
+        victim = "Marie Lu/Legend"
+        run, _ = bench.run_bench(dict(data))
+        legend = next(o for o in run.corpus if o.key == victim)
+        # drop every response this one row reads
+        probe = bench.FrozenCatalog(dict(data))
+        with bench.sealed(probe):
+            bench.evaluate_row(next(r for r in bench.read_csv(bench.CORPUS) if r["key"] == victim), legend.label, probe)
+        trimmed = {u: v for u, v in data.items() if u not in probe.used}
+        run, _ = bench.run_bench(trimmed)
+        out = next(o for o in run.corpus if o.key == victim)
+        self.assertEqual(out.verdict, "error")
+        self.assertEqual(bench.result_row(out)["tier"], "ERR")
+        g = bench.gate(run, bench.load_baseline())
+        self.assertTrue(any(f.startswith(f"A {victim}:") and "not a NONE" in f for f in g.failures))
+
+    def test_a_label_change_is_shown_but_is_not_a_matcher_regression(self):
+        run, _ = bench.run_bench()
+        baseline = bench.load_baseline()
+        key = "ingest:17 Private Beijing"
+        baseline[key] = dict(baseline[key], label="B0XXXXXXXX", verdict="wrong")
+        g = bench.gate(run, baseline)
+        self.assertTrue(any(c.startswith(f"{key}: LABEL") for c in g.changes))
+        self.assertFalse(any(key in r for r in g.regressions))
+
+
+class TestGradeMirror(unittest.TestCase):
+    def grid(self):
         product = Product(asin="B0", title="T", authors=["A"], hours=10.0)
-        n = 0
-        for title in (0.80, 0.87, 0.88, 0.95, 1.0):
-            for author in (0.0, 0.84, 0.85, 1.0):
-                for margin in (0.0, 0.04, 0.05, 0.3):
+        for title in (0.80, 0.85, 0.87, 0.88, 0.95, 0.96, 1.0):
+            for author in (0.0, 0.59, 0.60, 0.84, 0.85, 1.0):
+                for margin in (0.0, 0.04, 0.05, 0.09, 0.10, 0.3):
                     for coverage in (0.5, 1.0):
                         for language in ("english", "german"):
                             for known in (True, False):
                                 for knockoff in (False, True):
                                     for adaptation in ("", "a Dramatized Adaptation"):
-                                        m = Match(product=product, title_sim=title, author_sim=author,
-                                                  margin=margin, title_window_coverage=coverage,
-                                                  language=language, author_known=known, knockoff=knockoff,
-                                                  unasked_adaptation=adaptation)
-                                        tier, reasons = grade(m), bench.limiting_reasons(m)
-                                        self.assertEqual(tier == "HIGH", not reasons, (vars(m), tier, reasons))
-                                        n += 1
-        self.assertGreater(n, 1000)
+                                        yield Match(product=product, title_sim=title, author_sim=author,
+                                                    margin=margin, title_window_coverage=coverage,
+                                                    language=language, author_known=known, knockoff=knockoff,
+                                                    unasked_adaptation=adaptation)
+
+    def test_limiting_reasons_and_grade_with_agree_with_grade(self):
+        """Stage E's reasons and mutate's grade mirror both reproduce grade() on a grid of evidence."""
+        n = 0
+        for m in self.grid():
+            tier = grade(m)
+            self.assertEqual(bench.grade_with(m, bench.GRADE_GATES), tier, vars(m))
+            self.assertEqual(tier == "HIGH", not bench.limiting_reasons(m), (vars(m), tier))
+            n += 1
+        self.assertGreater(n, 8000)
+
+
+class TestMutate(unittest.TestCase):
+    BRIEF = ("TITLE_FLOOR", "SUBTITLE_GATE", "MIN_HIGH_WINDOW_COVERAGE", "LANGUAGE_PENALTY",
+             "grade.medium_title", "grade.medium_author", "EMBEDDED_SCORE_EDGE", "PIN_GIVE_UP_AFTER",
+             "runtime tolerance")
+
+    def test_every_gate_constant_has_a_knob_whose_default_is_the_code_value(self):
+        names = {k.name for k in bench.KNOBS}
+        for name in self.BRIEF:
+            self.assertIn(name, names)
+        for knob in bench.KNOBS:
+            self.assertEqual(knob.current(), knob.default, knob.name)
+            self.assertTrue(any(v < knob.default for v in knob.values), knob.name)
+            self.assertTrue(any(v > knob.default for v in knob.values), knob.name)
+
+    def test_a_knob_moves_the_outcome_and_is_restored(self):
+        knob = next(k for k in bench.KNOBS if k.name == "TITLE_FLOOR")
+        base, _ = bench.run_bench()
+        with knob.set(0.95):
+            self.assertEqual(matching.TITLE_FLOOR, 0.95)
+            moved, _ = bench.run_bench()
+        self.assertEqual(matching.TITLE_FLOOR, 0.60)
+        self.assertNotEqual(bench._decisions(base), bench._decisions(moved))
+
+    def test_gate_and_tolerance_knobs_restore(self):
+        for name, probe in (("grade.high_title", lambda: bench._ACTIVE_GATES["high_title"]),
+                            ("runtime tolerance", lambda: config.effective_val("max_runtime_delta"))):
+            knob = next(k for k in bench.KNOBS if k.name == name)
+            before = probe()
+            with knob.set(0.5):
+                self.assertEqual(probe(), 0.5)
+            self.assertEqual(probe(), before)
+        self.assertIs(matching.grade, grade)
+
+    def test_classify(self):
+        def row(v, flips):
+            return {"value": str(v), "real_flips": str(flips), "adv_flips": "0", "errors": "0"}
+        self.assertTrue(bench.classify([row(0.5, 0), row(0.7, 0)], 0.6).startswith("NO EFFECT"))
+        self.assertTrue(bench.classify([row(0.5, 1), row(0.7, 2)], 0.6).startswith("load-bearing"))
+        self.assertTrue(bench.classify([row(0.4, 1), row(0.5, 0), row(0.7, 0), row(0.8, 1)], 0.6).startswith("slack"))
+        self.assertTrue(bench.classify([row(0.5, 0), row(0.7, 1)], 0.6).startswith("one-sided"))
+
+    def test_the_recorded_profile_covers_every_knob(self):
+        with open(bench.MUTATIONS, newline="", encoding="utf-8") as fh:
+            recorded = {(r["constant"], r["value"]) for r in csv.DictReader(fh)}
+        for knob in bench.KNOBS:
+            for v in knob.values:
+                self.assertIn((knob.name, f"{v:g}"), recorded)
 
 
 class TestModelCatalog(unittest.TestCase):
