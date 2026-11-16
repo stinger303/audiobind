@@ -340,14 +340,14 @@ class TestEmDash(unittest.TestCase):
                 state.save(UnitState(path="Mystery/Folder", status="review"))
                 with state._lock:
                     state.connection.execute("UPDATE units SET updated_at = 0")
-                page = web.render(state)
+                page = web.render(state, "all")
             finally:
                 state.close()
         row = page.split('<tr class="urow"')[1].split("</tr>")[0]
         cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
-        # author line, match, length and last scan are all unknown
+        # the author line and the match are unknown (0.21.0-dev4: Length and Waiting are gone)
         self.assertIn('<span class="ab-bauthor"><span class="ab-dash">&mdash;</span></span>', row)
-        self.assertGreaterEqual(row.count("&mdash;"), 4, cells)
+        self.assertGreaterEqual(row.count("&mdash;"), 2, cells)
         for junk in ("N/A", "null", "None", "undefined", ">-<"):
             self.assertNotIn(junk, row)
 
@@ -387,13 +387,12 @@ class TestStatusDot(unittest.TestCase):
             status="all",
         )
         self.assertNotIn('class="pill', table(page))
+        # 0.21.0-dev4: no Waiting column - the status and its age are the row's tooltip
         for row in rows(page):
-            self.assertEqual(row.count('class="ab-st-dot"'), 1)
+            self.assertNotIn('class="ab-st-dot"', row)
         body = table(page)
-        self.assertIn('ab-st ab-st-ok"', body)
-        # 0.21.0: the Waiting column is the dot and the bare age; the word stays in the title
-        self.assertIn('aria-hidden="true"></span><span class="ab-st-age">&lt;1m</span>', body)
-        self.assertIn('title="Held · just now"', body)
+        for word in ("Converted", "Held", "Review"):
+            self.assertIn(f'title="{word} · &lt;1m"', body)
         self.assertIn(
             'aria-hidden="true"></span><span class="ab-st-label">Converted</span><span class="ab-st-age">just now</span>',
             web.status_dot("converted", NOW - 10, NOW),
@@ -420,7 +419,9 @@ class TestStatusDot(unittest.TestCase):
 class TestTableSemantics(unittest.TestCase):
     def test_numeric_cells_use_tabular_numerals_and_never_wrap(self):
         page = render_with([UnitState(path="A/1", status="converted", title="61 Hours", hours=13.18)])
-        self.assertIn('<td class="ab-num">13.18 h</td>', page)
+        # 0.21.0-dev4: no Length column; the runtime is in the detail panel
+        self.assertNotIn('<td class="ab-num">', table(page).split('<tr class="drow"')[0])
+        self.assertIn("13.18 hours of audio", page)
         num_rule = web.STYLES.split(".ab-num{")[1].split("}")[0]
         self.assertIn("font-variant-numeric:tabular-nums", num_rule)
         self.assertIn("white-space:nowrap", num_rule)
@@ -444,9 +445,11 @@ class TestTableSemantics(unittest.TestCase):
                 self.assertIn('<span class="ab-arrow"></span>', inner)
 
     def test_no_new_columns(self):
-        # 0.21.0: Status and Last scan merged into Waiting; Why is the short reason
-        self.assertEqual(web.SORT_COLUMNS, ("title", "why", "tier", "runtime", "scan"))
-        self.assertEqual([c[1] for c in web.COLUMNS], ["Book", "Why", "Match", "Length", "Waiting"])
+        # 0.21.0-dev4: Book, Why, Match - Length and Waiting are gone; rows still carry sort
+        # data for length and last activity, and newest-first stays the default order
+        self.assertEqual(web.SORT_COLUMNS, ("title", "why", "tier"))
+        self.assertEqual(web.SORT_KEYS, ("title", "why", "tier", "runtime", "scan"))
+        self.assertEqual([c[1] for c in web.COLUMNS], ["Book", "Why", "Match"])
 
 
 class TestMatchWording(unittest.TestCase):

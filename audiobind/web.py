@@ -278,7 +278,7 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-thumb{position:relative;z-index:1;display:block;width:100%;height:100%;
   object-fit:cover;background:var(--ab-surface);}
 .ab-thumb.ab-gone{display:none}
-td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:520px}
+td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:min(720px,100%)}
 .ab-bookcell .ab-btitle{font-weight:500;font-size:13px;color:var(--ab-text);letter-spacing:-.1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .ab-bookcell .ab-bauthor{font-size:11.5px;color:var(--ab-text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 
@@ -683,7 +683,7 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-watch-warn b{color:var(--ab-amber)}
 
 @media(max-width:1080px){.ab-rail{display:none}}
-@media(max-width:820px){.ab-hidemd{display:none}}
+@media(max-width:820px){.ab-hidemd{display:none}.ab-tbl col.ab-col-tier{width:0!important}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 """
 
@@ -1363,7 +1363,7 @@ setInterval(watch, 5000);
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Audiobind</title>
+<title>Audiobind &middot; {view_heading}</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="/favicon.svg">
 <meta name="theme-color" content="#5e6ad2">
@@ -1376,7 +1376,7 @@ PAGE = """<!doctype html>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
     <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
-      <span class="ab-glyph">&#9888;</span> Needs you
+      <span class="ab-glyph">&#9888;</span> Needs your review
       <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
     {discover_item}
@@ -1393,7 +1393,7 @@ PAGE = """<!doctype html>
 
 <main class="ab-main">
   <header class="ab-topbar">
-    <h1><a href="/" title="Back to the library" style="color:inherit;text-decoration:none">Library</a></h1>
+    <h1><a href="/" title="Back to the library" style="color:inherit;text-decoration:none">{view_heading}</a></h1>
     <span class="ab-status{health_stale}"><span class="ab-dot"></span>{health_text}<small> &middot; last scan {health_scan}</small></span>
     <span class="ab-version">v{version}</span>
     {dry_text}
@@ -1479,7 +1479,7 @@ SETTINGS_PAGE = """<!doctype html>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
     <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
-      <span class="ab-glyph">&#9888;</span> Needs you
+      <span class="ab-glyph">&#9888;</span> Needs your review
       <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
     {discover_item}
@@ -1938,7 +1938,7 @@ SERIES_PAGE = """<!doctype html>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
     <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
-      <span class="ab-glyph">&#9888;</span> Needs you
+      <span class="ab-glyph">&#9888;</span> Needs your review
       <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
     {discover_item}
@@ -2246,12 +2246,13 @@ STATUS_DOTS = {
 WAITING_STATUSES = {"review"}
 
 
-def status_dot(status: str, updated_at=0.0, now: float | None = None, label: bool = True) -> str:
+def status_dot(status: str, updated_at=0.0, now: float | None = None, label: bool = True, dot: bool = True) -> str:
     """One labeled dot: color + word + age. Replaces the old per-row status pill.
 
     The word sits in its own span so a narrow column ellipsizes the word, never the age.
     ``label=False`` is the Waiting column (0.21.0): the dot and the bare age ("6d"); the
-    word stays in the title.
+    word stays in the title. ``dot=False`` is the Needs you view (0.21.0-dev4): the group
+    header names the status already, so only the age shows (the title keeps status + age).
     """
     name = (status or "").lower()
     word, family, moving = STATUS_DOTS.get(name, (name.capitalize() or "Unknown", "idle", False))
@@ -2263,7 +2264,8 @@ def status_dot(status: str, updated_at=0.0, now: float | None = None, label: boo
         age_html = f'<span class="ab-st-age">{_html(bare)}</span>' if bare else DASH
         return (
             f'<span class="{classes}" title="{_attr(title)}">'
-            f'<span class="ab-st-dot" aria-hidden="true"></span>{age_html}</span>'
+            + ('<span class="ab-st-dot" aria-hidden="true"></span>' if dot else "")
+            + f"{age_html}</span>"
         )
     age_html = f'<span class="ab-st-age">{_html(age)}</span>' if age else ""
     return (
@@ -2271,6 +2273,18 @@ def status_dot(status: str, updated_at=0.0, now: float | None = None, label: boo
         f'<span class="ab-st-dot" aria-hidden="true"></span>'
         f'<span class="ab-st-label">{_html(word)}</span>{age_html}</span>'
     )
+
+
+def status_age(status: str, updated_at=0.0, now: float | None = None) -> str:
+    """"Held · 7d": the status word and how long it has been in it. Plain text.
+
+    0.21.0-dev4: the table has no Waiting column; this is the row's tooltip and the detail
+    panel's line, so the age never leaves the product.
+    """
+    name = (status or "").lower()
+    word = STATUS_DOTS.get(name, (name.capitalize() or "Unknown",))[0]
+    age = short_age(updated_at, now)
+    return f"{word} · {age}" if age else word
 
 
 def short_age(timestamp, now: float | None = None) -> str:
@@ -2445,20 +2459,26 @@ MAX_ROWS = 400
 GROUP_PAGE = 12
 
 COLUMNS = (
-    ("title", "Book", "min(520px,28vw)", ""),
-    # fixed widths only where the content is short and must stay on one line ("13.18 h",
-    # "6d"); Match has no width so it absorbs whatever room is left and ellipsizes (full
-    # text on hover) - the table must never outgrow the page
-    # Why gives way before Match does: at 1280 a 24vw Why leaves Match ~83 px, too narrow
-    # for the meter and its word (~98 px); 22vw leaves it ~109 px
+    # Book has no width: it is the content, so it absorbs whatever room is left and a long
+    # title uses it (td.ab-bookcell caps the text at min(720px,100%)). Why and Match are fixed:
+    # Why narrows below 1360 px (the 20vw media rule), Match is a meter and one word, so 150 px
+    # holds it - the meter shrinks before the word ever clips. Below 820 px Match's cells drop
+    # (.ab-hidemd) and its col goes to 0 so the room returns to Book.
+    # 0.21.0-dev4: Length and Waiting are gone from the table in every view. Why carries the
+    # runtimes where they matter; the age lives in the row's tooltip and the detail panel.
+    ("title", "Book", "", ""),
     ("why", "Why", "min(300px,22vw)", ""),
-    ("tier", "Match", "", "ab-hidemd"),
-    ("runtime", "Length", "84px", ""),
-    ("scan", "Waiting", "88px", ""),
+    ("tier", "Match", "150px", "ab-hidemd"),
 )
 COVER_WIDTH = "50px"
+#: the cover column and the row's action column flank COLUMNS; every colspan uses this
 TOTAL_COLUMNS = len(COLUMNS) + 1 + 1
+#: the sortable header columns
 SORT_COLUMNS = tuple(key for key, *_ in COLUMNS)
+#: every key a row carries sort data for and a stored sort may name: the header columns plus
+#: length and last activity, which no longer have a header ("scan" - newest first - stays the
+#: default order)
+SORT_KEYS = SORT_COLUMNS + ("runtime", "scan")
 NUMERIC_COLUMNS = {"why", "tier", "runtime", "scan"}
 TIER_ORDER = ("HIGH", "MEDIUM", "LOW", "COLLECTION", "NONE")
 
@@ -2494,7 +2514,7 @@ def sort_value(unit, column: str):
 
 
 def sort_units(units: list, column: str, direction: str) -> list:
-    if column not in SORT_COLUMNS:
+    if column not in SORT_KEYS:
         column = "scan"
     reverse = str(direction).lower() == "desc"
     ordered = sorted(units, key=lambda u: (unit_title_key(u),))
@@ -2821,7 +2841,7 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
 def read_sort(state) -> tuple:
     column = state.get_meta("sort_column", "scan")
     direction = state.get_meta("sort_dir", "desc")
-    if column not in SORT_COLUMNS:
+    if column not in SORT_KEYS:
         column = "scan"
     if direction not in ("asc", "desc"):
         direction = "desc"
@@ -3205,7 +3225,7 @@ DISCOVER_PAGE = """<!doctype html>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
     <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
-      <span class="ab-glyph">&#9888;</span> Needs you
+      <span class="ab-glyph">&#9888;</span> Needs your review
       <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
     {discover_item}
@@ -4488,7 +4508,7 @@ def _group_sentence(key: str) -> str:
     return sentence
 
 
-def grouped_rows(units: list, row, detail_panel) -> str:
+def grouped_rows(units: list, row, detail_panel, total_columns: int = TOTAL_COLUMNS) -> str:
     """The "Needs you" table body: one header per group, most severe group first.
 
     Rows keep the order they arrive in (already sorted). A group is a status; its one
@@ -4507,7 +4527,7 @@ def grouped_rows(units: list, row, detail_panel) -> str:
         lead_key = max(tally, key=lambda k: (tally[k], -keys.index(k)))
         title = GROUP_TITLES[status]
         out.append(
-            f'<tr class="ab-group" data-group="{status}"><td colspan="{TOTAL_COLUMNS}">'
+            f'<tr class="ab-group" data-group="{status}"><td colspan="{total_columns}">'
             f'<div class="ab-group-h"><span class="ab-group-t">{title}</span>'
             f'<span class="ab-group-n">{len(members)}</span></div>'
             f'<p class="ab-group-p">{_html(_group_sentence(lead_key))}</p></td></tr>'
@@ -4517,7 +4537,7 @@ def grouped_rows(units: list, row, detail_panel) -> str:
         more = len(members) - GROUP_PAGE
         if more > 0:
             out.append(
-                f'<tr class="ab-more-row" data-group="{status}"><td colspan="{TOTAL_COLUMNS}">'
+                f'<tr class="ab-more-row" data-group="{status}"><td colspan="{total_columns}">'
                 f'<button type="button" class="ab-more" data-group="{status}" '
                 f'data-label="{title.lower()}" onclick="abShowMore(this)">'
                 f"Show {more} more {title.lower()}</button></td></tr>"
@@ -4586,6 +4606,15 @@ def render(state, status: str = "", query: str = "") -> str:
     if queued:
         units = [u for u in units if u.path not in queued]
 
+    attention = view == "attention"
+    # the heading names the view, so clicking Needs you visibly lands somewhere
+    if attention:
+        view_heading = f"Needs your review &middot; {attention_count}"
+    elif view == "all":
+        view_heading = "Library"
+    else:
+        view_heading = _html(STATUS_CHIP_LABELS.get(view, view.capitalize()))
+
     sort_column, sort_dir = read_sort(state)
     units = sort_units(units, sort_column, sort_dir)
     if query:
@@ -4598,7 +4627,7 @@ def render(state, status: str = "", query: str = "") -> str:
 
     chips = []
     if attention_count:
-        chips.append(chip("/?status=attention", "Needs you", attention_count, view == "attention", alert=True))
+        chips.append(chip("/?status=attention", "Needs your review", attention_count, view == "attention", alert=True))
     ordered = [n for n in STATUS_ORDER if n in ATTENTION_STATUSES] + [
         n for n in STATUS_ORDER if n not in ATTENTION_STATUSES
     ]
@@ -4854,7 +4883,8 @@ def render(state, status: str = "", query: str = "") -> str:
 
         explain_html = (
             '<div class="explain">'
-            + f"<div><h4>{why_header}</h4><p>{_html(why)}</p>{meter}</div>"
+            + f"<div><h4>{why_header}</h4><p>{_html(why)}</p>{meter}"
+            + f'<div class="ab-meterhint ab-panel-age">{_html(status_age(unit.status, unit.updated_at, now))}</div></div>'
             + f'<div class="todo"><h4>Your options</h4><p>{_html(todo)}</p></div>'
             + "</div>"
         )
@@ -4921,7 +4951,7 @@ def render(state, status: str = "", query: str = "") -> str:
     def row(unit, group: str = "", paged: bool = False) -> str:
         tier = str(effective_val("auto_convert") or "high")
         haystack = " ".join(filter(None, [unit.title, unit.author, unit.path]))
-        data = " ".join(f'data-sort-{key}="{_attr(str(sort_value(unit, key)))}"' for key in SORT_COLUMNS)
+        data = " ".join(f'data-sort-{key}="{_attr(str(sort_value(unit, key)))}"' for key in SORT_KEYS)
         hidden = "" if locks.get(unit.path) else " hidden"
         badge = f'<span class="ab-custom" title="Some of this book\'s metadata is locked by you"{hidden}>locked</span>'
         try:
@@ -4952,6 +4982,7 @@ def render(state, status: str = "", query: str = "") -> str:
         return (
             f'<tr class="urow" onclick="toggleRow(this, event)" data-path="{_attr(unit.path)}" '
             'tabindex="0" role="button" aria-expanded="false" onkeydown="abRowKey(event,this)" '
+            f'title="{_attr(status_age(unit.status, unit.updated_at, now))}" '
             f'data-search="{_attr(haystack)}" {data}{group_attr}{" hidden" if paged else ""}>'
             f'<td class="ab-covcell"><div class="ab-covrow"><span class="ab-rowcaret" aria-hidden="true">&#9656;</span>'
             f'{cover_html(unit)}</div></td>'
@@ -4960,8 +4991,6 @@ def render(state, status: str = "", query: str = "") -> str:
             f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span></td>'
             f'<td class="ab-whycell">{why_html}</td>'
             f'<td class="ab-hidemd ab-match"{match_attr}>{match_html}</td>'
-            f'<td class="ab-num">{fmt_hours(unit.hours)}</td>'
-            f"<td>{status_dot(unit.status, unit.updated_at, now, label=False)}</td>"
             f'<td class="ab-actcol">{kebab_menu(unit)}</td></tr>'
         )
 
@@ -4995,7 +5024,7 @@ def render(state, status: str = "", query: str = "") -> str:
         header(key, label, klass) for key, label, _width, klass in COLUMNS
     )
     colgroup = (f'<col style="width:{COVER_WIDTH}">') + "".join(
-        (f'<col class="ab-col-{key}" style="width:{width}">' if key == "why" else f'<col style="width:{width}">')
+        (f'<col class="ab-col-{key}" style="width:{width}">' if key in ("why", "tier") else f'<col style="width:{width}">')
         if width
         else "<col>"
         for key, _l, width, _c in COLUMNS
@@ -5149,6 +5178,7 @@ def render(state, status: str = "", query: str = "") -> str:
         headers=headers,
         colgroup=colgroup,
         columns=TOTAL_COLUMNS,
+        view_heading=view_heading,
         query=_attr(query),
         sort_column_js=json.dumps(sort_column),
         sort_dir_js=json.dumps(sort_dir),
@@ -6821,7 +6851,7 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "sort":
             column = str(payload.get("column", "scan"))
             direction = str(payload.get("direction", "desc")).lower()
-            if column not in SORT_COLUMNS or direction not in ("asc", "desc"):
+            if column not in SORT_KEYS or direction not in ("asc", "desc"):
                 self._send(400, b'{"error":"bad sort"}', "application/json")
                 return
             self.state.set_meta("sort_column", column)

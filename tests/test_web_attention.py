@@ -44,7 +44,7 @@ DONE = UnitState(path="Child/61 Hours", status="converted", confidence="HIGH", t
 class TestNeedsYouView(unittest.TestCase):
     def test_default_view_is_needs_you_grouped_by_reason(self):
         page = render_with([HELD, REVIEW, DONE])
-        self.assertIn('<a class="chip on ab-alert" href="/?status=attention">Needs you <span class="n">2</span></a>', page)
+        self.assertIn('<a class="chip on ab-alert" href="/?status=attention">Needs your review <span class="n">2</span></a>', page)
         self.assertIn('<a class="chip" href="/?status=all">All <span class="n">3</span></a>', page)
         tbody = body(page)
         self.assertIn('<span class="ab-group-t">Held</span><span class="ab-group-n">1</span>', tbody)
@@ -73,7 +73,7 @@ class TestNeedsYouView(unittest.TestCase):
         for title in ("13 Hours", "Persuader", "61 Hours"):
             self.assertIn(title, tbody)
         self.assertIn('<a class="chip on" href="/?status=all">All', page)
-        self.assertIn('<a class="chip ab-alert" href="/?status=attention">Needs you', page)
+        self.assertIn('<a class="chip ab-alert" href="/?status=attention">Needs your review', page)
 
     def test_a_single_status_filter_is_flat(self):
         page = render_with([HELD, REVIEW, DONE], "held")
@@ -83,7 +83,7 @@ class TestNeedsYouView(unittest.TestCase):
     def test_all_converted_library_shows_all_and_the_all_clear(self):
         page = render_with([DONE, UnitState(path="A/2", status="converted", title="Two", hours=1)])
         self.assertNotIn("ab-group", body(page))
-        self.assertNotIn("Needs you", chips(page))
+        self.assertNotIn("Needs your review", chips(page))
         self.assertIn('<a class="chip on" href="/?status=all">All <span class="n">2</span></a>', page)
         self.assertRegex(page, r'<p class="ab-allclear">All clear - last scan [^<]+, nothing needs you\.</p>')
         self.assertEqual(page.count('class="ab-allclear"'), 1)
@@ -111,20 +111,19 @@ class TestNeedsYouView(unittest.TestCase):
     def test_a_short_group_has_no_button(self):
         self.assertNotIn("ab-more", body(render_with([HELD, REVIEW])))
 
-    def test_columns_and_waiting_cell(self):
+    def test_converted_row_cells(self):
         page = render_with([HELD, DONE], "all")
-        self.assertEqual([c[1] for c in web.COLUMNS], ["Book", "Why", "Match", "Length", "Waiting"])
+        self.assertEqual([c[1] for c in web.COLUMNS], ["Book", "Why", "Match"])
         row = page.split('data-path="Child/61 Hours"')[1].split("</tr>")[0]
         self.assertIn('<td class="ab-whycell"></td>', row)  # converted: the WHY cell stays empty
-        self.assertNotIn('class="ab-st-label"', row)  # Waiting: the age only, no word
-        self.assertIn('<span class="ab-st-age">&lt;1m</span>', row)
-        self.assertIn('title="Converted · just now"', row)
+        self.assertNotIn("ab-st", row)  # no Waiting cell (0.21.0-dev4)
+        self.assertIn('title="Converted · &lt;1m"', row)  # the age is the row's tooltip
 
     def test_rail_needs_you_item_above_library(self):
         page = render_with([HELD, REVIEW])
         rail = page.split('<aside class="ab-rail">')[1].split("</aside>")[0]
         self.assertIn('class="ab-rail-item ab-alert" href="/?status=attention"', rail)
-        self.assertLess(rail.index("> Library"), rail.index("Needs you"))
+        self.assertLess(rail.index("> Library"), rail.index("Needs your review"))
         quiet = render_with([DONE])
         rail = quiet.split('<aside class="ab-rail">')[1].split("</aside>")[0]
         self.assertIn('<a class="ab-rail-item" href="/?status=attention">', rail)
@@ -142,12 +141,13 @@ class TestMockupFixPass(unittest.TestCase):
 
     #: meter + "Medium" + cell padding, from the real 1280 render (100 px clipped it by 2 px)
     MATCH_NEED = 102
-    #: the page's vertical scrollbar; calibrated so 1440 gives the measured Match of 197 px
+    #: the page's vertical scrollbar; calibrated on the 0.21.0-dev3 1440 render
     SCROLLBAR = 9
 
     @classmethod
-    def match_budget(cls, viewport: int) -> float:
-        """Pixels left for Match at a viewport width, the way table-layout:fixed hands them out."""
+    def book_budget(cls, viewport: int) -> float:
+        """Pixels left for Book (the one column without a width) at a viewport width, the way
+        table-layout:fixed hands them out."""
         def px(width: str) -> float:
             found = re.fullmatch(r"min\((\d+)px,(\d+)vw\)", width)
             if found:
@@ -157,19 +157,26 @@ class TestMockupFixPass(unittest.TestCase):
         if viewport < 1360:  # the stylesheet's narrow-screen Why width
             widths["why"] = re.search(r"col\.ab-col-why\{width:([^!;}]+)", web.STYLES).group(1)
         table = viewport - 212 - 1 - 48 - cls.SCROLLBAR  # rail, its border, the wrap's padding
-        fixed = px(web.COVER_WIDTH) + 48 + sum(px(w) for k, w in widths.items() if k != "tier")
+        fixed = px(web.COVER_WIDTH) + 48 + sum(px(w) for k, w in widths.items() if k != "title")
         return table - fixed
 
-    def test_column_budget_leaves_match_room_for_its_word(self):
+    def test_the_slack_goes_to_book_not_match(self):
         widths = {k: w for k, _l, w, _c in web.COLUMNS}
-        self.assertEqual(widths["scan"], "88px")
-        self.assertEqual(widths["title"], "min(520px,28vw)")
+        self.assertEqual(set(widths), {"title", "why", "tier"})  # no Length, no Waiting
+        self.assertEqual(widths["title"], "")  # Book absorbs what is left
         self.assertEqual(widths["why"], "min(300px,22vw)")
-        self.assertEqual(widths["tier"], "")  # Match absorbs what is left
-        self.assertAlmostEqual(self.match_budget(1440), 197, delta=1)  # the measured 1440 render
-        for viewport in (1280, 1440):
-            with self.subTest(viewport=viewport):
-                self.assertGreaterEqual(self.match_budget(viewport), self.MATCH_NEED)
+        self.assertEqual(widths["tier"], "150px")  # Match: a meter and one word
+        self.assertGreaterEqual(150, self.MATCH_NEED)
+        self.assertAlmostEqual(self.book_budget(1440), 622, delta=1)
+        self.assertGreaterEqual(self.book_budget(1440), 380)
+        self.assertAlmostEqual(self.book_budget(1280), 506, delta=1)
+        # below 820 px Match's cells drop and its col gives its width back to Book
+        self.assertIn("@media(max-width:820px){.ab-hidemd{display:none}.ab-tbl col.ab-col-tier{width:0!important}}",
+                      web.STYLES)
+        page = render_with([HELD], "all")
+        cols = page.split("<colgroup>")[1].split("</colgroup>")[0]
+        self.assertIn('<col style="width:50px"><col><col class="ab-col-why"', cols)
+        self.assertIn('<col class="ab-col-tier" style="width:150px">', cols)
 
     def test_the_meter_shrinks_and_the_word_does_not(self):
         def rule(selector):
@@ -188,12 +195,13 @@ class TestMockupFixPass(unittest.TestCase):
         self.assertIn('<col class="ab-col-why" style="width:min(300px,22vw)">', page)
 
     def test_a_held_row_at_1280_shows_medium_in_full(self):
-        # no browser here: the served cell holds the whole word in its non-shrinking span, and the
-        # 1280 column budget (Why at 20vw) leaves Match more than the measured need of the full meter
+        # no browser here: the served cell holds the whole word in its non-shrinking span, and
+        # Match's fixed 150 px is more than the measured need of the full meter and its word
         page = render_with([HELD])
         cell = re.search(r'<td class="ab-hidemd ab-match"[^>]*>(.*?)</td>', page).group(1)
         self.assertIn('<span class="ab-match-word ab-conf-medium">Medium</span>', cell)
-        self.assertGreaterEqual(self.match_budget(1280), self.MATCH_NEED + 20)
+        self.assertEqual(dict((k, w) for k, _l, w, _c in web.COLUMNS)["tier"], "150px")
+        self.assertGreaterEqual(150, self.MATCH_NEED + 20)
 
     def test_a_rendered_match_cell_has_its_word_beside_the_meter(self):
         page = render_with([REVIEW, HELD])
@@ -224,7 +232,7 @@ class TestMockupFixPass(unittest.TestCase):
 
     def test_chip_labels_are_capitalised_in_mockup_order(self):
         labels = re.findall(r'<a class="chip[^"]*" href="[^"]+">([^<]+?) <span class="n">', chips(render_with([HELD, REVIEW, DONE])))
-        self.assertEqual(labels, ["Needs you", "Review", "Held", "Converted", "All"])
+        self.assertEqual(labels, ["Needs your review", "Review", "Held", "Converted", "All"])
         self.assertEqual(web.STATUS_CHIP_LABELS["interrupted"], "Stopped")
         self.assertEqual(web.STATUS_CHIP_LABELS["failed"], "Failed")
 
@@ -235,12 +243,12 @@ class TestMockupFixPass(unittest.TestCase):
             self.assertNotIn("ATTENTION", rail)
             for name in ("review", "held", "failed"):
                 self.assertNotIn(f'href="/?status={name}"', rail)
-            self.assertLess(rail.index("> Library"), rail.index("> Needs you"))
-            self.assertLess(rail.index("> Needs you"), rail.index("> Settings"))
+            self.assertLess(rail.index("> Library"), rail.index("> Needs your review"))
+            self.assertLess(rail.index("> Needs your review"), rail.index("> Settings"))
         for template in (web.PAGE, web.SETTINGS_PAGE, web.SERIES_PAGE, web.DISCOVER_PAGE):
             self.assertNotIn('aria-label="Attention"', template)
             self.assertNotIn("rail_review_count", template)
-            self.assertLess(template.index("</span> Library"), template.index("</span> Needs you"))
+            self.assertLess(template.index("</span> Library"), template.index("</span> Needs your review"))
 
     def test_why_label_never_shrinks_and_the_numbers_ellipsize(self):
         label = web.STYLES.split(".ab-why-l{")[1].split("}")[0]
@@ -296,9 +304,11 @@ class TestMockupFixPass(unittest.TestCase):
                 page = web.render(state, "all")
             finally:
                 state.close()
-        self.assertIn('<span class="ab-st-age">6d</span>', page)
-        self.assertIn('<span class="ab-st-age">5w</span>', page)
-        self.assertNotRegex(body(page), r'ab-st-age">(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ')
+        # 0.21.0-dev4: the age is the row's tooltip (and the detail panel's line), never a date
+        self.assertIn('title="Held · 6d"', page)
+        self.assertIn('title="Held · 5w"', page)
+        self.assertIn('<div class="ab-meterhint ab-panel-age">Held · 6d</div>', page)
+        self.assertNotRegex(body(page), r'title="Held · (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ')
 
 
 class TestStatusAgeAndRailPath(unittest.TestCase):
@@ -334,6 +344,148 @@ class TestStatusAgeAndRailPath(unittest.TestCase):
         self.assertIn('title="/mnt/user/data/media/audiobooks"', foot)
         for title in re.findall(r'title="([^"]*)"', foot):
             self.assertNotIn("&#8203;", title)
+
+
+def heading(page):
+    return re.search(r"<h1><a [^>]*>(.*?)</a></h1>", page).group(1)
+
+
+def page_title(page):
+    return re.search(r"<title>(.*?)</title>", page).group(1)
+
+
+def header_cells(page):
+    return re.findall(r"<th[ >].*?</th>", page.split("<thead>")[1].split("</thead>")[0], re.S)
+
+
+def col_count(page):
+    return len(re.findall(r"<col[ >]", page.split("<colgroup>")[1].split("</colgroup>")[0]))
+
+
+class TestViewNamesItself(unittest.TestCase):
+    """0.21.0-dev4: the heading names the view; the table is Book, Why, Match in every view."""
+
+    UNITS = [HELD, REVIEW, DONE]
+
+    def test_heading_and_title_name_the_view(self):
+        cases = (
+            ("", "Needs your review &middot; 2"),
+            ("attention", "Needs your review &middot; 2"),
+            ("all", "Library"),
+            ("held", "Held"),
+            ("review", "Review"),
+            ("converted", "Converted"),
+        )
+        for status, want in cases:
+            with self.subTest(status=status):
+                page = render_with(self.UNITS, status)
+                self.assertEqual(heading(page), want)
+                self.assertEqual(page_title(page), f"Audiobind &middot; {want}")
+        self.assertEqual(heading(render_with([UnitState(path="A/S", status="interrupted", title="S")], "interrupted")),
+                         "Stopped")
+        # nothing needs you: the default view is All, named Library
+        self.assertEqual(heading(render_with([DONE])), "Library")
+
+    def render_searched(self, query):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = State(pathlib.Path(tmp))
+            try:
+                for u in self.UNITS:
+                    state.save(u)
+                return web.render(state, "", query)
+            finally:
+                state.close()
+
+    def every_view(self):
+        for status in ("", "attention", "all", "held", "review", "converted"):
+            yield f"status={status!r}", render_with(self.UNITS, status)
+        yield "search", self.render_searched("persuader")
+
+    def test_the_table_is_book_why_match_in_every_view(self):
+        for name, page in self.every_view():
+            with self.subTest(view=name):
+                heads = header_cells(page)
+                labels = [re.sub(r"<[^>]+>", "", h) for h in heads]
+                self.assertEqual(labels, ["", "Book", "Why", "Match", ""])  # cover + actions unlabelled
+                self.assertEqual(len(heads), col_count(page))
+                self.assertEqual(len(heads), web.TOTAL_COLUMNS)
+                table = page.split('<table class="ab-tbl">')[1].split("</table>")[0]
+                self.assertNotIn("Length", table)
+                self.assertNotIn("Waiting", table)
+                for row in re.findall(r'<tr class="urow".*?</tr>', table, re.S):
+                    self.assertEqual(len(re.findall(r"<td[ >]", row)), web.TOTAL_COLUMNS)
+
+    def test_every_colspan_spans_the_table(self):
+        self.assertEqual(web.TOTAL_COLUMNS, len(web.COLUMNS) + 2)
+        long_group = [UnitState(path=f"H/{i:02d}", status="held", title=f"B{i:02d}") for i in range(13)]
+        pages = [p for _n, p in self.every_view()] + [render_with(long_group), render_with([], "held")]
+        for page in pages:
+            spans = re.findall(r'colspan="(\d+)"', page)
+            self.assertTrue(spans)
+            self.assertEqual(set(spans), {str(web.TOTAL_COLUMNS)})
+        long_page = render_with(long_group)
+        self.assertIn(f'<tr class="ab-more-row" data-group="held"><td colspan="{web.TOTAL_COLUMNS}">', long_page)
+        self.assertIn(f'<tr class="ab-group" data-group="held"><td colspan="{web.TOTAL_COLUMNS}">', long_page)
+
+    def test_a_held_row_carries_no_runtime_or_age_cell_and_its_title_has_both(self):
+        for name, page in self.every_view():
+            if 'data-path="Zuckoff/13 Hours"' not in page:
+                continue
+            with self.subTest(view=name):
+                row = page.split('<tr class="urow" onclick="toggleRow(this, event)" data-path="Zuckoff/13 Hours"')[1]
+                tag, cells = row.split(">", 1)
+                cells = cells.split("</tr>")[0]
+                self.assertIn('title="Held · &lt;1m"', tag)
+                # the Why cell keeps its runtimes ("1.38 h vs 7.72 h"); no other cell prints one
+                outside_why = re.sub(r'<td class="ab-whycell">.*?</td>', "", cells, flags=re.S)
+                self.assertNotRegex(outside_why, r"\d+\.\d+\s*h\b")
+                self.assertNotIn("&lt;1m", cells)
+                self.assertNotIn("ab-st-age", cells)
+
+    def test_the_meter_and_the_kebab_stay(self):
+        page = render_with(self.UNITS)
+        row = page.split('data-path="Child/Persuader"')[1].split("</tr>")[0]
+        self.assertIn('<span class="ab-mmeter" aria-hidden="true">', row)
+        self.assertIn('<span class="ab-match-word ab-conf-medium">Medium</span>', row)
+        self.assertIn('<td class="ab-actcol"><div class="ab-kebabwrap"', row)
+        self.assertIn('class="ab-kebab"', row)
+        self.assertIn('<col class="ab-actcol" style="width:48px">', page)
+
+    def test_the_detail_panel_states_the_age(self):
+        page = render_with(self.UNITS)
+        panel = page.split('<tr class="drow" data-path="Zuckoff/13 Hours"')[1].split("</tr>")[0]
+        self.assertIn('<div class="ab-meterhint ab-panel-age">Held · &lt;1m</div>', panel)
+
+
+class TestNeedsYourReviewLabel(unittest.TestCase):
+    """0.21.0-dev4: the view is labelled "Needs your review"; the internals keep their names."""
+
+    def test_the_label_is_needs_your_review_in_rail_chip_and_heading(self):
+        page = render_with([HELD, REVIEW, DONE])
+        rail = page.split('<aside class="ab-rail">')[1].split("</aside>")[0]
+        self.assertIn('href="/?status=attention">\n      <span class="ab-glyph">&#9888;</span> Needs your review\n', rail)
+        self.assertIn('<a class="chip on ab-alert" href="/?status=attention">Needs your review <span class="n">2</span></a>',
+                      chips(page))
+        self.assertIn("Needs your review &middot; 2</a></h1>", page)
+        self.assertIn("<title>Audiobind &middot; Needs your review &middot; 2</title>", page)
+        for template in (web.PAGE, web.SETTINGS_PAGE, web.SERIES_PAGE, web.DISCOVER_PAGE):
+            self.assertIn("</span> Needs your review\n", template)
+        # the old label never reaches the page, on any view or page
+        for other in (page, render_with([HELD], "all"), render_with([DONE]), render_with([HELD], "needs-you")):
+            self.assertNotIn("Needs you ", other)
+        for template in (web.PAGE, web.SETTINGS_PAGE, web.SERIES_PAGE, web.DISCOVER_PAGE):
+            self.assertNotIn("Needs you\n", template)
+
+    def test_internals_keep_their_names(self):
+        page = render_with([HELD])
+        self.assertIn('href="/?status=attention"', page)
+        self.assertIn('class="ab-group-t">Held</span>', page)
+        self.assertEqual(web.ATTENTION_ALIASES, ("attention", "needs-you"))
+
+    def test_the_book_cell_uses_the_room_it_has(self):
+        rule = web.STYLES.split("td.ab-bookcell{")[1].split("}")[0]
+        self.assertIn("max-width:min(720px,100%)", rule)
+        self.assertNotIn("max-width:520px", rule)
 
 
 if __name__ == "__main__":

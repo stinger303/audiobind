@@ -168,8 +168,9 @@ class TestRenderedSearchAndSort(unittest.TestCase):
 
     def test_book_cell_has_max_width_and_actcol_is_fixed(self):
         page = web.render(self.state)
-        self.assertIn("max-width:520px", web.STYLES)
-        self.assertIn('style="width:min(520px,28vw)"', page)
+        self.assertIn("td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:min(720px,100%)}", web.STYLES)
+        self.assertIn("<col style=\"width:50px\"><col><col class=\"ab-col-why\"", page)  # Book: no width, takes the rest
+        self.assertIn('<col class="ab-col-tier" style="width:150px">', page)
         self.assertIn("text-overflow:ellipsis", web.STYLES)
 
     def test_the_table_layout_is_fixed_so_columns_never_grow(self):
@@ -351,12 +352,16 @@ if __name__ == "__main__":
 
 
 class Dev4LayoutTests(unittest.TestCase):
-    def test_match_column_flexes_and_widths_fit_1280(self):
+    def test_book_column_flexes_and_widths_fit_1280(self):
+        # 0.21.0-dev4: Book is the column without a width (it absorbs the room); Match is a
+        # fixed 150 px. This used to pin the reverse (Match flexed, Book was 30vw).
         widths = {k: w for k, _l, w, _c in web.COLUMNS}
-        self.assertEqual(widths["tier"], "")
-        fixed = sum(int(w[:-2]) for k, w in widths.items() if w.endswith("px") and k != "title")
-        # 1280px window - 212px rail - 48px padding = 1020px; title is 30vw (384px); match keeps >= 150px
-        self.assertLessEqual(50 + fixed + 48 + 384, 1020 - 150)
+        self.assertEqual(widths["title"], "")
+        self.assertEqual(widths["tier"], "150px")
+        why_1280 = min(300, 1280 * 20 / 100)  # the narrow-screen Why rule below 1360 px
+        fixed = sum(int(w[:-2]) for k, w in widths.items() if w.endswith("px"))
+        # 1280px window - 212px rail - 48px padding = 1020px; Book keeps >= 300px after the rest
+        self.assertLessEqual(50 + fixed + why_1280 + 48, 1020 - 300)
         self.assertIn("width:48px", web.STYLES)
         self.assertIn("overflow:visible!important", web.STYLES)
 

@@ -213,8 +213,10 @@ class TestCoverEndpointAndMarkup(CoverBase):
         page = web.render(self.state)
         self.assertEqual(web.TOTAL_COLUMNS, len(web.COLUMNS) + 2)
         self.assertIn(f'colspan="{web.TOTAL_COLUMNS}"', page)
-        # every col but the actions col and the classed Why col opens with its style
-        self.assertEqual(page.count("<col style="), page.count("<col ") - 2)
+        # every col but the actions col and the classed Why and Match cols opens with its style
+        # (Book has no width: a bare <col>)
+        self.assertEqual(page.count("<col style="), page.count("<col ") - 3)
+        self.assertEqual(page.count('<col class="ab-col-tier" style='), 1)
         self.assertEqual(page.count('<col class="ab-col-why" style='), 1)
 
 

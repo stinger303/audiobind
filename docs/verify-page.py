@@ -174,9 +174,9 @@ check("quoted title escaped", "&quot;Quoted&quot;" in html)
 # ---- 0.21.0 "Needs you": the default view is the triage list, grouped; the shelf is gone
 check("no Needs-attention shelf (markup, script or styles)",
       "ab-shelf" not in html and "abShelfInit" not in html and "SHELF_KEY" not in html)
-check("Needs you chip is the default, marked on",
-      '<a class="chip on ab-alert" href="/?status=attention">Needs you <span class="n">4</span></a>' in html)
-check("Needs you rows are grouped by reason",
+check("Needs your review chip is the default, marked on",
+      '<a class="chip on ab-alert" href="/?status=attention">Needs your review <span class="n">4</span></a>' in html)
+check("Needs your review rows are grouped by reason",
       all(f'<span class="ab-group-t">{t}</span>' in html for t in ("Failed", "Held", "Review"))
       and 'class="ab-why"' in html and "ab-breason" not in html)
 check("default view leaves converted books out", "The Burning Room" not in html.split('<tbody id="ab-body">')[1])
@@ -189,11 +189,14 @@ foot = html.split('<div class="ab-rail-foot">')[1].split("</div>")[0]
 check("rail-foot path breaks at slashes (&#8203;), titles stay plain",
       "/&#8203;" in foot and all("&#8203;" not in t for t in re.findall(r'title="([^"]*)"', foot)))
 all_html = get("/?status=all")
-# 0.21.0 column budget: Match is the column without a width, so it gets what the others leave;
-# it must keep room for the full meter and its word (102 px, measured) at 1280 and 1440.
-# Below 1360 px the stylesheet narrows the Why column; 9 px is the page's scrollbar.
-cols = re.findall(r'<col(?: class="([^"]*)")? style="width:([^"]+)">', html.split("<colgroup>")[1].split("</colgroup>")[0])
+# 0.21.0-dev4 column budget: Book is the one column without a width, so it gets what the
+# others leave; Match is a fixed 150 px (a meter and one word). A change that hands the slack
+# back to Match fails here. Below 1360 px the stylesheet narrows Why; 9 px is the scrollbar.
+colgroup = html.split("<colgroup>")[1].split("</colgroup>")[0]
+cols = re.findall(r'<col(?: class="([^"]*)")? style="width:([^"]+)">', colgroup)
 narrow_why = re.search(r"col\.ab-col-why\{width:([^!;}]+)", html)
+check("Match is a fixed 150 px column", ("ab-col-tier", "150px") in cols)
+check("Book has no width (bare <col>), so it absorbs the room", '<col style="width:50px"><col><col class="ab-col-why"' in colgroup)
 
 
 def _px(width: str, viewport: int) -> float:
@@ -201,10 +204,12 @@ def _px(width: str, viewport: int) -> float:
     return min(float(found.group(1)), viewport * int(found.group(2)) / 100) if found else float(width[:-2])
 
 
+book_at = {}
 for vp in (1280, 1440):
     widths = [narrow_why.group(1) if (cls == "ab-col-why" and vp < 1360 and narrow_why) else w for cls, w in cols]
-    left = vp - 212 - 1 - 48 - 9 - sum(_px(w, vp) for w in widths)
-    check(f"column budget at {vp}: Match keeps >= 102 px for meter + word", left >= 102, f"{left:.0f} px")
+    book_at[vp] = vp - 212 - 1 - 48 - 9 - sum(_px(w, vp) for w in widths)
+check("column budget at 1440: Book gets >= 380 px", book_at[1440] >= 380, f"{book_at[1440]:.0f} px")
+check("column budget at 1280: Book keeps a usable width (>= 300 px)", book_at[1280] >= 300, f"{book_at[1280]:.0f} px")
 check("the Match word never shrinks, the meter does",
       re.search(r"\.ab-match-word\{[^}]*flex:none", html) is not None
       and re.search(r"\.ab-mmeter\{[^}]*flex:0 1 auto;overflow:hidden;min-width:0", html) is not None)

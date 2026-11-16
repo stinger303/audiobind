@@ -47,9 +47,9 @@ Calm the page, one primary per view; no new features and no layout changes.
   book title now update live.
 - Removed `docs/deploy-0.20.0.sh`, which tripped the repo's own no-addresses guard (still in history).
 
-### Needs you
+### Needs your review
 One list for everything that is waiting on you, instead of the same books twice.
-- **The Needs-Attention shelf is gone.** The library now opens on **Needs you** whenever something is
+- **The Needs-Attention shelf is gone.** The library now opens on **Needs your review** whenever something is
   waiting: the problem books, grouped by reason (Failed, Held, Stopped, Review), with the reason
   explained once per group instead of once per row. When nothing needs you, it opens on All with one
   all-clear line.
@@ -59,8 +59,15 @@ One list for everything that is waiting on you, instead of the same books twice.
 - **Match is easier to read.** For books that need you it shows the confidence word next to its meter;
   for books already converted it shows the series position.
 - **Waiting shows how long a book has waited**, as a relative age ("7d", "4h"), never a date.
-- **One way in.** The rail has one triage entry, Needs you, instead of a separate Review / Held / Failed
-  block, and the chips read Needs you / Review / Held / Converted / All.
+- **One way in.** The rail has one triage entry, Needs your review, instead of a separate Review / Held /
+  Failed block, and the chips read Needs your review / Review / Held / Converted / All.
+- **The view names itself.** The page heading and the tab title read **Needs your review · 27**, so it is
+  obvious which view you are in - **Library** for All, and the status name for a single filter.
+- **Length and Waiting are gone from the table.** Length repeated the runtimes the Why column already
+  shows for a held or review book, and Waiting's coloured dot repeated the group heading. The age is
+  still there when you hover a row ("Held · 7d") and in the detail panel.
+- **The table is Book · Why · Match**, and the Book column now takes the space the dropped columns
+  freed, so long titles are no longer cut off while a wide column sits empty.
 - Fixed: a held book with damaged source files was told "that gap usually means a different edition".
   It now leads with the real cause, e.g. "One of your 18 source files can't be read, which probably
   explains why your files run 1.38 hours when Audible lists 7.72 for this edition (82% shorter)."

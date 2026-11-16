@@ -47,7 +47,7 @@ class TestEncodingBookHidden(unittest.TestCase):
         self.assertNotIn("Zorblax Saga", table)
         self.assertNotIn("Zorblax Saga", page)  # nowhere else either; banner shows the path
         self.assertNotIn("?status=review", chips)
-        self.assertNotIn("Needs you", page.split('<div class="chips">')[1].split("</div>")[0])
+        self.assertNotIn("Needs your review", page.split('<div class="chips">')[1].split("</div>")[0])
         self.assertNotIn("ab-shelf", page)
         self.assertEqual(web.rail_counts(self.state, self.state.counts())["review"], 0)
 
@@ -64,7 +64,7 @@ class TestEncodingBookHidden(unittest.TestCase):
         table, chips = self.sections(page)
         self.assertIn("Zorblax Saga", table)
         self.assertIn("?status=review", chips)
-        self.assertIn('Needs you <span class="n">1</span>', chips)
+        self.assertIn('Needs your review <span class="n">1</span>', chips)
         self.assertEqual(web.rail_counts(self.state, self.state.counts())["review"], 1)
 
 
@@ -142,7 +142,7 @@ class TestRender(unittest.TestCase):
         page = web.render(self.state)
         # 3 problem units: review, held, failed - the default view, no shelf
         self.assertNotIn('id="ab-shelf"', page)
-        self.assertIn('<a class="chip on ab-alert" href="/?status=attention">Needs you <span class="n">3</span></a>', page)
+        self.assertIn('<a class="chip on ab-alert" href="/?status=attention">Needs your review <span class="n">3</span></a>', page)
         body = page.split('<tbody id="ab-body">')[1].split("</tbody>")[0]
         for title in ("Failed", "Held", "Review"):
             self.assertIn(f'<span class="ab-group-t">{title}</span>', body)
@@ -166,7 +166,7 @@ class TestRender(unittest.TestCase):
             page = web.render(s)
             self.assertIn("nothing needs you.</p>", page)
             self.assertNotIn("ab-shelf", page)
-            self.assertNotIn('href="/?status=attention">Needs you', page.split('<div class="chips">')[1])
+            self.assertNotIn('href="/?status=attention">Needs your review', page.split('<div class="chips">')[1])
         finally:
             s.close()
             d.cleanup()
