@@ -7,6 +7,51 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.21.0-dev11] - 2026-11-16
+
+Matching, gated on a before/after regression run over the real library.
+
+### Added
+- **Match regression harness.** `docs/match-regression.py` grades every library row of a state
+  database with the matcher, against a frozen catalog (`docs/match-catalog-cache.json`), so two runs
+  see the same Audible data and the diff measures the code. Ingest rows and keyed part-bucket rows
+  can't be rebuilt from the database alone; they are skipped and each one is listed. The baseline
+  from 0.21.0-dev10 is `docs/match-baseline.csv`, and this release's run is `docs/match-after.csv`
+  (91 books graded, 32 skipped). Before: HIGH 66, MEDIUM 11, LOW 7, NONE 7. After: HIGH 66,
+  MEDIUM 10, LOW 8, NONE 7. No book changed ASIN. One changed tier, listed under Fixed.
+- **Matching fixtures** (`tests/test_match_fixtures.py`), written before the fixes: Dune vs Dune
+  Messiah, summarized and study-guide knockoffs, a German edition, a box set named for its series, a
+  series echo, an author-less folder. Cases that still fail are listed in `KNOWN_GAPS`, and the test
+  checks that they still fail. A fix has to promote its case out of that list.
+
+### Fixed
+- **A window-only match is never MEDIUM.** HIGH already refused a catalog title that is only one run
+  of words from the folder name (under 60% of it). Both MEDIUM branches allowed it, and MEDIUM is
+  one setting away from converting automatically. Such a match is now LOW. A foreign-language hit can
+  still reach MEDIUM, its cap. In the library, *Heir of Novron - Riyira Revelations Book 03* moves
+  from MEDIUM to LOW on the Dramatized Adaptation (B09P4BYYX5). That title covers 3 of the folder
+  name's 6 words, and its subtitle supplied the rest of the score.
+- **A dead ASIN pin gives up after 3 checks in a row.** An ASIN you set that has no catalog data
+  used to hold the book in review with the same message on every re-check, forever. Now, on the
+  third check in a row with no catalog data, the book is matched normally and graded normally. It
+  gets a note that the pin was set aside, and it is never converted automatically: you asked for one
+  edition, and the search may have found another. **Convert anyway** still works. The pin is still
+  tried first on every check, and the count goes back to zero when the pin works again, when you set
+  an ASIN (the same one again counts), or when you unlock it. The count is stored in the database
+  (new `units.pin_failures` column), so it survives a restart, and a re-check never resets it.
+- **Window coverage measures the same candidates as the score it describes.** It used to read the
+  subtitle even when the title floor score did not, because the title alone was under
+  `SUBTITLE_GATE`. This had no effect today, because `TITLE_FLOOR` and `SUBTITLE_GATE` are both 0.60.
+  The two no longer have to stay equal.
+
+### Measured, not changed
+- **The title/author blend.** `t_sim` (weighted Dice) and `a_sim` (SequenceMatcher with containment)
+  are on different scales. Across the 791 scored candidates with an author, `a_sim` is bimodal (330
+  are exactly 1.0, the 10th percentile is 0), while `t_sim` is spread out (mean 0.47, sd 0.29).
+  Four recalibrations changed no book's tier or pick: author scored with `title_sim`, 0.70/0.30,
+  0.75/0.25, and z-scoring `a_sim` onto `t_sim`'s distribution. The blend only ranks candidates and
+  sets the margin, and `grade()` gates each score on its own. The blend stays at 0.60/0.40.
+
 ## [0.21.0-dev10] - 2026-11-16
 
 Pipeline flow.
