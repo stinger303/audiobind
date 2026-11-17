@@ -173,6 +173,20 @@ def _tracker_body(raw: str) -> str:
     return raw
 
 
+#: DOWNLOAD_CLIENT's values -> the program's name as people know it
+DOWNLOAD_CLIENTS = {"qbittorrent": "qBittorrent", "deluge": "Deluge", "transmission": "Transmission",
+                    "rtorrent": "rTorrent"}
+
+
+def _download_client(raw: str) -> str:
+    """DOWNLOAD_CLIENT, checked at load ("" = qbittorrent). A typo stops the start: it must never
+    quietly send torrents to a different client than the one meant."""
+    raw = raw.strip().lower() or "qbittorrent"
+    if raw not in DOWNLOAD_CLIENTS:
+        raise RuntimeError(f"DOWNLOAD_CLIENT is not valid: use one of {', '.join(DOWNLOAD_CLIENTS)}")
+    return raw
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(_env(name, str(default)))
@@ -289,6 +303,19 @@ class Config:
     qbit_category: str = "audiobooks"
     qbit_user: str = ""
     qbit_pass: str = field(default="", repr=False)
+    #: which download client the watcher hands torrents to (DOWNLOAD_CLIENT). The default keeps every
+    #: existing install on qBittorrent; the category above (QBIT_CATEGORY) is used by every client -
+    #: as Deluge's label, Transmission's label or rTorrent's custom1. The other clients' settings are
+    #: empty by default and read only when their client is the one selected.
+    download_client: str = "qbittorrent"
+    deluge_url: str = ""
+    deluge_pass: str = field(default="", repr=False)
+    transmission_url: str = ""
+    transmission_user: str = ""
+    transmission_pass: str = field(default="", repr=False)
+    rtorrent_url: str = ""
+    rtorrent_user: str = ""
+    rtorrent_pass: str = field(default="", repr=False)
     #: how tracker requests leave the container. ``tracker_user_agent`` "" = ``audiobind/<version>``,
     #: "none" = no User-Agent at all; ``tracker_proxy`` "" = direct (it may hold credentials, so never in repr());
     #: ``tracker_home_ip`` set = the egress guard is armed and refuses to run from that IP.
@@ -375,6 +402,15 @@ class Config:
             qbit_category=_env("QBIT_CATEGORY", "audiobooks") or "audiobooks",
             qbit_user=_env("QBIT_USER", ""),
             qbit_pass=os.environ.get("QBIT_PASS", ""),  # a password keeps its spaces
+            download_client=_download_client(_env("DOWNLOAD_CLIENT", "")),
+            deluge_url=_env("DELUGE_URL", ""),
+            deluge_pass=os.environ.get("DELUGE_PASS", ""),
+            transmission_url=_env("TRANSMISSION_URL", ""),
+            transmission_user=_env("TRANSMISSION_USER", ""),
+            transmission_pass=os.environ.get("TRANSMISSION_PASS", ""),
+            rtorrent_url=_env("RTORRENT_URL", ""),
+            rtorrent_user=_env("RTORRENT_USER", ""),
+            rtorrent_pass=os.environ.get("RTORRENT_PASS", ""),
             tracker_user_agent=agent,
             tracker_proxy=_proxy_value(proxy, proxy_name),
             tracker_home_ip=_ip_value(home_name, home),
@@ -437,10 +473,16 @@ WATCHER_SETTING_KEYS = ("tracker_url", "tracker_session", "tracker_cookie_name",
                         "tracker_freeleech_param", "tracker_user_agent",
                         "qbit_url", "qbit_user", "qbit_pass", "qbit_category", "watch_max_incomplete")
 
-SETTING_KEYS = GENERAL_SETTING_KEYS + WATCHER_SETTING_KEYS
+#: the download-client choice and the non-qBittorrent clients' connection settings (Settings > Watcher >
+#: Download client). Like the watcher's connection keys they are never wiped by "Reset to defaults".
+#: The qBittorrent ones stay in WATCHER_SETTING_KEYS, where they have always been.
+CLIENT_SETTING_KEYS = ("download_client", "deluge_url", "deluge_pass", "transmission_url", "transmission_user",
+                       "transmission_pass", "rtorrent_url", "rtorrent_user", "rtorrent_pass")
+
+SETTING_KEYS = GENERAL_SETTING_KEYS + WATCHER_SETTING_KEYS + CLIENT_SETTING_KEYS
 
 #: settings whose value is never sent to a browser: not in a page, an attribute, a JSON answer or a log
-SECRET_SETTING_KEYS = frozenset({"tracker_session", "qbit_pass"})
+SECRET_SETTING_KEYS = frozenset({"tracker_session", "qbit_pass", "deluge_pass", "transmission_pass", "rtorrent_pass"})
 
 SETTING_MAP: dict[str, str] = {
     "auto_convert": "auto_convert",
@@ -460,6 +502,7 @@ SETTING_MAP: dict[str, str] = {
     "output_format": "output_format",
     # the watcher's connection settings: the key is the Config attribute's own name
     **{key: key for key in WATCHER_SETTING_KEYS},
+    **{key: key for key in CLIENT_SETTING_KEYS},
 }
 
 SETTING_TYPES: dict[str, type] = {
@@ -481,6 +524,7 @@ SETTING_TYPES: dict[str, type] = {
     # the watcher's connection settings: text (validated on save), except the one number
     **{key: str for key in WATCHER_SETTING_KEYS if key != "watch_max_incomplete"},
     "watch_max_incomplete": int,  # torrents still downloading at which a cycle adds none; 0 = off
+    **{key: str for key in CLIENT_SETTING_KEYS},
 }
 
 #: the values the settings page offers; an environment value outside these is added to the
@@ -493,6 +537,7 @@ SETTING_CHOICES: dict[str, tuple[str, ...]] = {
     "vip": ("NO", "YES"),
     "tracker_search_method": ("POST", "GET"),
     "tracker_search_encoding": ("json", "form"),
+    "download_client": tuple(DOWNLOAD_CLIENTS),
 }
 
 #: (min, max) for the numeric settings, widened to include the environment value
@@ -570,6 +615,28 @@ def _qbit_url(raw: str) -> str:
     return raw
 
 
+def _client_url(label: str, schemes: tuple[str, ...], example: str):
+    """A download client's address: one of ``schemes``, a host, no login, query or fragment ("" = unset)."""
+    from urllib.parse import urlsplit
+
+    def check(raw: str) -> str:
+        raw = raw.strip().rstrip("/")
+        if not raw:
+            return ""
+        try:
+            parts = urlsplit(raw)
+            port = parts.port
+            ok = parts.scheme in schemes and bool(parts.hostname) and parts.username is None \
+                and not parts.query and not parts.fragment and (parts.scheme != "scgi" or bool(port))
+        except ValueError:
+            ok = False
+        if not ok:
+            raise ValueError(f"{label}: use {example}, with no login in it")
+        return raw
+
+    return check
+
+
 def _from_startup_check(label: str, check, raw: str) -> str:
     """Run one of the start-up validators (which raise RuntimeError naming the variable) and turn
     its message into a page message naming the field instead."""
@@ -604,6 +671,18 @@ WATCHER_TEXT_CHECKS = {
     "qbit_user": ("qBittorrent user", lambda raw: _plain_text("qBittorrent user", raw, 200)),
     "qbit_pass": ("qBittorrent password", lambda raw: _plain_text("qBittorrent password", raw, 300, keep_spaces=True)),
     "qbit_category": ("qBittorrent category", lambda raw: _plain_text("qBittorrent category", raw, 200)),
+    # the other download clients (download_client itself is a select, checked against its choices)
+    "deluge_url": ("Deluge URL", _client_url("Deluge URL", ("http", "https"), "http://deluge:8112")),
+    "deluge_pass": ("Deluge password", lambda raw: _plain_text("Deluge password", raw, 300, keep_spaces=True)),
+    "transmission_url": ("Transmission URL", _client_url(
+        "Transmission URL", ("http", "https"), "http://transmission:9091/transmission/rpc")),
+    "transmission_user": ("Transmission user", lambda raw: _plain_text("Transmission user", raw, 200)),
+    "transmission_pass": ("Transmission password",
+                          lambda raw: _plain_text("Transmission password", raw, 300, keep_spaces=True)),
+    "rtorrent_url": ("rTorrent URL", _client_url(
+        "rTorrent URL", ("scgi", "http", "https"), "scgi://rtorrent:5000 or http://rutorrent/RPC2")),
+    "rtorrent_user": ("rTorrent user", lambda raw: _plain_text("rTorrent user", raw, 200)),
+    "rtorrent_pass": ("rTorrent password", lambda raw: _plain_text("rTorrent password", raw, 300, keep_spaces=True)),
 }
 
 
@@ -672,9 +751,19 @@ def setting_effective(key: str):
     return setting_env(key)
 
 
+def client_setting_env_defaults() -> dict[str, object]:
+    """The download-client settings as the container set them (secrets included - the server's own
+    view; web.public_settings() strips them). Kept apart from setting_env_defaults(), whose keys are
+    the settings that existed before multi-client support."""
+    return {key: str(getattr(CONFIG, key) or "") for key in CLIENT_SETTING_KEYS}
+
+
 def setting_env(key: str):
     """Return the env default for a setting key (live from CONFIG, never a hardcoded copy)."""
-    return setting_env_defaults().get(key)
+    defaults = setting_env_defaults()
+    if key in defaults:
+        return defaults[key]
+    return client_setting_env_defaults().get(key)
 
 
 def _config_to_setting(name: str) -> str | None:

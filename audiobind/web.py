@@ -36,6 +36,7 @@ from .advice import (
 )
 from .config import (
     CONFIG,
+    DOWNLOAD_CLIENTS,
     GENERAL_SETTING_KEYS,
     SECRET_SETTING_KEYS,
     SETTING_KEYS,
@@ -3869,6 +3870,18 @@ WATCH_FIELD_HINTS = {
     "qbit_category": ("The category new torrents get. Point its save path at Audiobind's ingest folder so finished "
                       "books are picked up."),
     "watch_max_incomplete": "Add nothing while this many torrents in that category are still downloading. 0 = off.",
+    "download_client": ("The program the watcher hands torrents to. qBittorrent unless you choose another; only the "
+                        "chosen client's settings below are used."),
+    "deluge_url": "Your Deluge web UI, e.g. http://deluge:8112. Its Label plugin must be enabled.",
+    "deluge_pass": "The Deluge web UI password. It is never shown again once saved.",
+    "transmission_url": ("Your Transmission RPC, e.g. http://transmission:9091/transmission/rpc (a bare "
+                         "http://host:9091 gets that path added). Transmission 3.0 or newer."),
+    "transmission_user": "Optional. Only when Transmission asks for a login.",
+    "transmission_pass": "Optional. It is never shown again once saved.",
+    "rtorrent_url": ("scgi://rtorrent:5000 for rTorrent's SCGI port, or http://rutorrent/RPC2 for an XML-RPC "
+                     "mount behind a web server. SCGI has no password: keep that port off any network you do not trust."),
+    "rtorrent_user": "Optional. Only for an http(s) /RPC2 mount that asks for a login.",
+    "rtorrent_pass": "Optional. It is never shown again once saved.",
 }
 
 
@@ -3892,7 +3905,7 @@ def _watch_wrap(key: str, label: str, hint: str, control: str, secret: bool = Fa
     )
 
 
-def _watch_text(key: str, label: str, placeholder: str = "", area: bool = False) -> str:
+def _watch_text(key: str, label: str, placeholder: str = "", area: bool = False, hint: str | None = None) -> str:
     value = _attr(str(setting_effective(key) or ""))
     if area:
         control = (f'<textarea class="ab-in" rows="3" data-initial="{value}" placeholder="{_attr(placeholder)}" '
@@ -3900,7 +3913,8 @@ def _watch_text(key: str, label: str, placeholder: str = "", area: bool = False)
     else:
         control = (f'<input type="text" class="ab-in" value="{value}" data-initial="{value}" '
                    f'placeholder="{_attr(placeholder)}" autocomplete="off" spellcheck="false">')
-    hint = EXPECTED_EGRESS_HINT if key == "expected_egress" else WATCH_FIELD_HINTS.get(key, "")
+    if hint is None:
+        hint = EXPECTED_EGRESS_HINT if key == "expected_egress" else WATCH_FIELD_HINTS.get(key, "")
     return _watch_wrap(key, label, hint, control)
 
 
@@ -3957,10 +3971,53 @@ def _watch_connection_fields() -> str:
         + _watch_text("tracker_freeleech_param", "Freeleech parameter")
         + _watch_text("tracker_user_agent", "User-Agent", "audiobind/<version>")
         + _watch_select("vip", "Premium member", VIP_HINT, titlecase=True)
-        + _watch_text("qbit_url", "qBittorrent URL", "http://qbittorrent:8080")
-        + _watch_text("qbit_user", "qBittorrent user")
-        + _watch_secret("qbit_pass", "qBittorrent password")
-        + _watch_text("qbit_category", "qBittorrent category", "audiobooks")
+        + _download_client_fields()
+    )
+
+
+def _download_client_fields() -> str:
+    """Settings > Watcher > Download client: which client, its connection, one Test connection. Every
+    client's fields are in the form (so each setting is there exactly once); the ones of the clients
+    not chosen are hidden, and the select shows them as it changes."""
+    kind = watcher_mod.client_kind()
+    options = "".join(
+        f'<option value="{_attr(key)}"{" selected" if key == kind else ""}>{_html(label)}</option>'
+        for key, label in DOWNLOAD_CLIENTS.items()
+    )
+    select = _watch_wrap(
+        "download_client", "Download client", WATCH_FIELD_HINTS["download_client"],
+        f'<select class="ab-in" data-initial="{_attr(kind)}" onchange="abDownloadClient(this.value)">{options}</select>')
+
+    def group(name: str, body: str) -> str:
+        return f'<div class="ab-dc" data-client="{name}"{"" if name == kind else " hidden"}>{body}</div>'
+
+    return (
+        '<div class="ab-acct-title">Download client</div>'
+        + select
+        + group("qbittorrent",
+                _watch_text("qbit_url", "qBittorrent URL", "http://qbittorrent:8080")
+                + _watch_text("qbit_user", "qBittorrent user")
+                + _watch_secret("qbit_pass", "qBittorrent password"))
+        + group("deluge",
+                _watch_text("deluge_url", "Deluge URL", "http://deluge:8112")
+                + _watch_secret("deluge_pass", "Deluge password"))
+        + group("transmission",
+                _watch_text("transmission_url", "Transmission URL", "http://transmission:9091/transmission/rpc")
+                + _watch_text("transmission_user", "Transmission user")
+                + _watch_secret("transmission_pass", "Transmission password"))
+        + group("rtorrent",
+                _watch_text("rtorrent_url", "rTorrent URL", "scgi://rtorrent:5000")
+                + _watch_text("rtorrent_user", "rTorrent user")
+                + _watch_secret("rtorrent_pass", "rTorrent password"))
+        + (_watch_text("qbit_category", "qBittorrent category", "audiobooks") if kind == "qbittorrent" else
+           _watch_text("qbit_category", f"{DOWNLOAD_CLIENTS[kind]} label", "audiobooks", hint=(
+               "The label new torrents get (rTorrent: custom1, which ruTorrent shows as the label). Have the "
+               "client move or save that label's downloads into Audiobind's ingest folder. Set in the container "
+               "as QBIT_CATEGORY, whichever client is chosen.")))
+        + '<div class="ab-acct-row">'
+        '<button class="btn" type="button" id="ab-dc-test" onclick="abWatchTest(\'qbit\', \'ab-dc-test-fb\')">'
+        "Test connection</button>"
+        '<span class="ab-fb" id="ab-dc-test-fb" role="status"></span></div>'
     )
 
 
@@ -3990,7 +4047,8 @@ def _watch_test_and_save() -> str:
         '<div class="ab-acct-who">Saves what you typed, then makes one request with it. Nothing about the test '
         "is kept.</div>"
         '<div class="ab-acct-row">'
-        '<button class="btn" type="button" id="ab-watch-test-qbit" onclick="abWatchTest(\'qbit\')">Test qBittorrent</button>'
+        '<button class="btn" type="button" id="ab-watch-test-qbit" onclick="abWatchTest(\'qbit\')">'
+        f"Test {_html(watcher_mod.client_label())}</button>"
         '<button class="btn" type="button" id="ab-watch-test-tracker" onclick="abWatchTest(\'tracker\')">Test tracker</button>'
         '<span class="ab-fb" id="ab-watch-test-fb" role="status"></span></div>'
     )
@@ -4020,8 +4078,11 @@ def render_watcher_section(state) -> str:
         state_html = '<span class="warn">Disabled</span>'
         warn = (
             '<div class="ab-hintbox ab-watch-warn" role="alert"><b>The watcher is disabled.</b> '
-            f"{_html(s['reason'])}. Set the qBittorrent user and password below (or QBIT_USER and QBIT_PASS "
-            "in the container) and save.</div>"
+            f"{_html(s['reason'])}. "
+            + ("Set the qBittorrent user and password below (or QBIT_USER and QBIT_PASS in the container) and save."
+               if s.get("download_client", "qbittorrent") == "qbittorrent" else
+               "Fill in the download client's settings below (or in the container) and save.")
+            + "</div>"
         )
     elif s["paused"]:
         state_html = '<span class="warn">Paused</span> &#8212; no cycle runs until you resume it'
@@ -4095,8 +4156,12 @@ def render_watcher_section(state) -> str:
         ("Download limit", (f"adds nothing while {int(s['max_incomplete'])} torrent(s) are still downloading"
                             if s["max_incomplete"] else "off")),
         ("Tracker", f"{_html(s['tracker_host'])}" if s.get("tracker_host") else DASH),
-        ("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(s['qbit_category'])}</code> &#183; "
-                        + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>')),
+        (("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(s['qbit_category'])}</code> &#183; "
+                         + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>'))
+         if s.get("download_client", "qbittorrent") == "qbittorrent" else
+         (_html(s["client_label"]), (f"{_html(urlsplit(s['client_url']).netloc or s['client_url'])}" if s["client_url"]
+                                     else '<span class="warn">no address set</span>')
+                                    + f" &#183; label <code>{_html(s['qbit_category'])}</code>")),
         ("Connection", sees),
         ("Guard", guard_html),
         ("Last cycle", last_html),
@@ -4369,11 +4434,16 @@ function abResetSetting(key) {
     .catch(() => { if (fb) { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach the daemon'; } });
 }
 // ---- Settings > Watcher: Test qBittorrent / Test tracker - save what is typed, then one request
-function abWatchTest(target) {
-  const fb = document.getElementById('ab-watch-test-fb');
+// ---- Settings > Watcher > Download client: show only the chosen client's fields
+function abDownloadClient(kind) {
+  document.querySelectorAll('.ab-dc[data-client]').forEach(g => { g.hidden = g.dataset.client !== kind; });
+}
+function abWatchTest(target, fbId) {
+  fbId = fbId || 'ab-watch-test-fb';
+  const fb = document.getElementById(fbId);
   fb.className = 'ab-fb';
   fb.textContent = 'saving, then testing...';
-  abSaveSettings('ab-watch-test-fb', true).then(saved => {
+  abSaveSettings(fbId, true).then(saved => {
     if (!saved) return;
     fb.className = 'ab-fb';
     fb.textContent = 'testing...';
@@ -6796,7 +6866,8 @@ class Handler(BaseHTTPRequestHandler):
         # Clear: a secret's "Clear" box - store an empty value, so no session / password is used
         clear = payload.get("clear") or []
         if not isinstance(clear, list) or any(k not in SECRET_SETTING_KEYS for k in clear):
-            self._send(400, b'{"error":"only the session and the qBittorrent password can be cleared"}', "application/json")
+            self._send(400, b'{"error":"only the session and the download client passwords can be cleared"}',
+                       "application/json")
             return
 
         errors = []
@@ -6805,7 +6876,7 @@ class Handler(BaseHTTPRequestHandler):
         # selects: one of the offered choices (which include an unusual env value)
         for key, fold in (("auto_convert", str.upper), ("output_format", str.upper), ("audio_bitrate", str.lower),
                           ("region", str.lower), ("vip", str.upper), ("tracker_search_method", str.upper),
-                          ("tracker_search_encoding", str.lower)):
+                          ("tracker_search_encoding", str.lower), ("download_client", str.lower)):
             if key not in settings:
                 continue
             choices = setting_choices(key)
