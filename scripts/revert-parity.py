@@ -31,6 +31,11 @@ FEATURES: dict[str, tuple[str, str, str]] = {
         "clients: base",
         "tests: conformance",
     ),
+    "3": (
+        "allowed-IP updater",
+        "parity: ip-updater research",
+        "parity: ip-updater rollback",
+    ),
 }
 
 #: what to run afterwards; the same gates every parity commit had to pass
