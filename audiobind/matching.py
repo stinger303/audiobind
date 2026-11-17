@@ -816,7 +816,13 @@ def grade(match: Match) -> str:
 
 
 def runtime_ok(local_hours: float, catalog_hours: float, tolerance: float) -> bool:
-    """False when the file is a different edition (radio drama, abridged, omnibus)."""
+    """False when the file is a different edition (radio drama, abridged, omnibus).
+
+    A catalogue answer with no runtime is **not** agreement: nothing corroborates the edition, so
+    the book is held for a person instead of written unseen. (``is_knockoff`` only flags a
+    zero-runtime candidate when a real edition sits beside it, so a lone no-runtime answer used to
+    reach HIGH and convert with the one guard against a wrong edition silently disabled.)
+    """
     if catalog_hours <= 0:
-        return True
+        return False
     return abs(local_hours - catalog_hours) / catalog_hours <= tolerance

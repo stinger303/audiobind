@@ -27,6 +27,7 @@
     "atomic_guide": {"asin": "B07STUDYGD", "title": "Atomic Habits", "subtitle": "Study Guide", "authors": [{"name": "James Clear"}], "runtime_length_min": 52, "language": "english"},
     "tidy": {"asin": "B0DPR9BSLT", "title": "The Life-Changing Magic of Tidying Up", "subtitle": "The Japanese Art of Decluttering and Organizing", "authors": [{"name": "Marie Kondo"}], "runtime_length_min": 346, "language": "english"},
     "tidy_review": {"asin": "B0HQF6JZ5S", "title": "[Review] The Life-Changing Magic of Tidying Up (Marie Kondō) Summarized.", "authors": [], "runtime_length_min": 0, "language": "english"},
+    "hardway_no_runtime": {"asin": "B00RUNTIME0", "title": "The Hard Way", "subtitle": "Jack Reacher, Book 10", "authors": [{"name": "Lee Child"}], "runtime_length_min": 0, "language": "english"},
     "moneyball_en": {"asin": "B005EHN61O", "title": "Moneyball", "subtitle": "The Art of Winning an Unfair Game", "authors": [{"name": "Michael Lewis"}], "runtime_length_min": 626, "language": "english"},
     "moneyball_de": {"asin": "B0DEMONEYB", "title": "Moneyball", "subtitle": "Die Kunst, ein unfaires Spiel zu gewinnen", "authors": [{"name": "Michael Lewis"}], "runtime_length_min": 640, "language": "german"},
     "institute_en": {"asin": "B0SYN00010", "title": "The Institute", "subtitle": "A Novel", "authors": [{"name": "Stephen King"}], "runtime_length_min": 1132, "language": "english"},
@@ -255,6 +256,10 @@
      "folder": "Private Down Under (2013) 96K by chapter", "files": 114, "tags": ["James Patterson", "Private Down Under"],
      "catalog": ["pdu", "private_games"],
      "expect": {"asin": "B00LTZU74E", "min_tier": "MEDIUM"},
-     "why": "a weak torrent name rescued by the files' own tags"}
+     "why": "a weak torrent name rescued by the files' own tags"},
+    {"name": "unknown_runtime_lone_candidate", "classes": ["runtime", "lone-candidate", "catalog-junk"],
+     "folder": "Lee Child/10 The Hard Way", "hours": 11.66, "catalog": ["hardway_no_runtime"],
+     "expect": {"asin": "B00RUNTIME0", "decision": "hold"},
+     "why": "the only catalog answer carries no runtime: nothing corroborates the edition, so it may be suggested but never written unseen"}
   ]
 }

@@ -1075,6 +1075,10 @@ def evaluate_case(case: dict, products: dict) -> Outcome:
         problems.append(f"tier {out.tier}, want at most {exp['max_tier']}")
     if "min_tier" in exp and TIER_RANK[out.tier] < TIER_RANK[exp["min_tier"]]:
         problems.append(f"tier {out.tier}, want at least {exp['min_tier']}")
+    #: the tier says how sure the matcher is; the decision says whether it writes. A case that must
+    #: never convert (unknown runtime, unconfirmed edition) can only be written as a decision.
+    if "decision" in exp and out.decision != exp["decision"]:
+        problems.append(f"decision {out.decision}, want {exp['decision']}")
     if exp.get("in_pool") and not out.in_pool:
         problems.append("labelled edition never reached the candidate pool")
     out.expect_problems = problems

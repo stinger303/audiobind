@@ -161,8 +161,11 @@ Codecs are not in the corpus. A single `.m4b`/`.m4a` is taken as AAC (remux), an
 * **`would_hold_wrong`**: the labelled edition was picked and the runtime check held it anyway.
 * **held a wrong pick**: the runtime check stopped a wrong HIGH/MEDIUM pick. It is the net working.
 * **unseen writes the labels cannot grade**: a convert on an out-of-scope or `not:` row; listed.
-* **runtime unknown**: either side is 0. `runtime_ok` passes these silently, so they are listed, and
-  an unseen write with an unknown runtime fails the gate.
+* **runtime unknown**: either side is 0. `runtime_ok` treats an unknown as **not** agreement, so such
+  a book is held, never written unseen; the counter still lists them (and an unseen write with an
+  unknown runtime fails the gate, which is now unreachable by construction).
+  `adv:unknown_runtime_lone_candidate` is the case that keeps it that way: a lone no-runtime answer
+  grades HIGH and must still be held.
 * **if AUTO_CONVERT=medium**: wrong picks that would be written at the medium setting.
 * **F's reach**: graded rows whose pool holds a wrong candidate inside the tolerance. F can only ever
   fire there; a bad pick anywhere else is held by the runtime check.

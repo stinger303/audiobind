@@ -47,8 +47,9 @@ class TestRuntimeCheck(unittest.TestCase):
         self.assertFalse(runtime_ok(9.74, 3.45, 0.25))  # radio drama vs novel
         self.assertFalse(runtime_ok(12.21, 5.98, 0.25))
 
-    def test_unknown_catalog_runtime_passes(self):
-        self.assertTrue(runtime_ok(9.0, 0.0, 0.25))
+    def test_unknown_catalog_runtime_is_not_agreement(self):
+        # no catalogue runtime means "not confirmed": the book is held, never written unseen
+        self.assertFalse(runtime_ok(9.0, 0.0, 0.25))
 
 
 if __name__ == "__main__":

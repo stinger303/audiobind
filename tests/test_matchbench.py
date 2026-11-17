@@ -381,7 +381,7 @@ class TestDecision(unittest.TestCase):
         self.assertEqual(bench.decide(unit, Match(product=p), "MEDIUM", 10.0)[0], "review")  # AUTO_CONVERT=high
         unknown = Product(asin="B2", title="T", hours=0.0)
         decision, _, state, _ = bench.decide(unit, Match(product=unknown), "HIGH", 10.0)
-        self.assertEqual((decision, state), ("convert", "unknown"))  # runtime_ok passes it: the bench says so
+        self.assertEqual((decision, state), ("hold", "unknown"))  # no runtime is not agreement
 
     def test_an_unseen_write_with_unknown_runtime_fails_the_gate(self):
         run, _ = bench.run_bench()
