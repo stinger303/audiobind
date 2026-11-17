@@ -179,6 +179,21 @@ class TestTheInstrumentCatchesFailures(unittest.TestCase):
             self.assertFalse(ok, message)
             self.assertTrue("regression" in message or "cannot waive" in message, message)
 
+    def test_an_embedded_retry_that_always_wins_is_caught(self):
+        """The same-tier branch of _embedded_is_better: a tags match that is worse, or better by less
+        than EMBEDDED_SCORE_EDGE, must not replace the folder's. Make it always win: both cases fail."""
+        from audiobind import pipeline
+
+        with mock.patch.object(pipeline, "_embedded_is_better", lambda e, f: True):
+            run, g, _ = _run()
+        for case in ("adv:embedded_edge_just_under", "adv:embedded_worse_never_replaces"):
+            self.assertTrue(any(f.startswith(f"adversarial {case}:") and "replaced the folder's" in f
+                                for f in g.failures), (case, g.failures))
+        with mock.patch.object(pipeline, "_embedded_is_better", lambda e, f: False):
+            run, g, _ = _run()
+        self.assertTrue(any(f.startswith("adversarial adv:embedded_edge_just_over:") and "did not replace" in f
+                            for f in g.failures), g.failures)
+
     def test_a_fixed_known_defect_must_leave_the_list(self):
         run, _ = bench.run_bench()
         right = next(o for o in run.corpus if o.verdict == "right")

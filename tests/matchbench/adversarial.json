@@ -71,7 +71,12 @@
     "subtle_en": {"asin": "B01I28NFEE", "title": "The Subtle Art of Not Giving a F*ck", "subtitle": "A Counterintuitive Approach to Living a Good Life", "authors": [{"name": "Mark Manson"}], "runtime_length_min": 317, "language": "english"},
     "subtle_gu": {"asin": "9390351596", "title": "The Subtle Art Of Not Giving A F*ck (Gujarati)", "authors": [{"name": "Mark Manson"}, {"name": "Jatin Vora"}], "runtime_length_min": 448, "language": "english"},
     "pdu": {"asin": "B00LTZU74E", "title": "Private Down Under", "authors": [{"name": "James Patterson"}, {"name": "Michael White"}], "runtime_length_min": 410, "language": "english"},
-    "private_games": {"asin": "B006ZOEYEI", "title": "Private Games", "authors": [{"name": "James Patterson"}, {"name": "Mark Sullivan"}], "runtime_length_min": 578, "language": "english"}
+    "private_games": {"asin": "B006ZOEYEI", "title": "Private Games", "authors": [{"name": "James Patterson"}, {"name": "Mark Sullivan"}], "runtime_length_min": 578, "language": "english"},
+    "edge_hc_deep": {"asin": "B0EMB00001", "title": "Harrow Coast in the Deep", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"},
+    "edge_hc_north": {"asin": "B0EMB00002", "title": "The Harrow Coast of the North", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"},
+    "edge_hc_lantern": {"asin": "B0EMB00003", "title": "Harrow Coast Lantern Rising", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"},
+    "edge_sgt_rising": {"asin": "B0EMB00004", "title": "Salt Grey Tide Rising", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"},
+    "edge_sgt_north": {"asin": "B0EMB00005", "title": "The Salt Grey Tide of the North", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"}
   },
   "cases": [
     {"name": "production_plain_beats_dramatization", "classes": ["production"],
@@ -272,6 +277,18 @@
     {"name": "pin_abandoned_never_converts", "classes": ["pin"], "folder": "Lee Child/Past Tense",
      "hours": 12.85, "catalog": ["past_tense"], "pin": "B0DEADPIN1", "pin_failures": 2,
      "expect": {"asin": "B07DK1BBS6", "must_pick": true, "decision": "review"},
-     "why": "dead on the third check: the pin stops blocking and a suggestion appears, but a match made without the operator's ASIN is never written unseen (HIGH and still review)"}
+     "why": "dead on the third check: the pin stops blocking and a suggestion appears, but a match made without the operator's ASIN is never written unseen (HIGH and still review)"},
+    {"name": "embedded_edge_just_over", "classes": ["embedded-tags", "no-author"], "ingest": true,
+     "folder": "Harrow Coast", "tags": ["", "Salt Grey Tide"], "catalog": ["edge_hc_deep", "edge_sgt_rising"],
+     "expect": {"asin": "B0EMB00004", "must_pick": true, "embedded": true, "max_tier": "LOW", "decision": "review"},
+     "why": "both readings are LOW (title-only, under 0.96): the folder's lone candidate scores 0.741, the tags' 0.857; +0.116 clears EMBEDDED_SCORE_EDGE (0.10), so the tags' match replaces it. At an edge of 0.15 it would not"},
+    {"name": "embedded_edge_just_under", "classes": ["embedded-tags", "no-author"], "ingest": true,
+     "folder": "The Harrow Coast", "tags": ["", "Salt Grey Tide"], "catalog": ["edge_hc_north", "edge_sgt_rising"],
+     "expect": {"asin": "B0EMB00002", "must_pick": true, "embedded": false, "max_tier": "LOW", "decision": "review"},
+     "why": "both readings LOW: folder 0.759, tags 0.857; +0.098 is short of EMBEDDED_SCORE_EDGE (0.10), so the folder's match stands. At an edge of 0.05 the tags would win"},
+    {"name": "embedded_worse_never_replaces", "classes": ["embedded-tags", "no-author"], "ingest": true,
+     "folder": "Harrow Coast Lantern", "tags": ["", "The Salt Grey Tide"], "catalog": ["edge_hc_lantern", "edge_sgt_north"],
+     "expect": {"asin": "B0EMB00003", "must_pick": true, "embedded": false, "max_tier": "LOW", "decision": "review"},
+     "why": "both readings LOW: folder 0.857, tags 0.821. A worse tag match never replaces a better folder match, whatever the edge (it holds at EMBEDDED_SCORE_EDGE 0.0 too): _embedded_is_better compares in one direction only"}
   ]
 }

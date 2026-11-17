@@ -27,7 +27,7 @@ python -m tests.matchbench calibrate    # how well the synthetic catalog model m
 | --- | --- | --- |
 | `corpus.csv` | every row of the owner's library (123): key, shape, files, hours, the DB's tier/ASIN/pin | `import` |
 | `labels.csv` | one line per corpus row: the label, its `label_source`, and its evidence tuple | a person (hand columns); `labels --write` (evidence columns) |
-| `adversarial.json` | 42 synthetic cases for the failure classes we have paid for, with a catalog model | a person |
+| `adversarial.json` | 49 synthetic cases for the failure classes we have paid for, with a catalog model | a person |
 | `known_defects.csv` | every wrong answer on the real corpus, named; each must keep reproducing | a person |
 | `baseline.csv` | the accepted per-row result and decision, each row with the reason it was accepted | `accept` |
 | `mutations.csv` | the recorded mutation profile: what moving each constant does | `mutate --record` |
@@ -179,6 +179,16 @@ the baseline diff will show it.
 
 Rows whose ingest retry could not be reproduced (embedded tags were never recorded) are listed as
 "decided on the folder reading only": the retry could still replace their NONE/LOW in the real app.
+The tags cannot be rebuilt from the state DB: the app stores the tag text only when the tags *won*
+(`name_source = embedded`, then `query_title`/`query_author` are the tags). When they lose, the
+only trace is a note naming the retry's pick; when the retry finds nothing, there is no trace. Of
+the 7 such rows today, 3 are pinned (a live pin skips the search, so the app never ran the retry),
+2 were MEDIUM in the DB (the retry only runs on NONE/LOW), and 2 (`22 Midnight Line`, `In Too
+Deep`) recorded LOW with the same ASIN the bench picks: the retry ran and did not replace them.
+Only the files themselves (or the rip's `metadata.json`) could supply the tag text.
+
+An adversarial case can say which reading must win with `"embedded": true|false`: the retry's
+match must (or must not) replace the folder's.
 
 ## Mutation tests: which constants are load-bearing
 
@@ -205,7 +215,10 @@ For each value it prints the number of flipped rows (real/adversarial), bench er
   paid for at all, and at 0.70 it makes 19 fewer searches per run than at 0.90 with every decision
   identical. Worth knowing before anyone "simplifies" it away;
 * **NO EFFECT on corpus or adversarial**: no outcome *and* no search change — dead code or a missing
-  test case. Either is worth knowing. Currently `EMBEDDED_SCORE_EDGE` and `PIN_GIVE_UP_AFTER`.
+  test case. Either is worth knowing. Currently none: `PIN_GIVE_UP_AFTER` became load-bearing when
+  the bench learnt to model a hand-set ASIN, and `EMBEDDED_SCORE_EDGE` when three cases put the
+  folder and tag readings both at LOW, 0.116 and 0.098 apart (`adv:embedded_edge_just_over` /
+  `_just_under`), plus one where the tags are worse and must never win at any edge.
 
 A decision-only sweep cannot see a cost guard, so the search counter exists to stop the sweep calling
 one dead. `searches` counts calls to `catalog.search` per row (both the frozen-corpus and the model

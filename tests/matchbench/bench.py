@@ -1124,6 +1124,11 @@ def evaluate_case(case: dict, products: dict) -> Outcome:
     #: dead pin fell through to a search that could offer (and convert) a different edition
     if exp.get("no_pick") and out.pick:
         problems.append(f"picked {out.pick} while the pinned ASIN was unresolved")
+    #: whether the ingest retry's embedded-tag match replaced the folder's (pipeline._embedded_is_better):
+    #: the only way to say "the tags must NOT win here" when both readings find something
+    if "embedded" in exp and ("embedded-tags" in out.flags) != bool(exp["embedded"]):
+        problems.append("the embedded-tag match replaced the folder's" if exp["embedded"] is False
+                        else "the embedded-tag match did not replace the folder's")
     out.expect_problems = problems
     return out
 
