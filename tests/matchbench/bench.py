@@ -1230,7 +1230,8 @@ def run_bench(catalog_data: dict | None = None, fetch=None, labels_path: Path = 
     hours = {r["key"]: float(r.get("hours") or 0) for r in corpus}
     for o in real:
         o.traps = count_traps(o, hours.get(o.key, 0.0), index, tolerance)
-    lc = check_labels(corpus, labels, label_rows, units_by_key, index)
+    # read at call time, not as check_labels' default (bound once at import): `mutate` moves it
+    lc = check_labels(corpus, labels, label_rows, units_by_key, index, tolerance=LABEL_RUNTIME_TOLERANCE)
     run = Run(real, adv, problems, list(frozen.misses), len(frozen.data), len(frozen.used), defects, gaps,
               lc, tolerance, where, tuple(sorted(config.effective_auto_tiers(), key=lambda t: -TIER_RANK[t])))
     return run, frozen
@@ -1911,19 +1912,27 @@ KNOBS: tuple[Knob, ...] = (
     Knob("CORROBORATION_WINDOW", 0.10, (0.0, 0.05, 0.08, 0.12, 0.20, 0.40), "module", matching, "CORROBORATION_WINDOW"),
     Knob("CORROBORATION_RUNTIME_TOLERANCE", 0.05, (0.0, 0.02, 0.04, 0.08, 0.15, 0.30), "module", matching,
          "CORROBORATION_RUNTIME_TOLERANCE"),
+    # the bench's own label tolerance (stage L), not a matcher constant: it moves no decision, only how
+    # many labels their own runtime evidence contradicts (each one fails the gate). 0.15 is the decision
+    # tolerance, the value it must never be confused with
+    Knob("LABEL_RUNTIME_TOLERANCE", 0.35, (0.15, 0.20, 0.25, 0.30, 0.45), "module", sys.modules[__name__],
+         "LABEL_RUNTIME_TOLERANCE"),
 )
 MUTATION_FIELDS = ["constant", "default", "value", "real_flips", "adv_flips", "errors", "pick", "trusted_pick",
                    "wrong_high", "would_convert_wrong", "would_hold_wrong", "adv_spec", "searches",
-                   "fingerprint", "examples"]
+                   "label_contradicted", "fingerprint", "examples"]
 
 
 def _summary(run: Run) -> dict:
     real, adv = score(run.corpus), score(run.adversarial)
     trusted = score(run.corpus, lambda o: o.label.src in TRUSTED)
+    lc = run.labels
     return {"pick": real.right, "trusted_pick": trusted.right, "wrong_high": real.wrong["HIGH"],
             "would_convert_wrong": real.convert_wrong, "would_hold_wrong": real.hold_wrong,
             "adv_spec": sum(1 for o in run.adversarial if not o.expect_problems),
             "searches": sum(o.searches for o in run.corpus) + sum(o.searches for o in run.adversarial),
+            # corpus rows whose label its own evidence contradicts (stage L; each fails the gate)
+            "label_contradicted": sum(1 for ev in lc.evidence.values() if ev.verdict == "contradicted") if lc else 0,
             "errors": real.errors + adv.errors}
 
 
@@ -1962,17 +1971,23 @@ def mutation_profile(only: str = "", data: dict | None = None) -> tuple[list[dic
                 "constant": knob.name, "default": f"{knob.default:g}", "value": f"{value:g}",
                 "real_flips": str(len(real_flips)), "adv_flips": str(len(adv_flips)), "errors": str(s["errors"]),
                 **{k: str(s[k]) for k in ("pick", "trusted_pick", "wrong_high", "would_convert_wrong",
-                                          "would_hold_wrong", "adv_spec", "searches")},
+                                          "would_hold_wrong", "adv_spec", "searches", "label_contradicted")},
                 "fingerprint": hashlib.sha1("\n".join(flips).encode()).hexdigest()[:10] if flips else "",
                 "examples": ";".join(flips[:3]),
             })
     return rows, base, problems
 
 
-def classify(knob_rows: list[dict], default: float, base_searches: int | None = None) -> str:
-    """load-bearing / one-sided / slack / cost-only / NO EFFECT, from the rows of one constant."""
+def classify(knob_rows: list[dict], default: float, base_searches: int | None = None,
+             base_contradicted: int | None = None) -> str:
+    """load-bearing / one-sided / slack / cost-only / NO EFFECT, from the rows of one constant.
+
+    A change in how many labels are contradicted counts as an outcome: it fails the gate as surely as
+    a decision flip (LABEL_RUNTIME_TOLERANCE moves nothing else)."""
     def moved(r):
-        return r["real_flips"] != "0" or r["adv_flips"] != "0" or r["errors"] != "0"
+        labels_moved = (base_contradicted is not None and r.get("label_contradicted", "") != ""
+                        and int(r["label_contradicted"]) != base_contradicted)
+        return r["real_flips"] != "0" or r["adv_flips"] != "0" or r["errors"] != "0" or labels_moved
     below = [r for r in knob_rows if float(r["value"]) < default]
     above = [r for r in knob_rows if float(r["value"]) > default]
     near_b = below[-1] if below else None
@@ -2005,9 +2020,9 @@ def mutate(only: str = "", record: bool = False, check: bool = False) -> tuple[s
     lines = [f"MUTATE  audiobind {__version__}  ·  base: pick {base['pick']}  trusted {base['trusted_pick']}  "
              f"wrong@HIGH {base['wrong_high']}  would_convert_wrong {base['would_convert_wrong']}  "
              f"would_hold_wrong {base['would_hold_wrong']}  adversarial spec {base['adv_spec']}  "
-             f"searches {base['searches']}", ""]
+             f"searches {base['searches']}  labels contradicted {base['label_contradicted']}", ""]
     lines.append(f"  {'constant':<34}{'value':>7}  flips(real/adv)  err  pick  trust  w@H  conv_wrong  "
-                 "hold_wrong  adv_spec  search  examples")
+                 "hold_wrong  adv_spec  search  L-contra  examples")
     verdicts = []
     for knob in KNOBS:
         krows = [r for r in rows if r["constant"] == knob.name]
@@ -2021,8 +2036,8 @@ def mutate(only: str = "", record: bool = False, check: bool = False) -> tuple[s
                          f"{r['real_flips']:>7}/{r['adv_flips']:<7}  {r['errors']:>3}  {d('pick'):>4}  "
                          f"{d('trusted_pick'):>5}  {d('wrong_high'):>3}  {d('would_convert_wrong'):>10}  "
                          f"{d('would_hold_wrong'):>10}  {d('adv_spec'):>8}  {d('searches'):>6}  "
-                         f"{r['examples'][:85]}")
-        verdict = classify(krows, knob.default, int(base["searches"]))
+                         f"{d('label_contradicted'):>8}  {r['examples'][:85]}")
+        verdict = classify(krows, knob.default, int(base["searches"]), int(base["label_contradicted"]))
         verdicts.append((knob.name, verdict))
         lines.append(f"  -> {knob.name}: {verdict}")
         lines.append("")

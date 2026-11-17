@@ -229,6 +229,15 @@ A decision-only sweep cannot see a cost guard, so the search counter exists to s
 one dead. `searches` counts calls to `catalog.search` per row (both the frozen-corpus and the model
 path); it is recorded in `mutations.csv` like any other column.
 
+`LABEL_RUNTIME_TOLERANCE` is swept too, although it is the bench's own constant: it moves no
+decision, only how many labels their own runtime contradicts (the `label_contradicted` column, which
+counts as an outcome for the classification, because each one fails the gate). Measured at 0.22.0-dev5:
+the largest label runtime gap on the corpus is −21 % (Echo Burning, db-auto), so the count is 6 at
+0.15, 1 at 0.20 and 0 from 0.25 up. At 0.15, the decision tolerance, the 6 would include the owner's
+pin on The Power of Habit (+17 %). That is why the two tolerances must stay separate. The corpus cannot choose
+between 0.25 and 0.45. The upper side is held by `test_a_contradicted_label_in_labels_csv_fails_the_gate_with_the_numbers`,
+whose −38 % label must stay contradicted.
+
 grade()'s gates are inline literals, so they are moved through `grade_with`, a mirror that a test
 checks against `grade()` on the grid. Before any gate is moved, `mutate` also checks that the mirror
 reproduces the corpus exactly. The runtime tolerance is moved through the settings path

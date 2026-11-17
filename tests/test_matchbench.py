@@ -556,6 +556,19 @@ class TestMutate(unittest.TestCase):
         self.assertTrue(bench.classify([row(0.5, 1), row(0.7, 2)], 0.6).startswith("load-bearing"))
         self.assertTrue(bench.classify([row(0.4, 1), row(0.5, 0), row(0.7, 0), row(0.8, 1)], 0.6).startswith("slack"))
         self.assertTrue(bench.classify([row(0.5, 0), row(0.7, 1)], 0.6).startswith("one-sided"))
+        # a label-only constant: no decision flips, but labels become contradicted - an outcome, not NO EFFECT
+        labelled = [dict(row(0.2, 0), label_contradicted="6"), dict(row(0.5, 0), label_contradicted="0")]
+        self.assertTrue(bench.classify(labelled, 0.35, 425, 0).startswith("one-sided: only lowering"))
+        self.assertTrue(bench.classify(labelled, 0.35).startswith("NO EFFECT"))  # without the base: blind
+
+    def test_the_label_tolerance_knob_reaches_stage_l(self):
+        """check_labels' tolerance default is bound at import; the run must read the module value."""
+        knob = next(k for k in bench.KNOBS if k.name == "LABEL_RUNTIME_TOLERANCE")
+        with knob.set(0.15):
+            run, _ = bench.run_bench()
+        self.assertEqual(bench.LABEL_RUNTIME_TOLERANCE, 0.35)
+        self.assertGreater(bench._summary(run)["label_contradicted"], 0)
+        self.assertTrue(any(f.startswith("L contradiction") for f in bench.gate(run, bench.load_baseline()).failures))
 
     def test_the_recorded_profile_covers_every_knob(self):
         with open(bench.MUTATIONS, newline="", encoding="utf-8") as fh:
