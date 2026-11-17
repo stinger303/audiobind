@@ -145,6 +145,11 @@ def make_tracker() -> tracker.TrackerClient:
                                  proxy=_setting("tracker_proxy"), user_agent=_setting("tracker_user_agent"))
 
 
+def make_ip_transport():
+    """The MAM IP endpoints' transport (ipupdate.MAM_URLS only), through TRACKER_PROXY."""
+    return ipupdate.urllib_transport(_setting("tracker_proxy"), tracker.resolve_user_agent(_setting("tracker_user_agent")))
+
+
 def make_qbit() -> qbit.QbitClient:
     return qbit.QbitClient(qbit_url(), _setting("qbit_user"), _setting("qbit_pass"))
 
@@ -269,6 +274,30 @@ def _ipupdate_record(state) -> dict:
     return dict(rec) if isinstance(rec, dict) else {}
 
 
+def _mam_session() -> str:
+    """The session cookie when the configured tracker is MyAnonamouse, else "": the MAM IP calls
+    are never made, and the cookie never sent, anywhere else."""
+    return _setting("tracker_session") if ipupdate.is_mam(_setting("tracker_url")) else ""
+
+
+def _judge_drift(rec: dict, probed: str, probe_error: str, now: float) -> tuple[str, str, str, str]:
+    """(outcome, reason, observed, source). ``decide()`` on the egress probe's answer first. Only
+    when that says ``update`` (so the probe worked and the address is not the home IP) and a MAM
+    session is configured is MAM's ``jsonIp.php`` asked, and ``decide()`` runs again on MAM's answer:
+    the IP MAM itself sees is the better source of truth. No session: the probe's answer stands."""
+    expected, home, last = _setting("tracker_expected_egress_ip"), _setting("tracker_home_ip"), rec.get("last_updated_at")
+    outcome, why = ipupdate.decide(probed, expected, home, last, now, probe_error=probe_error)
+    session = _mam_session()
+    if outcome != ipupdate.UPDATE or not session:
+        return outcome, why, probed, "egress probe"
+    try:
+        seen, err = ipupdate.read_ip(session, make_ip_transport()), ""
+    except ipupdate.UpdateError as exc:
+        seen, err = "", f"MAM's jsonIp.php - {exc}"
+    outcome, why = ipupdate.decide(seen, expected, home, last, now, probe_error=err)
+    return outcome, why, seen, "MAM"
+
+
 def use_current_ip(state) -> tuple[bool, str]:
     """Settings > Watcher "Use the current IP": once the owner has changed the allowed IP on the
     tracker's website, make the observed egress IP Audiobind's allowlist pin too. One fresh probe,
@@ -284,8 +313,7 @@ def use_current_ip(state) -> tuple[bool, str]:
     old = _setting("tracker_expected_egress_ip")
     rec = _ipupdate_record(state)
     now = time.time()
-    outcome, reason = ipupdate.decide(observed, old, _setting("tracker_home_ip"), rec.get("last_updated_at"), now,
-                                      probe_error=why)
+    outcome, reason, observed, _source = _judge_drift(rec, observed, why, now)
     if outcome != ipupdate.UPDATE:
         return False, reason
     state.set_meta("setting_expected_egress", observed)
@@ -701,10 +729,8 @@ class Watcher:
         """IP_UPDATER notify / auto: report a drift once per new egress IP. Nothing is sent anywhere.
         With no tracker endpoint for the allowed IP, ``auto`` reports exactly as ``notify`` does."""
         rec = _ipupdate_record(state)
-        outcome, why = ipupdate.decide(
-            observed, _setting("tracker_expected_egress_ip"), _setting("tracker_home_ip"),
-            rec.get("last_updated_at"), time.time(),
-            probe_error="the egress probe failed" if verdict == "unknown" else "")
+        outcome, why, observed, _source = _judge_drift(
+            rec, observed, "the egress probe failed" if verdict == "unknown" else "", time.time())
         if outcome == ipupdate.UPDATE:
             if rec.get("notified_ip") == observed:
                 return
