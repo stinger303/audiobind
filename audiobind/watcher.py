@@ -298,6 +298,23 @@ def _judge_drift(rec: dict, probed: str, probe_error: str, now: float) -> tuple[
     return outcome, why, seen, "MAM"
 
 
+def _write_blocked(probed: str, observed: str) -> str:
+    """Why the update endpoint must not be called ("" = it may). The egress guard's rules, checked
+    again right before the write, independent of ``decide()``: the probe must have answered, the
+    guard must be able to recognise the home connection (TRACKER_HOME_IP set), and neither the
+    probe's answer nor MAM's may be the home IP. MAM registers the address the request comes from,
+    so a write from home would make the home IP the seedbox IP."""
+    home = _setting("tracker_home_ip")
+    if not home:
+        return "TRACKER_HOME_IP is not set, so the egress guard cannot tell a home address - no automatic write"
+    if not str(probed or "").strip():
+        return "the egress probe did not answer - the egress IP is unverified"
+    for label, ip in (("the egress probe", probed), ("MAM", observed)):
+        if egress.judge(home, ip)[0] != "ok":
+            return f"{label} sees {ip}, which the egress guard does not pass (your home connection, or no address)"
+    return ""
+
+
 #: one MAM write at a time (the cycle's auto write and the Settings button)
 _WRITE_LOCK = threading.Lock()
 
@@ -306,6 +323,10 @@ def _write_and_pin(state, probed: str, observed: str, now: float, via: str) -> t
     """Set MAM's dynamic seedbox IP to ``observed``, verify it, then re-pin the allowlist to it.
     Only called after the egress guard and ``decide()`` said ``update``. Records the attempt, the
     result and (on success) the timestamp the hourly limit uses. (ok, message)."""
+    blocked = _write_blocked(probed, observed)
+    if blocked:
+        log.warning("allowed-IP updater: nothing sent to MAM - %s", blocked)
+        return False, blocked
     old = _setting("tracker_expected_egress_ip")
     with _WRITE_LOCK:
         rec = _ipupdate_record(state)
