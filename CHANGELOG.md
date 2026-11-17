@@ -7,6 +7,44 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.22.0] - 2026-11-17
+
+**Audiobind talks to four download clients instead of one, and the same page now works on a phone, a
+tablet and a desktop.** Existing installs see no change: qBittorrent is still the default, and its
+requests, messages and layout are what they were. Nothing in the matcher moved.
+
+### Added
+- **Four download clients behind one contract.** `clients/base.py` writes down what the watcher
+  already relied on (login, add, progress, incomplete count, snatch state, version) and says which
+  calls are mandatory and what each must do on failure. qBittorrent moved behind it unchanged;
+  Deluge (web UI JSON-RPC), Transmission (RPC) and rTorrent (SCGI or an `/RPC2` mount) are new.
+  Select with `DOWNLOAD_CLIENT`, default `qbittorrent`. A client that cannot be reached degrades to
+  "client unavailable" and the cycle ends; it never raises into the scan loop.
+- **Settings → Watcher → Download client**: the chosen client's fields, its label, and a **Test
+  connection** button that logs in, asks for the version and logs out. Passwords are never shown again
+  once saved, and the new ones are in `SECRET_SETTING_KEYS` like the qBittorrent password.
+- **`docs/PARITY-ROLLBACK.md` and `scripts/revert-parity.py`**: every parity feature lands as one
+  commit run behind an off-by-default setting, so a rollback is either the setting (seconds) or a
+  revert of that run (with the tree left untouched if it conflicts).
+- The Deluge, Transmission and rTorrent adapters are **tested against simulated clients only**, never
+  a real one. Run **Test connection** before relying on one.
+
+### Changed
+- **One layout for every screen.** Below 1080 px the navigation rail becomes a hamburger drawer (same
+  items, same counts, Escape or the scrim closes it, focus returns to the button). Below 640 px the
+  top strip stacks, the stats wrap to two rows, the filter chips scroll inside their own row, the WHY
+  cell moves under the book title, MATCH gets its own labelled line, and an expanded row is full
+  width instead of a narrow text column. Desktop is unchanged.
+- The watcher's log lines and row notes name the selected client. With the default they read exactly
+  as before.
+
+### Fixed
+- **No navigation at all on a phone.** `@media(max-width:1080px)` hid `.ab-rail` and put nothing in its
+  place, so Settings, Discover, Series and the wishlist were unreachable on a phone.
+- **The page scrolled sideways on a phone.** The stats strip, the library bar and the filter row
+  forced a 626 px content width into a 390 px screen; nothing overflows its container now.
+- The book title and the MATCH tier are no longer truncated to a sliver in a narrow column.
+
 ## [0.22.0-dev4] - 2026-11-16
 
 **Two matcher faults the owner's label review exposed, fixed as far as they can be without new

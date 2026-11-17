@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Audiobind</Name>
-  <Repository>ghcr.io/stinger303/audiobind:0.21.0</Repository>
+  <Repository>ghcr.io/stinger303/audiobind:0.22.0</Repository>
   <Registry>https://github.com/stinger303/audiobind/pkgs/container/audiobind</Registry>
   <Network>bridge</Network>
   <MyIP/>
@@ -26,6 +26,11 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.22.0
+* Audiobind talks to Deluge, Transmission and rTorrent as well as qBittorrent: `DOWNLOAD_CLIENT`, and Settings > Watcher > Download client with a Test connection button
+* The page works on a phone and a tablet: a hamburger drawer replaces the hidden sidebar, rows stack instead of scrolling sideways, and an expanded row is full width
+* Existing installs are unchanged - qBittorrent is still the default and its requests, messages and desktop layout are what they were
+* The Deluge, Transmission and rTorrent adapters are tested against simulated clients only: run Test connection before relying on one
 ### 0.21.0
 * Backups are honest now that the database runs in WAL mode: copy with `sqlite3 audiobind.db ".backup copy.db"`, not by copying the file while the app runs
 * An encode can no longer leave a half-written book: publishing is atomic across filesystems, and the duration check catches a dropped file inside a long book
