@@ -220,3 +220,26 @@ def read_ip(session: str, transport) -> str:
     if not seen:
         raise UpdateError(ERROR, "MAM's jsonIp.php answer carried no IP address")
     return seen
+
+
+def write(session: str, observed: str, transport) -> str:
+    """Set MAM's dynamic seedbox IP, then prove it. Returns the verified IP; raises UpdateError.
+
+    1. ``dynamicSeedbox.php``: GET with the session cookie, no body. MAM registers the address the
+       request comes from. Its own answer is only checked for a refusal, never trusted as success.
+    2. ``jsonIp.php`` again: success only when the IP MAM now sees equals ``observed``. Anything
+       else (another IP, no answer) is a failure, even after an "OK" from step 1.
+
+    The caller has already run the egress guard and ``decide()``; this never decides on its own."""
+    want = _ip(observed)
+    if not want:
+        raise UpdateError(ERROR, "the observed IP is not an IP address - nothing was sent to MAM")
+    _call(session, DYNAMIC_SEEDBOX_URL, transport)
+    try:
+        seen = read_ip(session, transport)
+    except UpdateError as exc:
+        raise UpdateError(exc.kind, f"the update was sent but could not be verified - {exc}") from None
+    if seen != want:
+        raise UpdateError(ERROR, f"MAM answered the update, but jsonIp.php now shows {seen}, not {want} - "
+                                 "not counted as a success")
+    return seen
