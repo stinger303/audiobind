@@ -751,8 +751,11 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   .ab-libprog .ab-libnum{flex:none;white-space:nowrap}
   /* filters: one horizontally scrolling chip row, then the search box + Clear */
   .ab-toolbar{flex-direction:column;align-items:stretch;gap:10px;padding:12px 12px 8px}
+  .ab-toolbar{min-width:0;max-width:100%;box-sizing:border-box}
+  /* the row scrolls inside its own box: without min-width:0 the flex item grows to its content
+     (502 px at 390) and the whole .ab-main scrolls sideways instead */
   .chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
-    padding:3px}
+    padding:3px;flex:none;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
   .chips::-webkit-scrollbar{display:none}
   .ab-searchwrap{margin-left:0;width:100%}
   .ab-search{flex:1;min-width:0;width:auto}
@@ -770,13 +773,21 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   .ab-tbl thead th[data-column="title"]{display:block;flex:1;padding-left:66px}
   .ab-tbl tr[hidden]{display:none!important}
   .ab-tbl tbody tr.urow{display:grid;grid-template-columns:58px minmax(0,1fr) 44px;
-    grid-template-rows:auto auto;align-items:center}
+    grid-template-rows:auto auto auto;align-items:center}
   .ab-tbl tbody tr.urow>td{display:block;min-width:0;border-bottom:none}
   .ab-tbl tbody tr.urow{border-bottom:1px solid var(--ab-border-subtle)}
   .ab-tbl tbody tr.urow>td.ab-covcell{grid-column:1;grid-row:1/span 2;padding:0 4px 0 10px!important}
   .ab-tbl tbody tr.urow>td.ab-bookcell{grid-column:2;grid-row:1;display:flex;max-width:none;padding-top:8px}
   .ab-tbl tbody tr.urow>td.ab-whycell{grid-column:2;grid-row:2;padding-bottom:8px}
   .ab-tbl tbody tr.urow>td.ab-whycell:empty{padding:0 0 8px}
+  /* MATCH moves (it was auto-placed into the 58 px cover column and cut to "Mediu"): its own
+     labelled line under the WHY cell, spanning book + actions */
+  .ab-tbl tbody tr.urow>td.ab-match{grid-column:2/-1;grid-row:3;display:flex;align-items:baseline;
+    gap:6px;padding:0 10px 8px 0;margin-top:-4px;overflow:hidden}
+  .ab-tbl tbody tr.urow>td.ab-match::before{content:"Match";flex:none;font-size:11px;
+    text-transform:uppercase;letter-spacing:.04em;color:var(--ab-text3)}
+  .ab-tbl tbody tr.urow>td.ab-match:empty{display:none}
+  .ab-tbl tbody tr.urow>td.ab-match .ab-match-in{flex:0 1 auto;min-width:0}
   .ab-tbl tbody tr.urow>td.ab-actcol{grid-column:3;grid-row:1/span 2;width:auto}
   .ab-bookcell .ab-btitle{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;
     -webkit-box-orient:vertical;-webkit-line-clamp:2}
