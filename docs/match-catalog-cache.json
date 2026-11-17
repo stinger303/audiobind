@@ -25886,6 +25886,31 @@
 "subtitle": "Book One of the Century Trilogy",
 "title": "Fall of Giants"
 },
+"https://api.audnex.us/books/B004PKD9MM?region=us": {
+"asin": "B004PKD9MM",
+"authors": [
+{
+"asin": "B000APO0PQ",
+"name": "Lee Child"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Jeff Harding"
+}
+],
+"publisherName": "Transworld Digital",
+"releaseDate": "2011-02-28T00:00:00.000Z",
+"runtimeLengthMin": 710,
+"seriesPrimary": {
+"asin": "B005NASKDG",
+"name": "Jack Reacher",
+"position": "10"
+},
+"subtitle": "Jack Reacher, Book 10",
+"title": "The Hard Way"
+},
 "https://api.audnex.us/books/B007BH41NW?region=us": {
 "asin": "B007BH41NW",
 "authors": [
@@ -26126,6 +26151,34 @@
 "subtitle": "The Reckoners, Book 1",
 "title": "Steelheart"
 },
+"https://api.audnex.us/books/B00FRNCHZG?region=us": {
+"asin": "B00FRNCHZG",
+"authors": [
+{
+"asin": "B000AQ0STC",
+"name": "David Baldacci"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Ron McLarty"
+},
+{
+"name": "Orlagh Cassidy"
+}
+],
+"publisherName": "Pan Macmillan Publishers Ltd",
+"releaseDate": "2013-11-07T00:00:00.000Z",
+"runtimeLengthMin": 776,
+"seriesPrimary": {
+"asin": "B005NATDQY",
+"name": "King and Maxwell",
+"position": "6"
+},
+"subtitle": "King and Maxwell, Book 6",
+"title": "King and Maxwell"
+},
 "https://api.audnex.us/books/B00G2H2L5W?region=us": {
 "asin": "B00G2H2L5W",
 "authors": [
@@ -26363,6 +26416,31 @@
 "position": "1"
 },
 "title": "The Dispatcher"
+},
+"https://api.audnex.us/books/B01MCWFDF9?region=us": {
+"asin": "B01MCWFDF9",
+"authors": [
+{
+"asin": "B0BYBYY8P9",
+"name": "Nora Roberts"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Saskia Maarleveld"
+}
+],
+"publisherName": "Brilliance Audio",
+"releaseDate": "2016-12-06T00:00:00.000Z",
+"runtimeLengthMin": 675,
+"seriesPrimary": {
+"asin": "B01F7QP1EG",
+"name": "The Guardians Trilogy",
+"position": "3"
+},
+"subtitle": "Guardians Trilogy, Book 3",
+"title": "Island of Glass"
 },
 "https://api.audnex.us/books/B06XPX5LJC?region=us": {
 "asin": "B06XPX5LJC",
@@ -26644,6 +26722,34 @@
 "runtimeLengthMin": 395,
 "subtitle": "Additional Serious Scientific Answers to Absurd Hypothetical Questions",
 "title": "What If? 2"
+},
+"https://api.audnex.us/books/B09VVH5JNR?region=us": {
+"asin": "B09VVH5JNR",
+"authors": [
+{
+"asin": "B000APZGGS",
+"name": "James Patterson"
+}
+],
+"language": "english",
+"narrators": [
+{
+"name": "Trevor White"
+},
+{
+"name": "Rachel Handshaw"
+}
+],
+"publisherName": "Penguin Audio",
+"releaseDate": "2022-12-29T00:00:00.000Z",
+"runtimeLengthMin": 529,
+"seriesPrimary": {
+"asin": "B006VZNHIU",
+"name": "Private",
+"position": "17"
+},
+"subtitle": "A brutal attack. An agent missing. (Private 17)",
+"title": "Private Beijing"
 },
 "https://api.audnex.us/books/B0B4F65T86?region=us": {
 "asin": "B0B4F65T86",
