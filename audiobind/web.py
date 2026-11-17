@@ -699,9 +699,161 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-watch-warn{border-color:rgba(242,163,60,.35);background:var(--ab-amber-soft);color:var(--ab-amber);margin:10px 0}
 .ab-watch-warn b{color:var(--ab-amber)}
 
-@media(max-width:1080px){.ab-rail{display:none}}
+/* the hamburger and the drawer scrim exist on every page but only show at <=1080 px; on desktop
+   the button is display:none and the scrim carries [hidden], so neither takes any room */
+.ab-navbtn{display:none}
+.ab-scrim{position:fixed;inset:0;z-index:65;background:rgba(0,0,0,.55)}
+.ab-scrim[hidden]{display:none}
+
+/* <=1080 px: the rail leaves the layout and becomes an off-canvas drawer opened by the hamburger */
+@media(max-width:1080px){
+  .ab-navbtn{display:inline-flex;flex:none;width:32px;height:32px;padding:0;justify-content:center}
+  .ab-navbars,.ab-navbars::before,.ab-navbars::after{display:block;width:16px;height:2px;border-radius:1px;
+    background:currentColor;position:relative}
+  .ab-navbars::before,.ab-navbars::after{content:"";position:absolute;left:0}
+  .ab-navbars::before{top:-5px}
+  .ab-navbars::after{top:5px}
+  .ab-rail{position:fixed;top:0;bottom:0;left:0;z-index:70;width:min(280px,85vw);overflow-y:auto;
+    transform:translateX(-100%);visibility:hidden;box-shadow:none;
+    transition:transform .2s ease,visibility 0s linear .2s}
+  body.ab-nav-open .ab-rail{transform:none;visibility:visible;box-shadow:8px 0 32px rgba(0,0,0,.5);
+    transition:transform .2s ease}
+}
 @media(max-width:820px){.ab-hidemd{display:none}.ab-tbl col.ab-col-tier{width:0!important}}
+@media(max-width:820px){
+  /* no row may grow past the screen: everything that sat on one line may now wrap */
+  .ab-controls{flex-wrap:wrap}
+  .ab-statsline{flex-wrap:wrap;row-gap:8px}
+  .ab-toolbar{flex-wrap:wrap}
+  .chip{white-space:nowrap;flex:none}
+}
+/* <=640 px: the phone layout */
+@media(max-width:640px){
+  /* top strip: hamburger + title on one line, health pill and version stacked under it */
+  .ab-topbar{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px 10px;
+    padding:12px 12px 10px}
+  .ab-topbar>*:not(.ab-navbtn):not(h1){grid-column:1/-1;justify-self:start;max-width:100%}
+  .ab-topbar h1{min-width:0;overflow-wrap:anywhere}
+  .ab-topbar .ab-right:empty{display:none}
+  .ab-status{white-space:nowrap}
+  .ab-version{white-space:nowrap}
+  .ab-controls{padding:10px 12px 4px;row-gap:8px}
+  .ab-controls .ab-note{white-space:normal}
+  .ab-queue{margin:10px 12px 0;grid-template-columns:minmax(0,1fr)}
+  .ab-queue .ab-qtitle{overflow-wrap:anywhere}
+  .ab-queue .ab-qmeta{flex-wrap:wrap;gap:4px 14px}
+  /* stats: converted | written on row one, progress + a bar that fills the rest on row two */
+  .ab-statsline{display:grid;grid-template-columns:auto minmax(0,1fr);row-gap:8px;padding:10px 12px 12px}
+  .ab-stat{padding:0 12px;min-width:0}
+  .ab-stat:nth-child(3){padding-left:0;border-left:none}
+  .ab-libprog{margin-left:0;padding-left:12px;min-width:0}
+  .ab-libprog .ab-libbar{flex:1;width:auto;min-width:0}
+  .ab-libprog .ab-libnum{flex:none;white-space:nowrap}
+  /* filters: one horizontally scrolling chip row, then the search box + Clear */
+  .ab-toolbar{flex-direction:column;align-items:stretch;gap:10px;padding:12px 12px 8px}
+  .chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+    padding:3px}
+  .chips::-webkit-scrollbar{display:none}
+  .ab-searchwrap{margin-left:0;width:100%}
+  .ab-search{flex:1;min-width:0;width:auto}
+  .ab-clear{flex:none}
+  .ab-allclear{padding:0 12px 8px}
+  .ab-overflow{padding:8px 12px}
+  /* table: no WHY column - the table becomes blocks and each row a grid; the WHY cell moves
+     under the title (the same cell, not a copy) */
+  .ab-tablewrap{padding:0 8px 16px}
+  .ab-tbl,.ab-tbl tbody{display:block;width:100%}
+  .ab-tbl colgroup,.ab-tbl col.ab-col-why{display:none}
+  .ab-tbl thead{display:block;position:sticky;top:0;z-index:2;background:var(--ab-bg)}
+  .ab-tbl thead tr{display:flex}
+  .ab-tbl thead th{position:static;display:none}
+  .ab-tbl thead th[data-column="title"]{display:block;flex:1;padding-left:66px}
+  .ab-tbl tr[hidden]{display:none!important}
+  .ab-tbl tbody tr.urow{display:grid;grid-template-columns:58px minmax(0,1fr) 44px;
+    grid-template-rows:auto auto;align-items:center}
+  .ab-tbl tbody tr.urow>td{display:block;min-width:0;border-bottom:none}
+  .ab-tbl tbody tr.urow{border-bottom:1px solid var(--ab-border-subtle)}
+  .ab-tbl tbody tr.urow>td.ab-covcell{grid-column:1;grid-row:1/span 2;padding:0 4px 0 10px!important}
+  .ab-tbl tbody tr.urow>td.ab-bookcell{grid-column:2;grid-row:1;display:flex;max-width:none;padding-top:8px}
+  .ab-tbl tbody tr.urow>td.ab-whycell{grid-column:2;grid-row:2;padding-bottom:8px}
+  .ab-tbl tbody tr.urow>td.ab-whycell:empty{padding:0 0 8px}
+  .ab-tbl tbody tr.urow>td.ab-actcol{grid-column:3;grid-row:1/span 2;width:auto}
+  .ab-bookcell .ab-btitle{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;
+    -webkit-box-orient:vertical;-webkit-line-clamp:2}
+  .ab-tbl .ab-why{flex-wrap:wrap;white-space:normal;column-gap:8px}
+  .ab-tbl .ab-why .ab-why-sub{margin-left:0;white-space:normal;overflow-wrap:anywhere}
+  .ab-tbl tbody tr.ab-group,.ab-tbl tbody tr.ab-more-row,.ab-tbl tbody tr.drow,
+  .ab-tbl tbody tr.ab-empty{display:block}
+  .ab-tbl tbody tr.ab-group>td,.ab-tbl tbody tr.ab-more-row>td,.ab-tbl tbody tr.drow>td,
+  .ab-tbl tbody tr.ab-empty>td{display:block;width:100%}
+  .ab-tbl tbody tr.ab-more-row td{padding-left:66px}
+  /* expanded detail: a small cover with the reason beside it, actions full width below */
+  .dd{display:block;padding:14px 12px 16px;overflow-wrap:anywhere}
+  .dd>*+*{margin-top:18px}
+  .ab-toprow{display:block}
+  .ab-toprow::after{content:"";display:table;clear:both}
+  .ab-topcov{float:left;margin:0 10px 6px 0}
+  .ab-topcov .ab-covbigwrap{width:88px;height:88px}
+  .ab-topcov .ab-covbigwrap::after{font-size:24px}
+  .ab-topmain{display:block}
+  .ab-actrow{clear:both;flex-direction:column;align-items:stretch}
+  .ab-actrow button{width:100%;justify-content:center}
+  .ab-pinrow{flex-direction:column;align-items:stretch}
+  .ab-pinrow input{width:100%}
+  .ab-pinrow button{width:100%;justify-content:center}
+  .ab-pinrow button.ab-lock{width:auto;align-self:flex-start}
+  .ab-meter span{flex:1 1 0;min-width:0}
+  .ab-evwin,.ab-evrival{flex-wrap:wrap}
+  .ab-evmeta{flex:1 1 160px}
+  .acts .btn.danger{margin-left:0!important}
+}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+"""
+
+# <=1080 px the rail is an off-canvas drawer; the hamburger in the top strip opens it. Every page
+# carries this. Above 1080 px the rail is the plain sidebar and none of this does anything.
+NAV_SCRIPT = """
+const abNavMq = window.matchMedia('(max-width:1080px)');
+function abNavParts() {
+  return {rail: document.querySelector('.ab-rail'), btn: document.querySelector('.ab-navbtn'),
+          scrim: document.querySelector('.ab-scrim')};
+}
+function abNav(open) {
+  const p = abNavParts();
+  if (!p.rail || !p.btn) return;
+  const was = document.body.classList.contains('ab-nav-open');
+  open = !!open && abNavMq.matches;
+  document.body.classList.toggle('ab-nav-open', open);
+  p.btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (abNavMq.matches) p.rail.setAttribute('aria-hidden', open ? 'false' : 'true');
+  if (p.scrim) p.scrim.hidden = !open;
+  if (open) {
+    const first = p.rail.querySelector('.ab-rail-item.ab-active') || p.rail.querySelector('a, button');
+    if (first) setTimeout(() => first.focus(), 0);  // after visibility flips, so it is focusable
+  } else if (was) {
+    p.btn.focus();
+  }
+}
+(function () {
+  const p = abNavParts();
+  if (!p.rail) return;
+  p.rail.id = p.rail.id || 'ab-rail';
+  function sync() {
+    document.body.classList.remove('ab-nav-open');
+    if (p.btn) p.btn.setAttribute('aria-expanded', 'false');
+    if (p.scrim) p.scrim.hidden = true;
+    if (abNavMq.matches) p.rail.setAttribute('aria-hidden', 'true');
+    else p.rail.removeAttribute('aria-hidden');
+  }
+  sync();
+  if (abNavMq.addEventListener) abNavMq.addEventListener('change', sync); else abNavMq.addListener(sync);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.body.classList.contains('ab-nav-open')) { e.preventDefault(); abNav(false); }
+  });
+  p.rail.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('a[href]') && document.body.classList.contains('ab-nav-open')) abNav(false);
+  });
+})();
 """
 
 SCRIPT = """
@@ -1408,8 +1560,11 @@ PAGE = """<!doctype html>
   </div>
 </aside>
 
+<div class="ab-scrim" hidden onclick="abNav(false)"></div>
 <main class="ab-main">
   <header class="ab-topbar">
+    <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
+            aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1><a href="/" title="Back to the library" style="color:inherit;text-decoration:none">{view_heading}</a></h1>
     <span class="ab-status{health_stale}"><span class="ab-dot"></span>{health_text}<small> &middot; last scan {health_scan}</small></span>
     <span class="ab-version">v{version}</span>
@@ -1474,6 +1629,7 @@ PAGE = """<!doctype html>
 </div>
 
 <script>
+{nav_script}
 window.AB_SORT_COLUMN = {sort_column_js};
 window.AB_SORT_DIR = {sort_dir_js};
 {script}
@@ -1510,8 +1666,11 @@ SETTINGS_PAGE = """<!doctype html>
     <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
+<div class="ab-scrim" hidden onclick="abNav(false)"></div>
 <main class="ab-main">
   <header class="ab-topbar">
+    <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
+            aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1>Settings</h1>
     <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
@@ -1547,6 +1706,7 @@ SETTINGS_PAGE = """<!doctype html>
   </div>
 </div>
 <script>
+{nav_script}
 {settings_script}
 {account_script}
 {watcher_script}
@@ -1984,8 +2144,11 @@ SERIES_PAGE = """<!doctype html>
     <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
+<div class="ab-scrim" hidden onclick="abNav(false)"></div>
 <main class="ab-main">
   <header class="ab-topbar">
+    <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
+            aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1>Series</h1>
     <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
@@ -1996,6 +2159,7 @@ SERIES_PAGE = """<!doctype html>
 </main>
 <div id="ab-toast" role="status" aria-live="polite"></div>
 <script>
+{nav_script}
 {series_script}
 </script>
 </body></html>"""
@@ -3253,6 +3417,7 @@ def render_series(state) -> str:
         output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         body=body,
+        nav_script=NAV_SCRIPT,
         series_script=SERIES_SCRIPT,
     )
 
@@ -3292,8 +3457,11 @@ DISCOVER_PAGE = """<!doctype html>
     <b>output</b> &#8594; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
+<div class="ab-scrim" hidden onclick="abNav(false)"></div>
 <main class="ab-main">
   <header class="ab-topbar">
+    <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
+            aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1>{page_title}</h1>
     <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
@@ -3304,6 +3472,7 @@ DISCOVER_PAGE = """<!doctype html>
 </main>
 <div id="ab-toast" role="status" aria-live="polite"></div>
 <script>
+{nav_script}
 {discover_script}
 </script>
 </body></html>"""
@@ -4499,6 +4668,7 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
         output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         disc_body=body,
+        nav_script=NAV_SCRIPT,
         discover_script=DISCOVER_SCRIPT,
     )
 
@@ -4656,6 +4826,7 @@ def render_settings(state, tab: str = "") -> str:
         advanced_panel=panel("advanced", advanced),
         account_panel=panel("account", account),
         savebar_hidden=" hidden" if tab == "account" else "",
+        nav_script=NAV_SCRIPT,
         settings_script=SETTINGS_SCRIPT,
         account_script=ACCOUNT_SCRIPT,
         watcher_script=WATCHER_SCRIPT,
@@ -5500,6 +5671,7 @@ def render(state, status: str = "", query: str = "") -> str:
     return PAGE.format(
         signout=signout_html(state),
         styles=STYLES,
+        nav_script=NAV_SCRIPT,
         script=SCRIPT,
         version=__version__,
         library=_breakable_path(CONFIG.host_library or str(CONFIG.library_root)),
