@@ -194,13 +194,22 @@ python -m tests.matchbench mutate --check        # exit 1 if anything moved sinc
 ```
 
 For each value it prints the number of flipped rows (real/adversarial), bench errors, pick accuracy
-(all and trusted), wrong@HIGH, would_convert_wrong, would_hold_wrong, the adversarial spec count and
-example rows. Each constant is then classified:
+(all and trusted), wrong@HIGH, would_convert_wrong, would_hold_wrong, the adversarial spec count,
+**catalogue searches per run** and example rows. Each constant is then classified:
 
 * **load-bearing**: the nearest step either way changes outcomes;
 * **slack**: only farther steps do (the corpus has no case near the threshold);
 * **one-sided**: only moving it one way changes anything;
-* **NO EFFECT on corpus or adversarial**: dead code or a missing test case. Either is worth knowing.
+* **cost-only**: no outcome changes at any value, but the number of catalogue searches does. This is
+  a *guard*, not dead code: `ARBITRATE_BELOW` decides whether the swapped title/author reading is
+  paid for at all, and at 0.70 it makes 19 fewer searches per run than at 0.90 with every decision
+  identical. Worth knowing before anyone "simplifies" it away;
+* **NO EFFECT on corpus or adversarial**: no outcome *and* no search change — dead code or a missing
+  test case. Either is worth knowing. Currently `EMBEDDED_SCORE_EDGE` and `PIN_GIVE_UP_AFTER`.
+
+A decision-only sweep cannot see a cost guard, so the search counter exists to stop the sweep calling
+one dead. `searches` counts calls to `catalog.search` per row (both the frozen-corpus and the model
+path); it is recorded in `mutations.csv` like any other column.
 
 grade()'s gates are inline literals, so they are moved through `grade_with`, a mirror that a test
 checks against `grade()` on the grid. Before any gate is moved, `mutate` also checks that the mirror

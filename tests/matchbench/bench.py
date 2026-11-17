@@ -761,10 +761,19 @@ class Capture:
         self.pool: list[str] = []
         self.ranked: list[str] = []
         self.counted_rivals = 0
+        #: catalog searches this row made. Not an outcome, but the thing a "cost guard" constant
+        #: moves: ARBITRATE_BELOW decides whether a swapped reading is paid for at all, and with no
+        #: outcome change the sweep used to call that dead code.
+        self.searches = 0
 
     @contextlib.contextmanager
     def watching(self):
         real_score, real_pick = matching._score_reading, matching._pick_and_margin
+        real_search = catalog.search
+
+        def search(*args, **kwargs):
+            self.searches += 1
+            return real_search(*args, **kwargs)
 
         def score_reading(*args, **kwargs):
             scored = real_score(*args, **kwargs)
@@ -783,7 +792,8 @@ class Capture:
                 and not matching._same_work(e["product"], best["product"]))
             return best, margin
 
-        with patched(matching, _score_reading=score_reading, _pick_and_margin=pick_and_margin):
+        with patched(catalog, search=search), \
+                patched(matching, _score_reading=score_reading, _pick_and_margin=pick_and_margin):
             yield self
 
 
@@ -915,6 +925,8 @@ class Outcome:
     #: candidates in the pool that are wrong by the label yet inside the runtime tolerance: the
     #: picks the runtime check could not stop. Only on rows with traps can stage F ever fire
     traps: int = 0
+    #: catalog searches this row made (a cost, not an outcome - see Capture.searches)
+    searches: int = 0
     expect_problems: list[str] = field(default_factory=list)  # adversarial expectations only
 
     @property
@@ -1006,6 +1018,7 @@ def evaluate_row(row: dict, label: Label, frozen: FrozenCatalog | None = None) -
 def _finish(out: Outcome, unit: BookUnit, match: matching.Match, cap: Capture, hours: float) -> None:
     out.unit, out.match = unit, match
     out.pool, out.ranked, out.counted_rivals = list(cap.pool), list(cap.ranked), cap.counted_rivals
+    out.searches = cap.searches
     tier = match.confidence
     avg = hours / len(unit.files) if unit.files else 0
     if tier in ("LOW", "NONE") and looks_like_collection(unit, avg):
@@ -1847,7 +1860,8 @@ KNOBS: tuple[Knob, ...] = (
          "CORROBORATION_RUNTIME_TOLERANCE"),
 )
 MUTATION_FIELDS = ["constant", "default", "value", "real_flips", "adv_flips", "errors", "pick", "trusted_pick",
-                   "wrong_high", "would_convert_wrong", "would_hold_wrong", "adv_spec", "fingerprint", "examples"]
+                   "wrong_high", "would_convert_wrong", "would_hold_wrong", "adv_spec", "searches",
+                   "fingerprint", "examples"]
 
 
 def _summary(run: Run) -> dict:
@@ -1856,6 +1870,7 @@ def _summary(run: Run) -> dict:
     return {"pick": real.right, "trusted_pick": trusted.right, "wrong_high": real.wrong["HIGH"],
             "would_convert_wrong": real.convert_wrong, "would_hold_wrong": real.hold_wrong,
             "adv_spec": sum(1 for o in run.adversarial if not o.expect_problems),
+            "searches": sum(o.searches for o in run.corpus) + sum(o.searches for o in run.adversarial),
             "errors": real.errors + adv.errors}
 
 
@@ -1894,15 +1909,15 @@ def mutation_profile(only: str = "", data: dict | None = None) -> tuple[list[dic
                 "constant": knob.name, "default": f"{knob.default:g}", "value": f"{value:g}",
                 "real_flips": str(len(real_flips)), "adv_flips": str(len(adv_flips)), "errors": str(s["errors"]),
                 **{k: str(s[k]) for k in ("pick", "trusted_pick", "wrong_high", "would_convert_wrong",
-                                          "would_hold_wrong", "adv_spec")},
+                                          "would_hold_wrong", "adv_spec", "searches")},
                 "fingerprint": hashlib.sha1("\n".join(flips).encode()).hexdigest()[:10] if flips else "",
                 "examples": ";".join(flips[:3]),
             })
     return rows, base, problems
 
 
-def classify(knob_rows: list[dict], default: float) -> str:
-    """load-bearing / one-sided / slack / NO EFFECT, from the rows of one constant."""
+def classify(knob_rows: list[dict], default: float, base_searches: int | None = None) -> str:
+    """load-bearing / one-sided / slack / cost-only / NO EFFECT, from the rows of one constant."""
     def moved(r):
         return r["real_flips"] != "0" or r["adv_flips"] != "0" or r["errors"] != "0"
     below = [r for r in knob_rows if float(r["value"]) < default]
@@ -1911,6 +1926,18 @@ def classify(knob_rows: list[dict], default: float) -> str:
     near_a = above[0] if above else None
     any_b, any_a = any(moved(r) for r in below), any(moved(r) for r in above)
     if not any_b and not any_a:
+        # a third answer besides dead code and a missing case: the constant is a cost guard. It
+        # cannot change an outcome it never needed to, but it changes how many catalog searches a
+        # scan makes - which is a real price (rate limits, latency) and is invisible to a
+        # decision-only sweep. ARBITRATE_BELOW is exactly this: it decides whether a swapped
+        # reading is paid for at all.
+        deltas = []
+        if base_searches is not None:
+            deltas = [int(r["searches"]) - base_searches for r in knob_rows if r.get("searches", "") != ""]
+        if any(deltas):
+            low, high = min(deltas), max(deltas)
+            span = f"{low:+d}..{high:+d}" if low != high else f"{low:+d}"
+            return f"cost-only: no outcome change, {span} searches per run"
         return "NO EFFECT on corpus or adversarial - dead code or a missing test case"
     if near_b and near_a and moved(near_b) and moved(near_a):
         return "load-bearing (the nearest step either way changes outcomes)"
@@ -1924,9 +1951,10 @@ def mutate(only: str = "", record: bool = False, check: bool = False) -> tuple[s
     rows, base, problems = mutation_profile(only)
     lines = [f"MUTATE  audiobind {__version__}  ·  base: pick {base['pick']}  trusted {base['trusted_pick']}  "
              f"wrong@HIGH {base['wrong_high']}  would_convert_wrong {base['would_convert_wrong']}  "
-             f"would_hold_wrong {base['would_hold_wrong']}  adversarial spec {base['adv_spec']}", ""]
+             f"would_hold_wrong {base['would_hold_wrong']}  adversarial spec {base['adv_spec']}  "
+             f"searches {base['searches']}", ""]
     lines.append(f"  {'constant':<34}{'value':>7}  flips(real/adv)  err  pick  trust  w@H  conv_wrong  "
-                 "hold_wrong  adv_spec  examples")
+                 "hold_wrong  adv_spec  search  examples")
     verdicts = []
     for knob in KNOBS:
         krows = [r for r in rows if r["constant"] == knob.name]
@@ -1939,8 +1967,9 @@ def mutate(only: str = "", record: bool = False, check: bool = False) -> tuple[s
             lines.append(f"  {knob.name + ' (' + r['default'] + ')':<34}{r['value']:>7}  "
                          f"{r['real_flips']:>7}/{r['adv_flips']:<7}  {r['errors']:>3}  {d('pick'):>4}  "
                          f"{d('trusted_pick'):>5}  {d('wrong_high'):>3}  {d('would_convert_wrong'):>10}  "
-                         f"{d('would_hold_wrong'):>10}  {d('adv_spec'):>8}  {r['examples'][:90]}")
-        verdict = classify(krows, knob.default)
+                         f"{d('would_hold_wrong'):>10}  {d('adv_spec'):>8}  {d('searches'):>6}  "
+                         f"{r['examples'][:85]}")
+        verdict = classify(krows, knob.default, int(base["searches"]))
         verdicts.append((knob.name, verdict))
         lines.append(f"  -> {knob.name}: {verdict}")
         lines.append("")
