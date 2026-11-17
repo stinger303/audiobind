@@ -95,12 +95,17 @@ EVIDENCE_FIELDS = [
 LABEL_FIELDS = LABEL_HAND_FIELDS + EVIDENCE_FIELDS
 RESULT_FIELDS = [
     "key", "label", "src", "pick", "tier", "in_pool", "rank", "verdict", "reasons", "decision",
-    "t_sim", "a_sim", "margin", "coverage", "pool", "rt_delta", "flags", "title", "accepted_because",
+    "t_sim", "a_sim", "margin", "coverage", "pool", "rt_delta", "searches", "flags", "title", "accepted_because",
 ]
 #: a change in any of these is a decision change: it fails the gate until accepted
 DECISION_FIELDS = ("label", "pick", "tier", "in_pool", "rank", "verdict", "reasons", "decision")
-#: these only drift; reported, never gated
-SCORE_FIELDS = ("t_sim", "a_sim", "margin", "coverage", "pool", "rt_delta")
+#: these only drift; reported, never gated. ``searches`` (catalog.search calls per row) is a cost, not an
+#: outcome: making every search twice nearly doubles the run's searches (425 -> 822) with every decision
+#: identical, which the gate used to report as "0 score-only drift". On the frozen corpus a *new* query
+#: already fails (a cache miss is a bench error), but a repeated query and every adversarial case (the
+#: model catalog answers anything) were invisible. It is shown, with the run total, and never fails the
+#: build: a cost is the owner's trade to make, not a correctness failure.
+SCORE_FIELDS = ("t_sim", "a_sim", "margin", "coverage", "pool", "rt_delta", "searches")
 
 #: grade()'s gates, mirrored so a non-HIGH grade can be explained and so ``mutate`` can move the
 #: inline literals grade() keeps. test_matchbench checks grade_with(GRADE_GATES) against grade()
@@ -1158,6 +1163,7 @@ def result_row(out: Outcome) -> dict:
         "coverage": f"{m.title_window_coverage:.3f}" if m else "",
         "pool": str(len(out.pool)) if m else "",
         "rt_delta": out.rt_delta,
+        "searches": str(out.searches),
         "flags": ";".join(sorted(set(out.flags))),
         "title": (m.product.title if m and m.product else "") or (out.error or out.skipped or ""),
     }
@@ -1326,6 +1332,11 @@ class Gate:
     changes: list[str] = field(default_factory=list)
     regressions: list[str] = field(default_factory=list)
     drift: int = 0
+    #: catalog searches per run, now and in the baseline, and the rows whose count moved: score-only,
+    #: shown beside the drift count and never a failure (see SCORE_FIELDS)
+    searches: int = 0
+    searches_base: int = 0
+    search_moves: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -1378,6 +1389,18 @@ def compare(rows: list[dict], baseline: dict[str, dict]) -> tuple[list[str], lis
         elif any(new[f] != old.get(f, "") for f in SCORE_FIELDS):
             drift += 1
     return changes, regressions, drift
+
+
+def search_cost(rows: list[dict], baseline: dict[str, dict]) -> tuple[int, int, list[str]]:
+    """(searches this run, searches in the baseline, the rows whose count moved) - over the rows both
+    have, so a STALE baseline (reported on its own) does not read as a cost change."""
+    def n(row):
+        return int(row.get("searches") or 0)
+    now = {r["key"]: r for r in rows}
+    both = sorted(set(now) & set(baseline))
+    moves = [f"{k}: {baseline[k].get('searches') or '-'} -> {now[k]['searches']}" for k in both
+             if now[k].get("searches", "") != baseline[k].get("searches", "")]
+    return sum(n(now[k]) for k in both), sum(n(baseline[k]) for k in both), moves
 
 
 def stale_baseline(rows: list[dict], baseline: dict[str, dict], header: list[str]) -> list[str]:
@@ -1445,6 +1468,7 @@ def gate(run: Run, baseline: dict[str, dict], header: list[str] | None = None) -
     rows = run.rows()
     g.failures += stale_baseline(rows, baseline, header)
     g.changes, g.regressions, g.drift = compare(rows, baseline)
+    g.searches, g.searches_base, g.search_moves = search_cost(rows, baseline)
     if g.changes:
         g.failures.append(f"baseline: {len(g.changes)} decision change(s) not accepted "
                           "(`python -m tests.matchbench accept --why ...`)")
@@ -1643,6 +1667,12 @@ def scoreboard(run: Run, g: Gate, verbose: bool = False) -> str:
         w("")
     w(f"  baseline          {len(g.changes)} decision change(s), {len(g.regressions)} regression(s), "
       f"{g.drift} score-only drift")
+    delta = g.searches - g.searches_base
+    w(f"  search cost       {g.searches} catalog searches per run (baseline {g.searches_base}"
+      f"{f', {delta:+d} ({100.0 * delta / g.searches_base:+.0f}%)' if delta and g.searches_base else ''}), "
+      f"{len(g.search_moves)} row(s) moved - score-only, never fails the gate")
+    for line in g.search_moves[:10 if not verbose else None]:
+        w(f"    cost    {line}")
     for line in g.changes[:60]:
         w(f"    change  {line}")
     for line in g.regressions:

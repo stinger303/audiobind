@@ -194,6 +194,34 @@ class TestTheInstrumentCatchesFailures(unittest.TestCase):
         self.assertTrue(any(f.startswith("adversarial adv:embedded_edge_just_over:") and "did not replace" in f
                             for f in g.failures), g.failures)
 
+    def test_a_search_cost_regression_is_shown_but_never_fails_the_gate(self):
+        """Every catalog search made twice: no decision moves, so the gate must still pass - but the
+        cost must be visible (score-only drift and the search-cost line), not '0 drift'."""
+        from audiobind import catalog
+
+        real = matching._score_reading
+
+        def doubled(*args, **kwargs):
+            counted = catalog.search
+
+            def twice(*a, **k):
+                counted(*a, **k)
+                return counted(*a, **k)
+
+            with bench.patched(catalog, search=twice):
+                return real(*args, **kwargs)
+
+        base_run, base_g, _ = _run()
+        with mock.patch.object(matching, "_score_reading", doubled):
+            run, g, _ = _run()
+        self.assertTrue(g.ok, g.failures)
+        self.assertEqual(g.changes, [])
+        self.assertEqual(base_g.searches, base_g.searches_base)
+        self.assertGreater(g.searches, 1.5 * g.searches_base)
+        self.assertGreater(len(g.search_moves), 100)
+        self.assertGreater(g.drift, 100)
+        self.assertIn("search cost", bench.scoreboard(run, g))
+
     def test_a_fixed_known_defect_must_leave_the_list(self):
         run, _ = bench.run_bench()
         right = next(o for o in run.corpus if o.verdict == "right")

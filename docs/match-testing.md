@@ -66,7 +66,12 @@ record the candidate pool and the ranking. Every catalog read goes to the frozen
 * **F – decision.** What the pipeline would do with each row. See "What `would_convert_wrong` means".
 
 Then the **baseline diff**. Decision columns (label, pick, tier, in-pool, rank, verdict, reasons,
-decision) must equal `baseline.csv`; score columns only drift and are counted. A difference fails the
+decision) must equal `baseline.csv`; score columns only drift and are counted. One score column is a
+cost: `searches`, the `catalog.search` calls a row made. The `search cost` line prints the run total
+against the baseline's and the rows that moved. It never fails the gate, but without it a matcher
+that searched every query twice (425 → 822 searches) read as "0 score-only drift". On the frozen
+corpus a *new* query already fails, as a cache miss; a repeated query, and any extra search in an
+adversarial case, did not show anywhere. A difference fails the
 gate until someone runs `accept --why ...`, which writes the reason beside each changed row. The
 pull request then shows old value, new value and why in one diff. A changed label is shown as
 `LABEL old -> new` and is never counted as a matcher regression.
