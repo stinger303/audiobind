@@ -33,12 +33,14 @@ import logging
 import threading
 import time
 
-from . import egress, qbit, tracker
+from . import egress, ipupdate, qbit, tracker
 from .clients.base import ClientError, DownloadClient
+from . import config as _config
 from .config import (
     DOWNLOAD_CLIENTS,
     WATCHER_REQUIRED,
     effective_val,
+    set_effective,
     watch_interval_min,
     watch_max_incomplete,
     watch_max_per_cycle,
@@ -75,6 +77,8 @@ META_LAST_CYCLE = "watcher_last_cycle"
 META_LAST_ERROR = "watcher_last_error"
 META_BACKOFF = "watcher_backoff"
 META_EGRESS = "watcher_egress"
+#: the allowed-IP updater's record: last change (when, old, new) and the drift already reported
+META_IPUPDATE = "watcher_ipupdate"
 
 
 def _stamp(at: float | None = None) -> str:
@@ -252,6 +256,44 @@ def probe_tracker(state) -> tuple[bool, str]:
         return False, f"the tracker could not be reached ({type(exc).__name__})"
     n = len(found)
     return True, f"Connected - the tracker answered a test search ({n} {'result' if n == 1 else 'results'})"
+
+
+# ---------------------------------------------------------------------------- allowed-IP updater
+def ip_updater_mode() -> str:
+    """IP_UPDATER: ``off`` (default), ``notify`` or ``auto``."""
+    return ipupdate.mode(_config.CONFIG.ip_updater)
+
+
+def _ipupdate_record(state) -> dict:
+    rec = state.get_meta(META_IPUPDATE) or {}
+    return dict(rec) if isinstance(rec, dict) else {}
+
+
+def use_current_ip(state) -> tuple[bool, str]:
+    """Settings > Watcher "Use the current IP": once the owner has changed the allowed IP on the
+    tracker's website, make the observed egress IP Audiobind's allowlist pin too. One fresh probe,
+    then ``ipupdate.decide``. It never writes a home IP, an unverified IP, or twice within an hour.
+    Nothing is sent to the tracker. (ok, message)."""
+    if ip_updater_mode() == "off":
+        return False, "the allowed-IP updater is off (IP_UPDATER=off)"
+    observed, why = "", ""
+    try:
+        observed = egress.probe(_setting("tracker_proxy"))
+    except Exception as exc:  # noqa: BLE001 - whatever went wrong, the address is unknown
+        why = str(exc) or type(exc).__name__
+    old = _setting("tracker_expected_egress_ip")
+    rec = _ipupdate_record(state)
+    now = time.time()
+    outcome, reason = ipupdate.decide(observed, old, _setting("tracker_home_ip"), rec.get("last_updated_at"), now,
+                                      probe_error=why)
+    if outcome != ipupdate.UPDATE:
+        return False, reason
+    state.set_meta("setting_expected_egress", observed)
+    set_effective(state)
+    rec.update({"last_updated_at": now, "old": old, "new": observed, "notified_ip": ""})
+    state.set_meta(META_IPUPDATE, rec)
+    log.info("allowed-IP updater: allowed IP %s -> %s (%s; confirmed by hand on Settings > Watcher)", old, observed, reason)
+    return True, f"Allowed IP is now {observed} (was {old}). The next cycle checks against it."
 
 
 # ---------------------------------------------------------------------------- library match
@@ -495,6 +537,12 @@ class Watcher:
         summary["egress_guard"] = verdict
         if observed:
             summary["egress_ip"] = observed
+        if ip_updater_mode() != "off" and verdict != "off":
+            # after the guard, never instead of it: the verdict above stands whatever this says
+            try:
+                self._ip_notice(state, verdict, observed)
+            except Exception:  # noqa: BLE001 - the updater must never break a cycle
+                log.exception("allowed-IP updater: drift check failed")
         if verdict in ("blocked", "unknown"):
             return self._refuse(state, summary, reason, trigger)
         client = self.client()
@@ -649,6 +697,28 @@ class Watcher:
         state.set_meta(META_EGRESS, {"ip": observed, "at": time.time(), "reason": reason if verdict == "unknown" else ""})
         return verdict, reason, observed
 
+    def _ip_notice(self, state, verdict: str, observed: str) -> None:
+        """IP_UPDATER notify / auto: report a drift once per new egress IP. Nothing is sent anywhere.
+        With no tracker endpoint for the allowed IP, ``auto`` reports exactly as ``notify`` does."""
+        rec = _ipupdate_record(state)
+        outcome, why = ipupdate.decide(
+            observed, _setting("tracker_expected_egress_ip"), _setting("tracker_home_ip"),
+            rec.get("last_updated_at"), time.time(),
+            probe_error="the egress probe failed" if verdict == "unknown" else "")
+        if outcome == ipupdate.UPDATE:
+            if rec.get("notified_ip") == observed:
+                return
+            log.warning(
+                "allowed-IP updater: %s. Set the tracker account's allowed IP to %s on the tracker's website, "
+                "then press Use the current IP on Settings > Watcher%s", why, observed,
+                " (IP_UPDATER=auto: no tracker endpoint for this is known, so nothing was changed automatically)"
+                if ip_updater_mode() == "auto" else "")
+            rec["notified_ip"] = observed
+            state.set_meta(META_IPUPDATE, rec)
+        elif outcome == ipupdate.NOOP and rec.get("notified_ip"):
+            rec["notified_ip"] = ""  # back in step: a later drift is reported again
+            state.set_meta(META_IPUPDATE, rec)
+
     def _refuse(self, state, summary: dict, reason: str, trigger: str) -> dict:
         """End the cycle at the guard: nothing was requested from the tracker."""
         summary["error"] = reason
@@ -788,7 +858,22 @@ class Watcher:
             guard, guard_reason = egress.judge(home, seen, expected)
         else:
             guard, guard_reason = "unknown", str(rec.get("reason") or "not checked yet")
+        extra = {}
+        if ip_updater_mode() != "off":  # off: the answer is exactly what it was before the updater
+            upd = _ipupdate_record(state)
+            outcome, why = ipupdate.decide(seen, expected, home, upd.get("last_updated_at"), time.time(),
+                                           probe_error="" if seen else str(rec.get("reason") or "not checked yet"))
+            extra["ip_updater"] = {
+                "mode": ip_updater_mode(),
+                "can_write": False,  # no verified tracker endpoint (docs/ip-updater.md)
+                "decision": outcome,
+                "reason": why,
+                "last_updated_at": upd.get("last_updated_at"),
+                "last_old": str(upd.get("old") or ""),
+                "last_new": str(upd.get("new") or ""),
+            }
         return {
+            **extra,
             "egress_ip": seen if armed else "",
             "egress_checked_at": rec.get("at") if armed else None,
             "egress_guard": guard,

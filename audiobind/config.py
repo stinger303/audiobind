@@ -187,6 +187,17 @@ def _download_client(raw: str) -> str:
     return raw
 
 
+IP_UPDATER_MODES = ("off", "notify", "auto")
+
+
+def _ip_updater(raw: str) -> str:
+    """IP_UPDATER, checked at load ("" = off). A typo stops the start, as DOWNLOAD_CLIENT does."""
+    raw = raw.strip().lower() or "off"
+    if raw not in IP_UPDATER_MODES:
+        raise RuntimeError(f"IP_UPDATER is not valid: use one of {', '.join(IP_UPDATER_MODES)}")
+    return raw
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(_env(name, str(default)))
@@ -328,6 +339,9 @@ class Config:
     #: whether the account holds the tracker's top membership tier (not detectable from the
     #: API): False = torrents restricted to it are skipped. Also editable in Settings > Watcher.
     tracker_vip: bool = False
+    #: the allowed-IP updater (IP_UPDATER): "off" (default, exactly the behaviour before it existed),
+    #: "notify" (log and show egress drift) or "auto" (no write endpoint is known, so it acts as notify)
+    ip_updater: str = "off"
     #: deprecated variables that were honoured / ignored at load, as (old, new) names only -
     #: the daemon logs one line each at startup
     deprecated_used: list = field(default_factory=list, repr=False)
@@ -416,6 +430,7 @@ class Config:
             tracker_home_ip=_ip_value(home_name, home),
             tracker_expected_egress_ip=_ip_value(expected_name, expected),
             tracker_vip=default_bool(vip_raw, False),
+            ip_updater=_ip_updater(_env("IP_UPDATER", "")),
             deprecated_used=honoured,
             deprecated_ignored=ignored,
         )

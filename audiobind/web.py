@@ -4344,6 +4344,7 @@ def render_watcher_section(state) -> str:
                                     + f" &#183; label <code>{_html(s['qbit_category'])}</code>")),
         ("Connection", sees),
         ("Guard", guard_html),
+        *_ip_updater_rows(s),
         ("Last cycle", last_html),
         ("Next cycle", next_html),
         ("Last error", error_html),
@@ -4385,6 +4386,38 @@ def render_watcher_section(state) -> str:
         + dry_line
         + "</section>"
     )
+
+
+def _ip_updater_rows(s: dict) -> list[tuple[str, str]]:
+    """Settings > Watcher: the allowed-IP updater's rows. None at all while IP_UPDATER=off."""
+    upd = s.get("ip_updater")
+    if not upd:
+        return []
+    mode = str(upd.get("mode") or "off")
+    mode_html = f"<code>IP_UPDATER={_html(mode)}</code>"
+    if mode == "auto" and not upd.get("can_write"):
+        mode_html += (" &#8212; acting as <code>notify</code>: no tracker endpoint for the allowed IP is known, "
+                      "so Audiobind never changes it on the tracker")
+    decision = str(upd.get("decision") or "")
+    label = {"update": '<span class="warn">drifted &#8212; update needed</span>', "noop": '<span class="ok">in step</span>',
+             "refuse": '<span class="warn">no change</span>'}.get(decision, DASH)
+    verdict_html = f"{label} &#183; {_html(str(upd.get('reason') or ''))}"
+    if upd.get("last_updated_at"):
+        last = (f"{_html(rel_age(upd['last_updated_at']))} &#183; {_html(upd.get('last_old') or DASH)} &#8594; "
+                f"{_html(upd.get('last_new') or DASH)}")
+    else:
+        last = "never"
+    button = (
+        '<button class="btn" type="button" id="ab-watch-useip" onclick="abWatcher(\'use_current_ip\')" '
+        'title="After you have changed the allowed IP on the tracker\'s website: check the egress IP again and make it '
+        'the address this installation only reaches the tracker from. Nothing is sent to the tracker.">'
+        "Use the current IP</button>"
+    )
+    return [
+        ("Allowed-IP updater", mode_html),
+        ("Allowed IP", f"{_html(s.get('egress_expected') or 'not pinned')} &#183; {verdict_html}"),
+        ("Last updated", f"{last} {button}"),
+    ]
 
 
 ABS_LAYOUT_WARNING = (
@@ -7269,7 +7302,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200 if ok else 502, json.dumps({"ok": ok, "message": message}).encode(), "application/json")
 
     def _handle_watcher(self) -> None:
-        """POST /api/watcher: {"action": "run" | "pause" | "resume"}."""
+        """POST /api/watcher: {"action": "run" | "pause" | "resume" | "use_current_ip"}. The last only
+        while IP_UPDATER is not off; with it off the action is unknown, exactly as before."""
         payload = self._read_json()
         if payload is None:
             return
@@ -7282,6 +7316,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
         elif action in ("pause", "resume"):
             watcher.set_paused(self.state, action == "pause")
+        elif action == "use_current_ip" and watcher_mod.ip_updater_mode() != "off":
+            ok, message = watcher_mod.use_current_ip(self.state)
+            if not ok:
+                self._send(409, json.dumps({"error": message}).encode(), "application/json")
+                return
         else:
             self._send(400, b'{"error":"unknown action"}', "application/json")
             return
