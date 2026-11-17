@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Audiobind</Name>
-  <Repository>ghcr.io/stinger303/audiobind:0.20.0</Repository>
+  <Repository>ghcr.io/stinger303/audiobind:0.21.0</Repository>
   <Registry>https://github.com/stinger303/audiobind/pkgs/container/audiobind</Registry>
   <Network>bridge</Network>
   <MyIP/>
@@ -26,6 +26,13 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.21.0
+* Backups are honest now that the database runs in WAL mode: copy with `sqlite3 audiobind.db ".backup copy.db"`, not by copying the file while the app runs
+* An encode can no longer leave a half-written book: publishing is atomic across filesystems, and the duration check catches a dropped file inside a long book
+* A re-save no longer wipes a book's match evidence, and a pinned book's cover is found again
+* The matcher stops trusting a single candidate: a window-only title match cannot reach MEDIUM, and an adaptation nobody asked for loses to the plain edition of the same book
+* A hand-set ASIN the catalog has no data for gives up after three checks instead of blocking the book forever
+
 ### 0.20.0
 * Audio channels default to 2 (stereo); `AUDIO_CHANNELS=1` still halves the file size
 * The Series tab now shows a series you own a single book of, so you find the ones you did not know were series
