@@ -116,6 +116,13 @@ _ACTIVE_GATES = dict(GRADE_GATES)
 #: an inferred label must agree with the files this closely (the same 5 % the matcher uses to call
 #: two catalog records one edition). Owner, pin and DB labels are only *reported* when weaker.
 INFERRED_RUNTIME_BAND = 0.05
+#: how far a label's own runtime may sit from the files before the label is called contradicted.
+#: Deliberately wider than the decision tolerance, because they answer different questions: the
+#: decision asks "may this be written unseen?" and must be strict; the label asks "is this edition
+#: plausible at all?". The owner's rips are shortened by up to a fifth (a Dick Hill book whose files
+#: are 17% shorter than the US edition is still the right book), so a 17% gap is evidence, not a
+#: contradiction - tightening the decision tolerance must never invalidate his labels.
+LABEL_RUNTIME_TOLERANCE = 0.35
 #: share of the label's words found in the folder's words: at CONTRADICTS or below (at most half of
 #: them: "Private Dublin" for "Private Beijing") the label contradicts the folder; at CORROBORATES or
 #: above it corroborates it. Tokens match fuzzily (difflib >= 0.8,
@@ -631,8 +638,13 @@ class LabelCheck:
 
 
 def check_labels(corpus: list[dict], labels: dict[str, Label], label_rows: list[dict],
-                 units_by_key: dict, index: dict[str, Product], tolerance: float) -> LabelCheck:
-    """Stage L: recompute every label's evidence and apply the rules (see docs/match-testing.md)."""
+                 units_by_key: dict, index: dict[str, Product],
+                 tolerance: float = LABEL_RUNTIME_TOLERANCE) -> LabelCheck:
+    """Stage L: recompute every label's evidence and apply the rules (see docs/match-testing.md).
+
+    ``tolerance`` is the *label* tolerance, not the decision tolerance: a label may be right while
+    the runtime disagrees (shortened rips), so the two are deliberately different constants.
+    """
     rows = {r["key"]: r for r in corpus}
     lines = {r["key"]: r for r in label_rows}
     evidence = {k: label_evidence(rows[k], units_by_key.get(k), labels[k], index, tolerance) for k in rows}
@@ -1176,7 +1188,7 @@ def run_bench(catalog_data: dict | None = None, fetch=None, labels_path: Path = 
     hours = {r["key"]: float(r.get("hours") or 0) for r in corpus}
     for o in real:
         o.traps = count_traps(o, hours.get(o.key, 0.0), index, tolerance)
-    lc = check_labels(corpus, labels, label_rows, units_by_key, index, tolerance)
+    lc = check_labels(corpus, labels, label_rows, units_by_key, index)
     run = Run(real, adv, problems, list(frozen.misses), len(frozen.data), len(frozen.used), defects, gaps,
               lc, tolerance, where, tuple(sorted(config.effective_auto_tiers(), key=lambda t: -TIER_RANK[t])))
     return run, frozen
@@ -1828,7 +1840,7 @@ KNOBS: tuple[Knob, ...] = (
     _g("title_only_margin", 0.10, (0.0, 0.04, 0.08, 0.12, 0.20, 0.40)),
     Knob("EMBEDDED_SCORE_EDGE", 0.10, (0.0, 0.02, 0.05, 0.15, 0.25, 0.50), "module", pipeline, "EMBEDDED_SCORE_EDGE"),
     Knob("PIN_GIVE_UP_AFTER", 3, (1, 2, 4, 6, 10), "module", matching, "PIN_GIVE_UP_AFTER"),
-    Knob("runtime tolerance", 0.25, (0.05, 0.10, 0.20, 0.30, 0.40, 0.50), "tolerance"),
+    Knob("runtime tolerance", 0.15, (0.02, 0.05, 0.10, 0.20, 0.25, 0.35), "tolerance"),
     Knob("ARBITRATE_BELOW", 0.90, (0.70, 0.80, 0.85, 0.95, 1.00), "module", matching, "ARBITRATE_BELOW"),
     Knob("CORROBORATION_WINDOW", 0.10, (0.0, 0.05, 0.08, 0.12, 0.20, 0.40), "module", matching, "CORROBORATION_WINDOW"),
     Knob("CORROBORATION_RUNTIME_TOLERANCE", 0.05, (0.0, 0.02, 0.04, 0.08, 0.15, 0.30), "module", matching,

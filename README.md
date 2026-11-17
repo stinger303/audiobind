@@ -87,7 +87,7 @@ matters to you.
 | `MEDIUM` | exact title, author inferred from the catalog | converted (`AUTO_CONVERT=high` converts only HIGH) |
 | `LOW` | weak or ambiguous match | left for review |
 | `COLLECTION` | several books in one folder | left for review |
-| held | runtime disagrees with the catalog by >25% - usually the wrong edition | not converted |
+| held | runtime disagrees with the catalog by >15% - usually the wrong edition, or a shortened rip | not converted |
 
 Converted books are written to the separate output library. The web UI's **Delete**
 is the one destructive path — it permanently removes the source folder *and* the

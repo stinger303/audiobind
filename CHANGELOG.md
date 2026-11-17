@@ -7,6 +7,45 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.22.0-dev4] - 2026-11-16
+
+**Two matcher faults the owner's label review exposed, fixed as far as they can be without new
+retrieval.** A catalogue answer with no runtime is no longer treated as agreeing with the files, and
+the runtime tolerance drops from 25% to 15% so a US/UK edition gap is held for a person instead of
+written into the library. Corpus `would_convert_wrong` goes 1 → 0 and TRUSTED pick accuracy is
+unchanged at 30/40 (75.0%). The *right* edition of *The Hard Way* still cannot be found — the US
+search never returns the UK release — and that is now a registered known defect, not a silent one.
+
+*(The unknown-runtime fix shipped as commit `ab8a66f`, labelled dev3, without a version bump; both
+changes are released as 0.22.0-dev4.)*
+
+### Changed
+- **`MAX_RUNTIME_DELTA` 0.25 → 0.15.** At 25% the one guard against a wrong edition passed an 18% gap
+  silently: `Jack Reacher Series/10 The Hard Way` was converted to the Dick Hill US edition (14.23h)
+  when the files are the Jeff Harding UK release (11.83h). Eight rows move from convert to hold,
+  `would_convert_wrong` 1 → 0. The cost is five one-time holds: four Reacher rows that are Dick Hill
+  rips shortened by 16–21%, and the *Power of Habit* m4b the owner pinned.
+- **An unknown catalogue runtime is not agreement.** `runtime_ok` returns False when the catalogue
+  runtime is 0, so the book is held. A lone candidate with no runtime used to grade HIGH (margin
+  1.000) and convert with the runtime guard disabled — `is_knockoff` only flags a zero-runtime
+  product when a real edition sits beside it.
+- **Label evidence got its own tolerance** (`LABEL_RUNTIME_TOLERANCE`, 35%). The decision tolerance
+  answers "may this be written unseen?"; a label answers "is this edition plausible at all?". A rip
+  17% shorter than its catalogue edition is still the right book, so tightening the decision no
+  longer invalidates six owner-plausible labels.
+
+### Added
+- Adversarial case `unknown_runtime_lone_candidate`: a folder whose only catalog answer has no runtime,
+  which grades HIGH and must still be held.
+- A `decision` expectation for adversarial cases — some defects change whether the app writes, not
+  how sure it is, and the tier alone cannot express that.
+- `known_defects.csv`: *The Hard Way*, with its verified cause (retrieval, not grading).
+
+### Docs
+- `docs/match-testing.md`: the runtime-unknown rule, the label-versus-decision tolerance split, and
+  what a held row now means.
+- `docs/configuration.md`, `README.md`: the new default and why 15%.
+
 ## [0.22.0-dev2] - 2026-11-16
 
 **The match bench, round 2: independent ground truth, the decision that actually converts, and

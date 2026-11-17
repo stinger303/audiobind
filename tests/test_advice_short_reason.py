@@ -68,7 +68,7 @@ class TestShortReason(unittest.TestCase):
 
     def test_the_runtime_header_is_the_approved_sentence(self):
         expected = (
-            "Your files and Audible's runtime disagree by more than your 25 % tolerance. That gap "
+            "Your files and Audible's runtime disagree by more than your 15 % tolerance. That gap "
             "usually means a different edition (radio drama, abridged, omnibus) or missing files."
         )
         for key in ("runtime_short", "runtime_long", "runtime_gap"):

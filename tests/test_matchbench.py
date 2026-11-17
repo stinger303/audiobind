@@ -123,9 +123,11 @@ class TestTheInstrumentCatchesFailures(unittest.TestCase):
             run, g, _ = _run()
         self.assertTrue(any(f.startswith("D wrong at HIGH") for f in g.failures))
         self.assertTrue(any(f.startswith("E ") and "HIGH despite" in f for f in g.failures))
-        # a tier-only change writes nothing wrong on this corpus: every wrong pick it promotes is
-        # off on runtime and held. Recorded so the day that changes is visible.
-        self.assertEqual(bench.score(run.corpus).convert_wrong, 0)
+        # a tier-only change writes two wrong books on this corpus: `ingest:17 Private Beijing`
+        # (picks Private Monaco, -2% runtime) and `ingest:In Too Deep` (+3%). Both are the wrong
+        # ASIN with a near-identical runtime, so no threshold can catch them - only the grade can.
+        # The other five wrong picks a reckless grade promotes are off on runtime and held.
+        self.assertEqual(bench.score(run.corpus).convert_wrong, 2)
         self.assertGreater(bench.score(run.corpus).hold_saved, 2)
 
     def test_a_pick_bug_that_writes_the_wrong_edition_fails_stage_f(self):
@@ -312,17 +314,18 @@ class TestEvidence(unittest.TestCase):
         return bench.gate(run, bench.load_baseline())
 
     def test_a_contradicted_label_in_labels_csv_fails_the_gate_with_the_numbers(self):
-        # point Private Beijing's label at Private Dublin: wrong title, 12.0h vs 8.84h files
-        lines = _edit(_label_lines(), "ingest:17 Private Beijing", expect="B0H7RGY4GG")
+        # point Private Beijing's label at The Hard Way (14.23h) for 8.84h files: wrong title and
+        # a -38% runtime gap, which is outside the 35% a label is allowed before it contradicts
+        lines = _edit(_label_lines(), "ingest:17 Private Beijing", expect="B00LI7VIRS")
         g = self.gate_with(lines)
         hits = [f for f in g.failures if f.startswith("L contradiction: ingest:17 Private Beijing")]
-        self.assertTrue(any("runtime" in f and "-26%" in f for f in hits), hits)
+        self.assertTrue(any("runtime" in f and "-38%" in f for f in hits), hits)
         self.assertTrue(any("title" in f for f in hits), hits)
 
     def test_one_asin_on_two_different_books_fails(self):
-        lines = _edit(_label_lines(), "ingest:24 Blue Moon", expect="B0GL99KHWL")  # Private Beijing's ASIN
+        lines = _edit(_label_lines(), "ingest:24 Blue Moon", expect="B004PKD9MM")  # The Hard Way's ASIN
         g = self.gate_with(lines)
-        self.assertTrue(any("B0GL99KHWL labels two different books" in f for f in g.failures))
+        self.assertTrue(any("B004PKD9MM labels two different books" in f for f in g.failures))
 
     def test_the_same_book_in_two_places_may_share_an_asin(self):
         run, _, _ = _run()

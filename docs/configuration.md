@@ -19,7 +19,7 @@
 | `JOBS` | `1` | Books converted in parallel |
 | `NICE` | `10` | ffmpeg CPU priority |
 | `MANUAL_WORKERS` | `2` | Manual actions (Retry, Convert anyway, Use this ASIN, Re-check) allowed at once; more get "another action is already running" |
-| `MAX_RUNTIME_DELTA` | `0.25` | Hold when runtime differs by more than this fraction |
+| `MAX_RUNTIME_DELTA` | `0.15` | Hold when runtime differs by more than this fraction. 15% because a US/UK edition pair of the same book commonly differs by 16–21%: at 25% the wrong edition converted silently |
 | `REGION` | `us` | Audible region (`us`, `ca`, `uk`, `au`, `fr`, `de`, `it`, `es`, `jp`, `in`) |
 | `DRY_RUN` | `false` | Decide and log, write nothing. `true` always starts dry; the UI switch can turn it off afterwards |
 | `WATCH_DRY_RUN` | `false` | The [watcher's](acquisition.md#the-wishlist-watcher-private-tracker) own dry run, separate from `DRY_RUN`: search the tracker and note what it would download, never download. `true` always starts the watcher dry; the Settings > Watcher switch can turn it off afterwards |

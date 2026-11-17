@@ -181,7 +181,7 @@ def alt(**kw):
 
 
 class TestRivalReasons(unittest.TestCase):
-    def reason(self, a, local=10.5, tol=0.25, winner=1.0, author_known=True):
+    def reason(self, a, local=10.5, tol=0.15, winner=1.0, author_known=True):
         return web.rival_reason(a, local, tol, winner_score=winner, author_known=author_known)
 
     def test_different_book_by_the_same_author(self):
@@ -200,14 +200,14 @@ class TestRivalReasons(unittest.TestCase):
     def test_runtime_out_of_tolerance(self):
         line = self.reason(alt(hours=30.0, runtime_delta_pct=-65))
         self.assertEqual(
-            text(line), "Runtime 30.0 hrs — your files are 65% shorter, over the 25% tolerance"
+            text(line), "Runtime 30.0 hrs — your files are 65% shorter, over the 15% tolerance"
         )
         line = self.reason(alt(hours=5.0, runtime_delta_pct=110))
         self.assertIn("110% longer", text(line))
 
     def test_runtime_inside_tolerance_is_not_a_reason(self):
-        # the real rule (|files - catalog| / catalog) puts 10.5 vs 13.4 hrs inside 25%
-        line = self.reason(alt(hours=13.4, runtime_delta_pct=-22, language_penalized=True))
+        # the real rule (|files - catalog| / catalog) puts 10.5 vs 12.0 hrs inside the 15% default
+        line = self.reason(alt(hours=12.0, runtime_delta_pct=-13, language_penalized=True))
         self.assertNotIn("Runtime", text(line))
         self.assertNotIn("runtime", text(line))
 
@@ -359,7 +359,7 @@ class TestEvidencePanel(unittest.TestCase):
             "Author match 100%",
             "&ldquo;Charles Duhigg&rdquo; listed as the author",
             "Runtime +13%",
-            "Your files 10.5 hrs vs catalog 9.3 hrs &mdash; inside the 25% tolerance",
+            "Your files 10.5 hrs vs catalog 9.3 hrs &mdash; inside the 15% tolerance",
             "Language English",
             "No language penalty applied",
             "The other candidates &mdash; and why they lost",
@@ -376,13 +376,13 @@ class TestEvidencePanel(unittest.TestCase):
 
     def test_runtime_bar_inside_uses_accent_and_scales_to_tolerance(self):
         self.save()
-        self.assertIn('<i class="ab-acc" style="width:52%">', self.panel())
+        self.assertIn('<i class="ab-acc" style="width:86%">', self.panel())  # +13 % of a 15 % tolerance
 
     def test_runtime_bar_over_tolerance_is_amber(self):
         self.save(detail=evidence_detail(hours=5.0, runtime_delta_pct=110))
         panel = self.panel()
         self.assertIn('<i class="ab-mid" style="width:100%">', panel)
-        self.assertIn("outside the 25% tolerance", panel)
+        self.assertIn("outside the 15% tolerance", panel)
         self.assertIn("Runtime <em>+110%</em>", panel)
 
     def test_runtime_tolerance_follows_the_setting(self):

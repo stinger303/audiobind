@@ -107,8 +107,11 @@ comparison is order-free and stopword-free, and fuzzy for words of four or more 
 
 **Contradiction check** (each one fails the gate, printed with the numbers):
 
-* runtime: the label's catalog runtime is outside the configured tolerance of the files
-  (`matching.runtime_ok` with `effective_val("max_runtime_delta")`);
+* runtime: the label's catalog runtime is outside `LABEL_RUNTIME_TOLERANCE` (35 %) of the files — a
+  *label* tolerance, deliberately wider than the decision tolerance (`MAX_RUNTIME_DELTA`), because a
+  label can be right while the runtime disagrees: the owner's rips are shortened by up to a fifth. A
+  label at 17 % is evidence, not a contradiction; tightening the decision tolerance must never
+  invalidate the corpus;
 * author: the folder (or its recorded tags) names an author, and at most half of the label author's
   words are in it;
 * title: at most half of the label title's words are in the folder name;

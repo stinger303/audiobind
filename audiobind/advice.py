@@ -59,7 +59,7 @@ ATTENTION_STATUSES = ("failed", "held", "interrupted", "review")
 GROUP_TITLES = {"failed": "Failed", "held": "Held", "interrupted": "Stopped", "review": "Review"}
 
 _RUNTIME_HEADER = (
-    "Your files and Audible's runtime disagree by more than your 25 % tolerance. That gap "
+    "Your files and Audible's runtime disagree by more than your 15 % tolerance. That gap "
     "usually means a different edition (radio drama, abridged, omnibus) or missing files."
 )
 

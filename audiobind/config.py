@@ -213,8 +213,10 @@ class Config:
     auto_convert: str = "high"
     #: what each book is published as: "M4B", "MP3" or "M4B + MP3"
     output_format: str = "M4B"
-    #: reject a match when the file runtime differs from the catalog by more than this
-    max_runtime_delta: float = 0.25
+    #: reject a match when the file runtime differs from the catalog by more than this. 15% not 25%:
+    #: a US/UK edition pair commonly differs by 16-21%, and at 25% the only guard against writing
+    #: the wrong edition passes silently (see docs/match-testing.md, brief-0220-case-hard-way.md)
+    max_runtime_delta: float = 0.15
 
     scan_interval_min: int = 30
     dry_run: bool = False
@@ -330,7 +332,7 @@ class Config:
             jobs=max(1, _env_int("JOBS", 1)),
             auto_convert=_env("AUTO_CONVERT", "high").lower(),
             output_format=_env("OUTPUT_FORMAT", "M4B").strip().upper() or "M4B",
-            max_runtime_delta=_env_float("MAX_RUNTIME_DELTA", 0.25),
+            max_runtime_delta=_env_float("MAX_RUNTIME_DELTA", 0.15),
             scan_interval_min=max(1, _env_int("SCAN_INTERVAL_MIN", 30)),
             dry_run=_env_bool("DRY_RUN", False),
             watch_dry_run=_env_bool("WATCH_DRY_RUN", False),

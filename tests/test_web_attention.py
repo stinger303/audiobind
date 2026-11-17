@@ -105,13 +105,13 @@ class TestNeedsYouView(unittest.TestCase):
         self.assertEqual(len(re.findall(r'<tr class="urow"[^>]* hidden>', tbody)), 1)
         self.assertEqual(tbody.count('<tr class="urow"'), 13)
         self.assertIn('<span class="ab-group-n">13</span>', tbody)
-        self.assertIn("more than your 25 % tolerance", tbody)
+        self.assertIn("more than your 15 % tolerance", tbody)
         # the more row is the group's last row
         self.assertGreater(tbody.index('class="ab-more-row"'), tbody.rindex('<tr class="drow"'))
 
     def test_the_runtime_group_sentence_names_the_configured_tolerance(self):
-        # advice.GROUP_REASONS carries the 25 % wording; web._group_sentence swaps in the real
-        # setting. If the advice wording ever changes, this is the test that notices the swap broke.
+        # advice.GROUP_REASONS carries the default wording; web._group_sentence swaps in the real
+        # setting whatever it is. If the advice wording ever changes, this notices the swap broke.
         units = [UnitState(path="A/01", status="held", confidence="HIGH", title="Book",
                            note="runtime 12.95h vs catalog 7.50h")]
         for tolerance, shown in ((0.25, "25"), (0.35, "35"), (0.4, "40")):

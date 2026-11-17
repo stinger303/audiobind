@@ -51,7 +51,8 @@ class TestEnvFloat(unittest.TestCase):
             cfg = config.Config.from_env() if hasattr(config.Config, "from_env") else None
         if cfg is None:
             self.skipTest("no from_env constructor")
-        self.assertEqual(cfg.max_runtime_delta, 0.25)
+        # a garbage value falls back to the default, whatever that default is
+        self.assertEqual(cfg.max_runtime_delta, config.Config.max_runtime_delta)
 
 
 class TestGradeGuards(unittest.TestCase):

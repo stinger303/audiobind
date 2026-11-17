@@ -7,6 +7,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import shutil
 import socket
 import sys
@@ -4773,9 +4774,8 @@ def _group_sentence(key: str) -> str:
     """The sentence under a group header; the runtime one names your real tolerance."""
     sentence = GROUP_REASONS.get(key, ("", ""))[1]
     pct = round(_tolerance() * 100)
-    if "25 % tolerance" in sentence and pct != 25:
-        sentence = sentence.replace("25 % tolerance", f"{pct} % tolerance")
-    return sentence
+    # the shipped sentence carries the default; whatever the setting is, name the real number
+    return re.sub(r"\d+ % tolerance", f"{pct} % tolerance", sentence)
 
 
 def grouped_rows(units: list, row, detail_panel, total_columns: int = TOTAL_COLUMNS) -> str:
