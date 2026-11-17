@@ -241,7 +241,7 @@ class TestAutoActsAsNotify(UpdaterCase):
     def test_auto_changes_nothing_and_says_why(self):
         with self.assertLogs("audiobind", level=logging.WARNING) as logs:
             self.run_cycle(NEW)
-        self.assertTrue(any("IP_UPDATER=auto: no tracker endpoint" in line for line in logs.output), logs.output)
+        self.assertTrue(any("IP_UPDATER=auto: no MyAnonamouse session" in line for line in logs.output), logs.output)
         self.assertEqual(config.effective_val("tracker_expected_egress_ip"), PINNED)
         self.assertEqual(self.transport.calls, [])
         rows = dict(web._ip_updater_rows(self.w.status(self.state)))

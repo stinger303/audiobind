@@ -298,6 +298,39 @@ def _judge_drift(rec: dict, probed: str, probe_error: str, now: float) -> tuple[
     return outcome, why, seen, "MAM"
 
 
+#: one MAM write at a time (the cycle's auto write and the Settings button)
+_WRITE_LOCK = threading.Lock()
+
+
+def _write_and_pin(state, probed: str, observed: str, now: float, via: str) -> tuple[bool, str]:
+    """Set MAM's dynamic seedbox IP to ``observed``, verify it, then re-pin the allowlist to it.
+    Only called after the egress guard and ``decide()`` said ``update``. Records the attempt, the
+    result and (on success) the timestamp the hourly limit uses. (ok, message)."""
+    old = _setting("tracker_expected_egress_ip")
+    with _WRITE_LOCK:
+        rec = _ipupdate_record(state)
+        last = rec.get("last_updated_at")
+        if last and now - float(last) < ipupdate.MIN_INTERVAL:
+            return False, "the allowed IP was changed under an hour ago - at most one change an hour"
+        rec["last_attempt_at"] = now
+        try:
+            new = ipupdate.write(_mam_session(), observed, make_ip_transport())
+        except ipupdate.UpdateError as exc:
+            rec["last_result"] = {"at": now, "ok": False, "kind": exc.kind, "ip": observed, "message": str(exc), "via": via}
+            rec["notified_ip"] = observed
+            state.set_meta(META_IPUPDATE, rec)
+            log.warning("allowed-IP updater: MAM's dynamic seedbox IP was not set to %s (%s: %s)", observed, exc.kind, exc)
+            return False, f"MAM did not take {observed} ({exc.kind}): {exc}"
+        state.set_meta("setting_expected_egress", new)
+        set_effective(state)
+        rec.update({"last_updated_at": now, "old": old, "new": new, "notified_ip": "",
+                    "last_result": {"at": now, "ok": True, "kind": "", "ip": new, "message": "", "via": via}})
+        state.set_meta(META_IPUPDATE, rec)
+    log.info("allowed-IP updater: allowed IP %s -> %s (set on MAM by dynamicSeedbox.php, verified by jsonIp.php; %s)",
+             old, new, via)
+    return True, f"MAM's seedbox IP is now {new} (was {old}), verified with MAM. The next cycle checks against it."
+
+
 def use_current_ip(state) -> tuple[bool, str]:
     """Settings > Watcher "Use the current IP": once the owner has changed the allowed IP on the
     tracker's website, make the observed egress IP Audiobind's allowlist pin too. One fresh probe,
@@ -726,19 +759,31 @@ class Watcher:
         return verdict, reason, observed
 
     def _ip_notice(self, state, verdict: str, observed: str) -> None:
-        """IP_UPDATER notify / auto: report a drift once per new egress IP. Nothing is sent anywhere.
-        With no tracker endpoint for the allowed IP, ``auto`` reports exactly as ``notify`` does."""
+        """IP_UPDATER notify / auto, after the egress guard. ``notify`` reports a drift once per new IP
+        and is read-only: at most a ``jsonIp.php`` read, never the update endpoint. ``auto`` with a MAM
+        session writes the new IP to MAM (``_write_and_pin``: write, verify, re-pin, log old -> new);
+        a failed write is not retried for an hour. ``auto`` with no MAM session reports as ``notify``."""
+        probed = observed
         rec = _ipupdate_record(state)
-        outcome, why, observed, _source = _judge_drift(
-            rec, observed, "the egress probe failed" if verdict == "unknown" else "", time.time())
+        now = time.time()
+        outcome, why, observed, source = _judge_drift(
+            rec, observed, "the egress probe failed" if verdict == "unknown" else "", now)
         if outcome == ipupdate.UPDATE:
+            auto = ip_updater_mode() == "auto"
+            attempted = float(rec.get("last_attempt_at") or 0)
+            if auto and source == "MAM" and now - attempted >= ipupdate.MIN_INTERVAL:
+                _write_and_pin(state, probed, observed, now, "IP_UPDATER=auto")
+                return
             if rec.get("notified_ip") == observed:
                 return
+            suffix = ""
+            if auto and source != "MAM":
+                suffix = " (IP_UPDATER=auto: no MyAnonamouse session is configured, so nothing was changed automatically)"
+            elif auto:
+                suffix = " (IP_UPDATER=auto: the last attempt failed under an hour ago, so it is not retried yet)"
             log.warning(
                 "allowed-IP updater: %s. Set the tracker account's allowed IP to %s on the tracker's website, "
-                "then press Use the current IP on Settings > Watcher%s", why, observed,
-                " (IP_UPDATER=auto: no tracker endpoint for this is known, so nothing was changed automatically)"
-                if ip_updater_mode() == "auto" else "")
+                "then press Use the current IP on Settings > Watcher%s", why, observed, suffix)
             rec["notified_ip"] = observed
             state.set_meta(META_IPUPDATE, rec)
         elif outcome == ipupdate.NOOP and rec.get("notified_ip"):
