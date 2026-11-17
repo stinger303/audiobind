@@ -21,6 +21,7 @@ it). Write-ups: /opt/data/audiobind-designs/claude-report-bench-meta-2.md.
 import itertools
 import math
 import random
+import textwrap
 import time
 import traceback
 import unittest
@@ -299,7 +300,8 @@ def explore(seed: int = SEED) -> Findings:
             match = check_match(unit, fake, hours, found, origin, **pin)
             crashing = [p for p in pool if p.subtitle and not (p.title or "").strip()]
             if match is None and crashing:
-                # F2 hides everything else about this point: check the rest of it without those answers
+                # only if F2 regresses (fixed in 0.22.0-dev6): the crash would hide everything else
+                # about this point, so check the rest of it without those answers
                 fake.pool = [p for p in pool if p not in crashing]
                 match = check_match(unit, fake, hours, found, origin + "/without-blank-title", **pin)
             return match
@@ -417,9 +419,34 @@ KNOWN_FINDINGS = {
     "mirror: HIGH with limiting reason foreign (language blank)":
         "F1: a catalogue answer with no language is English to grade() and foreign to the scorer, "
         "the panel and stage E",
-    "crash: match_unit raised ValueError in matching.py:title_alone":
-        "F2: a catalogue answer with a subtitle and a blank title raises out of match_unit",
 }
+
+#: finding classes the owner approved fixing -> what fixed them. Each must reproduce zero times, and
+#: ``test_a_fixed_finding_that_comes_back_is_caught`` proves the pre-fix code would put it back here.
+FIXED_FINDINGS = {
+    "crash: match_unit raised ValueError in matching.py:title_alone":
+        "F2 (0.22.0-dev6): title_alone scores an answer with no usable title 0.0 instead of max() of nothing",
+}
+
+
+def reproduced_fixed(found: Findings) -> dict[str, int]:
+    """The fixed finding classes that showed up again in ``found`` ({} = none)."""
+    return {c: found.count[c] for c in FIXED_FINDINGS if found.count[c]}
+
+
+def pre_fix(name: str, source: str):
+    """``matching.<name>`` as it was before its fix, compiled as matching.py so a crash in it is
+    named exactly the way explore() named the original finding."""
+    namespace = dict(vars(matching))
+    exec(compile(textwrap.dedent(source), matching.__file__, "exec"), namespace)  # noqa: S102 - fixed text
+    return namespace[name]
+
+
+#: title_alone before F2's fix, verbatim
+PRE_F2_TITLE_ALONE = """
+    def title_alone(wanted, product):
+        return max(window_sim(wanted, t) for t in catalog_titles(product.title))
+"""
 
 
 class TestMatcherProperties(unittest.TestCase):
@@ -430,8 +457,20 @@ class TestMatcherProperties(unittest.TestCase):
         cls.seconds = time.monotonic() - started
 
     def test_no_generated_point_crashes_or_leaves_the_tier_set_beyond_the_known_findings(self):
-        unknown = {c: n for c, n in self.found.count.items() if c not in KNOWN_FINDINGS}
+        unknown = {c: n for c, n in self.found.count.items() if c not in KNOWN_FINDINGS and c not in FIXED_FINDINGS}
         self.assertEqual(unknown, {}, f"\nnew finding class(es) - write them up, do not fix here:\n{self.found}")
+
+    def test_no_fixed_finding_reproduces(self):
+        self.assertEqual(reproduced_fixed(self.found), {}, f"a fixed finding is back - the fix was reverted:\n{self.found}")
+
+    def test_a_fixed_finding_that_comes_back_is_caught(self):
+        # F2: the pre-fix title_alone against F2's minimal pool lands in FIXED_FINDINGS by its exact name
+        found = Findings()
+        fake = FakeCatalog(blank_title_pool(), {})
+        with mock.patch.object(catalog, "search", fake.search), mock.patch.object(catalog, "book", fake.book), \
+                mock.patch.object(matching, "title_alone", pre_fix("title_alone", PRE_F2_TITLE_ALONE)):
+            self.assertIsNone(check_match(scanned_unit("Frank Herbert - Dune"), fake, 10.0, found, "guard"))
+        self.assertEqual(reproduced_fixed(found), {"crash: match_unit raised ValueError in matching.py:title_alone": 1})
 
     def test_every_known_finding_still_reproduces(self):
         gone = [c for c in KNOWN_FINDINGS if not self.found.count[c]]
@@ -489,24 +528,27 @@ class TestMatcherProperties(unittest.TestCase):
                          "convert")
 
 
-    def test_f2_a_blank_title_with_a_subtitle_raises_out_of_match_unit(self):
+    def test_f2_a_blank_title_with_a_subtitle_scores_zero_and_the_real_book_beside_it_wins(self):
+        # regression for F2: before the fix every one of these raised ValueError out of title_alone
         def run(pool):
             fake = FakeCatalog(pool, {})
             with mock.patch.object(catalog, "search", fake.search), mock.patch.object(catalog, "book", fake.book):
                 return match_unit(scanned_unit("Frank Herbert - Dune"), local_hours=10.0)
 
         real, blank = blank_title_pool()
-        self.assertEqual((run([real]).confidence, run([real]).asin), ("HIGH", "B0REALDUNE"))
+        alone = run([real])
         for title in ("", " ", None):
-            with self.subTest(title=title):
-                blank.title = title
-                try:
-                    run([real, blank])
-                except ValueError as exc:  # assertRaises would drop the traceback that names the stage
-                    self.assertEqual(_raised_in(exc), "matching.py:title_alone")
-                else:
-                    self.fail("no longer raises: remove F2 from KNOWN_FINDINGS and say what fixed it")
-        # the subtitle is what reaches the empty max(): without it, or with any title text, no crash
+            for pool in ([real, blank], [blank, real]):
+                with self.subTest(title=title, first=pool[0].asin):
+                    blank.title = title
+                    self.assertEqual(matching.title_alone("Dune", blank), 0.0)
+                    self.assertEqual(matching.title_score("Dune", blank), 0.0)
+                    match = run(pool)
+                    # the blank answer does not poison the pool: same pick, same tier as without it
+                    self.assertEqual((match.asin, match.confidence), (alone.asin, alone.confidence))
+                    self.assertEqual((match.asin, match.confidence), ("B0REALDUNE", "HIGH"))
+                    self.assertNotEqual(match.asin, "B0BLANKTTL")
+        # the cases that never crashed still behave as before
         blank.title, blank.subtitle = "", ""
         self.assertEqual(run([real, blank]).asin, "B0REALDUNE")
         blank.title, blank.subtitle = "()", "A Novel"

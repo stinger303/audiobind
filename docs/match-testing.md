@@ -351,8 +351,14 @@ reproducing, so a fix has to remove its entry. Measured at 0.22.0-dev6, two clas
   "english"`) and not English to the scorer, the panel and stage E (`language_penalized`). A lone
   exact answer grades HIGH and converts while the panel shows "Not listed as English, −15 %".
   Frozen catalogue: 228 answers have no language, none names an author, so none can reach HIGH today.
-* **F2, retrieval/scoring:** an answer with a subtitle and a blank title raises `ValueError` out of
-  `match_unit` (`title_alone`: `max()` of nothing). Frozen catalogue: 0 of 1,102 answers.
+* **F2, retrieval/scoring — fixed in 0.22.0-dev6:** an answer with a subtitle and a blank title
+  raised `ValueError` out of `match_unit` (`title_alone`: `max()` of nothing). Frozen catalogue: 0 of
+  1,102 answers. `title_alone` now scores an answer with no usable title 0.0; the real book beside it
+  is picked at HIGH. 0 corpus rows moved, search cost unchanged (431), replay agrees on 123/123.
+
+A fixed class moves from `KNOWN_FINDINGS` to `FIXED_FINDINGS`, which must reproduce **zero** times;
+`test_a_fixed_finding_that_comes_back_is_caught` runs the pre-fix code (verbatim, compiled as
+`matching.py`) and proves the class lands back in that list under its exact name.
 
 One observation is bounded rather than listed: `window_sim` scores every run of words, so a match
 costs about words³. A folder name at the 255-byte cap takes under 0.3 s; a 400-word title takes ~28 s,

@@ -142,8 +142,11 @@ def floor_sim(wanted: str, product: Product) -> float:
 def title_alone(wanted: str, product: Product) -> float:
     """How well the catalog title by itself (or one "aka" side of it) matches the best window of
     ``wanted`` - the SUBTITLE_GATE measure. A window, so "Moneyball The Art of Winning" still lets
-    "Moneyball" + its subtitle count; a decoy whose title appears nowhere in the query never does."""
-    return max(window_sim(wanted, t) for t in catalog_titles(product.title))
+    "Moneyball" + its subtitle count; a decoy whose title appears nowhere in the query never does.
+
+    A catalog answer with no usable title (blank, whitespace, None) scores 0.0: it never opens the
+    subtitle gate, and it must not raise and take the rest of the pool down with it."""
+    return max((window_sim(wanted, t) for t in catalog_titles(product.title)), default=0.0)
 
 
 def window_coverage(wanted: str, product: Product) -> float:
