@@ -1,8 +1,8 @@
 """Parity feature 3: the allowed-IP updater (IP_UPDATER, ipupdate.decide, Use the current IP).
 
-Nothing here touches the network: the egress probe is a fake, the tracker transport records calls.
-There is no tracker write to test. No allowed-IP endpoint could be verified (docs/ip-updater.md),
-so these tests check that the updater never sends a tracker request at all.
+Nothing here touches the network: the egress probe is a fake, the tracker transport records calls,
+and the MAM IP endpoints (jsonIp.php, dynamicSeedbox.php) go through a scripted MamTransport.
+The search and download endpoints are never used by the updater.
 """
 
 import json
@@ -246,6 +246,264 @@ class TestAutoActsAsNotify(UpdaterCase):
         self.assertEqual(self.transport.calls, [])
         rows = dict(web._ip_updater_rows(self.w.status(self.state)))
         self.assertIn("acting as <code>notify</code>", rows["Allowed-IP updater"])
+
+
+# ---------------------------------------------------------------------------- the MAM write path
+#: a stand-in, not a session: the tests check that this string never reaches a log, a message or the page
+SESSION = "FAKE-SESSION-SENTINEL-0001"
+MAM_URL = "https://www.myanonamouse.net"
+OK_SET = (200, b'{"Success": true, "msg": "Completed", "ip": "198.51.100.99"}')
+
+
+def ip_answer(ip):
+    return 200, json.dumps({"ip": ip, "ASN": 64496}).encode()
+
+
+class MamTransport:
+    """Fake transport for ipupdate: one scripted answer per URL, consumed in order, every call recorded."""
+
+    def __init__(self, ip=(), seedbox=()):
+        self.answers = {ipupdate.JSON_IP_URL: list(ip), ipupdate.DYNAMIC_SEEDBOX_URL: list(seedbox)}
+        self.calls = []
+
+    def __call__(self, method, url, headers, timeout):
+        self.calls.append((method, url, dict(headers)))
+        queue = self.answers[url]
+        if not queue:
+            raise AssertionError(f"unexpected call to {url}")
+        answer = queue.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    def urls(self):
+        return [url.rsplit("/", 1)[-1] for _m, url, _h in self.calls]
+
+
+class TestWrite(unittest.TestCase):
+    """ipupdate.write / read_ip against a mocked transport. No network."""
+
+    def write(self, transport):
+        return ipupdate.write(SESSION, NEW, transport)
+
+    def fails(self, transport, kind):
+        with self.assertRaises(ipupdate.UpdateError) as ctx:
+            self.write(transport)
+        self.assertEqual(ctx.exception.kind, kind, str(ctx.exception))
+        self.assertNotIn(SESSION, str(ctx.exception))
+        return str(ctx.exception)
+
+    def test_success_is_update_then_verify(self):
+        t = MamTransport(ip=[ip_answer(NEW)], seedbox=[OK_SET])
+        self.assertEqual(self.write(t), NEW)
+        self.assertEqual(t.urls(), ["dynamicSeedbox.php", "jsonIp.php"])
+        for method, _url, headers in t.calls:
+            self.assertEqual(method, "GET")
+            self.assertEqual(headers["Cookie"], f"mam_id={SESSION}")
+
+    def test_session_rejected_is_auth(self):
+        t = MamTransport(seedbox=[(403, b'{"Success": false, "msg": "Invalid session"}')])
+        self.assertIn("renew TRACKER_SESSION", self.fails(t, ipupdate.AUTH))
+        self.assertEqual(t.urls(), ["dynamicSeedbox.php"], "nothing to verify after a refusal")
+        # a redirect to the login page is the same thing
+        self.fails(MamTransport(seedbox=[(302, b"")]), ipupdate.AUTH)
+
+    def test_session_not_allowed_is_refused(self):
+        t = MamTransport(seedbox=[(403, b'{"Success": false, "msg": "Incorrect session type - not allowed this function"}')])
+        why = self.fails(t, ipupdate.REFUSED)
+        self.assertIn("Allow session to set dynamic seedbox IP", why)
+        self.fails(MamTransport(seedbox=[(429, b'{"Success": false, "msg": "Last change too recent"}')]),
+                   ipupdate.REFUSED)
+
+    def test_unreachable_is_unavailable(self):
+        self.fails(MamTransport(seedbox=[OSError("connection refused")]), ipupdate.UNAVAILABLE)
+        self.fails(MamTransport(seedbox=[(503, b"<html>down</html>")]), ipupdate.UNAVAILABLE)
+        # the update went out, the verify read did not come back: still not a success
+        why = self.fails(MamTransport(seedbox=[OK_SET], ip=[TimeoutError()]), ipupdate.UNAVAILABLE)
+        self.assertIn("could not be verified", why)
+
+    def test_verify_disagreement_is_a_failure_not_a_success(self):
+        t = MamTransport(seedbox=[OK_SET], ip=[ip_answer(PINNED)])
+        why = self.fails(t, ipupdate.ERROR)
+        self.assertIn(f"now shows {PINNED}, not {NEW}", why)
+        self.assertIn("not counted as a success", why)
+
+    def test_junk_answers_are_errors(self):
+        self.fails(MamTransport(seedbox=[(200, b"<html>login</html>")]), ipupdate.ERROR)
+        self.fails(MamTransport(seedbox=[OK_SET], ip=[(200, b'{"ip": "nope"}')]), ipupdate.ERROR)
+
+    def test_the_session_is_never_echoed(self):
+        body = json.dumps({"Success": False, "msg": f"Invalid session {SESSION}"}).encode()
+        why = self.fails(MamTransport(seedbox=[(403, body)]), ipupdate.AUTH)
+        self.assertIn("[session]", why)
+
+    def test_no_session_sends_nothing(self):
+        t = MamTransport()
+        with self.assertRaises(ipupdate.UpdateError) as ctx:
+            ipupdate.write("", NEW, t)
+        self.assertEqual((ctx.exception.kind, t.calls), (ipupdate.AUTH, []))
+
+    def test_read_ip(self):
+        self.assertEqual(ipupdate.read_ip(SESSION, MamTransport(ip=[ip_answer(" 198.51.100.99 ")])), NEW)
+
+    def test_is_mam(self):
+        for url, want in ((MAM_URL, True), ("https://myanonamouse.net/", True), ("https://t.myanonamouse.net", True),
+                          ("https://tracker.example", False), ("https://myanonamouse.net.evil.example", False),
+                          ("https://notmyanonamouse.net", False), ("", False)):
+            self.assertEqual(ipupdate.is_mam(url), want, url)
+
+    def test_real_transport_only_requests_the_two_urls(self):
+        transport = ipupdate.urllib_transport()
+        with self.assertRaises(ipupdate.UpdateError):
+            transport("GET", "https://www.myanonamouse.net/tor/js/loadSearchJSONbasic.php", {}, 1)
+
+
+class MamCase(UpdaterCase):
+    """The watcher with a MyAnonamouse tracker URL and session, and a mocked MAM transport."""
+
+    MODE = "auto"
+
+    def setUp(self):
+        super().setUp()
+        for p in (mock.patch.object(CONFIG, "tracker_url", MAM_URL), mock.patch.object(CONFIG, "tracker_session", SESSION)):
+            p.start()
+            self.patches.append(p)
+        self.mam = MamTransport()
+        p = mock.patch.object(watcher, "make_ip_transport", lambda: self.mam)
+        p.start()
+        self.patches.append(p)
+
+    def script(self, ip=(), seedbox=()):
+        self.mam.answers[ipupdate.JSON_IP_URL].extend(ip)
+        self.mam.answers[ipupdate.DYNAMIC_SEEDBOX_URL].extend(seedbox)
+
+    def page(self):
+        return "".join(v for _k, v in web._ip_updater_rows(self.w.status(self.state)))
+
+    def assert_no_session(self, *texts):
+        for text in texts:
+            self.assertNotIn(SESSION, str(text))
+
+
+class TestAutoWrites(MamCase):
+    def test_auto_writes_verifies_repins_and_logs_old_to_new(self):
+        self.script(ip=[ip_answer(NEW), ip_answer(NEW)], seedbox=[OK_SET])
+        with self.assertLogs("audiobind", level=logging.INFO) as logs:
+            summary = self.run_cycle(NEW)
+        self.assertEqual(self.mam.urls(), ["jsonIp.php", "dynamicSeedbox.php", "jsonIp.php"])
+        self.assertEqual(summary["egress_guard"], "blocked", "this cycle's verdict stands")
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), NEW)
+        rec = self.state.get_meta(watcher.META_IPUPDATE)
+        self.assertEqual((rec["old"], rec["new"], rec["last_result"]["ok"]), (PINNED, NEW, True))
+        self.assertAlmostEqual(rec["last_updated_at"], time.time(), delta=5)
+        self.assertTrue(any("INFO" in line and f"{PINNED} -> {NEW}" in line for line in logs.output), logs.output)
+        self.assertEqual(self.transport.calls, [], "the search and download endpoints are not involved")
+        self.assertIn("set on MyAnonamouse", self.page())
+        self.assert_no_session(logs.output, rec, self.page())
+        self.assertEqual(self.run_cycle(NEW)["egress_guard"], "ok", "the next cycle passes on the new pin")
+
+    def test_mam_answer_is_the_source_of_truth(self):
+        # the probe says NEW, MAM sees the pinned IP: nothing has drifted as far as MAM is concerned
+        self.script(ip=[ip_answer(PINNED)])
+        self.run_cycle(NEW)
+        self.assertEqual(self.mam.urls(), ["jsonIp.php"])
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), PINNED)
+
+    def test_failed_write_is_recorded_shown_and_not_retried_within_the_hour(self):
+        self.script(ip=[ip_answer(NEW), ip_answer(NEW)],
+                    seedbox=[(403, b'{"Success": false, "msg": "Incorrect session type"}')])
+        with self.assertLogs("audiobind", level=logging.WARNING) as logs:
+            self.run_cycle(NEW)
+            self.run_cycle(NEW)
+        self.assertEqual(self.mam.urls(), ["jsonIp.php", "dynamicSeedbox.php", "jsonIp.php"], "one write attempt")
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), PINNED)
+        rec = self.state.get_meta(watcher.META_IPUPDATE)
+        self.assertEqual((rec["last_result"]["ok"], rec["last_result"]["kind"]), (False, "refused"))
+        self.assertNotIn("last_updated_at", rec)
+        self.assertIn("failed (refused)", self.page())
+        self.assert_no_session(logs.output, self.page())
+
+    def test_verify_disagreement_does_not_repin(self):
+        self.script(ip=[ip_answer(NEW), ip_answer(PINNED)], seedbox=[OK_SET])
+        self.run_cycle(NEW)
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), PINNED)
+        self.assertEqual(self.state.get_meta(watcher.META_IPUPDATE)["last_result"]["kind"], "error")
+        self.assertIn("not counted as a success", self.page())
+
+
+class TestGuardGatesTheWrite(MamCase):
+    """No MAM request at all when the probe says home or failed; no write without a home IP to compare."""
+
+    def test_home_ip_or_probe_failure_never_reaches_mam(self):
+        for observed in (HOME, egress.EgressError("ipinfo.io: URLError")):
+            self.run_cycle(observed)
+            with self.probing(observed):
+                self.assertFalse(watcher.use_current_ip(self.state)[0])
+        self.assertEqual(self.mam.calls, [])
+
+    def test_mam_seeing_the_home_ip_is_never_written(self):
+        self.script(ip=[ip_answer(HOME)])
+        self.run_cycle(NEW)
+        self.assertEqual(self.mam.urls(), ["jsonIp.php"])
+
+    def test_no_home_ip_configured_means_no_write(self):
+        with mock.patch.object(CONFIG, "tracker_home_ip", ""), \
+                self.assertLogs("audiobind", level=logging.WARNING) as logs:
+            self.script(ip=[ip_answer(NEW)] * 2)
+            self.run_cycle(NEW)
+            self.run_cycle(NEW)
+        self.assertNotIn("dynamicSeedbox.php", self.mam.urls())
+        said = [line for line in logs.output if "TRACKER_HOME_IP is not set" in line]
+        self.assertEqual(len(said), 1, "said once per new IP, not every cycle")
+
+    def test_not_mam_means_no_mam_call(self):
+        with mock.patch.object(CONFIG, "tracker_url", "https://tracker.example"):
+            self.run_cycle(NEW)
+            self.assertFalse(self.w.status(self.state)["ip_updater"]["can_write"])
+        self.assertEqual(self.mam.calls, [])
+
+
+class TestNotifyStaysReadOnly(MamCase):
+    MODE = "notify"
+
+    def test_notify_never_calls_the_update_endpoint(self):
+        self.script(ip=[ip_answer(NEW)] * 3)
+        for _ in range(3):
+            self.run_cycle(NEW)
+        self.assertNotIn("dynamicSeedbox.php", self.mam.urls())
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), PINNED)
+
+
+class TestOffWithMam(MamCase):
+    MODE = "off"
+
+    def test_off_makes_no_mam_call(self):
+        self.run_cycle(NEW)
+        self.assertEqual(self.mam.calls, [])
+        self.assertNotIn("ip_updater", self.w.status(self.state))
+
+
+class TestButtonWrites(MamCase):
+    MODE = "notify"  # the button is the owner's explicit say-so: it writes in notify too
+
+    def test_button_writes_verifies_and_repins(self):
+        self.script(ip=[ip_answer(NEW), ip_answer(NEW)], seedbox=[OK_SET])
+        with self.probing(NEW):
+            ok, message = watcher.use_current_ip(self.state)
+        self.assertTrue(ok, message)
+        self.assertIn("verified", message)
+        self.assertEqual(self.mam.urls(), ["jsonIp.php", "dynamicSeedbox.php", "jsonIp.php"])
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), NEW)
+
+    def test_button_failure_says_why_and_keeps_the_pin(self):
+        self.script(ip=[ip_answer(NEW)], seedbox=[(403, b'{"Success": false, "msg": "Invalid session"}')])
+        with self.probing(NEW):
+            ok, message = watcher.use_current_ip(self.state)
+        self.assertFalse(ok)
+        self.assertIn("(auth)", message)
+        self.assert_no_session(message, self.page())
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), PINNED)
+        self.assertIn("failed (auth)", self.page())
 
 
 class TestApi(unittest.TestCase):

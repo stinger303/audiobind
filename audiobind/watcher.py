@@ -797,7 +797,8 @@ class Watcher:
         if outcome == ipupdate.UPDATE:
             auto = ip_updater_mode() == "auto"
             attempted = float(rec.get("last_attempt_at") or 0)
-            if auto and source == "MAM" and now - attempted >= ipupdate.MIN_INTERVAL:
+            blocked = _write_blocked(probed, observed) if auto and source == "MAM" else ""
+            if auto and source == "MAM" and not blocked and now - attempted >= ipupdate.MIN_INTERVAL:
                 _write_and_pin(state, probed, observed, now, "IP_UPDATER=auto")
                 return
             if rec.get("notified_ip") == observed:
@@ -805,6 +806,8 @@ class Watcher:
             suffix = ""
             if auto and source != "MAM":
                 suffix = " (IP_UPDATER=auto: no MyAnonamouse session is configured, so nothing was changed automatically)"
+            elif blocked:
+                suffix = f" (IP_UPDATER=auto: nothing sent to MAM - {blocked})"
             elif auto:
                 suffix = " (IP_UPDATER=auto: the last attempt failed under an hour ago, so it is not retried yet)"
             log.warning(
