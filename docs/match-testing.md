@@ -174,6 +174,16 @@ Codecs are not in the corpus. A single `.m4b`/`.m4a` is taken as AAC (remux), an
   unknown runtime fails the gate, which is now unreachable by construction).
   `adv:unknown_runtime_lone_candidate` is the case that keeps it that way: a lone no-runtime answer
   grades HIGH and must still be held.
+  *Production exposure, measured 0.22.0-dev5 (read-only).* No state-DB copy was reachable, so this is
+  measured on the DB's last export (`corpus.csv`, 2026-11-16) and the frozen catalogue. Of 122
+  matched rows (DB recorded an ASIN), 120 have their product in the catalogue and **0** carry runtime
+  0; no row has 0 local hours. The other 2 cannot be checked offline (`B0BCDTCVGV` Unlocked, review;
+  `B014JWR5I4` The Guilty, a pinned HIGH conversion), so the held-instead-of-written rate is 0/120,
+  at most 2/122 (1.6 %). The bench's own picks today: 0 of 114 have an unknown runtime. No-runtime
+  records do exist in the catalogue: 44 of 958 ASINs (4.6 %), each in one corpus pool, none picked.
+  The rule has no pin exemption (`Audit.runtime_matches`), so a hand-set ASIN whose record has no
+  runtime is held too. Re-measure on a DB copy with `SELECT path, asin FROM units WHERE asin != ''`
+  joined to each product's catalogue runtime (`detail.match.hours` = 0).
 * **if AUTO_CONVERT=medium**: wrong picks that would be written at the medium setting.
 * **F's reach**: graded rows whose pool holds a wrong candidate inside the tolerance. F can only ever
   fire there; a bad pick anywhere else is held by the runtime check.
