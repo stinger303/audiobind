@@ -34,7 +34,7 @@ FEATURES: dict[str, tuple[str, str, str]] = {
     "3": (
         "allowed-IP updater",
         "parity: ip-updater research",
-        "parity: ip-updater rollback",
+        "parity: ip-updater docs",
     ),
 }
 

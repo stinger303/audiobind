@@ -284,9 +284,13 @@ a drifted cycle is still refused.
   is `TRACKER_HOME_IP`, when nothing has drifted or no IP is pinned, and when the last change was under
   an hour ago. The change is logged at INFO (`old -> new` and the reason). Scripted:
   `curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"action":"use_current_ip"}' localhost:8080/api/watcher`.
-- `auto`: Audiobind does **not** change anything on the tracker, because no tracker endpoint for
-  that could be verified ([research notes](ip-updater.md)). Until one is added, `auto` behaves like
-  `notify` and says so in the log and on the page.
+  With a MyAnonamouse session, the button sets the dynamic seedbox IP on MAM, checks that MAM now
+  sees it, and only then re-pins ([details](ip-updater.md)).
+- `auto`: on MyAnonamouse, with "Allow session to set dynamic seedbox IP" enabled for the session,
+  Audiobind sets the new IP on MAM (`dynamicSeedbox.php`). It then confirms it with `jsonIp.php`,
+  re-pins, and logs `old -> new` at INFO. This happens at most once an hour, never from the home IP,
+  and only with `TRACKER_HOME_IP` set. On any other tracker, or without a session, `auto` behaves like
+  `notify` and says so ([details](ip-updater.md)).
 
 With `notify` or `auto`, `GET /api/watcher` also carries `ip_updater` (`mode`, `can_write`,
-`decision`, `reason`, `last_updated_at`, `last_old`, `last_new`). With `off`, the key is absent.
+`decision`, `reason`, `last_updated_at`, `last_old`, `last_new`, `last_result`). With `off`, the key is absent.

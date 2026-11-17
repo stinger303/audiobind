@@ -16,7 +16,7 @@ Try the setting first. It is reversible in seconds and needs no build, no image,
 | id | feature | commits (subject range) | off state |
 |---|---|---|---|
 | 1 | multi-client download adapters (qBittorrent, Deluge, Transmission, rTorrent) | `clients: base` … `tests: conformance` | `DOWNLOAD_CLIENT=qbittorrent` (the default) |
-| 3 | allowed-IP updater: drift notice and **Use the current IP** (no tracker write) | `parity: ip-updater research` … `parity: ip-updater rollback` | `IP_UPDATER=off` (the default) |
+| 3 | allowed-IP updater: drift notice, **Use the current IP**, MAM dynamic seedbox IP write | `parity: ip-updater research` … `parity: ip-updater docs` | `IP_UPDATER=off` (the default) |
 
 Features 2 and 4 are not built yet; they get a row here when they land. Feature 3 adds no database
 column or table either. Its record is one meta row (`watcher_ipupdate`), and a reverted build ignores
