@@ -222,6 +222,59 @@ class TestTheInstrumentCatchesFailures(unittest.TestCase):
         self.assertGreater(g.drift, 100)
         self.assertIn("search cost", bench.scoreboard(run, g))
 
+    # -- the newer expectations must be able to fail: an instrument nobody has watched fail is not one
+    @staticmethod
+    def _case(name):
+        spec = bench.load_adversarial()
+        return next(dict(c) for c in spec["cases"] if c["name"] == name), spec["products"]
+
+    def _evaluate(self, case, products):
+        with bench.sealed(bench.FrozenCatalog({})):
+            return bench.evaluate_case(case, products)
+
+    def test_no_pick_fails_when_a_pick_exists(self):
+        # the dead-pin case as written passes: nothing is picked
+        case, products = self._case("pin_dead_blocks_the_search")
+        self.assertEqual(self._evaluate(case, products).expect_problems, [])
+        # the same expectation on the abandoned pin (third check: the search runs and finds Past Tense)
+        case["pin_failures"] = 2
+        out = self._evaluate(case, products)
+        self.assertEqual(out.pick, "B07DK1BBS6")
+        self.assertTrue(any("while the pinned ASIN was unresolved" in p for p in out.expect_problems),
+                        out.expect_problems)
+
+    def test_no_pick_fails_the_gate_when_a_dead_pin_falls_through_to_a_search(self):
+        knob = next(k for k in bench.KNOBS if k.name == "PIN_GIVE_UP_AFTER")
+        with knob.set(1):  # give up on the first check: the search runs at once
+            run, g, _ = _run()
+        for case in ("adv:pin_dead_blocks_the_search", "adv:pin_dead_blocks_the_second_check"):
+            self.assertTrue(any(f.startswith(f"adversarial {case}:") and "while the pinned ASIN was unresolved" in f
+                                for f in g.failures), (case, g.failures))
+
+    def test_decision_review_fails_on_a_convert(self):
+        # a plain HIGH pick whose runtime agrees converts; asserting review on it must fail
+        case, products = self._case("same_title_two_authors")
+        case["hours"] = 13.17  # legend_gemmell: 790 min
+        case["expect"] = dict(case["expect"], decision="review")
+        out = self._evaluate(case, products)
+        self.assertEqual((out.tier, out.decision), ("HIGH", "convert"))
+        self.assertIn("decision convert, want review", out.expect_problems)
+
+    def test_decision_review_fails_the_gate_when_the_abandoned_pin_rule_is_dropped(self):
+        """pipeline.py never auto-converts a match made after giving up on a dead pin. Drop that
+        rule (clear pin_abandoned) and adv:pin_abandoned_never_converts must fail on its decision."""
+        real = matching.match_unit
+
+        def forgetful(*args, **kwargs):
+            m = real(*args, **kwargs)
+            m.pin_abandoned = ""
+            return m
+
+        with mock.patch.object(matching, "match_unit", forgetful):
+            run, g, _ = _run()
+        self.assertTrue(any(f.startswith("adversarial adv:pin_abandoned_never_converts:")
+                            and "decision convert, want review" in f for f in g.failures), g.failures)
+
     def test_a_fixed_known_defect_must_leave_the_list(self):
         run, _ = bench.run_bench()
         right = next(o for o in run.corpus if o.verdict == "right")
