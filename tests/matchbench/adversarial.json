@@ -260,6 +260,18 @@
     {"name": "unknown_runtime_lone_candidate", "classes": ["runtime", "lone-candidate", "catalog-junk"],
      "folder": "Lee Child/10 The Hard Way", "hours": 11.66, "catalog": ["hardway_no_runtime"],
      "expect": {"asin": "B00RUNTIME0", "decision": "hold"},
-     "why": "the only catalog answer carries no runtime: nothing corroborates the edition, so it may be suggested but never written unseen"}
+     "why": "the only catalog answer carries no runtime: nothing corroborates the edition, so it may be suggested but never written unseen"},
+    {"name": "pin_dead_blocks_the_search", "classes": ["pin"], "folder": "Lee Child/Past Tense",
+     "hours": 12.85, "catalog": ["past_tense"], "pin": "B0DEADPIN1", "pin_failures": 0,
+     "expect": {"no_pick": true, "decision": "review"},
+     "why": "a hand-set ASIN the catalog knows nothing about must block the search, never fall through to another edition - PIN_GIVE_UP_AFTER decides how many checks that lasts"},
+    {"name": "pin_dead_blocks_the_second_check", "classes": ["pin"], "folder": "Lee Child/Past Tense",
+     "hours": 12.85, "catalog": ["past_tense"], "pin": "B0DEADPIN1", "pin_failures": 1,
+     "expect": {"no_pick": true, "decision": "review"},
+     "why": "one failed check is not enough to give up: the second check must still block the search"},
+    {"name": "pin_abandoned_never_converts", "classes": ["pin"], "folder": "Lee Child/Past Tense",
+     "hours": 12.85, "catalog": ["past_tense"], "pin": "B0DEADPIN1", "pin_failures": 2,
+     "expect": {"asin": "B07DK1BBS6", "must_pick": true, "decision": "review"},
+     "why": "dead on the third check: the pin stops blocking and a suggestion appears, but a match made without the operator's ASIN is never written unseen (HIGH and still review)"}
   ]
 }

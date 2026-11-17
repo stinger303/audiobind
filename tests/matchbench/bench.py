@@ -898,6 +898,10 @@ def decide(unit: BookUnit, match: matching.Match, tier: str, hours: float) -> tu
         decision = "hold"
     else:
         decision = "review"
+    if match.pin_abandoned:
+        # pipeline.py: the operator asked for one edition; a search made after giving up on that
+        # dead pin may have found another, so it is never converted unseen whatever the tier says
+        decision = "review"
     return decision, action, state, delta
 
 
@@ -972,11 +976,19 @@ class Outcome:
         return self.writes and self.verdict == "wrong"
 
 
-def run_unit(unit: BookUnit, hours: float, tags: tuple[str, str] | None) -> tuple[matching.Match, Capture, list[str]]:
-    """match_unit plus the pipeline's ingest retry, as audit_unit runs them (no files read)."""
+def run_unit(unit: BookUnit, hours: float, tags: tuple[str, str] | None,
+             asin_override: str = "", pin_failures: int = 0) -> tuple[matching.Match, Capture, list[str]]:
+    """match_unit plus the pipeline's ingest retry, as audit_unit runs them (no files read).
+
+    ``asin_override``/``pin_failures`` model a hand-set ASIN, so the dead-pin rules
+    (``PIN_GIVE_UP_AFTER``: block the search, then abandon the pin and never auto-convert) are
+    reachable at all. The corpus never passes them: a pinned row is matched *without* its pin,
+    because the pin is the owner's label and the question is whether the matcher would have found it.
+    """
     flags: list[str] = []
     with Capture().watching() as cap:
-        match = matching.match_unit(unit, local_hours=hours)
+        match = matching.match_unit(unit, local_hours=hours, asin_override=asin_override,
+                                    pin_failures=pin_failures)
     if unit.source == "ingest" and match.confidence in ("NONE", "LOW"):
         if tags is None:
             flags.append("retry-unreproducible")
@@ -1083,8 +1095,10 @@ def evaluate_case(case: dict, products: dict) -> Outcome:
     unit = case_unit(case)
     hours = float(case.get("hours") or 0)
     tags = tuple(case["tags"]) if case.get("tags") else None
+    pin = str(case.get("pin") or "")
+    pin_failures = int(case.get("pin_failures") or 0)
     with patched(catalog, search=model.search, book=model.book):
-        match, cap, flags = run_unit(unit, hours, tags)
+        match, cap, flags = run_unit(unit, hours, tags, asin_override=pin, pin_failures=pin_failures)
     out.flags = flags
     _finish(out, unit, match, cap, hours)
     exp = case.get("expect") or {}
@@ -1106,6 +1120,10 @@ def evaluate_case(case: dict, products: dict) -> Outcome:
         problems.append(f"decision {out.decision}, want {exp['decision']}")
     if exp.get("in_pool") and not out.in_pool:
         problems.append("labelled edition never reached the candidate pool")
+    #: a hand-set ASIN with no catalog data must block the search entirely: a pick here means the
+    #: dead pin fell through to a search that could offer (and convert) a different edition
+    if exp.get("no_pick") and out.pick:
+        problems.append(f"picked {out.pick} while the pinned ASIN was unresolved")
     out.expect_problems = problems
     return out
 
