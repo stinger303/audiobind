@@ -353,10 +353,12 @@ def _write_and_pin(state, probed: str, observed: str, now: float, via: str) -> t
 
 
 def use_current_ip(state) -> tuple[bool, str]:
-    """Settings > Watcher "Use the current IP": once the owner has changed the allowed IP on the
-    tracker's website, make the observed egress IP Audiobind's allowlist pin too. One fresh probe,
-    then ``ipupdate.decide``. It never writes a home IP, an unverified IP, or twice within an hour.
-    Nothing is sent to the tracker. (ok, message)."""
+    """Settings > Watcher "Use the current IP". One fresh probe, then ``_judge_drift`` (MAM's
+    ``jsonIp.php`` when a MAM session is configured). With a MAM session it sets the seedbox IP on
+    MAM, verifies it and re-pins (``_write_and_pin``). Without one, the owner has changed the allowed
+    IP on the tracker's website and this only makes the observed IP Audiobind's allowlist pin too;
+    nothing is sent to the tracker. Never a home IP, an unverified IP, or twice within an hour.
+    (ok, message)."""
     if ip_updater_mode() == "off":
         return False, "the allowed-IP updater is off (IP_UPDATER=off)"
     observed, why = "", ""
@@ -367,9 +369,12 @@ def use_current_ip(state) -> tuple[bool, str]:
     old = _setting("tracker_expected_egress_ip")
     rec = _ipupdate_record(state)
     now = time.time()
-    outcome, reason, observed, _source = _judge_drift(rec, observed, why, now)
+    probed = observed
+    outcome, reason, observed, source = _judge_drift(rec, observed, why, now)
     if outcome != ipupdate.UPDATE:
         return False, reason
+    if source == "MAM":  # a MAM session: set it on MAM, verify, then re-pin
+        return _write_and_pin(state, probed, observed, now, "Use the current IP on Settings > Watcher")
     state.set_meta("setting_expected_egress", observed)
     set_effective(state)
     rec.update({"last_updated_at": now, "old": old, "new": observed, "notified_ip": ""})
@@ -957,7 +962,8 @@ class Watcher:
                                            probe_error="" if seen else str(rec.get("reason") or "not checked yet"))
             extra["ip_updater"] = {
                 "mode": ip_updater_mode(),
-                "can_write": False,  # no verified tracker endpoint (docs/ip-updater.md)
+                "can_write": bool(_mam_session()),  # a MAM session: the button and auto write to MAM
+                "last_result": dict(upd.get("last_result") or {}),
                 "decision": outcome,
                 "reason": why,
                 "last_updated_at": upd.get("last_updated_at"),

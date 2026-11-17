@@ -4395,9 +4395,14 @@ def _ip_updater_rows(s: dict) -> list[tuple[str, str]]:
         return []
     mode = str(upd.get("mode") or "off")
     mode_html = f"<code>IP_UPDATER={_html(mode)}</code>"
-    if mode == "auto" and not upd.get("can_write"):
-        mode_html += (" &#8212; acting as <code>notify</code>: no tracker endpoint for the allowed IP is known, "
-                      "so Audiobind never changes it on the tracker")
+    can_write = bool(upd.get("can_write"))
+    if mode == "auto" and not can_write:
+        mode_html += (" &#8212; acting as <code>notify</code>: no MyAnonamouse session is configured, "
+                      "so Audiobind never changes the allowed IP on the tracker")
+    elif mode == "auto":
+        mode_html += " &#8212; a drift is set on MyAnonamouse automatically, then verified"
+    elif can_write:
+        mode_html += " &#8212; read-only: Audiobind only changes MyAnonamouse when you press the button"
     decision = str(upd.get("decision") or "")
     label = {"update": '<span class="warn">drifted &#8212; update needed</span>', "noop": '<span class="ok">in step</span>',
              "refuse": '<span class="warn">no change</span>'}.get(decision, DASH)
@@ -4407,17 +4412,31 @@ def _ip_updater_rows(s: dict) -> list[tuple[str, str]]:
                 f"{_html(upd.get('last_new') or DASH)}")
     else:
         last = "never"
+    if can_write:
+        title = ("Ask MyAnonamouse which IP it sees, set it as the session's dynamic seedbox IP, check that MAM now "
+                 "sees it, then make it the address this installation only reaches the tracker from.")
+    else:
+        title = ("After you have changed the allowed IP on the tracker's website: check the egress IP again and make it "
+                 "the address this installation only reaches the tracker from. Nothing is sent to the tracker.")
     button = (
         '<button class="btn" type="button" id="ab-watch-useip" onclick="abWatcher(\'use_current_ip\')" '
-        'title="After you have changed the allowed IP on the tracker\'s website: check the egress IP again and make it '
-        'the address this installation only reaches the tracker from. Nothing is sent to the tracker.">'
-        "Use the current IP</button>"
+        f'title="{_html(title)}">Use the current IP</button>'
     )
-    return [
+    rows = [
         ("Allowed-IP updater", mode_html),
         ("Allowed IP", f"{_html(s.get('egress_expected') or 'not pinned')} &#183; {verdict_html}"),
         ("Last updated", f"{last} {button}"),
     ]
+    result = upd.get("last_result") or {}
+    if result:
+        when = _html(rel_age(result["at"])) if result.get("at") else DASH
+        if result.get("ok"):
+            text = f'<span class="ok">set on MyAnonamouse</span> &#183; {_html(result.get("ip") or DASH)} (verified)'
+        else:
+            text = (f'<span class="warn">failed ({_html(result.get("kind") or "error")})</span> &#183; '
+                    f'{_html(result.get("message") or "")}')
+        rows.append(("Last MAM result", f"{when} &#183; {text}"))
+    return rows
 
 
 ABS_LAYOUT_WARNING = (
