@@ -303,6 +303,37 @@ After: 119 of 128 load-bearing. The other 9 are accepted and pinned by a test: a
 `none`) in a passing case whose `max_tier` already forbids everything the label could flag. The label
 names the wrong edition for the scoreboard's wrong@tier columns; the ceiling is what gates.
 
+## Independent replay: a second path to the same answer
+
+Both kinds of mutation test the bench against itself. `docs/match-replay.py` checks it against
+something else: it re-decides every corpus row **without importing `tests/matchbench`** and compares
+ASIN, tier and decision with `baseline.csv`.
+
+```bash
+python3 docs/match-replay.py          # summary and every disagreement; exit 1 on any
+python3 docs/match-replay.py --rows   # ... and one line per row
+```
+
+The two paths are built differently on purpose:
+
+| step | bench | replay |
+| --- | --- | --- |
+| the unit | a `BookUnit` built by hand, then `units._name_units` | the corpus laid out as folders and empty files in a temp dir, walked by `units.discover_units` / `discover_ingest_units` |
+| match, retry, COLLECTION, action | each pipeline step re-enacted in `run_unit` / `_finish` / `decide` | `pipeline.audit_unit` itself, with ffprobe and the tag reader stood in for |
+| decision | `decide` | `process_unit`'s rule, restated in the script |
+
+A disagreement is a finding for the owner, with both values. Neither side is edited to agree. A row
+the scanner does not produce, or a catalog answer the cache lacks, is reported as `NOT REPLAYED`,
+never skipped. `tests/test_match_replay.py` asserts agreement on every suite run, and that the
+replay moves when the app does (a 20 % tolerance, a stricter title floor, a changed baseline value).
+
+Measured at 0.22.0-dev6: 123 of 123 rows replayed, 0 disagreements.
+
+Agreement proves nothing about what both paths have to assume, because the corpus records nothing
+better: a pinned row is matched without its pin; codecs are guessed from the extension and a
+folder's files are taken as MP3; embedded tags exist only for the rows where they won; a
+part-bucket's folder names are rebuilt from its key; the catalog is the frozen one.
+
 ## Adversarial cases
 
 Written as what correct behaviour **is**, before running them. A case that fails and is accepted as a
