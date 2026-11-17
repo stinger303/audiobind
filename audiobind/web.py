@@ -783,7 +783,7 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   /* MATCH moves (it was auto-placed into the 58 px cover column and cut to "Mediu"): its own
      labelled line under the WHY cell, spanning book + actions */
   .ab-tbl tbody tr.urow>td.ab-match{grid-column:2/-1;grid-row:3;display:flex;align-items:baseline;
-    gap:6px;padding:0 10px 8px 0;margin-top:-4px;overflow:hidden}
+    gap:6px;padding:0 10px 8px 8px;margin-top:-4px;overflow:hidden}
   .ab-tbl tbody tr.urow>td.ab-match::before{content:"Match";flex:none;font-size:11px;
     text-transform:uppercase;letter-spacing:.04em;color:var(--ab-text3)}
   .ab-tbl tbody tr.urow>td.ab-match:empty{display:none}
