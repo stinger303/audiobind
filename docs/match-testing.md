@@ -334,6 +334,30 @@ better: a pinned row is matched without its pin; codecs are guessed from the ext
 folder's files are taken as MP3; embedded tags exist only for the rows where they won; a
 part-bucket's folder names are rebuilt from its key; the catalog is the frozen one.
 
+## Property tests: generated inputs on the public surface
+
+`tests/test_match_properties.py` generates units and catalogue answers from a fixed seed (empty
+titles, unicode, zero and negative hours, titles inside each other, a 200-candidate pool, no
+authors, one ASIN twice, answers with no language) and runs them through `match_unit`, `grade`,
+`choose_action` and `runtime_ok`. Every point must not raise, must grade inside
+HIGH/MEDIUM/LOW/NONE/COLLECTION, and `grade()` must agree with the explanation mirror
+(`grade_with`, `limiting_reasons`). About 1,900 matches and 21,800 graded points in ~3 s.
+
+A violation is a finding for the owner, not something the test fixes. `KNOWN_FINDINGS` lists each
+class with a minimal input; the suite fails on a new class **and** when a listed one stops
+reproducing, so a fix has to remove its entry. Measured at 0.22.0-dev6, two classes:
+
+* **F1, grade:** a catalogue answer with no `language` is English to `grade()` (`language or
+  "english"`) and not English to the scorer, the panel and stage E (`language_penalized`). A lone
+  exact answer grades HIGH and converts while the panel shows "Not listed as English, −15 %".
+  Frozen catalogue: 228 answers have no language, none names an author, so none can reach HIGH today.
+* **F2, retrieval/scoring:** an answer with a subtitle and a blank title raises `ValueError` out of
+  `match_unit` (`title_alone`: `max()` of nothing). Frozen catalogue: 0 of 1,102 answers.
+
+One observation is bounded rather than listed: `window_sim` scores every run of words, so a match
+costs about words³. A folder name at the 255-byte cap takes under 0.3 s; a 400-word title takes ~28 s,
+reachable only through an embedded title tag on the ingest retry.
+
 ## Adversarial cases
 
 Written as what correct behaviour **is**, before running them. A case that fails and is accepted as a
