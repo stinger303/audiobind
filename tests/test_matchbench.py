@@ -260,6 +260,17 @@ class TestTheInstrumentCatchesFailures(unittest.TestCase):
         self.assertEqual((out.tier, out.decision), ("HIGH", "convert"))
         self.assertIn("decision convert, want review", out.expect_problems)
 
+    def test_no_write_fails_on_an_unseen_write(self):
+        # the regional-edition known gap: a lone other production inside the tolerance converts
+        case, products = self._case("regional_edition_unreachable_runtime_agrees")
+        out = self._evaluate(case, products)
+        self.assertEqual((out.tier, out.decision, out.pick), ("HIGH", "convert", "B0REGION01"))
+        self.assertIn("would convert B0REGION01 unseen", out.expect_problems)
+        # the held twin meets the same expectation: it is the write that fails, not the wrong pick
+        case, products = self._case("regional_edition_unreachable_runtime_holds")
+        case["expect"] = dict(case["expect"], no_write=True)
+        self.assertEqual(self._evaluate(case, products).expect_problems, [])
+
     def test_decision_review_fails_the_gate_when_the_abandoned_pin_rule_is_dropped(self):
         """pipeline.py never auto-converts a match made after giving up on a dead pin. Drop that
         rule (clear pin_abandoned) and adv:pin_abandoned_never_converts must fail on its decision."""

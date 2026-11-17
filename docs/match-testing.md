@@ -27,7 +27,7 @@ python -m tests.matchbench calibrate    # how well the synthetic catalog model m
 | --- | --- | --- |
 | `corpus.csv` | every row of the owner's library (123): key, shape, files, hours, the DB's tier/ASIN/pin | `import` |
 | `labels.csv` | one line per corpus row: the label, its `label_source`, and its evidence tuple | a person (hand columns); `labels --write` (evidence columns) |
-| `adversarial.json` | 49 synthetic cases for the failure classes we have paid for, with a catalog model | a person |
+| `adversarial.json` | 51 synthetic cases for the failure classes we have paid for, with a catalog model | a person |
 | `known_defects.csv` | every wrong answer on the real corpus, named; each must keep reproducing | a person |
 | `baseline.csv` | the accepted per-row result and decision, each row with the reason it was accepted | `accept` |
 | `mutations.csv` | the recorded mutation profile: what moving each constant does | `mutate --record` |
@@ -257,7 +257,18 @@ dramatizations), summaries / study guides / review junk, foreign editions of Eng
 genuinely foreign libraries (German, Spanish, French with accents), box sets, series echoes, series
 numbers, misspelled authors, title/author swaps, volumes vs books (split halves, novellas vs
 omnibus), one weak candidate, same title by two authors, narrator editions, torrent noise, ASIN
-hints, embedded tags, co-authors, abridged vs complete.
+hints, embedded tags, co-authors, abridged vs complete, regional editions.
+
+**Regional editions** are the class behind the owner's only real wrong write (`Jack Reacher
+Series/10 The Hard Way`). The right edition (UK, Jeff Harding, 11.83 h) exists in Audible, but no US
+search returns it, so the pool holds only another production of the same book. Two cases pin the
+search answers to that one production. `regional_edition_unreachable_runtime_holds` uses the real
+numbers (Dick Hill, 14.23 h, −18 %): the pick is wrong at HIGH (a named known defect) and the runtime
+check must hold it (`decision: hold`; it converts again at a 20 % tolerance).
+`regional_edition_unreachable_runtime_agrees` is the same failure with the returned production at
+−6 %. It converts, and is a `known_gap`: title, author and runtime cannot tell two productions of
+one book apart, and only retrieving the regional edition fixes it. `no_write: true` is the
+expectation for "never written unseen, however it is stopped".
 
 Their catalog is `ModelCatalog`: strict title filter, strict author filter, keywords anywhere.
 `calibrate` measures it against the real frozen answers. It returns about 57 % of what Audible

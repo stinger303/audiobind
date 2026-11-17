@@ -1123,6 +1123,9 @@ def evaluate_case(case: dict, products: dict) -> Outcome:
     #: never convert (unknown runtime, unconfirmed edition) can only be written as a decision.
     if "decision" in exp and out.decision != exp["decision"]:
         problems.append(f"decision {out.decision}, want {exp['decision']}")
+    #: "never written unseen", however it is stopped: held by the runtime, or below an auto-convert tier
+    if exp.get("no_write") and out.writes:
+        problems.append(f"would {out.decision} {out.pick or 'nothing'} unseen")
     if exp.get("in_pool") and not out.in_pool:
         problems.append("labelled edition never reached the candidate pool")
     #: a hand-set ASIN with no catalog data must block the search entirely: a pick here means the

@@ -76,7 +76,9 @@
     "edge_hc_north": {"asin": "B0EMB00002", "title": "The Harrow Coast of the North", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"},
     "edge_hc_lantern": {"asin": "B0EMB00003", "title": "Harrow Coast Lantern Rising", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"},
     "edge_sgt_rising": {"asin": "B0EMB00004", "title": "Salt Grey Tide Rising", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"},
-    "edge_sgt_north": {"asin": "B0EMB00005", "title": "The Salt Grey Tide of the North", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"}
+    "edge_sgt_north": {"asin": "B0EMB00005", "title": "The Salt Grey Tide of the North", "authors": [{"name": "Wren Alder"}], "runtime_length_min": 600, "language": "english"},
+    "hardway_us_hill": {"asin": "B00LI7VIRS", "title": "The Hard Way", "authors": [{"name": "Lee Child"}], "narrators": [{"name": "Dick Hill"}], "runtime_length_min": 854, "language": "english", "publisher_name": "Random House Audio"},
+    "hardway_other_production": {"asin": "B0REGION01", "title": "The Hard Way", "authors": [{"name": "Lee Child"}], "narrators": [{"name": "Another Narrator"}], "runtime_length_min": 744, "language": "english", "publisher_name": "Another Audio"}
   },
   "cases": [
     {"name": "production_plain_beats_dramatization", "classes": ["production"],
@@ -289,6 +291,21 @@
     {"name": "embedded_worse_never_replaces", "classes": ["embedded-tags", "no-author"], "ingest": true,
      "folder": "Harrow Coast Lantern", "tags": ["", "The Salt Grey Tide"], "catalog": ["edge_hc_lantern", "edge_sgt_north"],
      "expect": {"asin": "B0EMB00003", "must_pick": true, "embedded": false, "max_tier": "LOW", "decision": "review"},
-     "why": "both readings LOW: folder 0.857, tags 0.821. A worse tag match never replaces a better folder match, whatever the edge (it holds at EMBEDDED_SCORE_EDGE 0.0 too): _embedded_is_better compares in one direction only"}
+     "why": "both readings LOW: folder 0.857, tags 0.821. A worse tag match never replaces a better folder match, whatever the edge (it holds at EMBEDDED_SCORE_EDGE 0.0 too): _embedded_is_better compares in one direction only"},
+    {"name": "regional_edition_unreachable_runtime_holds", "classes": ["regional-edition", "production", "lone-candidate"],
+     "folder": "Lee Child/The Hard Way", "hours": 11.66,
+     "answers": {"{\"title\": \"The Hard Way\"}": ["hardway_us_hill"], "{\"author\": \"Lee Child\", \"title\": \"The Hard Way\"}": ["hardway_us_hill"], "{\"author\": \"Lee Child\"}": ["hardway_us_hill"]},
+     "catalog": [],
+     "audnex": {"B004PKD9MM": {"asin": "B004PKD9MM", "title": "The Hard Way", "authors": [{"name": "Lee Child"}], "narrators": [{"name": "Jeff Harding"}], "runtimeLengthMin": 710, "language": "english", "publisherName": "Transworld Digital"}},
+     "expect": {"asin": "B004PKD9MM", "wrong_max_tier": "HIGH", "decision": "hold"},
+     "why": "the owner's only real wrong write (Jack Reacher Series/10 The Hard Way): 11.66h of files are the UK Jeff Harding edition (11.83h, Audnex only); every US search returns just the Dick Hill production (14.23h). The pick is wrong at HIGH and can be no better (retrieval), so the -18% runtime gap must hold it at the 15% tolerance. At 20% it converts again, as it did at 25%"},
+    {"name": "regional_edition_unreachable_runtime_agrees", "classes": ["regional-edition", "production", "lone-candidate"],
+     "folder": "Lee Child/The Hard Way", "hours": 11.66,
+     "answers": {"{\"title\": \"The Hard Way\"}": ["hardway_other_production"], "{\"author\": \"Lee Child\", \"title\": \"The Hard Way\"}": ["hardway_other_production"], "{\"author\": \"Lee Child\"}": ["hardway_other_production"]},
+     "catalog": [],
+     "audnex": {"B004PKD9MM": {"asin": "B004PKD9MM", "title": "The Hard Way", "authors": [{"name": "Lee Child"}], "narrators": [{"name": "Jeff Harding"}], "runtimeLengthMin": 710, "language": "english", "publisherName": "Transworld Digital"}},
+     "expect": {"asin": "B004PKD9MM", "wrong_max_tier": "HIGH", "no_write": true},
+     "why": "the same retrieval failure when the production the US search does return is close in length: 12.40h against 11.66h of files (-6%), inside the runtime tolerance. Nothing may write the wrong production unseen: the runtime cannot hold it here, so the tier must not reach an auto-convert tier",
+     "known_gap": "retrieval, not grading: the right (UK) edition is in no search answer, and the one production returned is the same work by title and author with a runtime inside the tolerance. It grades HIGH (title 1.00, author 1.00, lone candidate) and converts. Neither the narrator nor the region is ever compared, so nothing in the matcher can tell two productions of one book apart. The only fix is retrieving the regional edition (the regional-edition retrieval project)"}
   ]
 }
