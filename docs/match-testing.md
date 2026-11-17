@@ -345,12 +345,18 @@ HIGH/MEDIUM/LOW/NONE/COLLECTION, and `grade()` must agree with the explanation m
 
 A violation is a finding for the owner, not something the test fixes. `KNOWN_FINDINGS` lists each
 class with a minimal input; the suite fails on a new class **and** when a listed one stops
-reproducing, so a fix has to remove its entry. Measured at 0.22.0-dev6, two classes:
+reproducing, so a fix has to remove its entry. Measured at 0.22.0-dev6, two classes, both fixed:
 
-* **F1, grade:** a catalogue answer with no `language` is English to `grade()` (`language or
-  "english"`) and not English to the scorer, the panel and stage E (`language_penalized`). A lone
-  exact answer grades HIGH and converts while the panel shows "Not listed as English, −15 %".
-  Frozen catalogue: 228 answers have no language, none names an author, so none can reach HIGH today.
+* **F1, grade — fixed in 0.22.0-dev6:** a catalogue answer with no `language` was English to
+  `grade()` (`language or "english"`) and not English to the scorer, the panel and stage E
+  (`language_penalized`). A lone exact answer graded HIGH and converted while the panel showed "Not
+  listed as English, −15 %". Frozen catalogue: 228 answers have no language, none names an author.
+  `grade()` (and its mirror `grade_with`) now use `language_penalized`: blank is not confirmed
+  English and is capped at MEDIUM. The panel text is unchanged and still true. 0 corpus rows moved.
+  Not changed: `_product_from_book` still reads a blank **Audnex** language as English. A pin is
+  never graded, so that cannot contradict the rule; an ingest ASIN hint shares the default and is
+  graded, so a hint with no Audnex language can still reach HIGH (0 of 67 frozen Audnex records lack
+  a language). Pinned by `test_f1_pins_and_hints_keep_the_audnex_english_default`; owner's call.
 * **F2, retrieval/scoring — fixed in 0.22.0-dev6:** an answer with a subtitle and a blank title
   raised `ValueError` out of `match_unit` (`title_alone`: `max()` of nothing). Frozen catalogue: 0 of
   1,102 answers. `title_alone` now scores an answer with no usable title 0.0; the real book beside it

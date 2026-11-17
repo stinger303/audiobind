@@ -792,8 +792,9 @@ def grade(match: Match) -> str:
         # MEDIUM, so no auto-convert tier (not even "medium") converts it unseen
         return "LOW"
     # a foreign-language hit must never auto-convert at HIGH confidence: it still has to clear
-    # the normal title / author / margin gates, and is then capped at MEDIUM
-    foreign = not (match.language or "english").lower().startswith("english")
+    # the normal title / author / margin gates, and is then capped at MEDIUM. The scorer's rule,
+    # so grade, scorer and panel agree: a blank language is not confirmed English and is capped too
+    foreign = language_penalized(match.language)
     title, author = match.title_sim, match.author_sim
     window_only = match.title_window_coverage < MIN_HIGH_WINDOW_COVERAGE
     # an adaptation the folder never asked for (a GraphicAudio [Dramatized Adaptation] found for a

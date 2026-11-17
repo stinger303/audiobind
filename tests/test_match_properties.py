@@ -18,6 +18,7 @@ reproduces. So a new failure class fails CI, and so does a silent fix (the list 
 it). Write-ups: /opt/data/audiobind-designs/claude-report-bench-meta-2.md.
 """
 
+import dataclasses
 import itertools
 import math
 import random
@@ -415,15 +416,14 @@ def blank_title_pool() -> list[Product]:
 
 
 #: finding class (as explore() names it) -> what it is. Each must still reproduce; nothing else may appear.
-KNOWN_FINDINGS = {
-    "mirror: HIGH with limiting reason foreign (language blank)":
-        "F1: a catalogue answer with no language is English to grade() and foreign to the scorer, "
-        "the panel and stage E",
-}
+KNOWN_FINDINGS: dict[str, str] = {}
 
 #: finding classes the owner approved fixing -> what fixed them. Each must reproduce zero times, and
 #: ``test_a_fixed_finding_that_comes_back_is_caught`` proves the pre-fix code would put it back here.
 FIXED_FINDINGS = {
+    "mirror: HIGH with limiting reason foreign (language blank)":
+        "F1 (0.22.0-dev6): grade() takes the scorer's language rule, so a blank language is not "
+        "confirmed English and is capped at MEDIUM like a foreign one",
     "crash: match_unit raised ValueError in matching.py:title_alone":
         "F2 (0.22.0-dev6): title_alone scores an answer with no usable title 0.0 instead of max() of nothing",
 }
@@ -440,6 +440,14 @@ def pre_fix(name: str, source: str):
     namespace = dict(vars(matching))
     exec(compile(textwrap.dedent(source), matching.__file__, "exec"), namespace)  # noqa: S102 - fixed text
     return namespace[name]
+
+
+_GRADE = matching.grade
+
+
+def pre_f1_grade(match: Match) -> str:
+    """grade() before F1's fix: it read ``match.language or "english"``, so blank was English."""
+    return _GRADE(dataclasses.replace(match, language=match.language or "english"))
 
 
 #: title_alone before F2's fix, verbatim
@@ -464,6 +472,23 @@ class TestMatcherProperties(unittest.TestCase):
         self.assertEqual(reproduced_fixed(self.found), {}, f"a fixed finding is back - the fix was reverted:\n{self.found}")
 
     def test_a_fixed_finding_that_comes_back_is_caught(self):
+        # F1: the pre-fix grade() on F1's minimal input (through match_unit and the grade check)
+        found = Findings()
+        fake = FakeCatalog(blank_language_match()[1].pool, {})
+        with mock.patch.object(catalog, "search", fake.search), mock.patch.object(catalog, "book", fake.book), \
+                mock.patch.object(matching, "grade", pre_f1_grade), mock.patch(f"{__name__}.grade", pre_f1_grade):
+            check_match(scanned_unit("Frank Herbert - Dune"), fake, 10.0, found, "guard")
+        self.assertEqual(reproduced_fixed(found), {"mirror: HIGH with limiting reason foreign (language blank)": 1})
+        # and the same pre-fix grade() over the generated grid alone brings the class back in volume
+        with mock.patch(f"{__name__}.grade", pre_f1_grade):
+            grid = Findings()
+            rng = random.Random(SEED)
+            for _ in range(2000):
+                check_grade(Match(product=Product(asin="B0", title="T", authors=["A"]), title_sim=1.0, author_sim=1.0,
+                                  margin=0.5, author_known=True, language=rng.choice(LANGUAGES)), grid, "guard-grid")
+        self.assertGreater(grid.count["mirror: HIGH with limiting reason foreign (language blank)"], 0)
+        self.assertEqual(set(reproduced_fixed(grid)), {"mirror: HIGH with limiting reason foreign (language blank)"})
+
         # F2: the pre-fix title_alone against F2's minimal pool lands in FIXED_FINDINGS by its exact name
         found = Findings()
         fake = FakeCatalog(blank_title_pool(), {})
@@ -510,22 +535,59 @@ class TestMatcherProperties(unittest.TestCase):
         self.assertIn("a product at NONE, or a tier without a product", found.count)
         self.assertIn("picked an ASIN no search returned", found.count)
 
-    def test_f1_blank_language_is_high_through_match_unit_while_the_panel_shows_a_language_penalty(self):
+    def test_f1_blank_language_is_capped_at_medium_and_the_panel_still_tells_the_truth(self):
+        # regression for F1: before the fix this answer graded HIGH and converted unseen
         match, _ = blank_language_match()
         self.assertEqual(match.language, "")
-        self.assertEqual((match.confidence, grade(match)), ("HIGH", "HIGH"))
-        # the scorer treated the same answer as not English: x0.85 on the score, flag set for the panel
+        self.assertEqual((match.confidence, grade(match)), ("MEDIUM", "MEDIUM"))
+        self.assertEqual(pre_f1_grade(match), "HIGH")  # what the reverted rule would say
+        # the scorer is unchanged: x0.85 on the score, flag set for the panel
         self.assertTrue(match.language_penalized)
         self.assertEqual(match.score, round(matching.LANGUAGE_PENALTY, 3))
-        # stage E's reasons call it foreign, so the bench would fail this HIGH as an explanation violation
+        # stage E's reason is the cap's reason, so the MEDIUM is explained and nothing is violated
         reasons = bench.limiting_reasons(match)
         self.assertEqual(reasons, ["foreign"])
-        self.assertEqual(bench.explanation_problems(match, "HIGH", reasons, ["B0BLANK000"]),
-                         ["HIGH despite foreign", "capped production at HIGH"])
-        # and it would be written unseen: runtime agrees, HIGH is an auto-convert tier
-        unit = scanned_unit("Frank Herbert - Dune")
-        self.assertEqual(choose_action(unit, match.confidence, runtime_ok(10.0, match.product.hours, 0.15), {"mp3"}),
-                         "convert")
+        self.assertEqual(bench.explanation_problems(match, "MEDIUM", reasons, ["B0BLANK000"]), [])
+        self.assertEqual(bench.grade_with(match, bench.GRADE_GATES), "MEDIUM")
+        # at the default AUTO_CONVERT=high it waits for a person: process_unit converts unseen only
+        # tiers in effective_auto_tiers(), and MEDIUM is not one of them
+        self.assertEqual(pipeline.effective_auto_tiers(), {"HIGH"})
+        self.assertNotIn(match.confidence, pipeline.effective_auto_tiers())
+        # blank, None and whitespace-only alike; every spelling of English still reaches HIGH
+        exact = dict(product=match.product, title_sim=1.0, author_sim=1.0, margin=0.85, author_known=True)
+        for language in ("", None, " "):
+            self.assertEqual(grade(Match(language=language, **exact)), "MEDIUM", language)
+        for language in ("english", "English", "ENGLISH", "english (us)"):
+            self.assertEqual(grade(Match(language=language, **exact)), "HIGH", language)
+        # the panel says what it said before: language not listed, -15 % applied
+        from audiobind import web
+        detail = {"source": {"hours": 10.0}, "match": {
+            "asin": "B0BLANK000", "title": "Dune", "authors": ["Frank Herbert"], "hours": match.product.hours,
+            "confidence": match.confidence, "score": match.score, "title_sim": match.title_sim,
+            "author_sim": match.author_sim, "author_known": True, "language": match.language,
+            "language_penalized": match.language_penalized, "runtime_delta_pct": match.runtime_delta_pct}}
+        row = mock.Mock(asin="B0BLANK000", path="/library/Frank Herbert - Dune", output="", title="Dune")
+        html = web.evidence_html(row, detail, [])
+        self.assertIn("Not listed as English", html)
+        self.assertIn(f"&minus;{web.PENALTY_PCT}% penalty", html)
+        self.assertIn("graded MEDIUM", html)
+
+    def test_f1_pins_and_hints_keep_the_audnex_english_default(self):
+        # _product_from_book reads a blank Audnex language as english. Left alone by F1's brief:
+        # a pin is never graded (the owner's lock is HIGH by design), so it cannot contradict the
+        # rule. The ASIN-hint candidate shares the default and IS graded, so a hint whose Audnex
+        # record has no language still reaches HIGH - an open question for the owner, not fixed
+        # here. Frozen catalogue exposure: 0 of 67 Audnex records lack a language.
+        record = {"asin": "B0HINTDUNE", "title": "Dune", "authors": [{"name": "Frank Herbert"}],
+                  "runtimeLengthMin": 600}
+        self.assertEqual(matching._product_from_book(record).language, "english")
+        fake = FakeCatalog([], {"B0HINTDUNE": record}, "empty")
+        with mock.patch.object(catalog, "search", fake.search), mock.patch.object(catalog, "book", fake.book):
+            pinned = match_unit(scanned_unit("Frank Herbert - Dune"), asin_override="B0HINTDUNE", local_hours=10.0)
+            hinted = match_unit(scanned_unit("Frank Herbert - Dune [B0HINTDUNE]", ingest=True), local_hours=10.0)
+        self.assertEqual((pinned.asin, pinned.confidence, pinned.language_penalized), ("B0HINTDUNE", "HIGH", False))
+        self.assertEqual((hinted.asin, hinted.language), ("B0HINTDUNE", "english"))
+        self.assertEqual(hinted.confidence, "HIGH")
 
 
     def test_f2_a_blank_title_with_a_subtitle_scores_zero_and_the_real_book_beside_it_wins(self):

@@ -809,7 +809,7 @@ def grade_with(match: matching.Match, gates: dict) -> str:
         return "NONE"
     if match.knockoff:
         return "LOW"
-    foreign = not (match.language or "english").lower().startswith("english")
+    foreign = matching.language_penalized(match.language)  # blank is not English (F1)
     title, author = match.title_sim, match.author_sim
     window_only = match.title_window_coverage < matching.MIN_HIGH_WINDOW_COVERAGE
     adaptation = bool(match.unasked_adaptation)
