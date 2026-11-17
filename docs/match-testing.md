@@ -15,6 +15,8 @@ python -m tests.matchbench accept --why "what changed and why it is right"
 python -m tests.matchbench labels --write   # add DB-labelled rows, rewrite the evidence columns
 python -m tests.matchbench mutate       # move each gate constant; pre-release check (~50 s)
 python -m tests.matchbench mutate --check   # ... and exit 1 if the profile differs from mutations.csv
+python -m tests.matchbench mutate --cases   # flip every adversarial expectation; which ones does the gate notice (~1 s)
+python -m tests.matchbench mutate --cases --check   # ... and exit 1 if that differs from case_mutations.csv
 python -m tests.matchbench import --db /path/to/audiobind.db   # merge new library rows into the corpus
 python -m tests.matchbench refresh      # fetch lookups the frozen cache lacks (network, additions only)
 python -m tests.matchbench drift        # re-fetch every frozen answer live; report what would change
@@ -31,6 +33,7 @@ python -m tests.matchbench calibrate    # how well the synthetic catalog model m
 | `known_defects.csv` | every wrong answer on the real corpus, named; each must keep reproducing | a person |
 | `baseline.csv` | the accepted per-row result and decision, each row with the reason it was accepted | `accept` |
 | `mutations.csv` | the recorded mutation profile: what moving each constant does | `mutate --record` |
+| `case_mutations.csv` | the recorded case profile: what flipping each adversarial expectation does | `mutate --cases --record` |
 | `docs/match-catalog-cache.json` | the frozen catalog: real Audible/Audnex answers, trimmed | `refresh` |
 
 Each corpus row is rebuilt into the `BookUnit` the scanner would name (`units._name_units`, ingest
@@ -257,10 +260,54 @@ Caveat: a mutation that changes which **queries** the matcher makes (e.g. `LANGU
 0.85, a wide `CORROBORATION_WINDOW`) hits responses the frozen cache does not have. Those rows show
 up as bench errors (`err`), unmeasured, never as a silent NONE.
 
+## Meta-mutation: which expectations are load-bearing
+
+`mutate` moves the code and asks whether the cases notice. `mutate --cases` moves the **cases** and
+asks whether the bench notices. Every expectation of every adversarial case is flipped, one at a
+time, against the unchanged matcher, and re-evaluated through `evaluate_case` itself:
+
+| expectation | flipped to |
+| --- | --- |
+| `asin` / `asin_not` / `none` | a label that turns the verdict on the observed pick around (another edition is right; the excluded edition is right; the pick is right) |
+| `tier`, `decision` | every other value |
+| `max_tier` / `min_tier` | the opposite bound, one rank past it (`max_tier: HIGH` and `min_tier: NONE` have no flip: they are true of everything) |
+| `wrong_max_tier` | one rank under a wrong pick's tier |
+| `must_pick`, `in_pool`, `no_write`, `no_pick`, `embedded` | the opposite assertion (the flags are two-way: `false` asserts the opposite, absent asserts nothing) |
+
+A flip is **noticed** when the gate's own lines for that case change: the case fails, a known gap
+"now passes" or "fails differently", a known defect "no longer reproduces", a wrong@HIGH appears.
+The baseline diff is counted apart. It records what the code did and `accept` rewrites it, so an
+expectation that only the baseline notices says nothing a blank case would not.
+
+* **load-bearing**: the gate notices every flip.
+* **partly**: it notices some; **masked**: the problem list changes but the gate's verdict does not.
+* **baseline-only**: only the baseline's label and verdict columns move.
+* **decoration**: nothing moves.
+
+A case with no load-bearing expectation is **vacuous**, and the command exits 1. The suite runs the
+profile on every run (`TestCaseMutation`) and compares it with `case_mutations.csv`, so a new
+expectation that tests nothing fails CI until it is recorded and explained.
+
+Measured at 0.22.0-dev6, 51 cases: no vacuous case. Before the fixes, 24 of 120 expectations were not
+load-bearing. 15 of them sat in the 12 known-gap cases, for one reason: the gate only asked a gap to
+*keep failing*. A gap accepted as "right book, graded LOW" could turn into "wrong book" and the spec
+said nothing (stages D and F excuse a known gap too). Three changes closed that:
+
+* `gap_fails`: each known gap lists the exact problems it fails with. The gate fails when a gap fails
+  any other way. A gap without it, or a `gap_fails` without `known_gap`, fails admission.
+* `must_pick` on the six gap cases whose label nothing consumed, and `in_pool: false` on the two
+  regional cases (their premise: the right edition is unreachable).
+* An expectation key no check reads (a misspelt `max_teir`) fails admission. It used to pass.
+
+After: 119 of 128 load-bearing. The other 9 are accepted and pinned by a test: a label (`asin_not`,
+`none`) in a passing case whose `max_tier` already forbids everything the label could flag. The label
+names the wrong edition for the scoreboard's wrong@tier columns; the ceiling is what gates.
+
 ## Adversarial cases
 
 Written as what correct behaviour **is**, before running them. A case that fails and is accepted as a
-real defect carries `known_gap` with its verified cause; the gate asserts it keeps failing. Each gap
+real defect carries `known_gap` with its verified cause and `gap_fails` with the exact problems; the
+gate asserts it keeps failing, and in that way. Each gap
 now also shows its decision (e.g. the box-set-as-book-1 HIGH is held by runtime). Classes: same
 title / different production (dramatized, GraphicAudio, full cast, audio drama, split
 dramatizations), summaries / study guides / review junk, foreign editions of English books and

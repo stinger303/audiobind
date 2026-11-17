@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import dataclasses
 import hashlib
 import io
 import json
@@ -1055,6 +1056,11 @@ def evaluate_corpus(corpus: list[dict], labels: dict[str, Label], frozen: Frozen
 
 
 # ---------------------------------------------------------------------- adversarial cases
+#: every key evaluate_case reads from a case's ``expect``; any other key fails admission
+EXPECT_KEYS = ("asin", "asin_not", "none", "tier", "max_tier", "min_tier", "must_pick", "wrong_max_tier",
+               "decision", "no_write", "in_pool", "no_pick", "embedded")
+
+
 def load_adversarial(path: Path = ADVERSARIAL) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -1111,8 +1117,14 @@ def evaluate_case(case: dict, products: dict) -> Outcome:
     # a wrong pick a person reviews anyway (LOW and below) is allowed unless the case says otherwise
     if out.verdict == "wrong" and TIER_RANK[out.tier] > TIER_RANK[exp.get("wrong_max_tier", "LOW")]:
         problems.append(f"picked {out.pick} at {out.tier}")
+    #: must_pick, no_write, in_pool and no_pick are two-way, like ``embedded``: true asserts it, an
+    #: explicit false asserts the opposite (absent = not asserted). A case can then state a premise
+    #: ("in_pool": false - the right edition is unreachable), and `mutate --cases` can flip each one
+    #: through this same code instead of a mirror of it.
     if exp.get("must_pick") and out.verdict != "right":
         problems.append(f"picked {out.pick or 'nothing'}, want {label.text()}")
+    if exp.get("must_pick") is False and out.verdict == "right":
+        problems.append(f"picked the labelled edition {out.pick}, which must not be picked")
     if "tier" in exp and out.tier != exp["tier"]:
         problems.append(f"tier {out.tier}, want {exp['tier']}")
     if "max_tier" in exp and TIER_RANK[out.tier] > TIER_RANK[exp["max_tier"]]:
@@ -1126,12 +1138,18 @@ def evaluate_case(case: dict, products: dict) -> Outcome:
     #: "never written unseen", however it is stopped: held by the runtime, or below an auto-convert tier
     if exp.get("no_write") and out.writes:
         problems.append(f"would {out.decision} {out.pick or 'nothing'} unseen")
+    if exp.get("no_write") is False and not out.writes:
+        problems.append(f"decision {out.decision}, want an unseen write")
     if exp.get("in_pool") and not out.in_pool:
         problems.append("labelled edition never reached the candidate pool")
+    if exp.get("in_pool") is False and out.in_pool:
+        problems.append("labelled edition reached the candidate pool, want it unreachable")
     #: a hand-set ASIN with no catalog data must block the search entirely: a pick here means the
     #: dead pin fell through to a search that could offer (and convert) a different edition
     if exp.get("no_pick") and out.pick:
         problems.append(f"picked {out.pick} while the pinned ASIN was unresolved")
+    if exp.get("no_pick") is False and not out.pick:
+        problems.append("picked nothing, want a pick")
     #: whether the ingest retry's embedded-tag match replaced the folder's (pipeline._embedded_is_better):
     #: the only way to say "the tags must NOT win here" when both readings find something
     if "embedded" in exp and ("embedded-tags" in out.flags) != bool(exp["embedded"]):
@@ -1186,6 +1204,9 @@ class Run:
     tolerance: float = 0.0
     tolerance_source: str = ""
     auto_tiers: tuple[str, ...] = ()
+    #: how each known gap fails, word for word (the case's ``gap_fails``): a gap that fails some
+    #: other way has changed, and "still failing" would hide it
+    gap_fails: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def outcomes(self) -> list[Outcome]:
@@ -1228,6 +1249,15 @@ def run_bench(catalog_data: dict | None = None, fetch=None, labels_path: Path = 
         real = evaluate_corpus(corpus, labels, frozen)
         adv = evaluate_adversarial(spec)
     gaps = {"adv:" + c["name"]: c["known_gap"] for c in spec["cases"] if c.get("known_gap")}
+    gap_fails = {"adv:" + c["name"]: list(c.get("gap_fails") or []) for c in spec["cases"] if c.get("known_gap")}
+    for case in spec["cases"]:
+        unknown = sorted(set(case.get("expect") or {}) - set(EXPECT_KEYS))
+        if unknown:
+            problems.append(f"adversarial.json: {case['name']!r} expects {', '.join(unknown)}, which no check "
+                            "reads (a misspelt expectation passes whatever the matcher does)")
+        if bool(case.get("known_gap")) != bool(case.get("gap_fails")):
+            problems.append(f"adversarial.json: {case['name']!r} needs known_gap (why) and gap_fails (the exact "
+                            "problems it fails with) together")
     units_by_key = {o.key: o.unit for o in real if o.unit is not None}
     index = catalog_index(frozen.data)
     hours = {r["key"]: float(r.get("hours") or 0) for r in corpus}
@@ -1236,7 +1266,8 @@ def run_bench(catalog_data: dict | None = None, fetch=None, labels_path: Path = 
     # read at call time, not as check_labels' default (bound once at import): `mutate` moves it
     lc = check_labels(corpus, labels, label_rows, units_by_key, index, tolerance=LABEL_RUNTIME_TOLERANCE)
     run = Run(real, adv, problems, list(frozen.misses), len(frozen.data), len(frozen.used), defects, gaps,
-              lc, tolerance, where, tuple(sorted(config.effective_auto_tiers(), key=lambda t: -TIER_RANK[t])))
+              lc, tolerance, where, tuple(sorted(config.effective_auto_tiers(), key=lambda t: -TIER_RANK[t])),
+              gap_fails)
     return run, frozen
 
 
@@ -1468,6 +1499,14 @@ def gate(run: Run, baseline: dict[str, dict], header: list[str] | None = None) -
             g.failures.append(f"adversarial {out.key} now passes: move it out of known_gap ({gap})")
         if not gap and out.expect_problems:
             g.failures.append(f"adversarial {out.key}: {'; '.join(out.expect_problems)}")
+        # "still failing" is not enough: a gap accepted as "right book, graded LOW" that turns into
+        # "wrong book" (or "written unseen") fails too, and stages D and F excuse a known gap. The
+        # accepted failure is pinned word for word, so every expectation of a gap case stays live
+        pinned = run.gap_fails.get(out.key)
+        if gap and out.expect_problems and pinned is not None and out.expect_problems != pinned:
+            g.failures.append(f"adversarial {out.key} is a known gap that now fails differently: "
+                              f"[{'; '.join(out.expect_problems)}], accepted as [{'; '.join(pinned)}] - a new "
+                              "defect, or part of the gap fixed: rewrite gap_fails with the reason")
     # baseline: fail closed on a stale one, then every decision change must be accepted
     rows = run.rows()
     g.failures += stale_baseline(rows, baseline, header)
@@ -2067,6 +2106,241 @@ def mutate(only: str = "", record: bool = False, check: bool = False) -> tuple[s
             seen = {(r["constant"], r["value"]) for r in rows}
             diffs += [f"{c}={v}: recorded but no longer run" for c, v in old if (c, v) not in seen]
         lines.append(f"mutation profile vs {MUTATIONS.name}: {len(diffs)} difference(s)")
+        lines += [f"  ~ {x}" for x in diffs]
+        if diffs:
+            code = 1
+    return "\n".join(lines), code
+
+
+# ------------------------------------------------------- meta-mutation: the expectations
+#: `mutate` moves the code and asks whether the cases notice. This moves the *cases* and asks whether
+#: the bench notices: every expectation of every adversarial case is flipped, one at a time, against
+#: the unchanged matcher. An expectation whose flip the gate does not report is not testing anything.
+CASE_MUTATIONS = HERE / "case_mutations.csv"
+CASE_MUTATION_FIELDS = ["case", "gap", "key", "value", "observed", "flip", "verdict", "noticed"]
+FLIP_TIERS = ("NONE", "LOW", "MEDIUM", "HIGH")
+FLIP_DECISIONS = ("convert", "remux", "hold", "review")
+#: an edition no case's catalog holds: "the right edition is some other one"
+FLIP_ASIN = "B0NOTTHIS1"
+TWO_WAY_FLAGS = ("must_pick", "no_write", "in_pool", "no_pick", "embedded")
+#: verdicts, strongest first. A case is only as good as its best expectation.
+LOAD_BEARING, PARTLY, MASKED, BASELINE_ONLY, DECORATION = (
+    "load-bearing", "partly", "masked", "baseline-only", "decoration")
+
+
+def _tier_step(tier: str, step: int) -> str | None:
+    """The tier one rank above/below ``tier`` (COLLECTION ranks with LOW), or None past the end."""
+    rank = TIER_RANK[tier] + step
+    return FLIP_TIERS[rank] if 0 <= rank < len(FLIP_TIERS) else None
+
+
+def case_flips(case: dict, out: Outcome) -> list[tuple[str, str, dict | None, str]]:
+    """Every single-expectation flip of ``case``: (key, what the flip says, flipped expect, note).
+
+    Each flip is written in the cases' own vocabulary and goes back through ``evaluate_case``, so it
+    exercises the real check, not a mirror of it. A flipped expect of None means no flip exists (the
+    expectation is true of every outcome); ``note`` says why.
+
+    label (asin / asin_not / none): relabelled so that the verdict on the observed pick flips -
+      the labelled edition becomes another one, the excluded edition becomes the right one, "no
+      edition is right" becomes "the pick is right".
+    tier / decision: every other value.   max_tier / min_tier: the opposite bound, one rank past it.
+    wrong_max_tier: one rank under the observed tier of a wrong pick (or the observed tier itself,
+      when the case fails on it); with no wrong pick it constrains nothing and is tried at NONE.
+    flags (must_pick, no_write, in_pool, no_pick, embedded): the opposite assertion.
+    """
+    exp = dict(case.get("expect") or {})
+    flips: list[tuple[str, str, dict | None, str]] = []
+
+    def swap(key: str, **put) -> dict:
+        new = {k: v for k, v in exp.items() if k != key}
+        clash = [k for k in put if k in new]
+        if clash:
+            raise ValueError(f"{case['name']}: flipping {key} needs {clash[0]}, which the case also sets")
+        new.update(put)
+        return new
+
+    for key, value in exp.items():
+        if key == "asin":
+            asins = value if isinstance(value, list) else [value]
+            if out.pick in asins:
+                flips.append((key, f"asin={FLIP_ASIN} (another edition is the right one)",
+                              swap(key, asin=FLIP_ASIN), ""))
+            elif out.pick:
+                flips.append((key, f"asin={out.pick} (the pick is the right one)", swap(key, asin=out.pick), ""))
+            else:
+                flips.append((key, "none (no edition is right)", swap(key, none=True), ""))
+        elif key == "asin_not":
+            shown = value if isinstance(value, str) else "|".join(value)
+            flips.append((key, f"asin={shown} (the excluded edition is the right one)", swap(key, asin=value), ""))
+        elif key == "none":
+            want = out.pick or FLIP_ASIN
+            flips.append((key, f"asin={want} ({'the pick' if out.pick else 'some edition'} is right)",
+                          swap(key, asin=want), ""))
+        elif key == "tier":
+            flips += [(key, f"tier={t}", swap(key, tier=t), "") for t in FLIP_TIERS if t != value]
+        elif key == "decision":
+            flips += [(key, f"decision={d}", swap(key, decision=d), "") for d in FLIP_DECISIONS if d != value]
+        elif key == "max_tier":
+            above = _tier_step(value, +1)
+            flips.append((key, f"min_tier={above}", swap(key, min_tier=above), "") if above else
+                         (key, "-", None, "no tier is above HIGH: true of every outcome"))
+        elif key == "min_tier":
+            below = _tier_step(value, -1)
+            flips.append((key, f"max_tier={below}", swap(key, max_tier=below), "") if below else
+                         (key, "-", None, "no tier is below NONE: true of every outcome"))
+        elif key == "wrong_max_tier":
+            if out.verdict != "wrong":
+                flips.append((key, "wrong_max_tier=NONE", swap(key, wrong_max_tier="NONE"),
+                              f"the pick is not wrong ({out.verdict}): it constrains nothing here"))
+            elif TIER_RANK[out.tier] > TIER_RANK[value]:
+                flips.append((key, f"wrong_max_tier={out.tier}", swap(key, wrong_max_tier=out.tier), ""))
+            else:
+                below = _tier_step(out.tier, -1)
+                flips.append((key, f"wrong_max_tier={below}", swap(key, wrong_max_tier=below), ""))
+        elif key in TWO_WAY_FLAGS:
+            flips.append((key, f"{key}={str(not value).lower()}", swap(key, **{key: not value}), ""))
+        else:
+            flips.append((key, "-", None, "evaluate_case does not read this key"))
+    return flips
+
+
+def _case_lines(g: Gate, key: str) -> tuple[frozenset, bool]:
+    """(the gate's own failure lines naming ``key`` - everything but the baseline diff, whether the
+    baseline diff shows a change on it)."""
+    named = re.compile(re.escape(key) + r"(?![\w])")
+    own = frozenset(f for f in g.failures if named.search(f) and not f.startswith("baseline:"))
+    return own, any(c.startswith(key + ":") for c in g.changes)
+
+
+def case_mutation_profile(only: str = "") -> tuple[list[dict], Run]:
+    """Flip every expectation of every adversarial case and ask the gate. One row per expectation.
+
+    A flip is **noticed by the gate** when the gate's own lines for that case change: the case starts
+    failing, a known gap "now passes", a known defect "no longer reproduces", a wrong-at-HIGH or an
+    unseen wrong write appears. The baseline diff is counted apart: it pins what the code *did*
+    (``accept`` rewrites it), not what correct *is*, so an expectation only the baseline notices says
+    nothing a blank case would not.
+
+    verdict per expectation:
+      load-bearing   the gate notices every flip
+      partly         it notices some of the flips (the others are named)
+      masked         the case's problem list changes, the gate's verdict does not (a known gap whose
+                     failure gap_fails does not pin fails either way)
+      baseline-only  only the baseline's label/verdict columns move
+      decoration     nothing moves at all
+    """
+    spec = load_adversarial()
+    products = spec["products"]
+    run, _ = run_bench()
+    baseline, header = load_baseline(), csv_header(BASELINE)
+    base_gate = gate(run, baseline, header)
+    index = {o.key: i for i, o in enumerate(run.adversarial)}
+    rows = []
+    for case in spec["cases"]:
+        key = "adv:" + case["name"]
+        if only and only.lower() not in case["name"].lower():
+            continue
+        out = run.adversarial[index[key]]
+        base_own, _ = _case_lines(base_gate, key)
+        observed = f"{out.tier} {out.pick or '-'} {out.verdict} -> {out.decision}"
+        by_key: dict[str, list] = defaultdict(list)
+        for k, text, flipped, note in case_flips(case, out):
+            if flipped is None:
+                by_key[k].append((text, DECORATION, note))
+                continue
+            with sealed(_no_network):
+                new = evaluate_case(dict(case, expect=flipped), products)
+            adv = list(run.adversarial)
+            adv[index[key]] = new
+            g = gate(dataclasses.replace(run, adversarial=adv), baseline, header)
+            own, changed = _case_lines(g, key)
+            if own != base_own:
+                said = sorted(own - base_own) or ["no longer: " + x for x in sorted(base_own - own)]
+                how = (LOAD_BEARING, said[0])
+            elif new.expect_problems != out.expect_problems:
+                how = (MASKED, f"problems [{'; '.join(out.expect_problems) or 'none'}] -> "
+                               f"[{'; '.join(new.expect_problems) or 'none'}]; the gate says nothing")
+            elif changed:
+                how = (BASELINE_ONLY, "only the baseline's label/verdict columns move")
+            else:
+                how = (DECORATION, "nothing moves")
+            by_key[k].append((text, how[0], note or how[1]))
+        for k, results in by_key.items():
+            kinds = [r[1] for r in results]
+            killed = [r for r in results if r[1] == LOAD_BEARING]
+            if len(killed) == len(results):
+                verdict, noticed = LOAD_BEARING, killed[0][2]
+            elif killed:
+                verdict = PARTLY
+                noticed = "not noticed: " + ", ".join(r[0] for r in results if r[1] != LOAD_BEARING)
+            else:
+                verdict = next(v for v in (MASKED, BASELINE_ONLY, DECORATION) if v in kinds)
+                noticed = next(r[2] for r in results if r[1] == verdict)
+            value = (case.get("expect") or {})[k]
+            if isinstance(value, list):
+                value = "|".join(value)
+            elif isinstance(value, bool):
+                value = str(value).lower()
+            rows.append({
+                "case": case["name"], "gap": "gap" if case.get("known_gap") else "", "key": k,
+                "value": str(value), "observed": observed, "flip": "; ".join(r[0] for r in results),
+                "verdict": verdict, "noticed": noticed,
+            })
+    return rows, run
+
+
+def vacuous_cases(rows: list[dict]) -> list[str]:
+    """Cases with no load-bearing expectation: the gate would not notice any single flip of them."""
+    by_case: dict[str, list[str]] = defaultdict(list)
+    for r in rows:
+        by_case[r["case"]].append(r["verdict"])
+    return [c for c, verdicts in by_case.items() if LOAD_BEARING not in verdicts and PARTLY not in verdicts]
+
+
+def mutate_cases(only: str = "", record: bool = False, check: bool = False) -> tuple[str, int]:
+    rows, _run = case_mutation_profile(only)
+    counts = Counter(r["verdict"] for r in rows)
+    cases = list(dict.fromkeys(r["case"] for r in rows))
+    lines = [f"MUTATE --cases  audiobind {__version__}  ·  {len(cases)} adversarial cases, {len(rows)} "
+             "expectations, each flipped against the unchanged matcher", ""]
+    for name in cases:
+        mine = [r for r in rows if r["case"] == name]
+        lines.append(f"  adv:{name}{'  [known gap]' if mine[0]['gap'] else ''}  observed: {mine[0]['observed']}")
+        for r in mine:
+            lines.append(f"    {r['verdict']:<14}{r['key']}={r['value']}  flipped to {r['flip']}")
+            lines.append(f"    {'':<14}  -> {r['noticed'][:160]}")
+    lines.append("")
+    order = (LOAD_BEARING, PARTLY, MASKED, BASELINE_ONLY, DECORATION)
+    lines.append("  SUMMARY  " + "  ".join(f"{v} {counts[v]}" for v in order))
+    for verdict in order[1:]:
+        for r in rows:
+            if r["verdict"] == verdict:
+                lines.append(f"    {verdict:<14}adv:{r['case']}  {r['key']}={r['value']}")
+    vacuous = vacuous_cases(rows)
+    lines.append(f"  VACUOUS CASES (no load-bearing expectation): {len(vacuous)}")
+    lines += [f"    adv:{c}" for c in vacuous]
+    code = 1 if vacuous else 0
+    if record and not only:
+        write_csv(CASE_MUTATIONS, CASE_MUTATION_FIELDS, rows)
+        lines.append(f"recorded {len(rows)} expectation rows to {CASE_MUTATIONS.name}")
+    if check:
+        old = {}
+        if CASE_MUTATIONS.exists():
+            with open(CASE_MUTATIONS, newline="", encoding="utf-8") as fh:
+                old = {(r["case"], r["key"]): r for r in csv.DictReader(fh)}
+        diffs = []
+        for r in rows:
+            o = old.get((r["case"], r["key"]))
+            if o is None:
+                diffs.append(f"adv:{r['case']} {r['key']}: not recorded (now {r['verdict']})")
+            elif any(o.get(k, "") != r[k] for k in CASE_MUTATION_FIELDS):
+                diffs.append(f"adv:{r['case']} {r['key']}: recorded {o.get('verdict')} ({o.get('value')}), "
+                             f"now {r['verdict']} ({r['value']})")
+        if not only:
+            seen = {(r["case"], r["key"]) for r in rows}
+            diffs += [f"adv:{c} {k}: recorded but no longer in the cases" for c, k in old if (c, k) not in seen]
+        lines.append(f"case-mutation profile vs {CASE_MUTATIONS.name}: {len(diffs)} difference(s)")
         lines += [f"  ~ {x}" for x in diffs]
         if diffs:
             code = 1

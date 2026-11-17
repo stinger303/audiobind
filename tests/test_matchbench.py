@@ -642,6 +642,100 @@ class TestMutate(unittest.TestCase):
                 self.assertIn((knob.name, f"{v:g}"), recorded)
 
 
+class TestCaseMutation(unittest.TestCase):
+    """`mutate --cases`: the expectations are flipped, not the code. A flip the gate does not report
+    means the expectation tests nothing - the bench could say PASS whatever the matcher did."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rows, _ = bench.case_mutation_profile()
+
+    def _with_cases(self, *cases):
+        spec = bench.load_adversarial()
+        spec["cases"] = spec["cases"] + list(cases)
+        return mock.patch.object(bench, "load_adversarial", lambda *a, **k: spec)
+
+    def test_the_recorded_profile_is_current_and_no_case_is_vacuous(self):
+        with open(bench.CASE_MUTATIONS, newline="", encoding="utf-8") as fh:
+            recorded = list(csv.DictReader(fh))
+        self.assertEqual(self.rows, recorded, "run `python -m tests.matchbench mutate --cases --record` and "
+                                              "say in the commit why an expectation changed")
+        self.assertEqual(bench.vacuous_cases(self.rows), [])
+        cases = {c["name"] for c in bench.load_adversarial()["cases"]}
+        self.assertEqual({r["case"] for r in self.rows}, cases, "every case has at least one expectation")
+
+    def test_every_expectation_of_a_known_gap_is_load_bearing(self):
+        """A gap only had to "still fail", so its other expectations could break unseen (15 of them
+        did not register a flip). gap_fails pins how it fails; now every one does."""
+        gaps = [r for r in self.rows if r["gap"]]
+        self.assertGreaterEqual(len({r["case"] for r in gaps}), 12)
+        self.assertEqual([(r["case"], r["key"], r["verdict"]) for r in gaps if r["verdict"] != bench.LOAD_BEARING], [])
+
+    def test_what_is_not_load_bearing_is_only_a_label_under_a_tier_ceiling(self):
+        """The accepted remainder: a label (asin_not / none) in a passing case whose max_tier already
+        forbids everything the label could flag. Redundant, not vacuous - and nothing else may join it."""
+        spec = {c["name"]: c["expect"] for c in bench.load_adversarial()["cases"]}
+        rest = [r for r in self.rows if r["verdict"] != bench.LOAD_BEARING]
+        self.assertEqual(len(rest), 9)
+        for r in rest:
+            self.assertEqual(r["verdict"], bench.BASELINE_ONLY, r)
+            self.assertIn(r["key"], ("asin_not", "none"), r)
+            self.assertIn("max_tier", spec[r["case"]], r)
+
+    def test_a_vacuous_case_is_reported_and_fails_the_command(self):
+        # two expectations that are true of every outcome: the case passes whatever the matcher does
+        vacuous = {"name": "zz_vacuous", "classes": [], "folder": "Andy Weir - The Martian", "catalog": ["martian"],
+                   "expect": {"min_tier": "NONE", "max_tier": "HIGH"}, "why": "test"}
+        with self._with_cases(vacuous):
+            rows, _ = bench.case_mutation_profile(only="zz_vacuous")
+            text, code = bench.mutate_cases(only="zz_vacuous")
+        self.assertEqual({r["key"]: r["verdict"] for r in rows},
+                         {"min_tier": bench.DECORATION, "max_tier": bench.DECORATION})
+        self.assertEqual(bench.vacuous_cases(rows), ["zz_vacuous"])
+        self.assertEqual(code, 1)
+        self.assertIn("VACUOUS CASES (no load-bearing expectation): 1", text)
+
+    def test_a_misspelt_expectation_fails_admission(self):
+        typo = {"name": "zz_typo", "classes": [], "folder": "Andy Weir - The Martian", "catalog": ["martian"],
+                "expect": {"asin": "B082BHJMFF", "max_teir": "LOW"}, "why": "test"}
+        with self._with_cases(typo):
+            run, g, _ = _run()
+        out = next(o for o in run.adversarial if o.key == "adv:zz_typo")
+        self.assertEqual((out.tier, out.expect_problems), ("HIGH", []))  # the case itself "passes"
+        self.assertTrue(any(f.startswith("A adversarial.json: 'zz_typo' expects max_teir") for f in g.failures),
+                        g.failures)
+
+    def test_a_known_gap_that_fails_differently_fails_the_gate(self):
+        """torrent_noise is accepted as "the right book, graded LOW". Relabel it so the pick is the
+        wrong book: it still fails, so the old gate ("a known gap must keep failing") said nothing."""
+        spec = bench.load_adversarial()
+        case = next(c for c in spec["cases"] if c["name"] == "torrent_noise")
+        case["expect"] = dict(case["expect"], asin="B009WROSXW")
+        with mock.patch.object(bench, "load_adversarial", lambda *a, **k: spec):
+            run, g, _ = _run()
+        out = next(o for o in run.adversarial if o.key == "adv:torrent_noise")
+        self.assertTrue(out.expect_problems)
+        self.assertTrue(any("adv:torrent_noise is a known gap that now fails differently" in f for f in g.failures),
+                        g.failures)
+        # and a gap without its pin (or a pin without a gap) is refused at admission
+        del case["gap_fails"]
+        with mock.patch.object(bench, "load_adversarial", lambda *a, **k: spec):
+            _, g, _ = _run()
+        self.assertTrue(any("'torrent_noise' needs known_gap (why) and gap_fails" in f for f in g.failures))
+
+    def test_the_flags_are_two_way(self):
+        spec = bench.load_adversarial()
+        case = next(c for c in spec["cases"] if c["name"] == "swap_by_author")  # HIGH, right, in pool, held
+
+        def problems(**expect):
+            with bench.sealed(bench.FrozenCatalog({})):
+                return bench.evaluate_case(dict(case, expect=dict(asin="B082BHJMFF", **expect)),
+                                           spec["products"]).expect_problems
+
+        self.assertEqual(problems(must_pick=True, in_pool=True, no_write=True, no_pick=False), [])
+        self.assertEqual(len(problems(must_pick=False, in_pool=False, no_write=False, no_pick=True)), 4)
+
+
 class TestModelCatalog(unittest.TestCase):
     def test_strict_filters(self):
         raw = [{"asin": "B1", "title": "Rise of Empire [Dramatized Adaptation]", "authors": [{"name": "Michael J. Sullivan"}]},

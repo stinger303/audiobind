@@ -24,7 +24,10 @@ def main(argv=None) -> int:
     lab.add_argument("--write", action="store_true", required=True)
     mut = sub.add_parser("mutate", help="re-run the corpus with one constant moved at a time and print the delta "
                                         "(pre-release check; not part of the CI gate)")
-    mut.add_argument("--only", default="", help="only constants whose name contains this")
+    mut.add_argument("--cases", action="store_true",
+                     help="meta-mutation: flip every expectation of every adversarial case instead, and say "
+                          "which the gate notices (load-bearing) and which are decoration (~1 s)")
+    mut.add_argument("--only", default="", help="only constants (with --cases: cases) whose name contains this")
     mut.add_argument("--record", action="store_true", help="write the profile to mutations.csv")
     mut.add_argument("--check", action="store_true", help="exit 1 if the profile differs from mutations.csv")
     imp = sub.add_parser("import", help="merge a state database into corpus.csv (read-only on the DB)")
@@ -46,7 +49,8 @@ def main(argv=None) -> int:
         print(bench.write_labels())
         return 0
     if cmd == "mutate":
-        text, code = bench.mutate(args.only, args.record, args.check)
+        run_mutation = bench.mutate_cases if args.cases else bench.mutate
+        text, code = run_mutation(args.only, args.record, args.check)
         print(text)
         return code
     if cmd == "refresh":
