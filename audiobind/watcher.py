@@ -34,7 +34,9 @@ import threading
 import time
 
 from . import egress, qbit, tracker
+from .clients.base import ClientError, DownloadClient
 from .config import (
+    DOWNLOAD_CLIENTS,
     WATCHER_REQUIRED,
     effective_val,
     watch_interval_min,
@@ -106,8 +108,17 @@ def disabled_reason() -> str:
     missing = missing_settings()
     if missing:
         return f"not set: {', '.join(missing)}"
-    if not _setting("qbit_user") or not _setting("qbit_pass"):
-        return "QBIT_USER / QBIT_PASS are not set - the watcher has nowhere to send a torrent"
+    kind = client_kind()
+    if kind == "qbittorrent":
+        if not _setting("qbit_user") or not _setting("qbit_pass"):
+            return "QBIT_USER / QBIT_PASS are not set - the watcher has nowhere to send a torrent"
+        return ""
+    # the other clients: the address always, and the password where the protocol has no anonymous login
+    needed = [f"{kind.upper()}_URL"] if not _setting(f"{kind}_url") else []
+    if kind == "deluge" and not _setting("deluge_pass"):
+        needed.append("DELUGE_PASS")
+    if needed:
+        return f"{' / '.join(needed)} {'is' if len(needed) == 1 else 'are'} not set - the watcher has nowhere to send a torrent"
     return ""
 
 
@@ -134,6 +145,61 @@ def make_qbit() -> qbit.QbitClient:
     return qbit.QbitClient(qbit_url(), _setting("qbit_user"), _setting("qbit_pass"))
 
 
+def client_kind() -> str:
+    """DOWNLOAD_CLIENT through the effective getter: qbittorrent unless another client is chosen."""
+    kind = _setting("download_client").strip().lower()
+    return kind if kind in DOWNLOAD_CLIENTS else "qbittorrent"
+
+
+def client_label() -> str:
+    """The selected client's name for messages: "qBittorrent" unless another client is chosen."""
+    return DOWNLOAD_CLIENTS[client_kind()]
+
+
+def client_url() -> str:
+    """The selected client's address (never a password)."""
+    kind = client_kind()
+    return qbit_url() if kind == "qbittorrent" else _setting(f"{kind}_url")
+
+
+class _Unusable(DownloadClient):
+    """A non-qBittorrent client whose settings could not even build a client (no URL, a bad URL):
+    every call raises that same ClientError, so the watcher sees "not available" and never a raw
+    exception from a constructor. logout() is a no-op, as the contract requires."""
+
+    def __init__(self, name: str, error: ClientError):
+        self.name, self._error, self.url, self.logged_in = name, error, "", False
+
+    def _fail(self, *_a, **_k):
+        raise ClientError(str(self._error), kind=self._error.kind)
+
+    login = add_torrent = progress = incomplete = snatch_state = version = _fail
+
+    def logout(self) -> None:
+        self.logged_in = False
+
+
+def make_client() -> DownloadClient:
+    """The download client the watcher hands torrents to. qBittorrent (the default) is make_qbit(),
+    exactly as before; another client is built from its own settings, read per use."""
+    kind = client_kind()
+    if kind == "qbittorrent":
+        return make_qbit()
+    from .clients.deluge import DelugeClient
+    from .clients.rtorrent import RTorrentClient
+    from .clients.transmission import TransmissionClient
+
+    try:
+        if kind == "deluge":
+            return DelugeClient(_setting("deluge_url"), _setting("deluge_pass"))
+        if kind == "transmission":
+            return TransmissionClient(_setting("transmission_url"), _setting("transmission_user"),
+                                      _setting("transmission_pass"))
+        return RTorrentClient(_setting("rtorrent_url"), _setting("rtorrent_user"), _setting("rtorrent_pass"))
+    except ClientError as exc:
+        return _Unusable(DOWNLOAD_CLIENTS[kind], exc)
+
+
 #: every setting make_tracker() reads: a change to any of them means a new client
 TRACKER_CLIENT_SETTINGS = (
     "tracker_url", "tracker_search_path", "tracker_download_path", "tracker_search_method",
@@ -156,15 +222,17 @@ PROBE_TITLE = "audiobind connection test zqxj"
 
 
 def probe_qbit() -> tuple[bool, str]:
-    """Settings > Watcher "Test qBittorrent": log in with the saved values and ask the version.
-    (ok, message). Nothing is stored; the session is logged out again."""
+    """Settings > Watcher "Test qBittorrent" / Download client "Test connection": log in to the
+    selected client with the saved values and ask the version. (ok, message). Nothing is stored;
+    the session is logged out again. The name stays: the route and the default client are qBittorrent."""
+    label = client_label()
     try:
-        version = make_qbit().version()
-    except qbit.QbitError as exc:
+        version = make_client().version()
+    except ClientError as exc:
         return False, str(exc)
     except Exception as exc:  # noqa: BLE001 - whatever it is, the answer is "not connected"
-        return False, f"qBittorrent could not be reached ({type(exc).__name__})"
-    return True, f"Connected - qBittorrent {version}"
+        return False, f"{label} could not be reached ({type(exc).__name__})"
+    return True, f"Connected - {label} {version}"
 
 
 def probe_tracker(state) -> tuple[bool, str]:
@@ -247,7 +315,7 @@ class Budget:
         """(allowed, why not). The reserve is enforced against the ledger only: the site's own wedge
         count is not read."""
         if self.unknown:
-            return False, "qBittorrent is unreachable, so the freeleech credit budget cannot be checked"
+            return False, f"{client_label()} is unreachable, so the freeleech credit budget cannot be checked"
         reserve, per_day, per_cycle = wedge_reserve(), wedge_per_day(), wedge_per_cycle()
         if reserve > 0 and per_day > 0 and self.spent_day >= per_day - reserve:
             return False, "keeping %d freeleech %s in reserve" % (reserve, "credit" if reserve == 1 else "credits")
@@ -306,8 +374,9 @@ class Watcher:
         self._thread = threading.Thread(target=self._loop, args=(state,), name="wishlist-watcher", daemon=True)
         self._thread.start()
         log.info(
-            "wishlist watcher: on - every %d min, at most %d book(s) per cycle, qBittorrent %s%s",
-            watch_interval_min(), watch_max_per_cycle(), qbit_url(), " (paused)" if self._paused else "",
+            "wishlist watcher: on - every %d min, at most %d book(s) per cycle, %s %s%s",
+            watch_interval_min(), watch_max_per_cycle(), client_label(), client_url(),
+            " (paused)" if self._paused else "",
         )
         return True
 
@@ -466,9 +535,10 @@ class Watcher:
         self.next_at = time.time() + watch_interval_min() * 60
         skipped = summary["skipped_budget"]
         log.info(
-            "wishlist watcher: %s cycle%s - %d searched, %d sent to qBittorrent, %d would be sent (dry run), "
+            "wishlist watcher: %s cycle%s - %d searched, %d sent to %s, %d would be sent (dry run), "
             "%d not found%s, %d error(s), %d now in the library",
             trigger, " [dry run]" if summary["watcher_dry_run"] else "", summary["searched"], summary["sent"],
+            client_label(),
             summary["would_send"], summary["not_found"],
             ", %d skipped for the wedge budget" % skipped if skipped else "", summary["errors"], summary["resolved"],
         )
@@ -481,11 +551,12 @@ class Watcher:
         limit = watch_max_incomplete()
         if limit <= 0 or summary.get("watcher_dry_run"):
             return False
-        client = make_qbit()
+        client = make_client()
         try:
             count = client.incomplete(qbit_category(), DONE_PROGRESS)
-        except qbit.QbitError as exc:
-            log.warning("wishlist watcher: could not count incomplete torrents in qBittorrent (%s) - no limit applied this cycle", exc)
+        except ClientError as exc:
+            log.warning("wishlist watcher: could not count incomplete torrents in %s (%s) - no limit applied this cycle",
+                        client_label(), exc)
             return False
         finally:
             client.logout()
@@ -501,12 +572,12 @@ class Watcher:
         cannot be read marks the budget unknown (no credit is spent; rows that need none go on)."""
         spent_day = state.wedges_spent_since(time.time() - 86400)
         hashes = set(state.wishlist_snatch_hashes())
-        client = make_qbit()
+        client = make_client()
         try:
             snatches = client.snatch_state(qbit_category())
         except Exception as exc:  # noqa: BLE001 - whatever went wrong, the budget cannot be trusted
-            log.warning("wishlist watcher: could not read snatch state from qBittorrent (%s) - no freeleech "
-                        "credit will be spent this cycle", exc)
+            log.warning("wishlist watcher: could not read snatch state from %s (%s) - no freeleech "
+                        "credit will be spent this cycle", client_label(), exc)
             return Budget(spent_day=spent_day, unknown=True)
         finally:
             try:
@@ -537,11 +608,12 @@ class Watcher:
                 if r["status"] == WISHLIST_DOWNLOADING and (r.get("torrent_hash") or "").strip()]
         if not rows:
             return 0
-        client = make_qbit()
+        client = make_client()
         try:
             progress = client.progress([r["torrent_hash"] for r in rows])
-        except qbit.QbitError as exc:
-            log.warning("wishlist watcher: could not read download progress from qBittorrent (%s) - rows left as they are", exc)
+        except ClientError as exc:
+            log.warning("wishlist watcher: could not read download progress from %s (%s) - rows left as they are",
+                        client_label(), exc)
             return 0
         finally:
             client.logout()
@@ -587,14 +659,15 @@ class Watcher:
         self.next_at = time.time() + watch_interval_min() * 60
         return summary
 
-    def _qbit(self, holder: dict) -> qbit.QbitClient:
-        """qBittorrent, logged in once per cycle - before the first tracker download."""
+    def _qbit(self, holder: dict) -> DownloadClient:
+        """The download client (qBittorrent by default), logged in once per cycle - before the first
+        tracker download."""
         if "qbit" not in holder:
-            client = make_qbit()
+            client = make_client()
             try:
                 client.login()
-            except qbit.QbitError as exc:
-                raise _QbitDown(f"qBittorrent is not available ({exc}) - nothing downloaded") from None
+            except ClientError as exc:
+                raise _QbitDown(f"{client_label()} is not available ({exc}) - nothing downloaded") from None
             holder["qbit"] = client
         return holder["qbit"]
 
@@ -653,10 +726,10 @@ class Watcher:
             raise
         try:
             digest = qb.add_torrent(torrent, f"tracker-{pick.tid}.torrent", qbit_category())
-        except qbit.QbitError as exc:
+        except ClientError as exc:
             state.wishlist_set_status(
                 asin, WISHLIST_ERROR, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
-                note=(f"fetched tracker torrent #{pick.tid} ({credit_why}) but qBittorrent did not take it ({when}): {exc}. "
+                note=(f"fetched tracker torrent #{pick.tid} ({credit_why}) but {client_label()} did not take it ({when}): {exc}. "
                       "Press Retry to search again."),
             )
             holder["row_error"] = True
@@ -664,16 +737,16 @@ class Watcher:
                 state.mark_wedge_spent(pick.tid, time.time())
                 if budget is not None:
                     budget.spent_cycle += 1
-            raise _QbitDown(f"qBittorrent did not take a torrent ({exc})") from None
+            raise _QbitDown(f"{client_label()} did not take a torrent ({exc})") from None
         state.wishlist_set_status(
             asin, WISHLIST_DOWNLOADING, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
-            torrent_hash=digest, note=f"sent to qBittorrent {when}: {decision}",
+            torrent_hash=digest, note=f"sent to {client_label()} {when}: {decision}",
         )
         if use_credit:
             state.mark_wedge_spent(pick.tid, time.time())
             if budget is not None:
                 budget.spent_cycle += 1
-        log.info("wishlist watcher: %s (%s) sent to qBittorrent (hash %s)", asin, title, digest or "unknown")
+        log.info("wishlist watcher: %s (%s) sent to %s (hash %s)", asin, title, client_label(), digest or "unknown")
         return "sent"
 
     # ------------------------------------------------------------------ status
@@ -738,6 +811,9 @@ class Watcher:
             "max_incomplete": watch_max_incomplete(),
             "wedges": self.wedge_status(state),
             "qbit_credentials": bool(_setting("qbit_user") and _setting("qbit_pass")),
+            "download_client": client_kind(),
+            "client_label": client_label(),
+            "client_url": client_url(),
             "last_cycle": last if isinstance(last, dict) else {},
             "next_cycle_at": self.next_at if self.alive and not paused else None,
             "last_error": error if isinstance(error, dict) else {},

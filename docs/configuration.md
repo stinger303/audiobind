@@ -39,7 +39,35 @@
 | `QBIT_URL` | `http://localhost:8083` | qBittorrent WebUI the watcher hands torrents to |
 | `QBIT_CATEGORY` | `audiobooks` | The qBittorrent category torrents are added to; its save path is your ingest folder |
 | `QBIT_USER` / `QBIT_PASS` | *(unset)* | qBittorrent WebUI login. Without them the watcher stays disabled (a warning in the log and on Settings) |
+| `DOWNLOAD_CLIENT` | `qbittorrent` | Which client the watcher hands torrents to: `qbittorrent`, `deluge`, `transmission` or `rtorrent`. The default is exactly the behaviour before this setting existed; any other value is a startup error. `QBIT_CATEGORY` is used by every client (Deluge: Label-plugin label, lower-cased; Transmission: label; rTorrent: `custom1`, the ruTorrent label). See [Download clients](#download-clients) |
+| `DELUGE_URL` / `DELUGE_PASS` | *(unset)* | Deluge web UI, e.g. `http://deluge:8112`, and its password (the web UI has no user name). Read only when `DOWNLOAD_CLIENT=deluge`; both are needed |
+| `TRANSMISSION_URL` | *(unset)* | Transmission RPC, e.g. `http://transmission:9091/transmission/rpc` (a bare `http://host:9091` gets that path added). Read only when `DOWNLOAD_CLIENT=transmission` |
+| `TRANSMISSION_USER` / `TRANSMISSION_PASS` | *(unset)* | Optional RPC login, only if Transmission asks for one |
+| `RTORRENT_URL` | *(unset)* | `scgi://host:port` (rTorrent's `network.scgi.open_port`) or `http(s)://host/RPC2` (an XML-RPC mount behind a web server). Read only when `DOWNLOAD_CLIENT=rtorrent` |
+| `RTORRENT_USER` / `RTORRENT_PASS` | *(unset)* | Optional basic-auth login for an `http(s)` `/RPC2` mount. SCGI has none |
 | `PUID` / `PGID` | `99` / `100` | Ownership of written files |
+
+## Download clients
+
+The wishlist watcher hands each torrent it fetches to one download client. qBittorrent is the
+default and nothing changes for it. To use another, set `DOWNLOAD_CLIENT` and that client's
+settings in the container, or choose it under **Settings > Watcher > Download client**. That
+section shows the chosen client's fields, its label, and a **Test connection** button, which saves
+what you typed, logs in, asks for the version and logs out. A value saved on the page wins over the
+container's. The passwords are never shown again once saved.
+
+| Client | Address | Needs |
+|---|---|---|
+| qBittorrent | `QBIT_URL` | `QBIT_USER`, `QBIT_PASS`; the category's save path is the ingest folder |
+| Deluge 2.x | `DELUGE_URL` (web UI) | `DELUGE_PASS`; the **Label** plugin enabled (the test refuses without it); the label's move-completed folder (or download location) is the ingest folder |
+| Transmission 3.0+ | `TRANSMISSION_URL` (RPC) | Login only if set in Transmission; this host in its RPC whitelist. Transmission does not move a download by label, so its download folder must be the ingest folder |
+| rTorrent 0.9 | `RTORRENT_URL` (`scgi://` or `http(s)://.../RPC2`) | Nothing for SCGI, which has **no authentication**: expose that port only to trusted containers |
+
+Every client behaves the same way for the watcher. The login comes before any tracker download, so
+a client that is down never costs a freeleech credit. A duplicate or invalid torrent is a refusal,
+and that row shows the error. A client that cannot be reached leaves the cycle with "... is not
+available", never with a crash. The Deluge, Transmission and rTorrent adapters are tested against
+simulated clients only, not real ones. Run **Test connection** before you rely on one.
 
 ## Output format
 

@@ -36,6 +36,7 @@ from .advice import (
 )
 from .config import (
     CONFIG,
+    DOWNLOAD_CLIENTS,
     GENERAL_SETTING_KEYS,
     SECRET_SETTING_KEYS,
     SETTING_KEYS,
@@ -698,9 +699,172 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-watch-warn{border-color:rgba(242,163,60,.35);background:var(--ab-amber-soft);color:var(--ab-amber);margin:10px 0}
 .ab-watch-warn b{color:var(--ab-amber)}
 
-@media(max-width:1080px){.ab-rail{display:none}}
+/* the hamburger and the drawer scrim exist on every page but only show at <=1080 px; on desktop
+   the button is display:none and the scrim carries [hidden], so neither takes any room */
+.ab-navbtn{display:none}
+.ab-scrim{position:fixed;inset:0;z-index:65;background:rgba(0,0,0,.55)}
+.ab-scrim[hidden]{display:none}
+
+/* <=1080 px: the rail leaves the layout and becomes an off-canvas drawer opened by the hamburger */
+@media(max-width:1080px){
+  .ab-navbtn{display:inline-flex;flex:none;width:32px;height:32px;padding:0;justify-content:center}
+  .ab-navbars,.ab-navbars::before,.ab-navbars::after{display:block;width:16px;height:2px;border-radius:1px;
+    background:currentColor;position:relative}
+  .ab-navbars::before,.ab-navbars::after{content:"";position:absolute;left:0}
+  .ab-navbars::before{top:-5px}
+  .ab-navbars::after{top:5px}
+  .ab-rail{position:fixed;top:0;bottom:0;left:0;z-index:70;width:min(280px,85vw);overflow-y:auto;
+    transform:translateX(-100%);visibility:hidden;box-shadow:none;
+    transition:transform .2s ease,visibility 0s linear .2s}
+  body.ab-nav-open .ab-rail{transform:none;visibility:visible;box-shadow:8px 0 32px rgba(0,0,0,.5);
+    transition:transform .2s ease}
+}
 @media(max-width:820px){.ab-hidemd{display:none}.ab-tbl col.ab-col-tier{width:0!important}}
+@media(max-width:820px){
+  /* no row may grow past the screen: everything that sat on one line may now wrap */
+  .ab-controls{flex-wrap:wrap}
+  .ab-statsline{flex-wrap:wrap;row-gap:8px}
+  .ab-toolbar{flex-wrap:wrap}
+  .chip{white-space:nowrap;flex:none}
+}
+/* <=640 px: the phone layout */
+@media(max-width:640px){
+  /* top strip: hamburger + title on one line, health pill and version stacked under it */
+  .ab-topbar{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px 10px;
+    padding:12px 12px 10px}
+  .ab-topbar>*:not(.ab-navbtn):not(h1){grid-column:1/-1;justify-self:start;max-width:100%}
+  .ab-topbar h1{min-width:0;overflow-wrap:anywhere}
+  .ab-topbar .ab-right:empty{display:none}
+  .ab-status{white-space:nowrap}
+  .ab-version{white-space:nowrap}
+  .ab-controls{padding:10px 12px 4px;row-gap:8px}
+  .ab-controls .ab-note{white-space:normal}
+  .ab-queue{margin:10px 12px 0;grid-template-columns:minmax(0,1fr)}
+  .ab-queue .ab-qtitle{overflow-wrap:anywhere}
+  .ab-queue .ab-qmeta{flex-wrap:wrap;gap:4px 14px}
+  /* stats: converted | written on row one, progress + a bar that fills the rest on row two */
+  .ab-statsline{display:grid;grid-template-columns:auto minmax(0,1fr);row-gap:8px;padding:10px 12px 12px}
+  .ab-stat{padding:0 12px;min-width:0}
+  .ab-stat:nth-child(3){padding-left:0;border-left:none}
+  .ab-libprog{margin-left:0;padding-left:12px;min-width:0}
+  .ab-libprog .ab-libbar{flex:1;width:auto;min-width:0}
+  .ab-libprog .ab-libnum{flex:none;white-space:nowrap}
+  /* filters: one horizontally scrolling chip row, then the search box + Clear */
+  .ab-toolbar{flex-direction:column;align-items:stretch;gap:10px;padding:12px 12px 8px}
+  .ab-toolbar{min-width:0;max-width:100%;box-sizing:border-box}
+  /* the row scrolls inside its own box: without min-width:0 the flex item grows to its content
+     (502 px at 390) and the whole .ab-main scrolls sideways instead */
+  .chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+    padding:3px;flex:none;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+  .chips::-webkit-scrollbar{display:none}
+  .ab-searchwrap{margin-left:0;width:100%}
+  .ab-search{flex:1;min-width:0;width:auto}
+  .ab-clear{flex:none}
+  .ab-allclear{padding:0 12px 8px}
+  .ab-overflow{padding:8px 12px}
+  /* table: no WHY column - the table becomes blocks and each row a grid; the WHY cell moves
+     under the title (the same cell, not a copy) */
+  .ab-tablewrap{padding:0 8px 16px}
+  .ab-tbl,.ab-tbl tbody{display:block;width:100%}
+  .ab-tbl colgroup,.ab-tbl col.ab-col-why{display:none}
+  .ab-tbl thead{display:block;position:sticky;top:0;z-index:2;background:var(--ab-bg)}
+  .ab-tbl thead tr{display:flex}
+  .ab-tbl thead th{position:static;display:none}
+  .ab-tbl thead th[data-column="title"]{display:block;flex:1;padding-left:66px}
+  .ab-tbl tr[hidden]{display:none!important}
+  .ab-tbl tbody tr.urow{display:grid;grid-template-columns:58px minmax(0,1fr) 44px;
+    grid-template-rows:auto auto auto;align-items:center}
+  .ab-tbl tbody tr.urow>td{display:block;min-width:0;border-bottom:none}
+  .ab-tbl tbody tr.urow{border-bottom:1px solid var(--ab-border-subtle)}
+  .ab-tbl tbody tr.urow>td.ab-covcell{grid-column:1;grid-row:1/span 2;padding:0 4px 0 10px!important}
+  .ab-tbl tbody tr.urow>td.ab-bookcell{grid-column:2;grid-row:1;display:flex;max-width:none;padding-top:8px}
+  .ab-tbl tbody tr.urow>td.ab-whycell{grid-column:2;grid-row:2;padding-bottom:8px}
+  .ab-tbl tbody tr.urow>td.ab-whycell:empty{padding:0 0 8px}
+  /* MATCH moves (it was auto-placed into the 58 px cover column and cut to "Mediu"): its own
+     labelled line under the WHY cell, spanning book + actions */
+  .ab-tbl tbody tr.urow>td.ab-match{grid-column:2/-1;grid-row:3;display:flex;align-items:baseline;
+    gap:6px;padding:0 10px 8px 8px;margin-top:-4px;overflow:hidden}
+  .ab-tbl tbody tr.urow>td.ab-match::before{content:"Match";flex:none;font-size:11px;
+    text-transform:uppercase;letter-spacing:.04em;color:var(--ab-text3)}
+  .ab-tbl tbody tr.urow>td.ab-match:empty{display:none}
+  .ab-tbl tbody tr.urow>td.ab-match .ab-match-in{flex:0 1 auto;min-width:0}
+  .ab-tbl tbody tr.urow>td.ab-actcol{grid-column:3;grid-row:1/span 2;width:auto}
+  .ab-bookcell .ab-btitle{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;
+    -webkit-box-orient:vertical;-webkit-line-clamp:2}
+  .ab-tbl .ab-why{flex-wrap:wrap;white-space:normal;column-gap:8px}
+  .ab-tbl .ab-why .ab-why-sub{margin-left:0;white-space:normal;overflow-wrap:anywhere}
+  .ab-tbl tbody tr.ab-group,.ab-tbl tbody tr.ab-more-row,.ab-tbl tbody tr.drow,
+  .ab-tbl tbody tr.ab-empty{display:block}
+  .ab-tbl tbody tr.ab-group>td,.ab-tbl tbody tr.ab-more-row>td,.ab-tbl tbody tr.drow>td,
+  .ab-tbl tbody tr.ab-empty>td{display:block;width:100%}
+  .ab-tbl tbody tr.ab-more-row td{padding-left:66px}
+  /* expanded detail: a small cover with the reason beside it, actions full width below */
+  .dd{display:block;padding:14px 12px 16px;overflow-wrap:anywhere}
+  .dd>*+*{margin-top:18px}
+  .ab-toprow{display:block}
+  .ab-toprow::after{content:"";display:table;clear:both}
+  .ab-topcov{float:left;margin:0 10px 6px 0}
+  .ab-topcov .ab-covbigwrap{width:88px;height:88px}
+  .ab-topcov .ab-covbigwrap::after{font-size:24px}
+  .ab-topmain{display:block}
+  .ab-actrow{clear:both;flex-direction:column;align-items:stretch}
+  .ab-actrow button{width:100%;justify-content:center}
+  .ab-pinrow{flex-direction:column;align-items:stretch}
+  .ab-pinrow input{width:100%}
+  .ab-pinrow button{width:100%;justify-content:center}
+  .ab-pinrow button.ab-lock{width:auto;align-self:flex-start}
+  .ab-meter span{flex:1 1 0;min-width:0}
+  .ab-evwin,.ab-evrival{flex-wrap:wrap}
+  .ab-evmeta{flex:1 1 160px}
+  .acts .btn.danger{margin-left:0!important}
+}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+"""
+
+# <=1080 px the rail is an off-canvas drawer; the hamburger in the top strip opens it. Every page
+# carries this. Above 1080 px the rail is the plain sidebar and none of this does anything.
+NAV_SCRIPT = """
+const abNavMq = window.matchMedia('(max-width:1080px)');
+function abNavParts() {
+  return {rail: document.querySelector('.ab-rail'), btn: document.querySelector('.ab-navbtn'),
+          scrim: document.querySelector('.ab-scrim')};
+}
+function abNav(open) {
+  const p = abNavParts();
+  if (!p.rail || !p.btn) return;
+  const was = document.body.classList.contains('ab-nav-open');
+  open = !!open && abNavMq.matches;
+  document.body.classList.toggle('ab-nav-open', open);
+  p.btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (abNavMq.matches) p.rail.setAttribute('aria-hidden', open ? 'false' : 'true');
+  if (p.scrim) p.scrim.hidden = !open;
+  if (open) {
+    const first = p.rail.querySelector('.ab-rail-item.ab-active') || p.rail.querySelector('a, button');
+    if (first) setTimeout(() => first.focus(), 0);  // after visibility flips, so it is focusable
+  } else if (was) {
+    p.btn.focus();
+  }
+}
+(function () {
+  const p = abNavParts();
+  if (!p.rail) return;
+  p.rail.id = p.rail.id || 'ab-rail';
+  function sync() {
+    document.body.classList.remove('ab-nav-open');
+    if (p.btn) p.btn.setAttribute('aria-expanded', 'false');
+    if (p.scrim) p.scrim.hidden = true;
+    if (abNavMq.matches) p.rail.setAttribute('aria-hidden', 'true');
+    else p.rail.removeAttribute('aria-hidden');
+  }
+  sync();
+  if (abNavMq.addEventListener) abNavMq.addEventListener('change', sync); else abNavMq.addListener(sync);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.body.classList.contains('ab-nav-open')) { e.preventDefault(); abNav(false); }
+  });
+  p.rail.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('a[href]') && document.body.classList.contains('ab-nav-open')) abNav(false);
+  });
+})();
 """
 
 SCRIPT = """
@@ -1407,8 +1571,11 @@ PAGE = """<!doctype html>
   </div>
 </aside>
 
+<div class="ab-scrim" hidden onclick="abNav(false)"></div>
 <main class="ab-main">
   <header class="ab-topbar">
+    <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
+            aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1><a href="/" title="Back to the library" style="color:inherit;text-decoration:none">{view_heading}</a></h1>
     <span class="ab-status{health_stale}"><span class="ab-dot"></span>{health_text}<small> &middot; last scan {health_scan}</small></span>
     <span class="ab-version">v{version}</span>
@@ -1473,6 +1640,7 @@ PAGE = """<!doctype html>
 </div>
 
 <script>
+{nav_script}
 window.AB_SORT_COLUMN = {sort_column_js};
 window.AB_SORT_DIR = {sort_dir_js};
 {script}
@@ -1509,8 +1677,11 @@ SETTINGS_PAGE = """<!doctype html>
     <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
+<div class="ab-scrim" hidden onclick="abNav(false)"></div>
 <main class="ab-main">
   <header class="ab-topbar">
+    <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
+            aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1>Settings</h1>
     <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
@@ -1546,6 +1717,7 @@ SETTINGS_PAGE = """<!doctype html>
   </div>
 </div>
 <script>
+{nav_script}
 {settings_script}
 {account_script}
 {watcher_script}
@@ -1983,8 +2155,11 @@ SERIES_PAGE = """<!doctype html>
     <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
+<div class="ab-scrim" hidden onclick="abNav(false)"></div>
 <main class="ab-main">
   <header class="ab-topbar">
+    <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
+            aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1>Series</h1>
     <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
@@ -1995,6 +2170,7 @@ SERIES_PAGE = """<!doctype html>
 </main>
 <div id="ab-toast" role="status" aria-live="polite"></div>
 <script>
+{nav_script}
 {series_script}
 </script>
 </body></html>"""
@@ -3252,6 +3428,7 @@ def render_series(state) -> str:
         output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         body=body,
+        nav_script=NAV_SCRIPT,
         series_script=SERIES_SCRIPT,
     )
 
@@ -3291,8 +3468,11 @@ DISCOVER_PAGE = """<!doctype html>
     <b>output</b> &#8594; <span title="{output_attr}">{output}</span>{signout}
   </div>
 </aside>
+<div class="ab-scrim" hidden onclick="abNav(false)"></div>
 <main class="ab-main">
   <header class="ab-topbar">
+    <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
+            aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1>{page_title}</h1>
     <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
@@ -3303,6 +3483,7 @@ DISCOVER_PAGE = """<!doctype html>
 </main>
 <div id="ab-toast" role="status" aria-live="polite"></div>
 <script>
+{nav_script}
 {discover_script}
 </script>
 </body></html>"""
@@ -3869,6 +4050,18 @@ WATCH_FIELD_HINTS = {
     "qbit_category": ("The category new torrents get. Point its save path at Audiobind's ingest folder so finished "
                       "books are picked up."),
     "watch_max_incomplete": "Add nothing while this many torrents in that category are still downloading. 0 = off.",
+    "download_client": ("The program the watcher hands torrents to. qBittorrent unless you choose another; only the "
+                        "chosen client's settings below are used."),
+    "deluge_url": "Your Deluge web UI, e.g. http://deluge:8112. Its Label plugin must be enabled.",
+    "deluge_pass": "The Deluge web UI password. It is never shown again once saved.",
+    "transmission_url": ("Your Transmission RPC, e.g. http://transmission:9091/transmission/rpc (a bare "
+                         "http://host:9091 gets that path added). Transmission 3.0 or newer."),
+    "transmission_user": "Optional. Only when Transmission asks for a login.",
+    "transmission_pass": "Optional. It is never shown again once saved.",
+    "rtorrent_url": ("scgi://rtorrent:5000 for rTorrent's SCGI port, or http://rutorrent/RPC2 for an XML-RPC "
+                     "mount behind a web server. SCGI has no password: keep that port off any network you do not trust."),
+    "rtorrent_user": "Optional. Only for an http(s) /RPC2 mount that asks for a login.",
+    "rtorrent_pass": "Optional. It is never shown again once saved.",
 }
 
 
@@ -3892,7 +4085,7 @@ def _watch_wrap(key: str, label: str, hint: str, control: str, secret: bool = Fa
     )
 
 
-def _watch_text(key: str, label: str, placeholder: str = "", area: bool = False) -> str:
+def _watch_text(key: str, label: str, placeholder: str = "", area: bool = False, hint: str | None = None) -> str:
     value = _attr(str(setting_effective(key) or ""))
     if area:
         control = (f'<textarea class="ab-in" rows="3" data-initial="{value}" placeholder="{_attr(placeholder)}" '
@@ -3900,7 +4093,8 @@ def _watch_text(key: str, label: str, placeholder: str = "", area: bool = False)
     else:
         control = (f'<input type="text" class="ab-in" value="{value}" data-initial="{value}" '
                    f'placeholder="{_attr(placeholder)}" autocomplete="off" spellcheck="false">')
-    hint = EXPECTED_EGRESS_HINT if key == "expected_egress" else WATCH_FIELD_HINTS.get(key, "")
+    if hint is None:
+        hint = EXPECTED_EGRESS_HINT if key == "expected_egress" else WATCH_FIELD_HINTS.get(key, "")
     return _watch_wrap(key, label, hint, control)
 
 
@@ -3957,10 +4151,53 @@ def _watch_connection_fields() -> str:
         + _watch_text("tracker_freeleech_param", "Freeleech parameter")
         + _watch_text("tracker_user_agent", "User-Agent", "audiobind/<version>")
         + _watch_select("vip", "Premium member", VIP_HINT, titlecase=True)
-        + _watch_text("qbit_url", "qBittorrent URL", "http://qbittorrent:8080")
-        + _watch_text("qbit_user", "qBittorrent user")
-        + _watch_secret("qbit_pass", "qBittorrent password")
-        + _watch_text("qbit_category", "qBittorrent category", "audiobooks")
+        + _download_client_fields()
+    )
+
+
+def _download_client_fields() -> str:
+    """Settings > Watcher > Download client: which client, its connection, one Test connection. Every
+    client's fields are in the form (so each setting is there exactly once); the ones of the clients
+    not chosen are hidden, and the select shows them as it changes."""
+    kind = watcher_mod.client_kind()
+    options = "".join(
+        f'<option value="{_attr(key)}"{" selected" if key == kind else ""}>{_html(label)}</option>'
+        for key, label in DOWNLOAD_CLIENTS.items()
+    )
+    select = _watch_wrap(
+        "download_client", "Download client", WATCH_FIELD_HINTS["download_client"],
+        f'<select class="ab-in" data-initial="{_attr(kind)}" onchange="abDownloadClient(this.value)">{options}</select>')
+
+    def group(name: str, body: str) -> str:
+        return f'<div class="ab-dc" data-client="{name}"{"" if name == kind else " hidden"}>{body}</div>'
+
+    return (
+        '<div class="ab-acct-title">Download client</div>'
+        + select
+        + group("qbittorrent",
+                _watch_text("qbit_url", "qBittorrent URL", "http://qbittorrent:8080")
+                + _watch_text("qbit_user", "qBittorrent user")
+                + _watch_secret("qbit_pass", "qBittorrent password"))
+        + group("deluge",
+                _watch_text("deluge_url", "Deluge URL", "http://deluge:8112")
+                + _watch_secret("deluge_pass", "Deluge password"))
+        + group("transmission",
+                _watch_text("transmission_url", "Transmission URL", "http://transmission:9091/transmission/rpc")
+                + _watch_text("transmission_user", "Transmission user")
+                + _watch_secret("transmission_pass", "Transmission password"))
+        + group("rtorrent",
+                _watch_text("rtorrent_url", "rTorrent URL", "scgi://rtorrent:5000")
+                + _watch_text("rtorrent_user", "rTorrent user")
+                + _watch_secret("rtorrent_pass", "rTorrent password"))
+        + (_watch_text("qbit_category", "qBittorrent category", "audiobooks") if kind == "qbittorrent" else
+           _watch_text("qbit_category", f"{DOWNLOAD_CLIENTS[kind]} label", "audiobooks", hint=(
+               "The label new torrents get (rTorrent: custom1, which ruTorrent shows as the label). Have the "
+               "client move or save that label's downloads into Audiobind's ingest folder. Set in the container "
+               "as QBIT_CATEGORY, whichever client is chosen.")))
+        + '<div class="ab-acct-row">'
+        '<button class="btn" type="button" id="ab-dc-test" onclick="abWatchTest(\'qbit\', \'ab-dc-test-fb\')">'
+        "Test connection</button>"
+        '<span class="ab-fb" id="ab-dc-test-fb" role="status"></span></div>'
     )
 
 
@@ -3990,7 +4227,8 @@ def _watch_test_and_save() -> str:
         '<div class="ab-acct-who">Saves what you typed, then makes one request with it. Nothing about the test '
         "is kept.</div>"
         '<div class="ab-acct-row">'
-        '<button class="btn" type="button" id="ab-watch-test-qbit" onclick="abWatchTest(\'qbit\')">Test qBittorrent</button>'
+        '<button class="btn" type="button" id="ab-watch-test-qbit" onclick="abWatchTest(\'qbit\')">'
+        f"Test {_html(watcher_mod.client_label())}</button>"
         '<button class="btn" type="button" id="ab-watch-test-tracker" onclick="abWatchTest(\'tracker\')">Test tracker</button>'
         '<span class="ab-fb" id="ab-watch-test-fb" role="status"></span></div>'
     )
@@ -4020,8 +4258,11 @@ def render_watcher_section(state) -> str:
         state_html = '<span class="warn">Disabled</span>'
         warn = (
             '<div class="ab-hintbox ab-watch-warn" role="alert"><b>The watcher is disabled.</b> '
-            f"{_html(s['reason'])}. Set the qBittorrent user and password below (or QBIT_USER and QBIT_PASS "
-            "in the container) and save.</div>"
+            f"{_html(s['reason'])}. "
+            + ("Set the qBittorrent user and password below (or QBIT_USER and QBIT_PASS in the container) and save."
+               if s.get("download_client", "qbittorrent") == "qbittorrent" else
+               "Fill in the download client's settings below (or in the container) and save.")
+            + "</div>"
         )
     elif s["paused"]:
         state_html = '<span class="warn">Paused</span> &#8212; no cycle runs until you resume it'
@@ -4095,8 +4336,12 @@ def render_watcher_section(state) -> str:
         ("Download limit", (f"adds nothing while {int(s['max_incomplete'])} torrent(s) are still downloading"
                             if s["max_incomplete"] else "off")),
         ("Tracker", f"{_html(s['tracker_host'])}" if s.get("tracker_host") else DASH),
-        ("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(s['qbit_category'])}</code> &#183; "
-                        + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>')),
+        (("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(s['qbit_category'])}</code> &#183; "
+                         + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>'))
+         if s.get("download_client", "qbittorrent") == "qbittorrent" else
+         (_html(s["client_label"]), (f"{_html(urlsplit(s['client_url']).netloc or s['client_url'])}" if s["client_url"]
+                                     else '<span class="warn">no address set</span>')
+                                    + f" &#183; label <code>{_html(s['qbit_category'])}</code>")),
         ("Connection", sees),
         ("Guard", guard_html),
         ("Last cycle", last_html),
@@ -4369,11 +4614,16 @@ function abResetSetting(key) {
     .catch(() => { if (fb) { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach the daemon'; } });
 }
 // ---- Settings > Watcher: Test qBittorrent / Test tracker - save what is typed, then one request
-function abWatchTest(target) {
-  const fb = document.getElementById('ab-watch-test-fb');
+// ---- Settings > Watcher > Download client: show only the chosen client's fields
+function abDownloadClient(kind) {
+  document.querySelectorAll('.ab-dc[data-client]').forEach(g => { g.hidden = g.dataset.client !== kind; });
+}
+function abWatchTest(target, fbId) {
+  fbId = fbId || 'ab-watch-test-fb';
+  const fb = document.getElementById(fbId);
   fb.className = 'ab-fb';
   fb.textContent = 'saving, then testing...';
-  abSaveSettings('ab-watch-test-fb', true).then(saved => {
+  abSaveSettings(fbId, true).then(saved => {
     if (!saved) return;
     fb.className = 'ab-fb';
     fb.textContent = 'testing...';
@@ -4429,6 +4679,7 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
         output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         disc_body=body,
+        nav_script=NAV_SCRIPT,
         discover_script=DISCOVER_SCRIPT,
     )
 
@@ -4586,6 +4837,7 @@ def render_settings(state, tab: str = "") -> str:
         advanced_panel=panel("advanced", advanced),
         account_panel=panel("account", account),
         savebar_hidden=" hidden" if tab == "account" else "",
+        nav_script=NAV_SCRIPT,
         settings_script=SETTINGS_SCRIPT,
         account_script=ACCOUNT_SCRIPT,
         watcher_script=WATCHER_SCRIPT,
@@ -5430,6 +5682,7 @@ def render(state, status: str = "", query: str = "") -> str:
     return PAGE.format(
         signout=signout_html(state),
         styles=STYLES,
+        nav_script=NAV_SCRIPT,
         script=SCRIPT,
         version=__version__,
         library=_breakable_path(CONFIG.host_library or str(CONFIG.library_root)),
@@ -6796,7 +7049,8 @@ class Handler(BaseHTTPRequestHandler):
         # Clear: a secret's "Clear" box - store an empty value, so no session / password is used
         clear = payload.get("clear") or []
         if not isinstance(clear, list) or any(k not in SECRET_SETTING_KEYS for k in clear):
-            self._send(400, b'{"error":"only the session and the qBittorrent password can be cleared"}', "application/json")
+            self._send(400, b'{"error":"only the session and the download client passwords can be cleared"}',
+                       "application/json")
             return
 
         errors = []
@@ -6805,7 +7059,7 @@ class Handler(BaseHTTPRequestHandler):
         # selects: one of the offered choices (which include an unusual env value)
         for key, fold in (("auto_convert", str.upper), ("output_format", str.upper), ("audio_bitrate", str.lower),
                           ("region", str.lower), ("vip", str.upper), ("tracker_search_method", str.upper),
-                          ("tracker_search_encoding", str.lower)):
+                          ("tracker_search_encoding", str.lower), ("download_client", str.lower)):
             if key not in settings:
                 continue
             choices = setting_choices(key)
