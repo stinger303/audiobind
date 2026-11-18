@@ -194,6 +194,15 @@ class UnitState:
     source: str = SOURCE_LIBRARY
 
 
+_UNIT_FIELDS = frozenset(UnitState.__annotations__)
+
+
+def _unit_from_row(row: sqlite3.Row) -> UnitState:
+    """A units row as a UnitState; columns a UnitState has no field for (old or hand-made
+    tables) are ignored. The one place a row becomes a UnitState."""
+    return UnitState(**{k: row[k] for k in row.keys() if k in _UNIT_FIELDS})
+
+
 @dataclass(frozen=True)
 class Credentials:
     """The one account (single-user app: the table holds at most one row, id = 1).
@@ -314,7 +323,7 @@ class State:
     def get(self, path: str) -> UnitState | None:
         with self._lock:
             row = self.connection.execute("SELECT * FROM units WHERE path = ?", (path,)).fetchone()
-        return UnitState(**{k: row[k] for k in row.keys() if k in UnitState.__annotations__}) if row else None
+        return _unit_from_row(row) if row else None
 
     def save(self, state: UnitState) -> None:
         with self._lock:
@@ -389,7 +398,22 @@ class State:
         query = "SELECT * FROM units" + (" WHERE status = ?" if status else "") + " ORDER BY updated_at DESC"
         with self._lock:
             rows = self.connection.execute(query, (status,) if status else ()).fetchall()
-        return [UnitState(**{k: r[k] for k in r.keys() if k in UnitState.__annotations__}) for r in rows]
+        return [_unit_from_row(r) for r in rows]
+
+    def path_statuses(self) -> list[tuple[str, str]]:
+        """(path, status) for every row - for callers that only tally or match by status and
+        must not drag every row's ``detail`` blob out of SQLite (``all()`` does)."""
+        with self._lock:
+            rows = self.connection.execute("SELECT path, status FROM units").fetchall()
+        return [(r[0], r[1]) for r in rows]
+
+    def outputs(self) -> list[tuple[str, str]]:
+        """(path, output) for every row that records a published file; no ``detail`` blob."""
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT path, output FROM units WHERE output IS NOT NULL AND output != ''"
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]
 
     def counts(self) -> dict[str, int]:
         with self._lock:
@@ -699,7 +723,7 @@ class State:
             )
             row = self.connection.execute("SELECT * FROM units WHERE path = ?", (path,)).fetchone()
             if row is not None:
-                current = UnitState(**{k: row[k] for k in row.keys() if k in UnitState.__annotations__})
+                current = _unit_from_row(row)
                 fixed = self._honour_locks_locked(current)
                 if (fixed.title, fixed.author) != (current.title, current.author):
                     self.connection.execute(

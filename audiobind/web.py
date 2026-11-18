@@ -6086,9 +6086,9 @@ def rail_counts(state, counts: dict) -> dict:
     adjusted = {k: counts.get(k, 0) for k in ATTENTION_STATUSES}
     queued = in_flight_units()
     if queued:
-        for u in state.all(None):
-            if u.path in queued and u.status in adjusted:
-                adjusted[u.status] -= 1
+        for path, status in state.path_statuses():
+            if path in queued and status in adjusted:
+                adjusted[status] -= 1
     adjusted["attention"] = sum(adjusted[k] for k in ATTENTION_STATUSES)
     return adjusted
 
@@ -6220,11 +6220,11 @@ def output_sharers(state, rel: str, folder: Path) -> int:
     """How many OTHER rows point their output into ``folder`` (a re-rip that reached
     "already published" records the first book's output as its own)."""
     count = 0
-    for other in state.all(None):
-        if other.path == rel or not other.output:
+    for other_path, other_output in state.outputs():
+        if other_path == rel:
             continue
         try:
-            other_dir = Path(other.output).resolve().parent
+            other_dir = Path(other_output).resolve().parent
         except (OSError, RuntimeError):
             continue
         if other_dir == folder or folder in other_dir.parents:

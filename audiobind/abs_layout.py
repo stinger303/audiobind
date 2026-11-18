@@ -147,13 +147,12 @@ def plan(state) -> dict:
     # which rows (of any status) point into which folder: a folder two rows share cannot move
     # for one of them without leaving the other pointing at nothing
     folders: dict[Path, int] = {}
-    for other in state.all(None):
-        if other.output:
-            try:
-                folder = Path(other.output).resolve().parent
-            except (OSError, RuntimeError):
-                continue
-            folders[folder] = folders.get(folder, 0) + 1
+    for _path, output in state.outputs():
+        try:
+            folder = Path(output).resolve().parent
+        except (OSError, RuntimeError):
+            continue
+        folders[folder] = folders.get(folder, 0) + 1
     holders = {parent for folder in folders for parent in folder.parents}  # folders with a book below them
 
     def skip(row, reason: str) -> None:
