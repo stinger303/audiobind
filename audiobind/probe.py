@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+log = logging.getLogger("audiobind")
 
 
 @dataclass
@@ -55,6 +58,9 @@ def probe(path: str | Path, timeout: int = 60) -> Probe:
             sample_rate=str(stream.get("sample_rate") or ""),
             channels=str(stream.get("channels") or ""),
         )
+    except subprocess.TimeoutExpired:
+        log.warning("ffprobe timed out after %ss on %s: its duration is unknown", timeout, path)
+        return Probe()
     except (subprocess.SubprocessError, ValueError, OSError):
         return Probe()
 
@@ -114,6 +120,8 @@ def probe_chapters(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT) -> list[
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
+        # an empty answer reads as "no chapters" to the caller, so say why it is empty
+        log.warning("ffprobe -show_chapters timed out after %ss on %s: treating it as no chapters", timeout, path)
         return []
     try:
         return json.loads(result.stdout or "{}").get("chapters", []) or []
@@ -141,6 +149,7 @@ def probe_streams(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT) -> list[d
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
+        log.warning("ffprobe -show_entries stream timed out after %ss on %s: treating it as no streams", timeout, path)
         return []
     try:
         return json.loads(result.stdout or "{}").get("streams", []) or []

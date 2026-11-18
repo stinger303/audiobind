@@ -24,6 +24,17 @@ class TestListProbesHaveATimeout(unittest.TestCase):
         with mock.patch.object(probe.subprocess, "run", side_effect=expired):
             self.assertFalse(probe.has_embedded_cover("/x.m4b"))
 
+    def test_a_timeout_is_logged_not_silent(self):
+        # an empty list reads as "no chapters" / "no streams" to the encoder's checks, so the
+        # log is the only place the real cause shows
+        expired = subprocess.TimeoutExpired(cmd="ffprobe", timeout=1)
+        for func in (probe.probe_chapters, probe.probe_streams, probe.probe):
+            with mock.patch.object(probe.subprocess, "run", side_effect=expired):
+                with self.assertLogs("audiobind", level="WARNING") as logs:
+                    func("/x.m4b")
+            self.assertIn("timed out", logs.output[0], func.__name__)
+            self.assertIn("/x.m4b", logs.output[0], func.__name__)
+
     def test_a_missing_ffprobe_still_raises(self):
         # unchanged behaviour: only the timeout is softened
         with mock.patch.object(probe.subprocess, "run", side_effect=FileNotFoundError("ffprobe")):
