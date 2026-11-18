@@ -216,6 +216,8 @@ def _hardcover_token(raw: str) -> str:
     """HARDCOVER_TOKEN: one line, no spaces inside, a "Bearer " prefix dropped ("" = unset = off).
     Never echoes the value."""
     text = raw.strip()
+    if text.lower() == "bearer":
+        return ""
     if text.lower().startswith("bearer "):
         text = text[7:].strip()
     if len(text) > 4000 or any(ord(ch) <= 32 or ord(ch) == 127 for ch in text):

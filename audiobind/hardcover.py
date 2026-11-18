@@ -113,6 +113,8 @@ def _transport(body: bytes, token: str, timeout: float) -> tuple[int, bytes]:
 def clean_token(raw: str) -> str:
     """The token as Hardcover's API page shows it may start with "Bearer "; keep only the token."""
     text = (raw or "").strip()
+    if text.lower() == "bearer":
+        return ""
     if text.lower().startswith("bearer "):
         text = text[7:].strip()
     return text
