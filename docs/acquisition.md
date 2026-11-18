@@ -272,7 +272,8 @@ whether the guard is armed. The same values are in `GET /api/watcher` (`egress_i
 
 A VPN that reconnects on a new exit address trips the allowlist, and the wishlist stops until the
 tracker account and `TRACKER_EXPECTED_EGRESS_IP` both name the new address. `IP_UPDATER` (default
-`off`) helps you notice and catch up. It acts **after** the guard and never changes its verdict:
+`off`) helps you notice and catch up. Choose it on Settings > Watcher > **Allowed-IP updater**
+(a value saved there wins over the container's `IP_UPDATER`). It acts **after** the guard and never changes its verdict:
 a drifted cycle is still refused.
 
 - `notify`: when the guard sees a new address, the log says so once (WARNING, `allowed-IP updater:`),

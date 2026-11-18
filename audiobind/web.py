@@ -38,6 +38,7 @@ from .config import (
     CONFIG,
     DOWNLOAD_CLIENTS,
     GENERAL_SETTING_KEYS,
+    IP_UPDATER_MODES,
     SECRET_SETTING_KEYS,
     SETTING_KEYS,
     SETTING_MAP,
@@ -534,6 +535,7 @@ button.ab-lock.ab-lock-off:hover{color:var(--ab-text3);background:rgba(255,255,2
 .ab-setting:last-of-type{border-bottom:none}
 .ab-setting-label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ab-text)}
 .ab-setting-hint{font-size:11.5px;color:var(--ab-text3);line-height:1.4;margin-bottom:2px}
+.ab-ipupd-modes{margin:2px 0 6px;padding-left:18px}
 .ab-range-wrap{display:flex;align-items:center;gap:10px}
 .ab-range-val{font-family:var(--ab-mono);font-size:12px;color:var(--ab-text2);min-width:24px;text-align:right}
 input[type=range]{-webkit-appearance:none;appearance:none;height:6px;
@@ -4250,6 +4252,7 @@ def render_watcher_section(state) -> str:
             "plus the qBittorrent URL, user and password (<code>QBIT_URL</code>, <code>QBIT_USER</code>, "
             "<code>QBIT_PASS</code>). Fill them in below and save - no restart needed - or set them as container "
             "variables.</div>"
+            + _ip_updater_section(s)
             + _watch_connection_fields()
             + _watch_test_and_save()
             + "</section>"
@@ -4344,7 +4347,6 @@ def render_watcher_section(state) -> str:
                                     + f" &#183; label <code>{_html(s['qbit_category'])}</code>")),
         ("Connection", sees),
         ("Guard", guard_html),
-        *_ip_updater_rows(s),
         ("Last cycle", last_html),
         ("Next cycle", next_html),
         ("Last error", error_html),
@@ -4379,6 +4381,7 @@ def render_watcher_section(state) -> str:
         "container variable; a value saved here wins and applies from the next cycle, no restart. The pause switch "
         "is kept across restarts.</div>"
         f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
+        + _ip_updater_section(s)
         + _watch_connection_fields()
         + _watch_schedule_fields()
         + _watch_test_and_save()
@@ -4386,6 +4389,38 @@ def render_watcher_section(state) -> str:
         + dry_line
         + "</section>"
     )
+
+
+#: Settings > Watcher > Allowed-IP updater: one plain sentence per mode, shown under the select
+IP_UPDATER_MODE_HINTS = {
+    "off": "The updater does nothing; the wishlist watcher refuses to run from an unregistered IP.",
+    "notify": "Shows and logs when the IP has drifted; never writes to the tracker.",
+    "auto": "Updates the tracker's dynamic seedbox IP when it has drifted, at most once an hour.",
+}
+
+
+def _ip_updater_section(s: dict) -> str:
+    """Settings > Watcher > Allowed-IP updater, always rendered: the mode select, a sentence per mode,
+    then the live drift / status rows - or, while the mode is off, one line saying so (the status
+    carries no updater data then, so nothing was looked up to draw this)."""
+    kind = watcher_mod.ip_updater_mode()
+    options = "".join(f'<option value="{m}"{" selected" if m == kind else ""}>{m}</option>'
+                      for m in IP_UPDATER_MODES)
+    modes = "".join(f"<li><b>{m}</b> &#8212; {_html(IP_UPDATER_MODE_HINTS[m])}</li>" for m in IP_UPDATER_MODES)
+    select = _watch_wrap(
+        "ip_updater", "Allowed-IP updater", "",
+        f'<select class="ab-in" data-initial="{_attr(kind)}">{options}</select>'
+        f'<ul class="ab-setting-hint ab-ipupd-modes">{modes}</ul>')
+    rows = _ip_updater_rows(s)
+    if rows:
+        body = '<dl class="ab-watch-grid ab-ipupd-grid">' + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + "</dl>"
+    elif kind != "off":
+        body = '<div class="ab-acct-who">Its drift and status show here once the watcher is set up.</div>'
+    else:
+        body = ('<div class="ab-acct-who" id="ab-ipupd-off">The allowed-IP updater is <b>off</b>. Switched on, it '
+                "would watch for the IP the tracker sees drifting away from the allowed IP, then tell you "
+                "(<code>notify</code>) or update the tracker's dynamic seedbox IP for you (<code>auto</code>).</div>")
+    return '<div class="ab-acct-title">Allowed-IP updater</div>' + select + body
 
 
 def _ip_updater_rows(s: dict) -> list[tuple[str, str]]:
@@ -7111,7 +7146,8 @@ class Handler(BaseHTTPRequestHandler):
         # selects: one of the offered choices (which include an unusual env value)
         for key, fold in (("auto_convert", str.upper), ("output_format", str.upper), ("audio_bitrate", str.lower),
                           ("region", str.lower), ("vip", str.upper), ("tracker_search_method", str.upper),
-                          ("tracker_search_encoding", str.lower), ("download_client", str.lower)):
+                          ("tracker_search_encoding", str.lower), ("download_client", str.lower),
+                          ("ip_updater", str.lower)):
             if key not in settings:
                 continue
             choices = setting_choices(key)

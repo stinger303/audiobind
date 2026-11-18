@@ -265,8 +265,9 @@ def probe_tracker(state) -> tuple[bool, str]:
 
 # ---------------------------------------------------------------------------- allowed-IP updater
 def ip_updater_mode() -> str:
-    """IP_UPDATER: ``off`` (default), ``notify`` or ``auto``."""
-    return ipupdate.mode(_config.CONFIG.ip_updater)
+    """IP_UPDATER through the effective getter (a page value wins over the env): ``off`` (default),
+    ``notify`` or ``auto``."""
+    return ipupdate.mode(_setting("ip_updater"))
 
 
 def _ipupdate_record(state) -> dict:

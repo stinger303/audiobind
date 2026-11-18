@@ -494,7 +494,11 @@ WATCHER_SETTING_KEYS = ("tracker_url", "tracker_session", "tracker_cookie_name",
 CLIENT_SETTING_KEYS = ("download_client", "deluge_url", "deluge_pass", "transmission_url", "transmission_user",
                        "transmission_pass", "rtorrent_url", "rtorrent_user", "rtorrent_pass")
 
-SETTING_KEYS = GENERAL_SETTING_KEYS + WATCHER_SETTING_KEYS + CLIENT_SETTING_KEYS
+#: the allowed-IP updater's mode (Settings > Watcher). A page value wins over IP_UPDATER; like the
+#: watcher's keys it is never wiped by "Reset to defaults".
+IPUPDATE_SETTING_KEYS = ("ip_updater",)
+
+SETTING_KEYS = GENERAL_SETTING_KEYS + WATCHER_SETTING_KEYS + CLIENT_SETTING_KEYS + IPUPDATE_SETTING_KEYS
 
 #: settings whose value is never sent to a browser: not in a page, an attribute, a JSON answer or a log
 SECRET_SETTING_KEYS = frozenset({"tracker_session", "qbit_pass", "deluge_pass", "transmission_pass", "rtorrent_pass"})
@@ -518,6 +522,7 @@ SETTING_MAP: dict[str, str] = {
     # the watcher's connection settings: the key is the Config attribute's own name
     **{key: key for key in WATCHER_SETTING_KEYS},
     **{key: key for key in CLIENT_SETTING_KEYS},
+    "ip_updater": "ip_updater",
 }
 
 SETTING_TYPES: dict[str, type] = {
@@ -540,6 +545,7 @@ SETTING_TYPES: dict[str, type] = {
     **{key: str for key in WATCHER_SETTING_KEYS if key != "watch_max_incomplete"},
     "watch_max_incomplete": int,  # torrents still downloading at which a cycle adds none; 0 = off
     **{key: str for key in CLIENT_SETTING_KEYS},
+    "ip_updater": str,  # one of IP_UPDATER_MODES
 }
 
 #: the values the settings page offers; an environment value outside these is added to the
@@ -553,6 +559,7 @@ SETTING_CHOICES: dict[str, tuple[str, ...]] = {
     "tracker_search_method": ("POST", "GET"),
     "tracker_search_encoding": ("json", "form"),
     "download_client": tuple(DOWNLOAD_CLIENTS),
+    "ip_updater": IP_UPDATER_MODES,
 }
 
 #: (min, max) for the numeric settings, widened to include the environment value
@@ -778,6 +785,8 @@ def setting_env(key: str):
     defaults = setting_env_defaults()
     if key in defaults:
         return defaults[key]
+    if key == "ip_updater":
+        return str(CONFIG.ip_updater or "off")
     return client_setting_env_defaults().get(key)
 
 

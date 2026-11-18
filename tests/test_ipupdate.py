@@ -552,5 +552,101 @@ class TestApi(unittest.TestCase):
             self.assertEqual(body["ip_updater"]["last_new"], NEW)
 
 
+# ---------------------------------------------------------------- pass 3: IP_UPDATER is a page setting
+try:
+    from test_watcher_gui_settings import WatcherSettingsCase
+except ImportError:
+    from tests.test_watcher_gui_settings import WatcherSettingsCase
+
+
+class TestPageSetting(WatcherSettingsCase):
+    """ip_updater is a Settings > Watcher select, like download_client: page value > env > off."""
+
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(CONFIG, "ip_updater", "off")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_plumbing_matches_the_other_selects(self):
+        self.assertIn("ip_updater", config.SETTING_KEYS)
+        self.assertNotIn("ip_updater", config.GENERAL_SETTING_KEYS, "never wiped by Reset to defaults")
+        self.assertEqual(config.SETTING_MAP["ip_updater"], "ip_updater")
+        self.assertIs(config.SETTING_TYPES["ip_updater"], str)
+        self.assertEqual(config.SETTING_CHOICES["ip_updater"], config.IP_UPDATER_MODES)
+        self.assertEqual(config.setting_env("ip_updater"), "off")
+
+    def test_save_effective_page_round_trip(self):
+        status, body, _raw = self.save({"settings": {"ip_updater": "Notify"}})
+        self.assertEqual(status, 200, body)
+        self.assertIn("ip_updater", body["custom"])
+        self.assertEqual(config.setting_effective("ip_updater"), "notify")
+        self.assertEqual(watcher.ip_updater_mode(), "notify")
+        field = self.field("ip_updater")
+        self.assertIn('<option value="notify" selected>notify</option>', field)
+        self.assertIn('data-initial="notify"', field)
+        self.assertIn("set here", field)
+
+    def test_a_page_value_overrides_the_env_and_reset_hands_it_back(self):
+        with mock.patch.object(CONFIG, "ip_updater", "auto"):
+            self.assertEqual(watcher.ip_updater_mode(), "auto")
+            self.assertIn("from the container", self.field("ip_updater"))
+            self.assertEqual(self.save({"settings": {"ip_updater": "off"}})[0], 200)
+            self.assertEqual(watcher.ip_updater_mode(), "off")
+            self.assertIn('<option value="off" selected>off</option>', self.field("ip_updater"))
+            self.assertEqual(self.save({"reset_keys": ["ip_updater"]})[0], 200)
+            self.assertEqual(watcher.ip_updater_mode(), "auto")
+
+    def test_a_bad_page_value_is_rejected_and_nothing_is_stored(self):
+        status, body, _raw = self.save({"settings": {"ip_updater": "on"}})
+        self.assertEqual(status, 400)
+        self.assertIn("ip_updater: must be one of off, notify, auto", body["error"])
+        self.assertIsNone(self.state.get_meta("setting_ip_updater"))
+        self.assertEqual(watcher.ip_updater_mode(), "off")
+
+    def test_off_renders_the_section_but_no_status_rows(self):
+        page = self.page()
+        field = self.field("ip_updater", page)
+        self.assertIn('<div class="ab-acct-title">Allowed-IP updater</div>', page)
+        self.assertIn('<option value="off" selected>off</option>', field)
+        for mode, sentence in web.IP_UPDATER_MODE_HINTS.items():
+            self.assertIn(f"<li><b>{mode}</b> &#8212; {web._html(sentence)}</li>", field)
+        self.assertIn('id="ab-ipupd-off"', field)
+        self.assertNotIn("ab-ipupd-grid", page)
+        self.assertNotIn('id="ab-watch-useip"', page)
+        self.assertNotIn("<dt>Allowed IP</dt>", page)
+
+    def test_notify_and_auto_render_the_status_rows(self):
+        for mode in ("notify", "auto"):
+            with self.subTest(mode=mode):
+                self.assertEqual(self.save({"settings": {"ip_updater": mode}})[0], 200)
+                field = self.field("ip_updater")
+                self.assertIn(f'<option value="{mode}" selected>{mode}</option>', field)
+                self.assertNotIn('id="ab-ipupd-off"', field)
+                self.assertIn('<dl class="ab-watch-grid ab-ipupd-grid">', field)
+                for row in ("Allowed-IP updater", "Allowed IP", "Last updated"):
+                    self.assertIn(f"<dt>{row}</dt>", field)
+                self.assertIn(f"IP_UPDATER={mode}", field)
+                self.assertIn('id="ab-watch-useip"', field)
+
+
+class TestPageOffBeatsEnvNotify(UpdaterCase):
+    """The container says notify, the page says off: off wins, and off still costs nothing."""
+
+    MODE = "notify"
+
+    def setUp(self):
+        super().setUp()
+        config._EFFECTIVE["ip_updater"] = "off"
+
+    def test_no_updater_call_no_log_line_no_status_key(self):
+        with mock.patch.object(watcher.Watcher, "_ip_notice", side_effect=AssertionError("not with off")), \
+                self.assertLogs("audiobind", level=logging.DEBUG) as logs:
+            self.run_cycle(NEW)
+        self.assertFalse(any("allowed-IP updater" in line for line in logs.output), logs.output)
+        self.assertEqual(self.transport.calls, [])
+        self.assertNotIn("ip_updater", self.w.status(self.state))
+
+
 if __name__ == "__main__":
     unittest.main()
