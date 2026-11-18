@@ -13,11 +13,17 @@ git tag -a v0.2.0 -m "v0.2.0"
 git push origin main --tags
 ```
 
-After tagging, bump `templates/audiobind.xml`: set the `<Repository>` tag to the new version
-(`ghcr.io/stinger303/audiobind:0.2.0`) and add the version to `<Changes>`. The template ships
-pinned, never `:latest`, because Unraid reuses a matching local tag instead of pulling, so a
-`:latest` install keeps whatever build it first fetched. Pinning means the template is what
-announces a release.
+After tagging, the template needs no version bump: `templates/audiobind.xml` points at
+`ghcr.io/stinger303/audiobind:latest`, which CI republishes on every release, so Unraid's own update
+check sees a new digest and offers the update. Add the version to `<Changes>` so the release notes
+still show in the Apps tab.
+
+This was pinned to an explicit version until 2026-11-17, on the reasoning that "Unraid reuses a
+matching local tag instead of pulling, so a `:latest` install keeps whatever build it first fetched".
+That reasoning did not survive contact: with `:0.21.0` pinned and 0.22.0 released, Unraid offered
+**no update at all** — the digest for a pinned tag never changes, and nothing rewrites the stored
+template in `/boot` (CA refreshes it only on its own scan cadence). A moving tag is what makes the
+Docker tab's update check work like every other app.
 
 Pushing may need a deploy key that is authorized for this repo (the default key of your
 account may not be). Point git at it for the push only, with a path of your own:

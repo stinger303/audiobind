@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Audiobind</Name>
-  <Repository>ghcr.io/stinger303/audiobind:0.22.0</Repository>
+  <Repository>ghcr.io/stinger303/audiobind:latest</Repository>
   <Registry>https://github.com/stinger303/audiobind/pkgs/container/audiobind</Registry>
   <Network>bridge</Network>
   <MyIP/>
