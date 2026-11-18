@@ -2226,6 +2226,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+// The tabs, the rail and a refresh are all plain page loads, so a typed-but-unsaved value used to vanish
+// without a word. Every control remembers what the server last had (data-initial; Save and Reset both
+// update it before any reload), so "differs from that" is exactly "not saved yet".
+function abSettingsDirty() {
+  return [...document.querySelectorAll('[data-setting]')].some(wrap => {
+    const el = abSettingControl(wrap);
+    return el && String(el.value) !== String(el.dataset.initial);
+  });
+}
+window.addEventListener('beforeunload', function (e) {
+  if (!abSettingsDirty()) return;
+  e.preventDefault();
+  e.returnValue = '';  // the browser shows its own "leave site? changes you made may not be saved"
+});
 document.addEventListener('DOMContentLoaded', () => {
   abSyncProfile();
   ['auto_convert', 'audio_bitrate'].forEach(key => {

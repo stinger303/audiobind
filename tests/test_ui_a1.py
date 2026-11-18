@@ -203,6 +203,17 @@ class TestWishlistConfirmsWhenTheTorrentIsAlreadyRunning(unittest.TestCase):
         self.assertEqual(row["status"], "wanted")
 
 
+class TestSettingsKeepUnsavedEdits(unittest.TestCase):
+    def test_leaving_with_unsaved_values_asks_first(self):
+        script = js("SETTINGS_SCRIPT")
+        self.assertIn("window.addEventListener('beforeunload'", script)
+        fn = body_of(script, "abSettingsDirty")
+        self.assertIn("String(el.dataset.initial)", fn)  # the same test Save uses for "changed"
+        # a successful save moves the baseline before it reloads, or Save itself would prompt
+        save = body_of(script, "abSaveSettings")
+        self.assertLess(save.index("el.dataset.initial = el.value"), save.index("location.reload()"))
+
+
 class TestPhoneInputs(unittest.TestCase):
     def test_phone_inputs_are_16px_so_ios_does_not_zoom(self):
         phone = web.STYLES.split("@media(max-width:640px){", 1)[1]
