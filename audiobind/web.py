@@ -3597,6 +3597,7 @@ def render_series(state) -> str:
         try:
             wanted = frozenset(state.wishlist_asins())
         except Exception:  # noqa: BLE001 - the wishlist must never blank the Series page
+            logging.getLogger("audiobind").debug("series page: wishlist ASINs unreadable", exc_info=True)
             wanted = frozenset()
         cards = "".join(_series_card(v) for v in views)
         panels = "".join(_series_panel(v, wanted) for v in views)
@@ -3902,6 +3903,7 @@ def _discover_rail_item(state, active: str | bool = "") -> str:
         try:
             wanted = state.wishlist_count()
         except Exception:  # noqa: BLE001 - the rail must never blank a page
+            logging.getLogger("audiobind").debug("rail: wishlist count unreadable", exc_info=True)
             wanted = 0
         hidden = "" if wanted else " hidden"
         badge = (
@@ -6945,7 +6947,8 @@ class Handler(BaseHTTPRequestHandler):
     def _send_cover(self, asin: str, rel_path: str) -> None:
         try:
             found = resolve_cover(self.state, asin=asin, rel_path=rel_path)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - a cover that cannot be resolved is a 404, not a 500
+            logging.getLogger("audiobind").debug("cover for %s could not be resolved", asin or rel_path, exc_info=True)
             found = None
         if found is None:
             self._send(404, b"no cover", "text/plain")
