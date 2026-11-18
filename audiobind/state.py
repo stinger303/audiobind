@@ -249,6 +249,15 @@ class State:
         for column in ("asin", "asin_override"):
             if column in columns:  # a very old or hand-made table may lack one: no index, no crash
                 self.connection.execute(f"CREATE INDEX IF NOT EXISTS idx_units_{column} ON units({column})")
+        # the 2-5 s status poll (/api/state) runs counts(), rev() and library_totals() on every
+        # open tab; each was a full scan of the table, detail blobs included. These are covering
+        # indexes for exactly those three queries (and status-filtered lists, newest-first lists)
+        for name, columns_ddl, needs in (
+            ("idx_units_updated_at", "updated_at", {"updated_at"}),
+            ("idx_units_status_totals", "status, hours, out_mb", {"status", "hours", "out_mb"}),
+        ):
+            if needs <= columns:
+                self.connection.execute(f"CREATE INDEX IF NOT EXISTS {name} ON units({columns_ddl})")
         self.connection.commit()
 
     def _migrate(self) -> None:
