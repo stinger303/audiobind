@@ -7,7 +7,7 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
-## [0.24.0-dev1] - 2026-11-18
+## [0.24.0] - 2026-11-18
 
 **A fresh install now works from the LAN without editing a field first.** With `ALLOWED_HOSTS` unset,
 the web UI used to answer only to `localhost`, so a new container was a 403 from every other machine
