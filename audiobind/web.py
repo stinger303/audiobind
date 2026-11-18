@@ -871,34 +871,55 @@ function abNav(open) {
 """
 
 SCRIPT = """
-function act(action) {
+// The button a top-bar click came from. The inline onclick handlers call these synchronously, so
+// the event in flight is still the click (Safari does not focus a clicked button, so
+// document.activeElement is not enough).
+function abClickedButton() {
+  const ev = window.event;
+  const t = ev && (ev.currentTarget || ev.target);
+  return (t && t.closest) ? t.closest('button') : null;
+}
+// Every top-bar control posts the same way: the clicked button says "working..." while the daemon
+// answers, and a refusal or an unreachable daemon is said out loud and the button comes back -
+// never a reload into a page that looks as if nothing was clicked.
+function abControl(payload, delay, btn) {
+  const html = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'working\\u2026'; }
+  const undo = () => { if (btn) { btn.disabled = false; btn.innerHTML = html; } };
   fetch('/api/control', {method:'POST', headers:{'Content-Type':'application/json'},
-                        body: JSON.stringify({action: action})})
-    .then(r => r.json())
-    .then(() => setTimeout(() => location.reload(), 250))
-    .catch(() => location.reload());
+                        body: JSON.stringify(payload)})
+    .then(r => {
+      if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+      return r.json().then(res => ({ok: r.ok, res: res}));
+    })
+    .then(out => {
+      if (!out.ok) { undo(); abToast(out.res.error || 'that did not work'); return; }
+      setTimeout(() => location.reload(), delay);
+    })
+    .catch(err => {
+      if (String(err && err.message) === 'signed out') return;
+      undo();
+      abToast('Could not reach the daemon - nothing was changed.');
+    });
+}
+function act(action) {
+  if (action === 'recheck' && !confirm(
+      'Re-match every book against Audible?\\n\\n' +
+      'This re-checks every book in the library, including ones already decided, and can take a while. ' +
+      'Books that are already converted are left alone; a book that now passes your auto-convert rules ' +
+      'starts converting.')) return;
+  abControl({action: action}, 250, abClickedButton());
 }
 function stop_now() {
-  if (!confirm('Stop the current conversion? The partial file is discarded and the book is retried later.')) return;
-  fetch('/api/control', {method:'POST', headers:{'Content-Type':'application/json'},
-                        body: JSON.stringify({action:'stop'})})
-    .then(r => r.json())
-    .then(() => setTimeout(() => location.reload(), 500))
-    .catch(() => location.reload());
+  if (!confirm('Stop the current conversion?\\n\\nThe partial file is discarded and the book is retried later. ' +
+               'Conversions stay paused until you press Resume.')) return;
+  abControl({action: 'stop'}, 500, abClickedButton());
 }
 function dry(on) {
-  fetch('/api/control', {method:'POST', headers:{'Content-Type':'application/json'},
-                        body: JSON.stringify({action:'dry_run', value: on})})
-    .then(r => r.json())
-    .then(() => setTimeout(() => location.reload(), 250))
-    .catch(() => location.reload());
+  abControl({action: 'dry_run', value: on}, 250, abClickedButton());
 }
 function abWatcherDry(on) {
-  fetch('/api/control', {method:'POST', headers:{'Content-Type':'application/json'},
-                        body: JSON.stringify({action:'watcher_dry_run', value: on})})
-    .then(r => r.json())
-    .then(() => location.reload())
-    .catch(() => location.reload());
+  abControl({action: 'watcher_dry_run', value: on}, 0, abClickedButton());
 }
 // Retry now / Convert anyway / Use this ASIN, from a detail panel or a table row:
 // each of those carries data-path, so the nearest one names the book
@@ -913,6 +934,10 @@ function abUnitAction(btn, action) {
     if (!body.asin) { if (input) input.focus(); return; }
     note = 'setting ASIN ' + body.asin + ' - re-checking…';
   } else if (action === 'force') {
+    if (!confirm('Convert \\u201c' + abBookTitle(el.dataset.path) + '\\u201d anyway?\\n\\n' +
+                 'This skips the checks that flagged the book (confidence, runtime, damaged source) and ' +
+                 'starts encoding it. If it was already converted it is encoded again. ' +
+                 'Encoding can take a long time.')) return;
     note = 'queued - converting…';
   } else if (action === 'recheck') {
     note = 're-checking against Audible…';
@@ -938,6 +963,13 @@ function abUnitAction(btn, action) {
       btn.disabled = false;
       btn.textContent = label;
     });
+}
+// the title shown on the book's row, for confirmations that must name what they touch
+function abBookTitle(path) {
+  const row = abFindRow(path);
+  const t = row && row.querySelector('.ab-btitle');
+  const first = t && t.firstChild;
+  return ((first && first.textContent) || path || 'this book').trim();
 }
 function unitDelete(btn) {
   const path = btn.dataset.path;
@@ -1035,9 +1067,21 @@ function abUseEdition(btn) {
   abToast('setting ASIN ' + asin + ' - re-checking\\u2026');
   fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
                      body: JSON.stringify({action:'set_asin', path: path, asin: asin})})
-    .then(r => r.json())
-    .then(() => setTimeout(() => location.reload(), 700))
-    .catch(() => { btn.disabled = false; btn.textContent = label; });
+    .then(r => r.json().then(res => ({ok: r.ok, res: res})))
+    .then(out => {
+      if (!out.ok) {
+        abToast(out.res.error || 'that did not work');
+        btn.disabled = false;
+        btn.textContent = label;
+        return;
+      }
+      setTimeout(() => location.reload(), 700);
+    })
+    .catch(() => {
+      abToast('could not reach the daemon');
+      btn.disabled = false;
+      btn.textContent = label;
+    });
 }
 function abFocusAsin(row) {
   const panel = row.nextElementSibling;
@@ -2048,6 +2092,9 @@ function abSaveSettings(fbId, quiet) {
 }
 
 function abResetSettings() {
+  if (!confirm('Reset the conversion settings to the container defaults?\\n\\n' +
+               'Every value saved on this page is forgotten and the values from the container environment ' +
+               'apply again. The watcher connection settings and secrets are kept.')) return;
   const fb = document.getElementById('ab-settings-fb');
   fb.className = 'ab-fb';
   fb.textContent = 'resetting...';
