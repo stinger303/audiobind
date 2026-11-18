@@ -20,6 +20,7 @@ from .config import CONFIG
 from .covers import valid_asin
 from .overrides import split_names
 from .state import WISHLIST_WANTED
+from .util import loads_dict as _loads
 from .util import norm, sim
 
 log = logging.getLogger("audiobind")
@@ -306,14 +307,6 @@ SECTION_TITLES = {
     "narrator": "Same narrator",
     "genre": "Same genre",
 }
-
-
-def _loads(raw) -> dict:
-    try:
-        data = json.loads(raw or "{}")
-    except (TypeError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 def _row_narrators(row: dict) -> list[str]:

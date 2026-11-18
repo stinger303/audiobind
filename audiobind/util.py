@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from difflib import SequenceMatcher
@@ -203,3 +204,17 @@ def safe_name(text: str | None, fallback: str = "Unknown") -> str:
 
 def human_hours(seconds: float) -> str:
     return f"{seconds / 3600:.2f}h"
+
+
+def loads_dict(raw) -> dict:
+    """A stored JSON column (detail, overrides) as a dict: {} when empty, unreadable, or valid
+    JSON that is not an object (``[]``, ``null``, ``5``) - a hand-edited row must not crash the
+    caller's ``.get``. The one copy of what abs_layout, series, discover and the status page
+    each used to write out."""
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}

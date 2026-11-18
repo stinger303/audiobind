@@ -68,6 +68,7 @@ from .covers import valid_asin
 from .pipeline import CONVERT_LOCK, process_unit
 from .state import LOCKABLE_FIELDS, SOURCE_INGEST, key_source
 from .units import files_under, find_unit, foreign_audio, owned_paths
+from .util import loads_dict
 
 _log = logging.getLogger("audiobind").info
 ICON_PATH = Path(__file__).resolve().parent.parent / "icon.svg"
@@ -5366,19 +5367,20 @@ def _group_sentence(key: str) -> str:
     return re.sub(r"\d+ % tolerance", f"{pct} % tolerance", sentence)
 
 
-def grouped_rows(units: list, row, detail_panel, total_columns: int = TOTAL_COLUMNS) -> str:
+def grouped_rows(units: list, row, detail_panel, total_columns: int = TOTAL_COLUMNS, detail_of=None) -> str:
     """The "Needs you" table body: one header per group, most severe group first.
 
     Rows keep the order they arrive in (already sorted). A group is a status; its one
     sentence is the one for the reason most of its rows share. Rows past GROUP_PAGE are
     hidden behind a "Show N more" button.
     """
+    detail_of = detail_of or _detail_dict
     out = []
     for status in group_order():
         members = [u for u in units if u.status == status]
         if not members:
             continue
-        keys = [short_reason(u.status, u.confidence or "", u.note, _detail_dict(u))[0] for u in members]
+        keys = [short_reason(u.status, u.confidence or "", u.note, detail_of(u))[0] for u in members]
         tally: dict[str, int] = {}
         for k in keys:
             tally[k] = tally.get(k, 0) + 1
@@ -5404,11 +5406,7 @@ def grouped_rows(units: list, row, detail_panel, total_columns: int = TOTAL_COLU
 
 
 def _detail_dict(unit) -> dict:
-    try:
-        data = json.loads(unit.detail or "{}")
-    except ValueError:
-        return {}
-    return data if isinstance(data, dict) else {}
+    return loads_dict(unit.detail)
 
 
 #: chip text per status: the same words the group headers use
@@ -5544,13 +5542,21 @@ def render(state, status: str = "", query: str = "") -> str:
     # one query each for the whole table, not one per row
     locks = state.all_locks()
     asin_pins = state.all_asin_overrides()
+    overrides_by_path = state.all_overrides()
+    parsed_details: dict[str, dict] = {}
+
+    def detail_of(unit) -> dict:
+        """The row's detail blob as a dict, parsed once per render (the row, its panel, the
+        group tally and the re-open pass each used to parse it) and never a non-dict: one hand-
+        edited row holding ``[]`` or ``null`` crashed the whole page in the panel's ``.get``."""
+        data = parsed_details.get(unit.path)
+        if data is None:
+            data = parsed_details[unit.path] = _detail_dict(unit)
+        return data
 
     def detail_panel(unit) -> str:
         ingest_row = is_ingest_row(unit)
-        try:
-            data = json.loads(unit.detail or "{}")
-        except ValueError:
-            data = {}
+        data = detail_of(unit)
         src = data.get("source") or {}
         out = data.get("output") or {}
         if not out and unit.output:
@@ -5675,7 +5681,7 @@ def render(state, status: str = "", query: str = "") -> str:
         def block(title, items):
             return f"<div><h4>{title}</h4><ul>" + "".join(f"<li>{i}</li>" for i in items) + "</ul></div>"
 
-        custom = overrides_mod.describe(state.get_overrides(unit.path))
+        custom = overrides_mod.describe(overrides_by_path.get(unit.path, {}))
         locked = locks.get(unit.path, set())
 
         def field(key, label_str, catalog_value, width_hint=""):
@@ -5834,12 +5840,7 @@ def render(state, status: str = "", query: str = "") -> str:
         data = " ".join(f'data-sort-{key}="{_attr(str(sort_value(unit, key)))}"' for key in SORT_KEYS)
         hidden = "" if locks.get(unit.path) else " hidden"
         badge = f'<span class="ab-custom" title="Some of this book\'s metadata is locked by you"{hidden}>locked</span>'
-        try:
-            detail_data = json.loads(unit.detail or "{}")
-        except ValueError:
-            detail_data = {}
-        if not isinstance(detail_data, dict):
-            detail_data = {}
+        detail_data = detail_of(unit)
 
         # one short reason per row, the numbers beside it; the full sentence on hover
         why_html = ""
@@ -5853,7 +5854,7 @@ def render(state, status: str = "", query: str = "") -> str:
             )
 
         match_html, match_title = match_cell(
-            unit, detail_data, state.get_overrides(unit.path), asin_pins.get(unit.path, "")
+            unit, detail_data, overrides_by_path.get(unit.path, {}), asin_pins.get(unit.path, "")
         )
         match_attr = f' title="{_attr(match_title)}"' if match_title else ""
         row_src_badge = INGEST_BADGE if is_ingest_row(unit) else ""
@@ -5875,17 +5876,14 @@ def render(state, status: str = "", query: str = "") -> str:
         )
 
     if view == "attention":
-        rows = grouped_rows(units, row, detail_panel)
+        rows = grouped_rows(units, row, detail_panel, detail_of=detail_of)
     else:
         rows = "".join(row(u) + detail_panel(u) for u in units)
 
     # a re-opened panel shows its banner once; the flag is consumed so the next
     # page load starts collapsed again
     for u in units:
-        try:
-            flagged = bool(json.loads(u.detail or "{}").get("reopen"))
-        except ValueError:
-            flagged = False
+        flagged = bool(detail_of(u).get("reopen"))
         if flagged and u.status in ("review", "held", "failed"):
             state.clear_reopen(u.path)
     if not units:

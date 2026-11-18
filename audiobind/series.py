@@ -25,7 +25,6 @@ number, or has that exact title; "I have this" marks an ASIN as owned without a 
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import threading
@@ -38,6 +37,7 @@ from .config import CONFIG
 from .state import INGEST_KEY_PREFIX, SOURCE_INGEST, key_source
 from .units import split_author_title
 from .util import SERIES_DIR_RE, clean, norm, sim
+from .util import loads_dict as _loads
 
 log = logging.getLogger("audiobind")
 
@@ -74,14 +74,6 @@ def group_key(name: str, author: str) -> str:
 
 def _slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", norm(text)).strip("-")
-
-
-def _loads(raw) -> dict:
-    try:
-        data = json.loads(raw or "{}")
-    except (TypeError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 # ------------------------------------------------------------------ which series is a book in
@@ -131,9 +123,9 @@ def _from_folder(rel_path: str, author: str, title: str) -> tuple[str, str]:
 def unit_series(row: dict) -> tuple[str, str]:
     """(series name, sequence) for one state row; ('', '') when nothing says it is in one."""
     overrides = _loads(row.get("overrides"))
-    match = _loads(row.get("detail")).get("match") or {}
-    if overrides.get("series"):
+    if overrides.get("series"):  # the detail blob is only parsed when nothing above it answers
         return str(overrides["series"]), str(overrides.get("series_index") or "")
+    match = _loads(row.get("detail")).get("match") or {}
     if match.get("series"):
         return str(match["series"]), str(overrides.get("series_index") or match.get("sequence") or "")
     series, sequence = _from_output(row.get("output") or "")
@@ -146,9 +138,9 @@ def unit_author(row: dict) -> str:
     overrides = _loads(row.get("overrides"))
     if overrides.get("authors"):
         return str(overrides["authors"][0])
-    match = _loads(row.get("detail")).get("match") or {}
     if row.get("author"):
         return str(row["author"])
+    match = _loads(row.get("detail")).get("match") or {}
     authors = match.get("authors") or []
     return str(authors[0]) if authors else ""
 

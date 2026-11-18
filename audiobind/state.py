@@ -10,6 +10,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from .util import loads_dict
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS units (
     path        TEXT PRIMARY KEY,
@@ -593,13 +595,7 @@ class State:
     def get_overrides(self, path: str) -> dict:
         with self._lock:
             row = self.connection.execute("SELECT overrides FROM units WHERE path = ?", (path,)).fetchone()
-        if not row or not row["overrides"]:
-            return {}
-        try:
-            data = json.loads(row["overrides"])
-        except ValueError:
-            return {}
-        return data if isinstance(data, dict) else {}
+        return loads_dict(row["overrides"]) if row else {}
 
     # ------------------------------------------------- alternate editions
     def set_alternates(self, path: str, data: list[dict]) -> None:
@@ -738,6 +734,17 @@ class State:
         for r in rows:
             out.setdefault(r["path"], set()).add(r["field"])
         return out
+
+    def all_overrides(self) -> dict[str, dict]:
+        """{path: overrides dict} for every book with a hand-made metadata correction (one query).
+
+        Each value is what get_overrides() would return for that path; books without any are absent."""
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT path, overrides FROM units WHERE overrides IS NOT NULL AND overrides != ''"
+            ).fetchall()
+        found = {r["path"]: loads_dict(r["overrides"]) for r in rows}
+        return {path: data for path, data in found.items() if data}
 
     def all_asin_overrides(self) -> dict[str, str]:
         """{path: asin} for every book whose ASIN was set by hand (one query)."""

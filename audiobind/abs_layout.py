@@ -25,6 +25,7 @@ from . import library
 from . import overrides as overrides_mod
 from .config import CONFIG
 from .units import AUDIO_EXT, foreign_audio
+from .util import loads_dict as _loads
 
 log = logging.getLogger("audiobind")
 
@@ -38,14 +39,6 @@ class Move:
 
     def public(self) -> dict:
         return {"from": str(self.src), "to": str(self.dst), "state_key": self.state_key}
-
-
-def _loads(raw) -> dict:
-    try:
-        data = json.loads(raw or "{}")
-    except (TypeError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 #: metadata.json's series entry: "Name #3", "Name #", or just "Name"
