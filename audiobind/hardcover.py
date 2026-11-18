@@ -113,6 +113,27 @@ def clean_token(raw: str) -> str:
     return text
 
 
+def token() -> str:
+    """The effective token (Settings > Library wins over HARDCOVER_TOKEN), or ""."""
+    from .config import effective_val
+
+    try:
+        return clean_token(str(effective_val("hardcover_token") or ""))
+    except Exception:  # noqa: BLE001 - a settings problem is "no token", never a crash in a scan
+        return ""
+
+
+def enabled() -> bool:
+    """HARDCOVER_EVIDENCE is on *and* a token is set. Off = no request, no cache file, no panel line."""
+    from .config import effective_val
+
+    try:
+        on = str(effective_val("hardcover_evidence") or "off").strip().lower() == "on"
+    except Exception:  # noqa: BLE001
+        return False
+    return on and bool(token())
+
+
 def _graphql(query: str, variables: dict, token: str, timeout: float = TIMEOUT_SECONDS) -> dict:
     """``data`` of one GraphQL request, or a typed HardcoverError. Never anything else."""
     global _last_call

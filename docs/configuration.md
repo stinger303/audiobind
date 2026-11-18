@@ -46,7 +46,36 @@
 | `TRANSMISSION_USER` / `TRANSMISSION_PASS` | *(unset)* | Optional RPC login, only if Transmission asks for one |
 | `RTORRENT_URL` | *(unset)* | `scgi://host:port` (rTorrent's `network.scgi.open_port`) or `http(s)://host/RPC2` (an XML-RPC mount behind a web server). Read only when `DOWNLOAD_CLIENT=rtorrent` |
 | `RTORRENT_USER` / `RTORRENT_PASS` | *(unset)* | Optional basic-auth login for an `http(s)` `/RPC2` mount. SCGI has none |
+| `HARDCOVER_EVIDENCE` | `off` | [Hardcover evidence](#hardcover-evidence-settings--library): `on` or `off`. **Settable on the page:** Settings > Library > Hardcover evidence. Needs `HARDCOVER_TOKEN` too; either missing = off. Off is exactly the behaviour before it existed: no request, no cache file, no extra line in any panel. Any other value is a startup error |
+| `HARDCOVER_TOKEN` | *(unset)* | Your [Hardcover](https://hardcover.app) API token (hardcover.app > Settings > Hardcover API; a leading `Bearer ` is dropped). A secret: settable on Settings > Library, never shown again once saved, never in a page, a JSON answer or a log |
 | `PUID` / `PGID` | `99` / `100` | Ownership of written files |
+
+## Hardcover evidence (Settings > Library)
+
+Hardcover is a community book database. With `HARDCOVER_EVIDENCE=on` and a token, each book, once it
+is matched against the Audible catalogue and graded, is looked up there - by ASIN first (an edition
+that lists it), then by title + author - and the book's detail panel gets one line: what Hardcover
+lists for the series, the position in it and the year, and whether that **agrees** or **disagrees**
+with the catalogue.
+
+It is **evidence only.** It never changes a score, a margin, a grade, or whether a book converts or
+is held; it is asked after all of those are decided. When the two sources disagree, the line says
+so and the catalogue still decides - look at the book yourself.
+
+What it can and cannot say:
+
+* **Series and position** are its strength, and the useful cross-check.
+* **Year:** for an ASIN hit it is the edition's own year. For a title hit it is the book's *first*
+  publication year, which is legitimately earlier than an audiobook's release, so an earlier year is
+  not called a disagreement; only a first publication *after* the audiobook is.
+* **Runtime and narrator:** Hardcover's audiobook editions sometimes carry a length and narrators,
+  but coverage is thin and community-entered. They are not compared.
+
+Answers are cached in `STATE_DIR/hardcover-cache.json` (found: 14 days, not found: 2 days); a failed
+lookup (bad token, rate limited, unreachable) is never cached, shows as "Hardcover could not be
+asked" in the panel and is retried on the next scan. Requests are spaced 1.1 s apart (Hardcover asks
+API clients to stay under 60 a minute). **Test connection** saves what you typed, then makes one
+request with the token; it works even while the toggle is off.
 
 ## Download clients
 

@@ -22,6 +22,7 @@ from . import abs_layout
 from . import ingest as ingest_mod
 from . import auth as auth_mod
 from . import discover as discover_mod
+from . import hardcover as hardcover_mod
 from . import overrides as overrides_mod
 from . import series as series_mod
 from . import watcher as watcher_mod
@@ -4064,6 +4065,8 @@ WATCH_FIELD_HINTS = {
                      "mount behind a web server. SCGI has no password: keep that port off any network you do not trust."),
     "rtorrent_user": "Optional. Only for an http(s) /RPC2 mount that asks for a login.",
     "rtorrent_pass": "Optional. It is never shown again once saved.",
+    "hardcover_token": ("From hardcover.app > Settings > Hardcover API (with or without the leading "
+                        "\"Bearer\"). It is never shown again once saved. Set in the container as HARDCOVER_TOKEN."),
 }
 
 
@@ -4498,7 +4501,32 @@ def render_library_section() -> str:
         '<button class="btn" type="button" id="ab-abs-apply" onclick="abAbsAsk()">Apply</button>'
         '<span class="ab-fb" id="ab-abs-fb"></span></div>'
         '<div id="ab-abs-plan" hidden></div>'
-        "</section>"
+        + _hardcover_section()
+        + "</section>"
+    )
+
+
+HARDCOVER_EVIDENCE_HINT = (
+    "Off: Hardcover is never asked. On (with a token): after each book is matched and graded, Hardcover is "
+    "asked whether it knows the book, and the book's detail panel gets one line saying what it lists for "
+    "series and year and whether that agrees with the Audible catalogue. It never changes a grade or what "
+    "converts. Answers are cached (two weeks; two days for a book it does not have). Set in the container as HARDCOVER_EVIDENCE."
+)
+
+
+def _hardcover_section() -> str:
+    """Settings > Library > Hardcover evidence: the toggle, the token, Test connection."""
+    return (
+        '<div class="ab-acct-title">Hardcover evidence</div>'
+        '<div class="ab-acct-who">A second opinion from <a class="ab-alink" href="https://hardcover.app" '
+        'target="_blank" rel="noopener">Hardcover</a>, shown beside the Audible match. Evidence only: it is '
+        "never the reason a book converts or is held.</div>"
+        + _watch_select("hardcover_evidence", "Hardcover evidence", HARDCOVER_EVIDENCE_HINT, titlecase=True)
+        + _watch_secret("hardcover_token", "Hardcover API token")
+        + '<div class="ab-acct-row">'
+        '<button class="btn" type="button" id="ab-hc-test" '
+        "onclick=\"abWatchTest('hardcover', 'ab-hc-test-fb', '/api/hardcover/test')\">Test connection</button>"
+        '<span class="ab-fb" id="ab-hc-test-fb" role="status"></span></div>'
     )
 
 
@@ -4705,8 +4733,9 @@ function abResetSetting(key) {
 function abDownloadClient(kind) {
   document.querySelectorAll('.ab-dc[data-client]').forEach(g => { g.hidden = g.dataset.client !== kind; });
 }
-function abWatchTest(target, fbId) {
+function abWatchTest(target, fbId, url) {
   fbId = fbId || 'ab-watch-test-fb';
+  url = url || ('/api/watcher/test-' + target);
   const fb = document.getElementById(fbId);
   fb.className = 'ab-fb';
   fb.textContent = 'saving, then testing...';
@@ -4714,7 +4743,7 @@ function abWatchTest(target, fbId) {
     if (!saved) return;
     fb.className = 'ab-fb';
     fb.textContent = 'testing...';
-    return fetch('/api/watcher/test-' + target, {method:'POST', headers:{'Content-Type':'application/json'}, body: '{}'})
+    return fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: '{}'})
       .then(r => {
         if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
         return r.json().then(body => ({ok: r.ok && body.ok, body: body}));
@@ -5174,6 +5203,8 @@ STATUS_CHIP_LABELS = {
 
 #: Settings > Watcher connection tests (POST only): path -> what is tested
 WATCHER_TEST_ROUTES = {"/api/watcher/test-qbit": "qbit", "/api/watcher/test-tracker": "tracker"}
+#: Settings > Library > Hardcover evidence: Test connection (POST only)
+HARDCOVER_TEST_ROUTE = "/api/hardcover/test"
 
 #: routes do_POST serves and do_GET does not: a GET on one is 405 + "Allow: POST", never the page
 #: shell (/api/series, /api/wishlist, /api/watcher, /api/discover/recommendations take both)
@@ -5188,6 +5219,7 @@ POST_ONLY_ROUTES = {
     "/api/library/abs-layout": "the layout tool is a POST",
     "/api/control": "control actions are a POST",
     **{route: "a connection test is a POST" for route in WATCHER_TEST_ROUTES},
+    HARDCOVER_TEST_ROUTE: "a connection test is a POST",
 }
 
 #: ?status= values that open the "Needs you" view
@@ -7136,7 +7168,8 @@ class Handler(BaseHTTPRequestHandler):
         # Clear: a secret's "Clear" box - store an empty value, so no session / password is used
         clear = payload.get("clear") or []
         if not isinstance(clear, list) or any(k not in SECRET_SETTING_KEYS for k in clear):
-            self._send(400, b'{"error":"only the session and the download client passwords can be cleared"}',
+            self._send(400, b'{"error":"only the session, the download client passwords and the Hardcover token '
+                       b'can be cleared"}',
                        "application/json")
             return
 
@@ -7147,7 +7180,7 @@ class Handler(BaseHTTPRequestHandler):
         for key, fold in (("auto_convert", str.upper), ("output_format", str.upper), ("audio_bitrate", str.lower),
                           ("region", str.lower), ("vip", str.upper), ("tracker_search_method", str.upper),
                           ("tracker_search_encoding", str.lower), ("download_client", str.lower),
-                          ("ip_updater", str.lower)):
+                          ("ip_updater", str.lower), ("hardcover_evidence", str.lower)):
             if key not in settings:
                 continue
             choices = setting_choices(key)
@@ -7356,6 +7389,19 @@ class Handler(BaseHTTPRequestHandler):
             ok, message = watcher_mod.probe_tracker(self.state)
         self._send(200 if ok else 502, json.dumps({"ok": ok, "message": message}).encode(), "application/json")
 
+    def _handle_hardcover_test(self) -> None:
+        """POST /api/hardcover/test: one request with the saved token (asked for, so it runs even
+        while HARDCOVER_EVIDENCE is off). Answered, never stored; the token is never in the answer."""
+        if self._read_json() is None:
+            return
+        set_effective(self.state)
+        token = hardcover_mod.token()
+        if not token:
+            ok, message = False, "No Hardcover token is set - paste one above and test again"
+        else:
+            ok, message = hardcover_mod.test_connection(token)
+        self._send(200 if ok else 502, json.dumps({"ok": ok, "message": message}).encode(), "application/json")
+
     def _handle_watcher(self) -> None:
         """POST /api/watcher: {"action": "run" | "pause" | "resume" | "use_current_ip"}. The last only
         while IP_UPDATER is not off; with it off the action is unknown, exactly as before."""
@@ -7507,6 +7553,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in WATCHER_TEST_ROUTES:
             self._handle_watcher_test(WATCHER_TEST_ROUTES[path])
+            return
+        if path == HARDCOVER_TEST_ROUTE:
+            self._handle_hardcover_test()
             return
         if path == "/api/watcher":
             self._handle_watcher()

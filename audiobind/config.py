@@ -198,6 +198,31 @@ def _ip_updater(raw: str) -> str:
     return raw
 
 
+HARDCOVER_EVIDENCE_MODES = ("off", "on")
+_FALSY = {"", "0", "false", "no", "off"}
+
+
+def _hardcover_evidence(raw: str) -> str:
+    """HARDCOVER_EVIDENCE, checked at load ("" = off). A typo stops the start, as IP_UPDATER does."""
+    raw = raw.strip().lower()
+    if raw in TRUTHY:
+        return "on"
+    if raw in _FALSY:
+        return "off"
+    raise RuntimeError("HARDCOVER_EVIDENCE is not valid: use on or off")
+
+
+def _hardcover_token(raw: str) -> str:
+    """HARDCOVER_TOKEN: one line, no spaces inside, a "Bearer " prefix dropped ("" = unset = off).
+    Never echoes the value."""
+    text = raw.strip()
+    if text.lower().startswith("bearer "):
+        text = text[7:].strip()
+    if len(text) > 4000 or any(ord(ch) <= 32 or ord(ch) == 127 for ch in text):
+        raise RuntimeError("HARDCOVER_TOKEN is not valid: paste the token from hardcover.app/account/api")
+    return text
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(_env(name, str(default)))
@@ -342,6 +367,10 @@ class Config:
     #: the allowed-IP updater (IP_UPDATER): "off" (default, exactly the behaviour before it existed),
     #: "notify" (log and show egress drift) or "auto" (no write endpoint is known, so it acts as notify)
     ip_updater: str = "off"
+    #: Hardcover as an evidence-only second opinion (detail panel line, never the grade):
+    #: both the token and HARDCOVER_EVIDENCE=on are needed; either missing = no request at all
+    hardcover_token: str = field(default="", repr=False)
+    hardcover_evidence: str = "off"
     #: deprecated variables that were honoured / ignored at load, as (old, new) names only -
     #: the daemon logs one line each at startup
     deprecated_used: list = field(default_factory=list, repr=False)
@@ -431,6 +460,8 @@ class Config:
             tracker_expected_egress_ip=_ip_value(expected_name, expected),
             tracker_vip=default_bool(vip_raw, False),
             ip_updater=_ip_updater(_env("IP_UPDATER", "")),
+            hardcover_token=_hardcover_token(os.environ.get("HARDCOVER_TOKEN", "")),
+            hardcover_evidence=_hardcover_evidence(_env("HARDCOVER_EVIDENCE", "")),
             deprecated_used=honoured,
             deprecated_ignored=ignored,
         )
@@ -498,10 +529,16 @@ CLIENT_SETTING_KEYS = ("download_client", "deluge_url", "deluge_pass", "transmis
 #: watcher's keys it is never wiped by "Reset to defaults".
 IPUPDATE_SETTING_KEYS = ("ip_updater",)
 
-SETTING_KEYS = GENERAL_SETTING_KEYS + WATCHER_SETTING_KEYS + CLIENT_SETTING_KEYS + IPUPDATE_SETTING_KEYS
+#: Hardcover evidence (Settings > Library). A page value wins over the env; never wiped by "Reset to
+#: defaults" (the token is a secret typed into the page, like the tracker session).
+HARDCOVER_SETTING_KEYS = ("hardcover_evidence", "hardcover_token")
+
+SETTING_KEYS = (GENERAL_SETTING_KEYS + WATCHER_SETTING_KEYS + CLIENT_SETTING_KEYS + IPUPDATE_SETTING_KEYS
+                + HARDCOVER_SETTING_KEYS)
 
 #: settings whose value is never sent to a browser: not in a page, an attribute, a JSON answer or a log
-SECRET_SETTING_KEYS = frozenset({"tracker_session", "qbit_pass", "deluge_pass", "transmission_pass", "rtorrent_pass"})
+SECRET_SETTING_KEYS = frozenset({"tracker_session", "qbit_pass", "deluge_pass", "transmission_pass", "rtorrent_pass",
+                                 "hardcover_token"})
 
 SETTING_MAP: dict[str, str] = {
     "auto_convert": "auto_convert",
@@ -523,6 +560,8 @@ SETTING_MAP: dict[str, str] = {
     **{key: key for key in WATCHER_SETTING_KEYS},
     **{key: key for key in CLIENT_SETTING_KEYS},
     "ip_updater": "ip_updater",
+    "hardcover_evidence": "hardcover_evidence",
+    "hardcover_token": "hardcover_token",
 }
 
 SETTING_TYPES: dict[str, type] = {
@@ -546,6 +585,8 @@ SETTING_TYPES: dict[str, type] = {
     "watch_max_incomplete": int,  # torrents still downloading at which a cycle adds none; 0 = off
     **{key: str for key in CLIENT_SETTING_KEYS},
     "ip_updater": str,  # one of IP_UPDATER_MODES
+    "hardcover_evidence": str,  # one of HARDCOVER_EVIDENCE_MODES
+    "hardcover_token": str,  # secret
 }
 
 #: the values the settings page offers; an environment value outside these is added to the
@@ -560,6 +601,7 @@ SETTING_CHOICES: dict[str, tuple[str, ...]] = {
     "tracker_search_encoding": ("json", "form"),
     "download_client": tuple(DOWNLOAD_CLIENTS),
     "ip_updater": IP_UPDATER_MODES,
+    "hardcover_evidence": HARDCOVER_EVIDENCE_MODES,
 }
 
 #: (min, max) for the numeric settings, widened to include the environment value
@@ -689,6 +731,7 @@ WATCHER_TEXT_CHECKS = {
     "tracker_freeleech_param": ("Freeleech parameter", lambda raw: _from_startup_check(
         "Freeleech parameter", lambda v: _tracker_name("TRACKER_FREELEECH_PARAM", v, allow_value=True), raw)),
     "tracker_user_agent": ("User-Agent", lambda raw: _plain_text("User-Agent", raw, 300)),
+    "hardcover_token": ("Hardcover token", lambda raw: _from_startup_check("Hardcover token", _hardcover_token, raw)),
     "qbit_url": ("qBittorrent URL", _qbit_url),
     "qbit_user": ("qBittorrent user", lambda raw: _plain_text("qBittorrent user", raw, 200)),
     "qbit_pass": ("qBittorrent password", lambda raw: _plain_text("qBittorrent password", raw, 300, keep_spaces=True)),
@@ -787,6 +830,10 @@ def setting_env(key: str):
         return defaults[key]
     if key == "ip_updater":
         return str(CONFIG.ip_updater or "off")
+    if key == "hardcover_evidence":
+        return str(CONFIG.hardcover_evidence or "off")
+    if key == "hardcover_token":
+        return str(CONFIG.hardcover_token or "")
     return client_setting_env_defaults().get(key)
 
 
