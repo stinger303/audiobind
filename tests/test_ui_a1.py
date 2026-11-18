@@ -5,6 +5,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from audiobind import web
 from audiobind.state import State
@@ -146,6 +147,16 @@ class TestSessionExpiry(unittest.TestCase):
         self.assertIn("location.href = '/login'", nav)
         # installed before anything else in the script block calls fetch
         self.assertLess(nav.index("window.fetch = "), nav.index("abNavMq"))
+
+
+class TestFocusIsVisible(unittest.TestCase):
+    def test_no_control_hides_its_focus_without_a_replacement(self):
+        css = web.STYLES
+        self.assertIn("input[type=range]:focus-visible{outline:2px solid", css)  # the slider had outline:none
+        self.assertIn(".ab-search:focus{outline:2px solid", css)
+        self.assertIn(".ab-rail-item:focus-visible{outline:2px solid", css)
+        self.assertNotRegex(css, r"\.ab-search:focus\{outline:none")
+        self.assertNotRegex(css, r"\.ab-rail-item:focus-visible\{outline:none")
 
 
 class TestPhoneInputs(unittest.TestCase):
