@@ -26,7 +26,7 @@ class QuickWins(unittest.TestCase):
         self.assertIn('class="ab-rail-item" href="/?status=attention"', page)
         self.state.save(UnitState(path="A/1", status="failed", title="T"))
         page = web.render(self.state)
-        self.assertIn('class="ab-rail-item ab-alert" href="/?status=attention"', page)
+        self.assertIn('class="ab-rail-item ab-alert ab-active" href="/?status=attention"', page)
         for name in ("review", "held", "failed"):
             self.assertNotIn(f'href="/?status={name}"', page.split("</aside>")[0])
 

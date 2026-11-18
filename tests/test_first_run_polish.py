@@ -38,11 +38,14 @@ class TestTemplate(unittest.TestCase):
         self.assertIn("1 = mono, 2 = stereo. Stereo keeps the source layout; mono halves the file size.", line)
         self.assertRegex(TEMPLATE, r'Target="AUDIO_CHANNELS"[^>]*>2</Config>')
 
-    def test_repository_is_pinned_to_a_release_the_changes_announce(self):
+    def test_repository_tracks_latest_so_unraid_offers_updates(self):
+        # Deliberately :latest, not a pinned x.y.z - see docs/PUBLISHING.md. A pinned tag never
+        # changes digest and nothing rewrites the stored template in /boot, so Unraid offered no
+        # update from :0.21.0 to 0.22.0. Do not "fix" this back to a pinned version.
         repo = re.search(r"<Repository>([^<]+)</Repository>", TEMPLATE).group(1)
-        self.assertRegex(repo, r"^ghcr\.io/stinger303/audiobind:\d+\.\d+\.\d+$")
-        self.assertNotIn(":latest", repo)
-        self.assertIn(f"### {repo.rsplit(':', 1)[1]}\n", TEMPLATE)
+        self.assertEqual(repo, "ghcr.io/stinger303/audiobind:latest")
+        changes = re.search(r"<Changes>\s*(.*?)</Changes>", TEMPLATE, re.S).group(1)
+        self.assertRegex(changes.splitlines()[0], r"^### \d+\.\d+\.\d+$")
 
 
 class TestChannelsDefault(unittest.TestCase):
