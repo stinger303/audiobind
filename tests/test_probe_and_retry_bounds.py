@@ -18,11 +18,12 @@ class TestListProbesHaveATimeout(unittest.TestCase):
 
     def test_a_hung_ffprobe_is_an_empty_answer_not_a_hang(self):
         expired = subprocess.TimeoutExpired(cmd="ffprobe", timeout=1)
-        for func in (probe.probe_chapters, probe.probe_streams):
+        with self.assertLogs("audiobind", level="WARNING"):  # the timeout is logged (own test below)
+            for func in (probe.probe_chapters, probe.probe_streams):
+                with mock.patch.object(probe.subprocess, "run", side_effect=expired):
+                    self.assertEqual(func("/x.m4b"), [], func.__name__)
             with mock.patch.object(probe.subprocess, "run", side_effect=expired):
-                self.assertEqual(func("/x.m4b"), [], func.__name__)
-        with mock.patch.object(probe.subprocess, "run", side_effect=expired):
-            self.assertFalse(probe.has_embedded_cover("/x.m4b"))
+                self.assertFalse(probe.has_embedded_cover("/x.m4b"))
 
     def test_a_timeout_is_logged_not_silent(self):
         # an empty list reads as "no chapters" / "no streams" to the encoder's checks, so the
@@ -67,6 +68,7 @@ class TestCatalogBackoff(unittest.TestCase):
 
     def test_http_error_follows_the_same_rule(self):
         err = urllib.error.HTTPError("https://example.test/x", 503, "busy", {}, None)
+        self.addCleanup(err.close)  # it wraps a temp file: left open it is a ResourceWarning at exit
         sleeps = self._failing(err)
         catalog._last_call = 0.0
         self.assertIsNone(catalog._get_json("https://example.test/x", tries=2))
