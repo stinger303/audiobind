@@ -3696,6 +3696,10 @@ function abWant(btn, origin) {
   const row = btn.closest('[data-asin]');
   if (!row) return;
   const label = btn.textContent;
+  // the spoken name carries the book's title; it must not outlive the visible words it describes
+  const spoken = btn.getAttribute('aria-label');
+  const speak = () => { if (spoken) btn.setAttribute('aria-label', spoken); };
+  btn.removeAttribute('aria-label');
   btn.disabled = true;
   btn.textContent = 'adding\\u2026';
   abPost('/api/wishlist', {asin: row.dataset.asin, origin: origin})
@@ -3704,6 +3708,7 @@ function abWant(btn, origin) {
         abToast(out.res.error || 'that did not work');
         btn.disabled = false;
         btn.textContent = label;
+        speak();
         return;
       }
       btn.textContent = 'On your wishlist';
@@ -3715,11 +3720,23 @@ function abWant(btn, origin) {
       abToast('could not reach the daemon');
       btn.disabled = false;
       btn.textContent = label;
+      speak();
     });
+}
+// A book the watcher has already handed to qBittorrent: what removing or re-queuing it does to the torrent
+function abWishlistInFlight(row) {
+  return row.dataset.status === 'downloading' || row.dataset.status === 'downloaded';
+}
+function abWishlistTitle(row) {
+  const t = row.querySelector('.ab-disc-t');
+  return ((t && t.textContent) || 'this book').trim();
 }
 function abUnwant(btn) {
   const row = btn.closest('[data-asin]');
   if (!row) return;
+  if (abWishlistInFlight(row) && !confirm('Remove \\u201c' + abWishlistTitle(row) + '\\u201d from your wishlist?\\n\\n' +
+      'The watcher already sent it to qBittorrent. Removing it here does not stop or delete the torrent, ' +
+      'and Audiobind stops tracking it - it will not be marked In library when it lands.')) return;
   btn.disabled = true;
   abPost('/api/wishlist/remove', {asin: row.dataset.asin})
     .then(out => {
@@ -3776,6 +3793,9 @@ function abEditTitle(btn) {
     else if (e.key === 'Escape') cancel.click();
   };
   save.onclick = () => {
+    if (abWishlistInFlight(row) && !confirm('Search again for \\u201c' + abWishlistTitle(row) + '\\u201d?\\n\\n' +
+        'It is already ' + row.dataset.status + '. Saving a title puts it back to wanted, and the watcher ' +
+        'searches the tracker again - which can send a second copy to qBittorrent.')) return;
     save.disabled = true;
     abPost('/api/wishlist/title', {asin: row.dataset.asin, title: input.value})
       .then(out => {
@@ -3910,6 +3930,7 @@ def _disc_row(item: dict, origin: str, seq_label: str = "") -> str:
     elif watcher_mod.configured():
         state_html = (
             f'<button class="btn" title="Put this book on your wishlist. Nothing is downloaded." '
+            f'aria-label="Get this: {_attr(title)}" '
             f"onclick=\"abWant(this,'{origin}')\">Get this</button>"
         )
     else:
@@ -4156,14 +4177,14 @@ def _wishlist_row_html(row: dict) -> str:
     label, hover = WISHLIST_CHIPS.get(status, (status.upper(), ""))
     retry = (
         '<button title="Put this book back to wanted: the watcher searches for it again in its next cycle." '
-        'class="ab-wl-retry" onclick="abRetry(this)">Retry</button>'
+        f'class="ab-wl-retry" aria-label="Retry: {_attr(row["title"])}" onclick="abRetry(this)">Retry</button>'
         if status in ("not_found", "error") else ""
     )
     custom = row.get("search_title") or ""
     searching = f'<div class="ab-wl-search">searching for &#8220;{_html(custom)}&#8221;</div>' if custom else ""
     edit = (
         '<button title="Change the title the watcher searches the tracker for (the title shown here stays)." '
-        'onclick="abEditTitle(this)">Edit title</button>'
+        f'aria-label="Edit title: {_attr(row["title"])}" onclick="abEditTitle(this)">Edit title</button>'
         if status != "in_library" else ""
     )
     return (
@@ -4174,7 +4195,8 @@ def _wishlist_row_html(row: dict) -> str:
         f'{searching}{by}<div class="ab-disc-m">{" &#183; ".join(facts)}</div>{note}</div>'
         f'<span class="ab-disc-pill ab-wl-{_attr(status)}" title="{_attr(hover)}">{_html(label)}</span>'
         f'<span class="ab-wl-acts">{retry}{edit}'
-        '<button title="Take this book off your wishlist." onclick="abUnwant(this)">Remove</button></span></div>'
+        f'<button title="Take this book off your wishlist." aria-label="Remove from wishlist: {_attr(row["title"])}" '
+        'onclick="abUnwant(this)">Remove</button></span></div>'
     )
 
 

@@ -159,6 +159,50 @@ class TestFocusIsVisible(unittest.TestCase):
         self.assertNotRegex(css, r"\.ab-rail-item:focus-visible\{outline:none")
 
 
+class TestWishlistButtonsNameTheBook(unittest.TestCase):
+    ROW = {"asin": "B005EHN61O", "title": 'Dune "Deluxe" <1>', "status": "not_found", "added_at": 1.0,
+           "authors": ["Frank Herbert"]}
+
+    def test_every_row_button_says_which_book(self):
+        html = web._wishlist_row_html(self.ROW)
+        for verb in ("Retry", "Edit title", "Remove from wishlist"):
+            self.assertIn(f'aria-label="{verb}: Dune &quot;Deluxe&quot; &lt;1&gt;"', html)
+
+    def test_get_this_names_the_book_and_drops_the_name_when_the_words_change(self):
+        item = {"asin": "B005EHN61O", "title": "Dune"}
+        with mock.patch.object(web.watcher_mod, "configured", return_value=True):
+            self.assertIn('aria-label="Get this: Dune"', web._disc_row(item, "search"))
+        fn = body_of(js("DISCOVER_SCRIPT"), "abWant")
+        self.assertIn("removeAttribute('aria-label')", fn)  # 'On your wishlist' must not be spoken as 'Get this: ...'
+        self.assertEqual(fn.count("speak()"), 2)  # and a refused or failed request puts it back
+
+
+class TestWishlistConfirmsWhenTheTorrentIsAlreadyRunning(unittest.TestCase):
+    def test_remove_confirms_for_downloading_and_downloaded_before_sending(self):
+        script = js("DISCOVER_SCRIPT")
+        self.assertIn("row.dataset.status === 'downloading' || row.dataset.status === 'downloaded'", script)
+        fn = body_of(script, "abUnwant")
+        self.assertIn("abWishlistInFlight(row)", fn)
+        self.assertIn("does not stop or delete the torrent", fn)
+        self.assertLess(fn.index("confirm("), fn.index("abPost("))
+
+    def test_saving_a_title_confirms_because_it_requeues_the_book(self):
+        fn = body_of(js("DISCOVER_SCRIPT"), "abEditTitle")
+        self.assertIn("abWishlistInFlight(row)", fn)
+        self.assertIn("second copy to qBittorrent", fn)
+        self.assertLess(fn.index("confirm("), fn.index("/api/wishlist/title"))
+        # the server really does reset the status; if that ever stops, this warning is wrong
+        with tempfile.TemporaryDirectory() as tmp:
+            state = State(Path(tmp))
+            try:
+                state.wishlist_add({"asin": "B005EHN61O", "title": "Dune"})
+                state.connection.execute("UPDATE wishlist SET status='downloading' WHERE asin='B005EHN61O'")
+                row = state.wishlist_set_search_title("B005EHN61O", "Dune Frank Herbert")
+            finally:
+                state.close()
+        self.assertEqual(row["status"], "wanted")
+
+
 class TestPhoneInputs(unittest.TestCase):
     def test_phone_inputs_are_16px_so_ios_does_not_zoom(self):
         phone = web.STYLES.split("@media(max-width:640px){", 1)[1]
