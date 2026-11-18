@@ -26,6 +26,11 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.25.0
+* Wishlist: saving a search title no longer re-queues the book, so retitling one mid-download can no longer grab a second torrent. A new Re-queue button is the deliberate way back.
+* A disk that stops answering ffprobe now fails the book instead of converting it with chapters missing.
+* Fixed: a malformed detail row took the whole status page down with a 500.
+* Much faster status polling and page renders (covering indexes; the poll is about fifty times cheaper at 3,000 books).
 ### 0.24.0
 * A fresh install answers on private LAN addresses out of the box: Allowed hosts can be left blank.
 * Set Allowed hosts to a list to restrict the UI to exactly those names (DNS-rebinding guard).
