@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from difflib import SequenceMatcher
+from functools import lru_cache
 
 NOISE_RE = re.compile(
     r"\(unabridged\)|\(abridged\)|\[unabridged\]|\[audiobook\]|\[audobook\]|"
@@ -86,16 +87,26 @@ COLLECTION_RE = re.compile(
 )
 
 
+_NORM_APOSTROPHES_RE = re.compile(r"[\u2019'`]")
+_NORM_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")  # one space per run, so no whitespace collapse after
+
+
 def norm(text: str | None) -> str:
     """Lowercase, strip accents and punctuation - the form used for every comparison."""
     if not text:
         return ""
+    return _norm(text)
+
+
+@lru_cache(maxsize=8192)
+def _norm(text: str) -> str:
+    # pure and called with the same few strings over and over (sim/title_sim normalise the
+    # query once per candidate); the cache is bounded, so a long-running daemon cannot grow it
     text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = text.lower().replace("&", " and ").replace("_", " ")
-    text = re.sub(r"[\u2019'`]", "", text)
-    text = re.sub(r"[^a-z0-9]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
+    text = _NORM_APOSTROPHES_RE.sub("", text)
+    return _NORM_NON_ALNUM_RE.sub(" ", text).strip()
 
 
 def clean(text: str | None) -> str:
