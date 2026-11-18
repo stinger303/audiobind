@@ -481,7 +481,7 @@ tr.drow[hidden] td{padding:0}
 .ab-in{font:inherit;font-size:12.5px;padding:7px 10px;border-radius:8px;
   border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);width:100%;box-sizing:border-box;}
 .ab-in:focus{outline:2px solid var(--ab-accent-bright);outline-offset:0;border-color:var(--ab-accent-bright);}
-.ab-in::placeholder{color:#5d6479;font-style:italic;}
+.ab-in::placeholder{color:var(--ab-text4);font-style:italic;}
 .ab-editbar{display:flex;align-items:center;gap:10px;margin-top:12px;}
 /* Settings tabs: the library's chip pills; the tab that is on is the indigo pill (the rail's active tint) */
 .ab-tabs{margin:14px 0 4px}
@@ -732,6 +732,8 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 }
 /* <=640 px: the phone layout */
 @media(max-width:640px){
+  /* iOS Safari zooms the whole page when a text box under 16px takes focus, and does not zoom back */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea{font-size:16px}
   /* top strip: hamburger + title on one line, health pill and version stacked under it */
   .ab-topbar{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px 10px;
     padding:12px 12px 10px}

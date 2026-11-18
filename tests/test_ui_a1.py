@@ -148,5 +148,17 @@ class TestSessionExpiry(unittest.TestCase):
         self.assertLess(nav.index("window.fetch = "), nav.index("abNavMq"))
 
 
+class TestPhoneInputs(unittest.TestCase):
+    def test_phone_inputs_are_16px_so_ios_does_not_zoom(self):
+        phone = web.STYLES.split("@media(max-width:640px){", 1)[1]
+        self.assertRegex(phone[:400], r"select, textarea\{font-size:16px\}")
+
+    def test_placeholder_and_focus_use_readable_colours(self):
+        self.assertIn(".ab-in::placeholder{color:var(--ab-text4)", web.STYLES)
+        self.assertNotIn("#5d6479", web.STYLES)
+        self.assertRegex(web.STYLES, r"\.ab-in:focus\{outline:2px solid var\(--ab-accent-bright\)")
+        self.assertNotIn("outline:none;border-color:#2b5ea8", web.STYLES)
+
+
 if __name__ == "__main__":
     unittest.main()
