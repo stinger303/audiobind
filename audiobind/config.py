@@ -786,8 +786,9 @@ def setting_bounds(key: str) -> tuple[int, int]:
 
 def set_effective(state) -> None:
     """Refresh all effective overrides from the State DB."""
+    stored = state.get_meta_many([f"setting_{key}" for key in SETTING_KEYS])  # one query, not one per key
     for key in SETTING_KEYS:
-        db = state.get_meta(f"setting_{key}")
+        db = stored.get(f"setting_{key}")
         if db is not None:
             _EFFECTIVE[key] = db
         else:

@@ -520,6 +520,21 @@ class State:
             row = self.connection.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         return json.loads(row["value"]) if row else default
 
+    def get_meta_many(self, keys) -> dict:
+        """{key: decoded value} for the keys that exist, in ONE query and one lock hold - the
+        settings refresh that runs on every page and poll would otherwise be one per setting."""
+        keys = list(dict.fromkeys(keys))  # SQLite's variable limit is far above the ~50 settings; chunk anyway
+        found: dict = {}
+        with self._lock:
+            for i in range(0, len(keys), 500):
+                chunk = keys[i : i + 500]
+                marks = ",".join("?" * len(chunk))
+                for row in self.connection.execute(
+                    f"SELECT key, value FROM meta WHERE key IN ({marks})", chunk
+                ):
+                    found[row["key"]] = row["value"]
+        return {key: json.loads(value) for key, value in found.items()}
+
     def set_asin_override(self, path: str, asin: str) -> None:
         """The operator's ASIN pin. Setting one (even the same one again) starts its dead-pin
         count over: the operator has asked for it to be tried afresh."""

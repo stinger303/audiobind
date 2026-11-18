@@ -67,6 +67,21 @@ class TestLibraryStats(unittest.TestCase):
         self.assertEqual(sorted(self.state.path_statuses()), [("A/One", "converted"), ("A/Two", "review")])
         self.assertEqual(self.state.outputs(), [("A/One", "/out/One.m4b")])
 
+    def test_get_meta_many_matches_get_meta_per_key(self):
+        self.state.set_meta("a", {"x": 1})
+        self.state.set_meta("b", "text")
+        self.state.set_meta("n", None)  # stored JSON null: present, decodes to None
+        keys = ["a", "b", "n", "missing", "a"]  # duplicate and absent keys are fine
+        self.assertEqual(
+            self.state.get_meta_many(keys),
+            {k: self.state.get_meta(k) for k in ("a", "b", "n")},
+        )
+        self.assertEqual(self.state.get_meta_many([]), {})
+        many = [f"k{i}" for i in range(1200)]  # more than one chunk
+        for k in many[::100]:
+            self.state.set_meta(k, k)
+        self.assertEqual(set(self.state.get_meta_many(many)), set(many[::100]))
+
     def test_snapshot_carries_the_stats_block(self):
         self.save("A/One", "converted", hours=3.0, out_mb=1000.0)
         stats = web.snapshot(self.state)["stats"]
