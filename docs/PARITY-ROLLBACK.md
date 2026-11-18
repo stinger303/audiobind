@@ -17,8 +17,13 @@ Try the setting first. It is reversible in seconds and needs no build, no image,
 |---|---|---|---|
 | 1 | multi-client download adapters (qBittorrent, Deluge, Transmission, rTorrent) | `clients: base` … `tests: conformance` | `DOWNLOAD_CLIENT=qbittorrent` (the default) |
 | 3 | allowed-IP updater: drift notice, **Use the current IP**, MAM dynamic seedbox IP write | `parity: ip-updater research` … `parity: ip-updater docs` | `IP_UPDATER=off` (the default) |
+| 4 | Hardcover as an evidence-only metadata source: one detail-panel line, never the grade | `parity: hardcover retrieval` … `parity: hardcover rollback` | `HARDCOVER_EVIDENCE=off` (the default), or no `HARDCOVER_TOKEN` |
 
-Features 2 and 4 are not built yet; they get a row here when they land. Feature 3 adds no database
+Feature 2 is not built yet; it gets a row here when it lands. Feature 4 never touched the matcher, so
+switching it off changes no grade or decision; it only stops the lookups and hides the panel line.
+Its leftovers after a revert are a `hardcover` key in the stored detail of rows scanned while it was
+on (ignored by a reverted build), the two `setting_hardcover_*` meta rows, and
+`STATE_DIR/hardcover-cache.json`, which is safe to delete. Feature 3 adds no database
 column or table either. Its record is one meta row (`watcher_ipupdate`), and a reverted build ignores
 it. A pin set with **Use the current IP** stays as the saved "Only reach the tracker from one IP"
 value after a revert or with `IP_UPDATER=off`, exactly like a pin typed on the Advanced tab. The script resolves ranges from

@@ -36,6 +36,11 @@ FEATURES: dict[str, tuple[str, str, str]] = {
         "parity: ip-updater research",
         "parity: ip-updater docs",
     ),
+    "4": (
+        "Hardcover evidence",
+        "parity: hardcover retrieval",
+        "parity: hardcover rollback",
+    ),
 }
 
 #: what to run afterwards; the same gates every parity commit had to pass
