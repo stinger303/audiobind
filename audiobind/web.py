@@ -6082,8 +6082,8 @@ def rail_counts(state, counts: dict) -> dict:
     adjusted = {k: counts.get(k, 0) for k in ATTENTION_STATUSES}
     queued = in_flight_units()
     if queued:
-        for path, status in state.path_statuses():
-            if path in queued and status in adjusted:
+        for status in state.statuses_of(queued).values():  # the queue is a handful of paths: look them up
+            if status in adjusted:
                 adjusted[status] -= 1
     adjusted["attention"] = sum(adjusted[k] for k in ATTENTION_STATUSES)
     return adjusted
@@ -6847,7 +6847,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send_cover(params.get("asin", ""), params.get("path", ""))
             return
         if path.startswith("/api/units"):
-            units = self.state.all(status or None)
+            units = self.state.all(status or None, blobs=False)  # the listing carries no detail/alternates
             payload = [
                 {
                     "path": u.path,

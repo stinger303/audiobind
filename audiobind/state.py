@@ -405,11 +405,32 @@ class State:
             self.connection.commit()
             return cursor.rowcount > 0
 
-    def all(self, status: str | None = None) -> list[UnitState]:
-        query = "SELECT * FROM units" + (" WHERE status = ?" if status else "") + " ORDER BY updated_at DESC"
+    #: every UnitState column except the three text blobs (detail, alternates; overrides is not a field)
+    _LIGHT_COLUMNS = (
+        "path, status, confidence, asin, title, author, hours, files, output, note, "
+        "updated_at, src_mb, out_mb, chapters, source"
+    )
+
+    def all(self, status: str | None = None, blobs: bool = True) -> list[UnitState]:
+        """Every row, newest first. ``blobs=False`` leaves ``detail`` and ``alternates`` empty:
+        a caller that never reads them (the /api/units listing) skips the bulk of the bytes."""
+        columns = "*" if blobs else self._LIGHT_COLUMNS
+        query = f"SELECT {columns} FROM units" + (" WHERE status = ?" if status else "") + " ORDER BY updated_at DESC"
         with self._lock:
             rows = self.connection.execute(query, (status,) if status else ()).fetchall()
         return [_unit_from_row(r) for r in rows]
+
+    def statuses_of(self, paths) -> dict[str, str]:
+        """{path: status} for just these rows (primary-key lookups, not a table scan)."""
+        paths = list(dict.fromkeys(paths))
+        found: dict[str, str] = {}
+        with self._lock:
+            for i in range(0, len(paths), 500):
+                chunk = paths[i : i + 500]
+                marks = ",".join("?" * len(chunk))
+                for row in self.connection.execute(f"SELECT path, status FROM units WHERE path IN ({marks})", chunk):
+                    found[row[0]] = row[1]
+        return found
 
     def path_statuses(self) -> list[tuple[str, str]]:
         """(path, status) for every row - for callers that only tally or match by status and

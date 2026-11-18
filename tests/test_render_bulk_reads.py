@@ -42,6 +42,44 @@ class TestAllOverrides(unittest.TestCase):
             self.assertEqual(every.get(path, {}), self.state.get_overrides(path), path)
 
 
+class TestNarrowReaders(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.state = State(pathlib.Path(self.dir.name))
+        self.addCleanup(self.state.close)
+        for i, status in enumerate(("review", "held", "review", "converted")):
+            self.state.save(
+                UnitState(path=f"A/B{i}", status=status, title=f"T{i}", author="Au", hours=1.5, output=f"/o/{i}.m4b" if i == 3 else "",
+                          detail=json.dumps({"x": "y" * 500}), alternates=json.dumps([{"asin": "B0"}]))
+            )
+
+    def test_all_without_blobs_keeps_every_field_but_the_blobs(self):
+        full, light = self.state.all(), self.state.all(blobs=False)
+        self.assertEqual([u.path for u in full], [u.path for u in light])  # same order
+        for a, b in zip(full, light):
+            self.assertEqual(
+                {**a.__dict__, "detail": "", "alternates": ""}, b.__dict__, a.path
+            )
+        self.assertTrue(all(u.detail and u.alternates for u in full))
+        self.assertEqual([u.path for u in self.state.all("review", blobs=False)], [u.path for u in self.state.all("review")])
+
+    def test_statuses_of_looks_up_only_the_asked_rows(self):
+        self.assertEqual(self.state.statuses_of(["A/B0", "A/B3", "A/Gone", "A/B0"]), {"A/B0": "review", "A/B3": "converted"})
+        self.assertEqual(self.state.statuses_of([]), {})
+        many = [f"A/B{i}" for i in range(1200)]  # more than one chunk
+        self.assertEqual(set(self.state.statuses_of(many)), {"A/B0", "A/B1", "A/B2", "A/B3"})
+
+    def test_rail_counts_subtract_the_queued_books_by_status(self):
+        counts = self.state.counts()
+        with mock.patch.object(web, "in_flight_units", return_value={"A/B0", "A/B1", "A/Gone", "A/B3"}):
+            rail = web.rail_counts(self.state, counts)
+        # A/B0 review, A/B1 held; the converted one is not an attention status; A/Gone is not in the table
+        self.assertEqual((rail["review"], rail["held"]), (counts["review"] - 1, counts["held"] - 1))
+        with mock.patch.object(web, "in_flight_units", return_value=set()):
+            self.assertEqual(web.rail_counts(self.state, counts)["review"], counts["review"])
+
+
 class TestRenderReadsInBulk(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
