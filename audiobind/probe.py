@@ -110,8 +110,22 @@ def probe_tags(path: str | Path, timeout: int = 30) -> dict[str, str]:
 LIST_PROBE_TIMEOUT = 120
 
 
-def probe_chapters(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT) -> list[dict]:
-    """The file's chapters; [] when there are none, ffprobe's output is unreadable, or it timed out."""
+class ProbeTimeout(Exception):
+    """ffprobe did not answer within its cap. Only raised on request (``raise_on_timeout=True``):
+    by default a timeout reads as an empty list, which a caller cannot tell from a file that
+    genuinely has no chapters / streams."""
+
+    def __init__(self, path: str | Path, timeout: int, what: str):
+        super().__init__(f"ffprobe {what} timed out after {timeout}s on {path}")
+        self.path = str(path)
+        self.timeout = timeout
+
+
+def probe_chapters(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT, raise_on_timeout: bool = False) -> list[dict]:
+    """The file's chapters; [] when there are none, ffprobe's output is unreadable, or it timed out.
+
+    With ``raise_on_timeout`` a timeout raises ProbeTimeout instead, so the caller can tell a
+    file that answered "no chapters" from one that never answered."""
     try:
         result = subprocess.run(
             ["ffprobe", *PROTOCOL_WHITELIST, "-v", "error", "-show_chapters", "-of", "json", str(path)],
@@ -120,6 +134,9 @@ def probe_chapters(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT) -> list[
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
+        if raise_on_timeout:
+            log.warning("ffprobe -show_chapters timed out after %ss on %s", timeout, path)
+            raise ProbeTimeout(path, timeout, "-show_chapters") from None
         # an empty answer reads as "no chapters" to the caller, so say why it is empty
         log.warning("ffprobe -show_chapters timed out after %ss on %s: treating it as no chapters", timeout, path)
         return []
@@ -129,8 +146,9 @@ def probe_chapters(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT) -> list[
         return []
 
 
-def probe_streams(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT) -> list[dict]:
-    """The file's streams; [] when ffprobe's output is unreadable or it timed out."""
+def probe_streams(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT, raise_on_timeout: bool = False) -> list[dict]:
+    """The file's streams; [] when ffprobe's output is unreadable or it timed out (with
+    ``raise_on_timeout``, a timeout raises ProbeTimeout instead)."""
     try:
         result = subprocess.run(
             [
@@ -149,6 +167,9 @@ def probe_streams(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT) -> list[d
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
+        if raise_on_timeout:
+            log.warning("ffprobe -show_entries stream timed out after %ss on %s", timeout, path)
+            raise ProbeTimeout(path, timeout, "-show_entries stream") from None
         log.warning("ffprobe -show_entries stream timed out after %ss on %s: treating it as no streams", timeout, path)
         return []
     try:

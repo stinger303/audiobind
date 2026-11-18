@@ -19,7 +19,7 @@ def fake_probe(durations: dict):
 
 
 def fake_chapters(per_file: dict):
-    def probe_chapters(path):
+    def probe_chapters(path, **_):
         return per_file.get(path, [])
 
     return probe_chapters

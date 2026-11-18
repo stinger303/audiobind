@@ -54,7 +54,7 @@ class TestChapterOrder(unittest.TestCase):
         self.assertEqual(chapters[-1]["end"], sum(self.durations.values()))
 
     def test_source_chapters_land_at_play_order_offsets(self):
-        def tagged(path):
+        def tagged(path, **_):
             title = os.path.splitext(os.path.basename(path))[0]
             return [
                 {"start_time": "0", "end_time": "50", "tags": {"title": title + " a"}},

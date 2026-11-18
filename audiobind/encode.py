@@ -17,7 +17,7 @@ from pathlib import Path
 from . import catalog, id3
 from .config import CONFIG, effective_val
 from .control import CONTROL, Stopped
-from .probe import PROTOCOL_WHITELIST, has_embedded_cover, probe, probe_chapters, probe_streams
+from .probe import PROTOCOL_WHITELIST, ProbeTimeout, has_embedded_cover, probe, probe_chapters, probe_streams
 from .units import BookUnit, unsafe_path_reason
 
 FFMPEG = "ffmpeg"
@@ -109,6 +109,10 @@ def _source_chapters(unit: BookUnit, durations: dict[str, float] | None = None) 
     sources carry no usable chapter metadata (fewer than two usable markers,
     or a file whose duration cannot be probed, since then the offsets
     cannot be trusted).
+
+    Raises RuntimeError when ffprobe times out on a source file: that is not "no chapters", and
+    dropping the file's markers silently would convert the book with chapters missing (the
+    output check compares the result against this already-shortened list, so it would pass).
     """
     durations = _durations(unit, durations)
     chapters: list[dict] = []
@@ -119,7 +123,15 @@ def _source_chapters(unit: BookUnit, durations: dict[str, float] | None = None) 
         length = durations.get(path, 0.0)
         if length <= 0:
             return []  # cannot place chapters on a timeline we cannot measure
-        for item in probe_chapters(path):
+        try:
+            found = probe_chapters(path, raise_on_timeout=True)
+        except ProbeTimeout as exc:
+            raise RuntimeError(
+                f"ffprobe timed out after {exc.timeout}s reading the chapters of {path}; "
+                "the book is not converted so it cannot lose chapters - check that the disk is healthy "
+                "and retry"
+            ) from exc
+        for item in found:
             try:
                 start = float(item.get("start_time") or 0)
                 end = float(item.get("end_time") or 0)
