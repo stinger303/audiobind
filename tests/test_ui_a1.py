@@ -132,5 +132,21 @@ class TestFormsAndLabels(unittest.TestCase):
         self.assertIn("Enter the Audible ASIN first", fn)  # empty box: say so, do not just move focus
 
 
+class TestSessionExpiry(unittest.TestCase):
+    def test_every_signed_in_page_carries_the_401_redirect(self):
+        for tpl in (web.PAGE, web.SETTINGS_PAGE, web.SERIES_PAGE, web.DISCOVER_PAGE):
+            self.assertIn("{nav_script}", tpl)
+        # sign-in and first-run setup are plain form posts: a wrong password must show its message,
+        # never bounce the visitor back to the form they are already on
+        for tpl in (web.LOGIN_PAGE, web.SETUP_PAGE):
+            self.assertNotIn("{nav_script}", tpl)
+            self.assertNotIn("fetch(", tpl)
+        nav = web.NAV_SCRIPT
+        self.assertIn("r.status === 401", nav)
+        self.assertIn("location.href = '/login'", nav)
+        # installed before anything else in the script block calls fetch
+        self.assertLess(nav.index("window.fetch = "), nav.index("abNavMq"))
+
+
 if __name__ == "__main__":
     unittest.main()

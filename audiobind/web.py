@@ -827,6 +827,19 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 # <=1080 px the rail is an off-canvas drawer; the hamburger in the top strip opens it. Every page
 # carries this. Above 1080 px the rail is the plain sidebar and none of this does anything.
 NAV_SCRIPT = """
+// A session that ends while a page is open makes every API call answer 401 "authentication required".
+// Most buttons would toast that bare phrase (a few already redirect); one wrapper sends them all to the
+// sign-in page instead, so the next step is on screen rather than a status line to decode.
+(function () {
+  const native = window.fetch;
+  if (!native) return;
+  window.fetch = function () {
+    return native.apply(this, arguments).then(function (r) {
+      if (r.status === 401 && !window.abSignedOut) { window.abSignedOut = true; location.href = '/login'; }
+      return r;
+    });
+  };
+})();
 const abNavMq = window.matchMedia('(max-width:1080px)');
 function abNavParts() {
   return {rail: document.querySelector('.ab-rail'), btn: document.querySelector('.ab-navbtn'),
