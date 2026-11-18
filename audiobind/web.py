@@ -6095,6 +6095,36 @@ def host_name(value: str) -> str:
     return v.rstrip(".")
 
 
+_PRIVATE_V4 = tuple(
+    ipaddress.ip_network(n)
+    for n in (
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "169.254.0.0/16",
+        "100.64.0.0/10",  # CGNAT / Tailscale
+    )
+)
+_PRIVATE_V6 = tuple(ipaddress.ip_network(n) for n in ("::1/128", "fc00::/7", "fe80::/10"))
+
+
+def is_private_literal(name: str) -> bool:
+    """True when `name` (already port-stripped) is a literal IP in a local/private range.
+
+    A literal IP cannot be DNS-rebound, so it is safe to answer when ALLOWED_HOSTS is unset.
+    Hostnames, public IPs and garbage are all False; this never raises.
+    """
+    try:
+        addr = ipaddress.ip_address((name or "").strip())
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+            addr = addr.ipv4_mapped
+        nets = _PRIVATE_V4 if addr.version == 4 else _PRIVATE_V6
+        return any(addr in n for n in nets)
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
 def allowed_host_names() -> set[str]:
     return {host_name(h) for h in CONFIG.allowed_hosts if host_name(h)}
 
@@ -6110,10 +6140,9 @@ def warn_default_hosts() -> None:
         return
     _HOSTS_WARNED = True
     logging.getLogger("audiobind").warning(
-        "ALLOWED_HOSTS is not set: the web UI only answers to %s, so it may be unreachable from "
-        "other machines until you set ALLOWED_HOSTS to the LAN IP / hostname you browse to "
-        "(for example ALLOWED_HOSTS=192.168.1.10,tower.local)",
-        ",".join(CONFIG.allowed_hosts),
+        "ALLOWED_HOSTS is not set: the web UI answers to this machine and to private LAN "
+        "addresses (like 192.168.1.10). Set ALLOWED_HOSTS to restrict it to exactly the names "
+        "you list (for example ALLOWED_HOSTS=192.168.1.10,tower.local)"
     )
 
 
@@ -6297,10 +6326,17 @@ class Handler(BaseHTTPRequestHandler):
 
         A hostile page can point its own domain at this server's LAN address, which makes
         it "same-origin" to the browser - but the browser still sends that domain as Host.
+        With ALLOWED_HOSTS unset a literal private/local IP is accepted too (it cannot be
+        rebound); once ALLOWED_HOSTS is set, exactly the listed names pass and nothing implicit.
         """
         requested = self._request_host()
-        if requested and host_name(requested) in allowed_host_names():
-            return False
+        if requested:
+            name = host_name(requested)
+            if name in allowed_host_names():
+                return False
+            # unset ALLOWED_HOSTS: a literal private IP cannot be DNS-rebound, so let it in
+            if not CONFIG.allowed_hosts_set and is_private_literal(name):
+                return False
         if requested:
             message = (
                 f"Host '{requested[:100]}' is not allowed. Add it to ALLOWED_HOSTS in the "

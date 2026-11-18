@@ -33,9 +33,10 @@ are spread over dozens of files into a single tagged `.m4b`, and files the resul
 - Optional, for wishlist acquisition only: an account on a private tracker (and a VPN container if you
   want tracker traffic kept off your home connection) and qBittorrent for the downloads.
 
-**Quick start:** the three mounts (`/library`, `/output`, `/config`), `ALLOWED_HOSTS` and the
+**Quick start:** the three mounts (`/library`, `/output`, `/config`) and the
 account must be right before the first scan - the [First run](docs/install.md#first-run)
-checklist walks through them in order.
+checklist walks through them in order. The UI answers on this machine and on private LAN IPs out of
+the box; set `ALLOWED_HOSTS` only to restrict it to exactly the names you list.
 
 ```
 library-in/                         library-out/

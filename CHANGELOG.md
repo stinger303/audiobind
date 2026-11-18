@@ -7,6 +7,25 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.24.0-dev1] - 2026-11-18
+
+**A fresh install now works from the LAN without editing a field first.** With `ALLOWED_HOSTS` unset,
+the web UI used to answer only to `localhost`, so a new container was a 403 from every other machine
+until you found a template field you had no reason to know about. The rebinding guard needs a
+hostname to defend against, and a literal IP cannot be rebound, so an unset `ALLOWED_HOSTS` now also
+accepts a literal private address. Setting `ALLOWED_HOSTS` still restricts the UI to exactly the
+names you list.
+
+### Changed
+- With `ALLOWED_HOSTS` unset, the Host guard also accepts a literal local/private IP: `127.0.0.0/8`,
+  `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `100.64.0.0/10` (CGNAT/Tailscale),
+  and `::1`, `fc00::/7`, `fe80::/10` and IPv4-mapped private addresses. Hostnames and public IPs are
+  still refused. With `ALLOWED_HOSTS` set nothing is implicit: exactly the listed names pass.
+- The start-up line, the template, the README, the docs and `docker-compose.yml` describe this.
+
+### Fixed
+- A fresh install no longer answers 403 to `http://<LAN IP>:8080` from another machine.
+
 ## [0.23.0] - 2026-11-17
 
 **Two additions that both default to off, and a navigation bug fixed.** The Library item in the rail

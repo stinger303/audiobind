@@ -67,7 +67,8 @@ class StartupWarningTests(unittest.TestCase):
             web.warn_default_hosts()
         self.assertEqual(len(logs.records), 1)
         self.assertIn("ALLOWED_HOSTS", logs.output[0])
-        self.assertIn("unreachable from other machines", logs.output[0])
+        self.assertIn("answers to this machine and to private LAN addresses", logs.output[0])
+        self.assertIn("restrict it to exactly the names you list", logs.output[0])
 
     def test_set_allowed_hosts_is_silent(self):
         CONFIG.allowed_hosts_set, web._HOSTS_WARNED = True, False
@@ -77,11 +78,28 @@ class StartupWarningTests(unittest.TestCase):
         warn.assert_not_called()
 
 
+class PrivateLiteralTests(unittest.TestCase):
+    def test_ranges(self):
+        for ok in ("127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.5.2",
+                   "169.254.1.1", "100.64.0.1", "100.101.102.103", "::1", "fd00::1", "fe80::1",
+                   "::ffff:192.168.1.5"):
+            self.assertTrue(web.is_private_literal(ok), ok)
+        for bad in ("8.8.8.8", "172.32.0.1", "100.128.0.1", "2001:db8::1", "::ffff:8.8.8.8",
+                    "tower.local", "evil.example.com", "localhost", "", "garbage:::", "1.2.3"):
+            self.assertFalse(web.is_private_literal(bad), bad)
+
+    def test_never_raises(self):
+        for junk in (None, 5, "\x00", "[::1"):
+            self.assertFalse(web.is_private_literal(junk))
+
+
 class HostGuardLiveTests(LiveServerCase):
     def setUp(self):
         super().setUp()
         self.port = CONFIG.web_port
         self.saved_hosts = (CONFIG.allowed_hosts, CONFIG.trusted_proxy)
+        self.saved_set = CONFIG.allowed_hosts_set
+        CONFIG.allowed_hosts_set = True  # tests that assign a list model an explicit ALLOWED_HOSTS
         self.saved_ips = CONFIG.trusted_proxy_ips
         src = self.lib / "Author" / "Book"
         os.makedirs(src)
@@ -91,12 +109,40 @@ class HostGuardLiveTests(LiveServerCase):
     def tearDown(self):
         CONFIG.allowed_hosts, CONFIG.trusted_proxy = self.saved_hosts
         CONFIG.trusted_proxy_ips = self.saved_ips
+        CONFIG.allowed_hosts_set = self.saved_set
         CONTROL.resume()
         CONTROL.clear_scan()
         super().tearDown()
 
     def get(self, path, host):
         return self.request(path, None, {"Host": host}, raw=True)
+
+    def _unset(self):
+        CONFIG.allowed_hosts, CONFIG.allowed_hosts_set = ["localhost", "127.0.0.1"], False
+
+    def test_unset_allows_private_literals(self):
+        self._unset()
+        for host in ("192.168.5.2:8888", "10.1.2.3", "100.101.102.103", "[::1]:8888", "[fd00::1]"):
+            self.assertEqual(self.get("/api/state", host)[0], 200, host)
+
+    def test_unset_still_refuses_names_and_public_ips(self):
+        self._unset()
+        for host in ("tower.local", "evil.example.com", "8.8.8.8", "[2001:db8::1]"):
+            self.assertEqual(self.get("/api/state", host)[0], 403, host)
+
+    def test_set_list_wins_nothing_implicit(self):
+        CONFIG.allowed_hosts, CONFIG.allowed_hosts_set = ["tower"], True
+        self.assertEqual(self.get("/api/state", "192.168.5.2")[0], 403)
+        CONFIG.allowed_hosts = ["192.168.5.2"]
+        self.assertEqual(self.get("/api/state", "192.168.5.2:8888")[0], 200)
+
+    def test_unset_with_trusted_proxy_judges_forwarded_host(self):
+        self._unset()
+        CONFIG.trusted_proxy, CONFIG.trusted_proxy_ips = True, ["127.0.0.1"]
+        ok = self.request("/api/state", None, {"Host": "backend:8080", "X-Forwarded-Host": "192.168.5.2"}, raw=True)
+        self.assertEqual(ok[0], 200)
+        bad = self.request("/api/state", None, {"Host": "backend:8080", "X-Forwarded-Host": "evil.example.com"}, raw=True)
+        self.assertEqual(bad[0], 403)
 
     def test_default_allows_localhost_and_loopback(self):
         self.assertEqual(self.get("/api/state", f"127.0.0.1:{self.port}")[0], 200)

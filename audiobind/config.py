@@ -291,8 +291,10 @@ class Config:
     #: Host names (or IPs) the web UI answers to; any other Host header gets a 403. This is
     #: the DNS-rebinding defence: a hostile page can point its own domain at this server,
     #: but the browser still sends that domain as Host. A port in an entry is ignored.
+    #: While ALLOWED_HOSTS is unset the guard (web.py) also accepts a literal private/local IP
+    #: (a literal IP cannot be rebound); the default below is kept as-is so that is not implicit.
     allowed_hosts: list[str] = field(default_factory=lambda: ["localhost", "127.0.0.1"])
-    #: True when ALLOWED_HOSTS was set explicitly (the default only reaches the UI locally)
+    #: True when ALLOWED_HOSTS was set explicitly (unset: this machine plus private LAN IPs; set: exactly the list)
     allowed_hosts_set: bool = False
     #: honour X-Forwarded-Host (only behind a reverse proxy you control)
     trusted_proxy: bool = False

@@ -19,8 +19,8 @@ Audiobind is pending publication in Community Applications. Until it is listed:
 The template sets `PUID=99 PGID=100`, runs the container hardened (`--read-only --tmpfs /tmp
 --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID
 --security-opt no-new-privileges:true`) and exposes port 8080 for the web UI. Set
-**Allowed hosts** to your server's LAN IP / hostname, or the UI only answers on the server
-itself.
+**Allowed hosts** only if you want to restrict the UI to exactly the names you list; unset, it
+answers on this machine and on private LAN IPs.
 
 ### Docker run
 
@@ -116,7 +116,7 @@ not expose it to the internet without a reverse proxy and TLS (see [SECURITY.md]
 
 ### First run
 
-A new install needs three mounts, `ALLOWED_HOSTS` and an account before it does anything
+A new install needs three mounts and an account before it does anything
 useful. Acquisition also needs the tracker settings, but that part is optional. In order:
 
 1. **Mount three folders.** The container runs read-only with `--tmpfs /tmp` and writes
@@ -128,11 +128,11 @@ useful. Acquisition also needs the tracker settings, but that part is optional. 
    | `/output`  | Converted `.m4b`/`.mp3` files land here.  | Nowhere to write a conversion.     |
    | `/config`  | SQLite state DB, the account, `audit.csv`. | Nowhere to keep state or the account. |
 
-2. **Set `ALLOWED_HOSTS`.** The default is `localhost,127.0.0.1`, so out of the box the UI
-   answers only on the server itself. From another machine you get a 403: that is the host
-   list, not a crash. Any other `Host` header is refused, which blocks DNS-rebinding attacks.
-   Ports are ignored. Add the LAN IP and hostname you browse from, and keep
-   `localhost,127.0.0.1` for scripts on the server itself:
+2. **`ALLOWED_HOSTS` (optional).** Unset, the UI answers on this machine and on private LAN
+   IPs (like `192.168.1.10`), but not on hostnames. Once you set it, only exactly the names
+   you list are answered and any other `Host` gets a 403 (that is the host list, not a
+   crash), which blocks DNS-rebinding attacks. Ports are ignored. To restrict it, list the
+   IP and hostname you browse from, and keep `localhost,127.0.0.1` for scripts on the server:
    `-e ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.10,tower,tower.local`
 
 3. **Start the container and create the account.** Open `http://<host>:8080`. The first
