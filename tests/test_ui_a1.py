@@ -68,5 +68,69 @@ class TestControlFeedback(unittest.TestCase):
         self.assertIn("abToast(", fn)
 
 
+class TestModalSemantics(unittest.TestCase):
+    def test_every_modal_is_modal_and_described(self):
+        for tpl in (web.PAGE, web.SETTINGS_PAGE):
+            self.assertIn('role="dialog" aria-modal="true"', tpl)
+            self.assertIn('aria-describedby="ab-modal-warning"', tpl)
+            self.assertIn('id="ab-modal-warning"', tpl)
+
+    def test_tab_stays_inside_an_open_modal(self):
+        nav = web.NAV_SCRIPT
+        self.assertIn("e.key !== 'Tab'", nav)
+        self.assertIn("getElementById('ab-modal')", nav)
+        self.assertIn("button:not([disabled])", nav)
+
+
+class TestFormsAndLabels(unittest.TestCase):
+    def render_settings(self, tab=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = State(Path(tmp))
+            try:
+                return web.render_settings(state, tab) if tab else web.render_settings(state)
+            finally:
+                state.close()
+
+    def test_filter_box_has_an_accessible_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = State(Path(tmp))
+            try:
+                page = web.render(state)
+            finally:
+                state.close()
+        self.assertRegex(page, r'<input id="ab-search"[^>]*aria-label="Filter books"')
+
+    def test_settings_controls_get_named_from_their_label(self):
+        src = web.SETTINGS_SCRIPT
+        self.assertIn("'.ab-setting-label'", src)
+        self.assertIn("setAttribute('aria-label', name)", src)
+        self.assertIn("aria-describedby", src)
+
+    def test_feedback_spans_are_live_regions(self):
+        page = self.render_settings()
+        for fb in re.findall(r'<span class="ab-fb"[^>]*>', page):
+            self.assertIn('role="status"', fb, fb)
+        self.assertTrue(re.findall(r'<span class="ab-fb"[^>]*>', page))
+
+    def test_url_boxes_get_the_url_keyboard_and_no_capital(self):
+        page = self.render_settings("watcher")
+        box = re.search(r'<input type="text"[^>]*inputmode="url"[^>]*>', page)
+        if box is None:  # the watcher tab only exists when the watcher is configured
+            self.skipTest("no watcher fields on this tab in this configuration")
+        self.assertIn('autocapitalize="none"', box.group(0))
+
+    def test_account_submit_cannot_double_fire(self):
+        fn = body_of(web.ACCOUNT_SCRIPT, "abAccountSubmit")
+        self.assertIn("submit.disabled = true", fn)
+        self.assertIn(".finally(", fn)
+
+    def test_asin_box_is_named_and_enter_submits(self):
+        src = js("SCRIPT")
+        self.assertIn("function abEnterClicks(", src)
+        self.assertIn("button[data-enter]", src)
+        fn = body_of(src, "abUnitAction")
+        self.assertIn("Enter the Audible ASIN first", fn)  # empty box: say so, do not just move focus
+
+
 if __name__ == "__main__":
     unittest.main()

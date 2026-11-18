@@ -480,7 +480,7 @@ tr.drow[hidden] td{padding:0}
   display:flex;align-items:center;gap:6px;}
 .ab-in{font:inherit;font-size:12.5px;padding:7px 10px;border-radius:8px;
   border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);width:100%;box-sizing:border-box;}
-.ab-in:focus{outline:none;border-color:#2b5ea8;}
+.ab-in:focus{outline:2px solid var(--ab-accent-bright);outline-offset:0;border-color:var(--ab-accent-bright);}
 .ab-in::placeholder{color:#5d6479;font-style:italic;}
 .ab-editbar{display:flex;align-items:center;gap:10px;margin-top:12px;}
 /* Settings tabs: the library's chip pills; the tab that is on is the indigo pill (the rail's active tint) */
@@ -547,7 +547,7 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;
   border-radius:50%;background:var(--ab-accent-bright);cursor:pointer;border:none}
 select.ab-in{font:inherit;font-size:12.5px;padding:7px 10px;border-radius:8px;
   border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);max-width:200px}
-select.ab-in:focus{outline:none;border-color:#2b5ea8}
+select.ab-in:focus{outline:2px solid var(--ab-accent-bright);outline-offset:0;border-color:var(--ab-accent-bright)}
 input[type=number].ab-in{max-width:100px}
 .ab-acct{margin-top:28px;padding-top:4px;border-top:1px solid var(--ab-border)}
 .ab-acct-head{font-size:15px;font-weight:600;margin:14px 0 4px}
@@ -864,6 +864,19 @@ function abNav(open) {
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && document.body.classList.contains('ab-nav-open')) { e.preventDefault(); abNav(false); }
   });
+  // An open confirm dialog keeps Tab inside itself: focus must not wander onto the page behind it,
+  // where a stray Enter would press a button the dialog is not asking about.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    const modal = document.getElementById('ab-modal');
+    if (!modal || modal.hidden) return;
+    const stops = [...modal.querySelectorAll('button:not([disabled])')];
+    if (!stops.length) return;
+    const at = stops.indexOf(document.activeElement);
+    const next = e.shiftKey ? (at <= 0 ? stops.length - 1 : at - 1) : (at === stops.length - 1 ? 0 : at + 1);
+    e.preventDefault();
+    stops[next].focus();
+  });
   p.rail.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('a[href]') && document.body.classList.contains('ab-nav-open')) abNav(false);
   });
@@ -931,7 +944,7 @@ function abUnitAction(btn, action) {
   if (action === 'set_asin') {
     const input = el.querySelector('input[data-asin]');
     body.asin = (input && input.value || '').trim();
-    if (!body.asin) { if (input) input.focus(); return; }
+    if (!body.asin) { abToast('Enter the Audible ASIN first - 8 to 14 letters and digits, like B005EHN61O.'); if (input) input.focus(); return; }
     note = 'setting ASIN ' + body.asin + ' - re-checking…';
   } else if (action === 'force') {
     if (!confirm('Convert \\u201c' + abBookTitle(el.dataset.path) + '\\u201d anyway?\\n\\n' +
@@ -1124,6 +1137,16 @@ function abEditAsin(btn) {
 }
 function abCoverFail(img) {
   img.classList.add('ab-gone');
+}
+// Enter in one of these boxes presses the button that belongs to it (Use this ASIN, Save metadata);
+// they are not in a <form>, so without this Enter did nothing at all
+function abEnterClicks(ev, input) {
+  if (ev.key !== 'Enter' || ev.isComposing) return;
+  const scope = input.closest('.ab-pinrow, .ab-edit');
+  const btn = scope && scope.querySelector('button[data-enter]');
+  if (!btn || btn.disabled) return;
+  ev.preventDefault();
+  btn.click();
 }
 function abSaveMeta(btn) {
   const panel = btn.closest('.ab-edit');
@@ -1656,7 +1679,7 @@ PAGE = """<!doctype html>
     <div class="chips">{chips}</div>
     <div class="ab-searchwrap">
       <input id="ab-search" class="ab-search" type="search" autocomplete="off" spellcheck="false"
-             placeholder="Filter books&hellip;" value="{query}">
+             aria-label="Filter books" placeholder="Filter books&hellip;" value="{query}">
       <button class="ab-clear btn" onclick="abClearSearch()">Clear</button>
     </div>
   </section>
@@ -1676,7 +1699,7 @@ PAGE = """<!doctype html>
 
 <div id="ab-modal" class="ab-modal" hidden>
   <div class="ab-modal-backdrop" onclick="abModalCancel()"></div>
-  <div class="ab-modal-dialog" role="dialog" aria-labelledby="ab-modal-title">
+  <div class="ab-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ab-modal-title" aria-describedby="ab-modal-warning">
     <h3 id="ab-modal-title"></h3>
     <p id="ab-modal-warning"></p>
     <div class="ab-modal-actions">
@@ -1744,7 +1767,7 @@ SETTINGS_PAGE = """<!doctype html>
     <div class="ab-editbar" style="margin-top:8px;"{savebar_hidden}>
       <button class="ab-save" type="submit">Save settings</button>
       <button class="btn" type="button" onclick="abResetSettings()">Reset to defaults</button>
-      <span class="ab-fb" id="ab-settings-fb"></span>
+      <span class="ab-fb" id="ab-settings-fb" role="status"></span>
     </div>
     </form>
     {account_panel}
@@ -1754,7 +1777,7 @@ SETTINGS_PAGE = """<!doctype html>
 
 <div id="ab-modal" class="ab-modal" hidden>
   <div class="ab-modal-backdrop" onclick="abModalCancel()"></div>
-  <div class="ab-modal-dialog" role="dialog" aria-labelledby="ab-modal-title">
+  <div class="ab-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ab-modal-title" aria-describedby="ab-modal-warning">
     <h3 id="ab-modal-title"></h3>
     <p id="ab-modal-warning"></p>
     <div class="ab-modal-actions">
@@ -1910,7 +1933,7 @@ ACCOUNT_HTML = """<section class="ab-acct" aria-labelledby="ab-acct-head">
       <input class="ab-in" name="confirm" type="password" autocomplete="new-password"
              minlength="{acct_min}" required></label>
     <div class="ab-acct-row"><button class="ab-save" type="submit">Change password</button>
-      <span class="ab-fb" data-acct-fb></span></div>
+      <span class="ab-fb" data-acct-fb role="status"></span></div>
   </form>
   <form class="ab-acct-form" data-acct="username" onsubmit="return abAccountSubmit(this)">
     <span class="ab-acct-title">Change username</span>
@@ -1920,7 +1943,7 @@ ACCOUNT_HTML = """<section class="ab-acct" aria-labelledby="ab-acct-head">
     <label class="ab-acct-lbl">Current password
       <input class="ab-in" name="current" type="password" autocomplete="current-password" required></label>
     <div class="ab-acct-row"><button class="ab-save" type="submit">Change username</button>
-      <span class="ab-fb" data-acct-fb></span></div>
+      <span class="ab-fb" data-acct-fb role="status"></span></div>
   </form>
   <div class="ab-setting-hint">Forgot the password? Run <code>audiobind reset-password</code>
     inside the container (<code>docker exec -it audiobind audiobind reset-password</code>).</div>
@@ -1945,7 +1968,7 @@ ACCOUNT_LEGACY_HTML = """<section class="ab-acct" aria-labelledby="ab-acct-head"
     <label class="ab-acct-lbl">Current access token
       <input class="ab-in" name="current" type="password" autocomplete="current-password" required></label>
     <div class="ab-acct-row"><button class="ab-save" type="submit">Create account</button>
-      <span class="ab-fb" data-acct-fb></span></div>
+      <span class="ab-fb" data-acct-fb role="status"></span></div>
   </form>
 </section>"""
 
@@ -1957,6 +1980,8 @@ function abAccountSubmit(form) {
   form.querySelectorAll('input').forEach(el => { body[el.name] = el.value; });
   fb.className = 'ab-fb';
   fb.textContent = 'saving...';
+  const submit = form.querySelector('button[type=submit]');
+  if (submit) submit.disabled = true;  // a second click must not send the password change twice
   fetch('/api/account', {method:'POST', headers:{'Content-Type':'application/json'},
                          body: JSON.stringify(body)})
     .then(r => {
@@ -1981,7 +2006,8 @@ function abAccountSubmit(form) {
       if (String(err && err.message) === 'signed out') return;
       fb.className = 'ab-fb ab-bad';
       fb.textContent = 'could not reach the daemon';
-    });
+    })
+    .finally(() => { if (submit) submit.disabled = false; });
   return false;
 }
 """
@@ -2166,6 +2192,24 @@ function abApplyProfile(name) {
   abSyncProfile();
 }
 
+// Each setting's label is a <span> beside its control, so a screen reader met an unnamed box. Name the
+// control from the label's own text (not the "set here" / Reset badges inside it) and point it at
+// the hint, which holds the unit, the limits and what the setting does.
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.ab-setting').forEach((wrap, i) => {
+    const label = wrap.querySelector('.ab-setting-label');
+    const control = wrap.querySelector('select, textarea, input:not([type=checkbox]):not([type=hidden])');
+    const first = label && label.firstChild;
+    const name = first && first.nodeType === 3 ? first.textContent.trim() : '';
+    if (!control || !name || control.hasAttribute('aria-label') || control.hasAttribute('aria-labelledby')) return;
+    control.setAttribute('aria-label', name);
+    const hint = wrap.querySelector('.ab-setting-hint');
+    if (hint) {
+      hint.id = hint.id || 'ab-sh-' + i;
+      control.setAttribute('aria-describedby', hint.id);
+    }
+  });
+});
 document.addEventListener('DOMContentLoaded', () => {
   abSyncProfile();
   ['auto_convert', 'audio_bitrate'].forEach(key => {
@@ -4209,12 +4253,16 @@ def _watch_wrap(key: str, label: str, hint: str, control: str, secret: bool = Fa
 
 def _watch_text(key: str, label: str, placeholder: str = "", area: bool = False, hint: str | None = None) -> str:
     value = _attr(str(setting_effective(key) or ""))
+    # these are URLs, paths, parameter names and logins: a phone keyboard must not capitalise the
+    # first letter, and the address boxes get the URL keyboard. (type stays text: scgi:// and
+    # relative paths are valid here and the form never validates natively.)
+    kb = ' autocapitalize="none"' + (' inputmode="url"' if key.endswith("_url") else "")
     if area:
         control = (f'<textarea class="ab-in" rows="3" data-initial="{value}" placeholder="{_attr(placeholder)}" '
-                   f'autocomplete="off" spellcheck="false">{value}</textarea>')
+                   f'autocomplete="off" spellcheck="false" autocapitalize="none">{value}</textarea>')
     else:
         control = (f'<input type="text" class="ab-in" value="{value}" data-initial="{value}" '
-                   f'placeholder="{_attr(placeholder)}" autocomplete="off" spellcheck="false">')
+                   f'placeholder="{_attr(placeholder)}" autocomplete="off" spellcheck="false"{kb}>')
     if hint is None:
         hint = EXPECTED_EGRESS_HINT if key == "expected_egress" else WATCH_FIELD_HINTS.get(key, "")
     return _watch_wrap(key, label, hint, control)
@@ -4505,7 +4553,7 @@ def render_watcher_section(state) -> str:
         + _watch_connection_fields()
         + _watch_schedule_fields()
         + _watch_test_and_save()
-        + f'<div class="ab-acct-row">{run_btn}{toggle}{dry_toggle}<span class="ab-fb" id="ab-watch-fb"></span></div>'
+        + f'<div class="ab-acct-row">{run_btn}{toggle}{dry_toggle}<span class="ab-fb" id="ab-watch-fb" role="status"></span></div>'
         + dry_line
         + "</section>"
     )
@@ -4616,7 +4664,7 @@ def render_library_section() -> str:
         '<div class="ab-acct-row">'
         '<button class="btn" type="button" id="ab-abs-preview" onclick="abAbsPreview()">Preview</button>'
         '<button class="btn" type="button" id="ab-abs-apply" onclick="abAbsAsk()">Apply</button>'
-        '<span class="ab-fb" id="ab-abs-fb"></span></div>'
+        '<span class="ab-fb" id="ab-abs-fb" role="status"></span></div>'
         '<div id="ab-abs-plan" hidden></div>'
         + _hardcover_section()
         + "</section>"
@@ -5582,7 +5630,8 @@ def render(state, status: str = "", query: str = "") -> str:
             return (
                 f'<div class="ab-field{on}"><span class="ab-lab">{label_str}{lock_chip(key, key in locked)}</span>'
                 f'<input class="ab-in" data-field="{key}" value="{_attr(custom[key])}" '
-                f'placeholder="{placeholder}" spellcheck="false"{width_hint}></div>'
+                f'placeholder="{placeholder}" spellcheck="false" autocomplete="off" '
+                f'aria-label="{_attr(label_str)}" onkeydown="abEnterClicks(event,this)"{width_hint}></div>'
             )
 
         # f-strings only: user text must never sit inside a str.format() template,
@@ -5606,8 +5655,8 @@ def render(state, status: str = "", query: str = "") -> str:
             + field("series", "series", "")
             + field("series_index", "series index", "")
             + '</div><div class="ab-editbar">'
-            '<button class="ab-save" onclick="abSaveMeta(this)">Save metadata</button>'
-            '<span class="ab-fb"></span></div></div>'
+            '<button class="ab-save" data-enter onclick="abSaveMeta(this)">Save metadata</button>'
+            '<span class="ab-fb" role="status"></span></div></div>'
         )
 
         # other editions the catalog search also scored highly, each one click to use
@@ -5656,7 +5705,7 @@ def render(state, status: str = "", query: str = "") -> str:
 
         btn = '<button title="Re-check this book against the catalog and convert it if it passes the rules." onclick="abUnitAction(this,\'retry\')">Retry now</button>'
         force = '<button class="warn" title="Convert this book even though the automatic checks flagged it." onclick="abUnitAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button title="Set this exact Audible entry for the book (locks it), then re-check against it." onclick="abUnitAction(this,\'set_asin\')">Use this ASIN</button>'
+        asin_btn = '<button data-enter title="Set this exact Audible entry for the book (locks it), then re-check against it." onclick="abUnitAction(this,\'set_asin\')">Use this ASIN</button>'
 
         explain_html = (
             '<div class="explain">'
@@ -5672,9 +5721,9 @@ def render(state, status: str = "", query: str = "") -> str:
             + "</div>"
             + '<div class="ab-pinrow">'
             + '<span class="ab-pinlab">Set the exact Audible entry for this book:</span>'
-            + '<input data-asin value="{av}" placeholder="ASIN, e.g. B005EHN61O">'.format(
-                av=_attr(unit.asin or "")
-            )
+            + '<input data-asin value="{av}" placeholder="ASIN, e.g. B005EHN61O" aria-label="Audible ASIN" '
+            'autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="14" '
+            'onkeydown="abEnterClicks(event,this)">'.format(av=_attr(unit.asin or ""))
             + asin_btn
             + lock_chip("asin", "asin" in locked)
             + '<span class="ab-pinhint">Setting it locks the match - every future '
