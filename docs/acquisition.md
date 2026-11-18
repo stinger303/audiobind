@@ -267,3 +267,31 @@ It is the belt-and-braces check for the day a container gets recreated without t
 update drops a setting. Settings > Watcher shows what the tracker sees, when it was last checked, and
 whether the guard is armed. The same values are in `GET /api/watcher` (`egress_ip`,
 `egress_checked_at`, `egress_guard`, `egress_reason`, `egress_home_ip`, `egress_expected`).
+
+### When the egress IP drifts (`IP_UPDATER`)
+
+A VPN that reconnects on a new exit address trips the allowlist, and the wishlist stops until the
+tracker account and `TRACKER_EXPECTED_EGRESS_IP` both name the new address. `IP_UPDATER` (default
+`off`) helps you notice and catch up. Choose it on Settings > Watcher > **Allowed-IP updater**
+(a value saved there wins over the container's `IP_UPDATER`). It acts **after** the guard and never changes its verdict:
+a drifted cycle is still refused.
+
+- `notify`: when the guard sees a new address, the log says so once (WARNING, `allowed-IP updater:`),
+  and Settings > Watcher shows **Allowed-IP updater**, **Allowed IP** (the pin, whether it is in step,
+  and why) and **Last updated** (when, old -> new).
+- **Use the current IP** (only while `IP_UPDATER` is not `off`). First change the allowed IP on the
+  tracker's website by hand, then press this. Audiobind checks the egress IP again and sets "Only
+  reach the tracker from one IP" to that address. It refuses when the check fails, when the address
+  is `TRACKER_HOME_IP`, when nothing has drifted or no IP is pinned, and when the last change was under
+  an hour ago. The change is logged at INFO (`old -> new` and the reason). Scripted:
+  `curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"action":"use_current_ip"}' localhost:8080/api/watcher`.
+  With a MyAnonamouse session, the button sets the dynamic seedbox IP on MAM, checks that MAM now
+  sees it, and only then re-pins ([details](ip-updater.md)).
+- `auto`: on MyAnonamouse, with "Allow session to set dynamic seedbox IP" enabled for the session,
+  Audiobind sets the new IP on MAM (`dynamicSeedbox.php`). It then confirms it with `jsonIp.php`,
+  re-pins, and logs `old -> new` at INFO. This happens at most once an hour, never from the home IP,
+  and only with `TRACKER_HOME_IP` set. On any other tracker, or without a session, `auto` behaves like
+  `notify` and says so ([details](ip-updater.md)).
+
+With `notify` or `auto`, `GET /api/watcher` also carries `ip_updater` (`mode`, `can_write`,
+`decision`, `reason`, `last_updated_at`, `last_old`, `last_new`, `last_result`). With `off`, the key is absent.

@@ -38,6 +38,7 @@ from .config import (
     CONFIG,
     DOWNLOAD_CLIENTS,
     GENERAL_SETTING_KEYS,
+    IP_UPDATER_MODES,
     SECRET_SETTING_KEYS,
     SETTING_KEYS,
     SETTING_MAP,
@@ -534,6 +535,7 @@ button.ab-lock.ab-lock-off:hover{color:var(--ab-text3);background:rgba(255,255,2
 .ab-setting:last-of-type{border-bottom:none}
 .ab-setting-label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ab-text)}
 .ab-setting-hint{font-size:11.5px;color:var(--ab-text3);line-height:1.4;margin-bottom:2px}
+.ab-ipupd-modes{margin:2px 0 6px;padding-left:18px}
 .ab-range-wrap{display:flex;align-items:center;gap:10px}
 .ab-range-val{font-family:var(--ab-mono);font-size:12px;color:var(--ab-text2);min-width:24px;text-align:right}
 input[type=range]{-webkit-appearance:none;appearance:none;height:6px;
@@ -4262,6 +4264,7 @@ def render_watcher_section(state) -> str:
             "plus the qBittorrent URL, user and password (<code>QBIT_URL</code>, <code>QBIT_USER</code>, "
             "<code>QBIT_PASS</code>). Fill them in below and save - no restart needed - or set them as container "
             "variables.</div>"
+            + _ip_updater_section(s)
             + _watch_connection_fields()
             + _watch_test_and_save()
             + "</section>"
@@ -4390,6 +4393,7 @@ def render_watcher_section(state) -> str:
         "container variable; a value saved here wins and applies from the next cycle, no restart. The pause switch "
         "is kept across restarts.</div>"
         f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
+        + _ip_updater_section(s)
         + _watch_connection_fields()
         + _watch_schedule_fields()
         + _watch_test_and_save()
@@ -4397,6 +4401,89 @@ def render_watcher_section(state) -> str:
         + dry_line
         + "</section>"
     )
+
+
+#: Settings > Watcher > Allowed-IP updater: one plain sentence per mode, shown under the select
+IP_UPDATER_MODE_HINTS = {
+    "off": "The updater does nothing; the wishlist watcher refuses to run from an unregistered IP.",
+    "notify": "Shows and logs when the IP has drifted; never writes to the tracker.",
+    "auto": "Updates the tracker's dynamic seedbox IP when it has drifted, at most once an hour.",
+}
+
+
+def _ip_updater_section(s: dict) -> str:
+    """Settings > Watcher > Allowed-IP updater, always rendered: the mode select, a sentence per mode,
+    then the live drift / status rows - or, while the mode is off, one line saying so (the status
+    carries no updater data then, so nothing was looked up to draw this)."""
+    kind = watcher_mod.ip_updater_mode()
+    options = "".join(f'<option value="{m}"{" selected" if m == kind else ""}>{m}</option>'
+                      for m in IP_UPDATER_MODES)
+    modes = "".join(f"<li><b>{m}</b> &#8212; {_html(IP_UPDATER_MODE_HINTS[m])}</li>" for m in IP_UPDATER_MODES)
+    select = _watch_wrap(
+        "ip_updater", "Allowed-IP updater", "",
+        f'<select class="ab-in" data-initial="{_attr(kind)}">{options}</select>'
+        f'<ul class="ab-setting-hint ab-ipupd-modes">{modes}</ul>')
+    rows = _ip_updater_rows(s)
+    if rows:
+        body = '<dl class="ab-watch-grid ab-ipupd-grid">' + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows) + "</dl>"
+    elif kind != "off":
+        body = '<div class="ab-acct-who">Its drift and status show here once the watcher is set up.</div>'
+    else:
+        body = ('<div class="ab-acct-who" id="ab-ipupd-off">The allowed-IP updater is <b>off</b>. Switched on, it '
+                "would watch for the IP the tracker sees drifting away from the allowed IP, then tell you "
+                "(<code>notify</code>) or update the tracker's dynamic seedbox IP for you (<code>auto</code>).</div>")
+    return '<div class="ab-acct-title">Allowed-IP updater</div>' + select + body
+
+
+def _ip_updater_rows(s: dict) -> list[tuple[str, str]]:
+    """Settings > Watcher: the allowed-IP updater's rows. None at all while IP_UPDATER=off."""
+    upd = s.get("ip_updater")
+    if not upd:
+        return []
+    mode = str(upd.get("mode") or "off")
+    mode_html = f"<code>IP_UPDATER={_html(mode)}</code>"
+    can_write = bool(upd.get("can_write"))
+    if mode == "auto" and not can_write:
+        mode_html += (" &#8212; acting as <code>notify</code>: no MyAnonamouse session is configured, "
+                      "so Audiobind never changes the allowed IP on the tracker")
+    elif mode == "auto":
+        mode_html += " &#8212; a drift is set on MyAnonamouse automatically, then verified"
+    elif can_write:
+        mode_html += " &#8212; read-only: Audiobind only changes MyAnonamouse when you press the button"
+    decision = str(upd.get("decision") or "")
+    label = {"update": '<span class="warn">drifted &#8212; update needed</span>', "noop": '<span class="ok">in step</span>',
+             "refuse": '<span class="warn">no change</span>'}.get(decision, DASH)
+    verdict_html = f"{label} &#183; {_html(str(upd.get('reason') or ''))}"
+    if upd.get("last_updated_at"):
+        last = (f"{_html(rel_age(upd['last_updated_at']))} &#183; {_html(upd.get('last_old') or DASH)} &#8594; "
+                f"{_html(upd.get('last_new') or DASH)}")
+    else:
+        last = "never"
+    if can_write:
+        title = ("Ask MyAnonamouse which IP it sees, set it as the session's dynamic seedbox IP, check that MAM now "
+                 "sees it, then make it the address this installation only reaches the tracker from.")
+    else:
+        title = ("After you have changed the allowed IP on the tracker's website: check the egress IP again and make it "
+                 "the address this installation only reaches the tracker from. Nothing is sent to the tracker.")
+    button = (
+        '<button class="btn" type="button" id="ab-watch-useip" onclick="abWatcher(\'use_current_ip\')" '
+        f'title="{_html(title)}">Use the current IP</button>'
+    )
+    rows = [
+        ("Allowed-IP updater", mode_html),
+        ("Allowed IP", f"{_html(s.get('egress_expected') or 'not pinned')} &#183; {verdict_html}"),
+        ("Last updated", f"{last} {button}"),
+    ]
+    result = upd.get("last_result") or {}
+    if result:
+        when = _html(rel_age(result["at"])) if result.get("at") else DASH
+        if result.get("ok"):
+            text = f'<span class="ok">set on MyAnonamouse</span> &#183; {_html(result.get("ip") or DASH)} (verified)'
+        else:
+            text = (f'<span class="warn">failed ({_html(result.get("kind") or "error")})</span> &#183; '
+                    f'{_html(result.get("message") or "")}')
+        rows.append(("Last MAM result", f"{when} &#183; {text}"))
+    return rows
 
 
 ABS_LAYOUT_WARNING = (
@@ -7073,7 +7160,8 @@ class Handler(BaseHTTPRequestHandler):
         # selects: one of the offered choices (which include an unusual env value)
         for key, fold in (("auto_convert", str.upper), ("output_format", str.upper), ("audio_bitrate", str.lower),
                           ("region", str.lower), ("vip", str.upper), ("tracker_search_method", str.upper),
-                          ("tracker_search_encoding", str.lower), ("download_client", str.lower)):
+                          ("tracker_search_encoding", str.lower), ("download_client", str.lower),
+                          ("ip_updater", str.lower)):
             if key not in settings:
                 continue
             choices = setting_choices(key)
@@ -7283,7 +7371,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200 if ok else 502, json.dumps({"ok": ok, "message": message}).encode(), "application/json")
 
     def _handle_watcher(self) -> None:
-        """POST /api/watcher: {"action": "run" | "pause" | "resume"}."""
+        """POST /api/watcher: {"action": "run" | "pause" | "resume" | "use_current_ip"}. The last only
+        while IP_UPDATER is not off; with it off the action is unknown, exactly as before."""
         payload = self._read_json()
         if payload is None:
             return
@@ -7296,6 +7385,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
         elif action in ("pause", "resume"):
             watcher.set_paused(self.state, action == "pause")
+        elif action == "use_current_ip" and watcher_mod.ip_updater_mode() != "off":
+            ok, message = watcher_mod.use_current_ip(self.state)
+            if not ok:
+                self._send(409, json.dumps({"error": message}).encode(), "application/json")
+                return
         else:
             self._send(400, b'{"error":"unknown action"}', "application/json")
             return

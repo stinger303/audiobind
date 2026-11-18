@@ -16,8 +16,12 @@ Try the setting first. It is reversible in seconds and needs no build, no image,
 | id | feature | commits (subject range) | off state |
 |---|---|---|---|
 | 1 | multi-client download adapters (qBittorrent, Deluge, Transmission, rTorrent) | `clients: base` … `tests: conformance` | `DOWNLOAD_CLIENT=qbittorrent` (the default) |
+| 3 | allowed-IP updater: drift notice, **Use the current IP**, MAM dynamic seedbox IP write | `parity: ip-updater research` … `parity: ip-updater docs` | `IP_UPDATER=off` (the default) |
 
-Features 2–4 are not built yet; they get a row here when they land. The script resolves ranges from
+Features 2 and 4 are not built yet; they get a row here when they land. Feature 3 adds no database
+column or table either. Its record is one meta row (`watcher_ipupdate`), and a reverted build ignores
+it. A pin set with **Use the current IP** stays as the saved "Only reach the tracker from one IP"
+value after a revert or with `IP_UPDATER=off`, exactly like a pin typed on the Advanced tab. The script resolves ranges from
 commit subjects, not hashes, so rebasing the branch does not invalidate it.
 
 ## Switch it off
