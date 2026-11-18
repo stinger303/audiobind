@@ -26,6 +26,11 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.23.0
+* Settings > Watcher > Allowed-IP updater: keeps the tracker's dynamic seedbox IP in step with your VPN, off/notify/auto, at most once an hour
+* Settings > Library > Hardcover: a second opinion on series and position in a book's detail panel. It never changes a match
+* Fixed: Library opened the review list instead of the library, so both nav items showed the same page
+* The template now tracks :latest, so Unraid offers each release like any other app
 ### 0.22.0
 * Audiobind talks to Deluge, Transmission and rTorrent as well as qBittorrent: `DOWNLOAD_CLIENT`, and Settings > Watcher > Download client with a Test connection button
 * The page works on a phone and a tablet: a hamburger drawer replaces the hidden sidebar, rows stack instead of scrolling sideways, and an expanded row is full width

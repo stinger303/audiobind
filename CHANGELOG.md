@@ -7,6 +7,38 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.23.0] - 2026-11-17
+
+**Two additions that both default to off, and a navigation bug fixed.** The Library item in the rail
+now opens the library instead of the review list, and the CA template tracks `:latest` so Unraid offers
+the update like any other app.
+
+### Added
+- **Allowed-IP updater (parity feature 3).** The tracker only accepts downloads from a registered IP;
+  when the VPN hands you a new one, the wishlist used to die quietly. Settings > Watcher now has
+  **Allowed-IP updater**: `off` / `notify` / `auto`. It reads the IP the tracker itself sees
+  (`json/jsonIp.php`), compares it with the pinned address, and in `auto` registers the new one
+  (`json/dynamicSeedbox.php`), at most once an hour, never when the egress is your home IP. It needs
+  **Preferences → Security → "Allow session to set dynamic seedbox IP"** on the tracker session.
+  Its success check is the update call's own answer: re-reading `jsonIp.php` only proves the IP did not
+  move, and the docs say so.
+- **Hardcover as an evidence source (parity feature 4).** `HARDCOVER_TOKEN` plus `HARDCOVER_EVIDENCE`
+  on Settings > Library, with a Test connection. When on, a book's detail panel gains one line — what
+  Hardcover says about series membership and position, and whether that agrees with the catalogue.
+  **It does not grade anything**: `grade()` emits only a tier, so there is no sub-tier confidence to
+  nudge, and no corpus row can be proved against data the bench does not have.
+
+### Fixed
+- **Library opened the wrong view.** The rail's Library item pointed at `/`, which renders the review
+  list whenever anything needs attention, so Library and Needs your review were the same page and the
+  library itself was only reachable from a chip. Library now goes to `/?status=all`, and both items
+  carry the active state and `aria-current` that match the view actually rendered.
+- **Unraid never offered an update.** `templates/audiobind.xml` pinned an exact version, and a pinned
+  tag never changes digest, so the Docker tab had nothing to offer even after a release. The template
+  now tracks `:latest`, which CI republishes on every release; `docs/PUBLISHING.md` explains the change
+  and the evidence for it.
+- A `href="https://hardcover.app"` in the settings page tripped the no-CDN gate; it is plain text now.
+
 ## [0.22.0] - 2026-11-17
 
 **Audiobind talks to four download clients instead of one, and the same page now works on a phone, a
