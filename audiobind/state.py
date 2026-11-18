@@ -415,6 +415,20 @@ class State:
             ).fetchall()
         return [(r[0], r[1]) for r in rows]
 
+    def library_totals(self) -> tuple[int, int, float, float]:
+        """(rows, converted rows, hours of converted books, output MB of converted books), summed
+        in SQLite: the status page asks every 2-5 s per open tab, and all() would read every
+        row's ``detail`` blob (and build a UnitState each) to add up three numbers."""
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT COUNT(*),"
+                " COALESCE(SUM(status = 'converted'), 0),"
+                " COALESCE(SUM(CASE WHEN status = 'converted' THEN COALESCE(hours, 0) END), 0),"
+                " COALESCE(SUM(CASE WHEN status = 'converted' THEN COALESCE(out_mb, 0) END), 0)"
+                " FROM units"
+            ).fetchone()
+        return int(row[0]), int(row[1]), float(row[2]), float(row[3])
+
     def counts(self) -> dict[str, int]:
         with self._lock:
             rows = self.connection.execute("SELECT status, COUNT(*) n FROM units GROUP BY status").fetchall()

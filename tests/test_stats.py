@@ -53,6 +53,20 @@ class TestLibraryStats(unittest.TestCase):
         self.assertEqual(stats["gb"], 0)
         self.assertEqual(stats["progress"], 100.0)
 
+    def test_null_sizes_in_the_table_count_as_zero(self):
+        """A hand-made or old row can hold NULL hours / out_mb; SQL SUM must not turn that into None."""
+        self.save("A/One", "converted", hours=2.0, out_mb=100.0)
+        self.state.connection.execute("UPDATE units SET hours = NULL, out_mb = NULL WHERE path = 'A/One'")
+        self.save("A/Two", "converted", hours=1.0, out_mb=200.0)
+        self.assertEqual(self.state.library_totals(), (2, 2, 1.0, 200.0))
+        self.assertEqual(State(pathlib.Path(tempfile.mkdtemp())).library_totals(), (0, 0, 0.0, 0.0))
+
+    def test_path_statuses_and_outputs_skip_rows_without_the_field(self):
+        self.state.save(UnitState(path="A/One", status="converted", output="/out/One.m4b"))
+        self.state.save(UnitState(path="A/Two", status="review"))
+        self.assertEqual(sorted(self.state.path_statuses()), [("A/One", "converted"), ("A/Two", "review")])
+        self.assertEqual(self.state.outputs(), [("A/One", "/out/One.m4b")])
+
     def test_snapshot_carries_the_stats_block(self):
         self.save("A/One", "converted", hours=3.0, out_mb=1000.0)
         stats = web.snapshot(self.state)["stats"]

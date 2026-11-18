@@ -6066,16 +6066,12 @@ def render(state, status: str = "", query: str = "") -> str:
 
 
 def library_stats(state) -> dict:
-    units = state.all(None)
-    converted = [u for u in units if u.status == "converted"]
-    hours = sum(u.hours or 0.0 for u in converted)
-    out_mb = sum(u.out_mb or 0.0 for u in converted)
-    total = len(units)
-    progress = round(100.0 * len(converted) / total, 1) if total else 0.0
+    total, converted, hours, out_mb = state.library_totals()
+    progress = round(100.0 * converted / total, 1) if total else 0.0
     return {
         "hours": round(hours, 1),
         "gb": round(out_mb / 1000.0, 2),
-        "converted": len(converted),
+        "converted": converted,
         "total": total,
         "progress": progress,
     }
