@@ -135,7 +135,8 @@ class TestNeedsYouView(unittest.TestCase):
     def test_rail_needs_you_item_above_library(self):
         page = render_with([HELD, REVIEW])
         rail = page.split('<aside class="ab-rail">')[1].split("</aside>")[0]
-        self.assertIn('class="ab-rail-item ab-alert" href="/?status=attention"', rail)
+        # the default view here is attention, so the item is also the active one
+        self.assertIn('class="ab-rail-item ab-alert ab-active" href="/?status=attention" aria-current="page"', rail)
         self.assertLess(rail.index("> Library"), rail.index("Needs your review"))
         quiet = render_with([DONE])
         rail = quiet.split('<aside class="ab-rail">')[1].split("</aside>")[0]
@@ -476,7 +477,7 @@ class TestNeedsYourReviewLabel(unittest.TestCase):
     def test_the_label_is_needs_your_review_in_rail_chip_and_heading(self):
         page = render_with([HELD, REVIEW, DONE])
         rail = page.split('<aside class="ab-rail">')[1].split("</aside>")[0]
-        self.assertIn('href="/?status=attention">\n      <span class="ab-glyph">&#9888;</span> Needs your review\n', rail)
+        self.assertIn('href="/?status=attention" aria-current="page">\n      <span class="ab-glyph">&#9888;</span> Needs your review\n', rail)
         self.assertIn('<a class="chip on ab-alert" href="/?status=attention">Needs your review <span class="n">2</span></a>',
                       chips(page))
         self.assertIn("Needs your review &middot; 2</a></h1>", page)

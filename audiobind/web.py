@@ -1549,13 +1549,13 @@ PAGE = """<!doctype html>
 <meta name="theme-color" content="#5e6ad2">
 <style>{styles}</style></head><body>
 <aside class="ab-rail">
-  <div class="ab-rail-brand"><a href="/" title="Back to the library">Audiobind</a></div>
+  <div class="ab-rail-brand"><a href="/?status=all" title="Back to the library">Audiobind</a></div>
   <div class="ab-rail-label">Workspace</div>
   <nav class="ab-rail-section" aria-label="Main">
-    <a class="ab-rail-item ab-active" href="/" aria-current="page">
+    <a class="ab-rail-item{lib_active}" href="/?status=all"{lib_current}>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
-    <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
+    <a class="ab-rail-item{rail_attention_alert}{att_active}" href="/?status=attention"{att_current}>
       <span class="ab-glyph">&#9888;</span> Needs your review
       <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
@@ -1576,7 +1576,7 @@ PAGE = """<!doctype html>
   <header class="ab-topbar">
     <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
             aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
-    <h1><a href="/" title="Back to the library" style="color:inherit;text-decoration:none">{view_heading}</a></h1>
+    <h1><a href="/?status=all" title="Back to the library" style="color:inherit;text-decoration:none">{view_heading}</a></h1>
     <span class="ab-status{health_stale}"><span class="ab-dot"></span>{health_text}<small> &middot; last scan {health_scan}</small></span>
     <span class="ab-version">v{version}</span>
     {dry_text}
@@ -1656,13 +1656,13 @@ SETTINGS_PAGE = """<!doctype html>
 <meta name="theme-color" content="#5e6ad2">
 <style>{styles}</style></head><body>
 <aside class="ab-rail">
-  <div class="ab-rail-brand"><a href="/" title="Back to the library">Audiobind</a></div>
+  <div class="ab-rail-brand"><a href="/?status=all" title="Back to the library">Audiobind</a></div>
   <div class="ab-rail-label">Workspace</div>
   <nav class="ab-rail-section" aria-label="Main">
-    <a class="ab-rail-item{lib_active}" href="/">
+    <a class="ab-rail-item{lib_active}" href="/?status=all"{lib_current}>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
-    <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
+    <a class="ab-rail-item{rail_attention_alert}{att_active}" href="/?status=attention"{att_current}>
       <span class="ab-glyph">&#9888;</span> Needs your review
       <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
@@ -2134,13 +2134,13 @@ SERIES_PAGE = """<!doctype html>
 <meta name="theme-color" content="#5e6ad2">
 <style>{styles}</style></head><body>
 <aside class="ab-rail">
-  <div class="ab-rail-brand"><a href="/" title="Back to the library">Audiobind</a></div>
+  <div class="ab-rail-brand"><a href="/?status=all" title="Back to the library">Audiobind</a></div>
   <div class="ab-rail-label">Workspace</div>
   <nav class="ab-rail-section" aria-label="Main">
-    <a class="ab-rail-item" href="/">
+    <a class="ab-rail-item{lib_active}" href="/?status=all"{lib_current}>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
-    <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
+    <a class="ab-rail-item{rail_attention_alert}{att_active}" href="/?status=attention"{att_current}>
       <span class="ab-glyph">&#9888;</span> Needs your review
       <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
@@ -3102,6 +3102,17 @@ def _alert_class(count) -> str:
         return ""
 
 
+def _rail_view_marks(view: str | None) -> dict:
+    """Active state for the rail's Library and Needs-your-review items, from the view render() computed.
+    Library is the `all` view, Needs your review the `attention` view; any other page passes None."""
+    def marks(on: bool) -> tuple[str, str]:
+        return (" ab-active", ' aria-current="page"') if on else ("", "")
+    lib_active, lib_current = marks(view == "all")
+    att_active, att_current = marks(view == "attention")
+    return {"lib_active": lib_active, "lib_current": lib_current,
+            "att_active": att_active, "att_current": att_current}
+
+
 def _series_rail_item(missing: int, active: bool = False) -> str:
     """The rail's Series tab, under Library; the count is books missing across series (an opportunity, not an alarm)."""
     classes = "ab-rail-item" + (" ab-active" if active else "")
@@ -3415,6 +3426,7 @@ def render_series(state) -> str:
             "what you're missing.</div>"
         )
     return SERIES_PAGE.format(
+        **_rail_view_marks(None),
         signout=signout_html(state),
         styles=STYLES,
         version=__version__,
@@ -3447,13 +3459,13 @@ DISCOVER_PAGE = """<!doctype html>
 <meta name="theme-color" content="#5e6ad2">
 <style>{styles}</style></head><body>
 <aside class="ab-rail">
-  <div class="ab-rail-brand"><a href="/" title="Back to the library">Audiobind</a></div>
+  <div class="ab-rail-brand"><a href="/?status=all" title="Back to the library">Audiobind</a></div>
   <div class="ab-rail-label">Workspace</div>
   <nav class="ab-rail-section" aria-label="Main">
-    <a class="ab-rail-item" href="/">
+    <a class="ab-rail-item{lib_active}" href="/?status=all"{lib_current}>
       <span class="ab-glyph">&#8962;</span> Library
       <span class="ab-count">{rail_total}</span></a>
-    <a class="ab-rail-item{rail_attention_alert}" href="/?status=attention">
+    <a class="ab-rail-item{rail_attention_alert}{att_active}" href="/?status=attention"{att_current}>
       <span class="ab-glyph">&#9888;</span> Needs your review
       <span class="ab-count">{rail_attention_count}</span></a>
     {series_item}
@@ -4665,6 +4677,7 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
         else:
             body = _discover_search_body({"title": "", "author": ""}) + _discover_recs_body(state)
     return DISCOVER_PAGE.format(
+        **_rail_view_marks(None),
         signout=signout_html(state),
         styles=STYLES,
         version=__version__,
@@ -4820,7 +4833,7 @@ def render_settings(state, tab: str = "") -> str:
         signout=signout_html(state),
         styles=STYLES,
         version=__version__,
-        lib_active="",
+        **_rail_view_marks(None),
         set_active=" ab-active",
         series_item=_series_rail_item(_series_shelf(state, refresh=False)["missing_total"]),
         discover_item=_discover_rail_item(state),
@@ -5680,6 +5693,7 @@ def render(state, status: str = "", query: str = "") -> str:
     )
 
     return PAGE.format(
+        **_rail_view_marks(view),
         signout=signout_html(state),
         styles=STYLES,
         nav_script=NAV_SCRIPT,
