@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import catalog, encode, ingest, library, matching
+from . import catalog, encode, hardcover, ingest, library, matching
 from . import overrides as overrides_mod
 from .config import CONFIG, effective_auto_tiers, effective_val
 from .control import CONTROL, Stopped
@@ -52,6 +52,9 @@ class Audit:
     #: which names the catalog match was searched with: "folder" (the folder/file name, as
     #: always) or "embedded" (an ingest unit's own audio tags, after the folder found nothing)
     name_source: str = NAME_SOURCE_FOLDER
+    #: Hardcover's second opinion (hardcover.evidence_for) for the detail panel; None while it is off.
+    #: Never read by the grade or the action
+    hardcover: dict | None = None
 
     @property
     def runtime_matches(self) -> bool:
@@ -137,6 +140,9 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
         audit.notes.append("parts verified complete")
 
     audit.action = choose_action(unit, audit.confidence, audit.runtime_matches, audit.codecs)
+    # evidence only: asked after the grade and the action are final, and nothing above reads it.
+    # None (no request, no cache file) unless HARDCOVER_EVIDENCE is on and a token is set
+    audit.hardcover = hardcover.evidence_for(audit.match.product)
     return audit
 
 
@@ -348,7 +354,7 @@ def record(
     """Record one audit outcome. ``reopen`` marks a manual re-check that still ended
     in a decision-needed state, so the web panel re-opens with the reason."""
     custom = overrides_mod.normalise(audit.overrides)
-    detail = json.dumps(
+    detail_data = (
         {
             # a manual re-check (Retry now / Use this ASIN) that still needs a decision
             # tells the status page to re-open this book's panel with the reason
@@ -415,6 +421,10 @@ def record(
             ),
         }
     )
+    if audit.hardcover is not None:
+        # only while Hardcover evidence is on: with it off the stored detail is byte-identical
+        detail_data["hardcover"] = audit.hardcover
+    detail = json.dumps(detail_data)
     state.save(
         UnitState(
             # the state key: rel_path for a library book, "ingest:<rel_path>" for an ingest one

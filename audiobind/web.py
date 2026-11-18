@@ -3064,9 +3064,67 @@ def evidence_html(unit, data: dict, alternates: list[dict]) -> str:
         + "".join(bars)
         + "</div>"
         + note
+        + hardcover_line(data)
         + rivals_html
         + "</div>"
     )
+
+
+#: how a Hardcover comparison point is named in the panel line
+_HC_FIELD = {"series": "series", "position": "series position", "year": "year", "first published": "first published"}
+
+
+def hardcover_line(data: dict) -> str:
+    """The detail panel's one Hardcover line: what it lists and whether that agrees with the catalogue.
+
+    "" while Hardcover evidence is off (toggle off or no token) - even for a row recorded while it was
+    on - and for a row recorded without it. Reads the stored detail only; never a request."""
+    hc = (data or {}).get("hardcover")
+    if not isinstance(hc, dict) or not hardcover_mod.enabled():
+        return ""
+    status = hc.get("status")
+    if status == "not_found":
+        text = "Hardcover has no record of this book."
+    elif status == "error":
+        text = (f"Hardcover could not be asked: {_html(str(hc.get('message') or 'lookup failed'))}"
+                " &#8212; it is asked again on the next scan.")
+    elif status == "found":
+        rec = hc.get("record") if isinstance(hc.get("record"), dict) else {}
+        title = _html(str(rec.get("title") or ""))
+        url = str(rec.get("url") or "")
+        if url.startswith("https://hardcover.app/books/"):
+            title = f'<a class="ab-alink" href="{_attr(url)}" target="_blank" rel="noopener">{title}</a>'
+        facts = []
+        series, pos = str(rec.get("series") or ""), str(rec.get("position") or "")
+        if series:
+            facts.append(f"book {_html(pos)} of {_html(series)}" if pos else f"in {_html(series)}")
+        if rec.get("via") == "asin" and rec.get("edition_year"):
+            facts.append(f"{_html(str(rec['edition_year']))} edition")
+        elif rec.get("first_year"):
+            facts.append(f"first published {_html(str(rec['first_year']))}")
+        verdict = hc.get("verdict")
+        points = [p for p in (hc.get("points") or []) if isinstance(p, dict)]
+        if verdict == "disagrees":
+            why = []
+            for p in points:
+                if p.get("agrees") is not False:
+                    continue
+                if p.get("field") == "book":
+                    why.append(f"its record is a different book ({_html(str(p.get('hardcover') or ''))})")
+                else:
+                    name = _HC_FIELD.get(str(p.get("field")), _html(str(p.get("field"))))
+                    why.append(f"{name} {_html(str(p.get('hardcover') or ''))}, catalogue says "
+                               f"{_html(str(p.get('catalogue') or ''))}")
+            judged = "<b>disagrees with the catalogue</b>: " + "; ".join(why)
+        elif verdict == "agrees":
+            judged = "agrees with the catalogue"
+        else:
+            judged = "lists nothing the catalogue can be compared with"
+        listed = f" &#8212; {', '.join(facts)}" if facts else ""
+        text = f"Hardcover: {title}{listed} &#183; {judged}."
+    else:
+        return ""
+    return f'<p class="ab-hint ab-hc" data-hardcover="{_attr(str(status))}">{text}</p>'
 
 
 def read_sort(state) -> tuple:

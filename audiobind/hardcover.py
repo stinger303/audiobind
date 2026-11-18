@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -50,6 +51,10 @@ CACHE_MAX_ENTRIES = 5000
 SAME_BOOK_SIM = 0.85
 #: two series names are the same series at this similarity ("The Expanse" ~ "Expanse")
 SAME_SERIES_SIM = 0.80
+#: two years "agree" within this many years (regional releases, a late-December date)
+YEAR_SLACK = 1
+
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,200}$")
 
 
 class HardcoverError(Exception):
@@ -255,6 +260,8 @@ def _record_from_book(book: dict, via: str, edition: dict | None = None) -> dict
     except (TypeError, ValueError):
         audio_seconds = 0
     slug = _str(book.get("slug"))
+    if not _SLUG_RE.match(slug):
+        slug = ""  # only a plain slug ever becomes a link
     return {
         "found": True,
         "via": via,
@@ -424,3 +431,88 @@ def test_connection(token: str) -> tuple[bool, str]:
     user = me[0] if isinstance(me, list) and me else me
     name = _str((user or {}).get("username")) if isinstance(user, dict) else ""
     return True, f"Connected to Hardcover as {name}" if name else "Connected to Hardcover"
+
+
+# --- what the panel shows -------------------------------------------------------------------
+
+
+def _series_key(name: str) -> str:
+    text = norm(name)
+    text = re.sub(r"^the ", "", text)
+    return re.sub(r" (series|saga|trilogy|cycle|sequence|chronicles)$", "", text).strip()
+
+
+def _year(text) -> int | None:
+    try:
+        return int(str(text or "")[:4])
+    except ValueError:
+        return None
+
+
+_NUMBER_RE = re.compile(r"\s*\d+(?:\.\d+)?\s*")
+
+
+def compare(record: dict, title: str, authors: list[str], series: str, sequence: str, year: str) -> dict:
+    """How a found Hardcover record lines up with the catalogue's product.
+
+    ``points``: one per field both sides list, ``{"field", "hardcover", "catalogue", "agrees"}``.
+    ``verdict``: "disagrees" when any point disagrees, "agrees" when at least one agrees and none
+    disagrees, "nothing to compare" otherwise. A field only one side lists is never a disagreement.
+    """
+    points: list[dict] = []
+    hc_title, hc_authors = str(record.get("title") or ""), [str(a) for a in (record.get("authors") or [])]
+    if not _same_book(title, list(authors or []), hc_title, hc_authors):
+        by = f" by {', '.join(hc_authors)}" if hc_authors else ""
+        points.append({"field": "book", "hardcover": hc_title + by, "catalogue": title, "agrees": False})
+    hc_series, hc_pos = str(record.get("series") or ""), str(record.get("position") or "")
+    raw_seq = str(sequence or "").strip()
+    cat_pos = _position(raw_seq) if _NUMBER_RE.fullmatch(raw_seq) else raw_seq
+    if hc_series and series:
+        same_series = sim(_series_key(hc_series), _series_key(series)) >= SAME_SERIES_SIM
+        points.append({"field": "series", "hardcover": hc_series, "catalogue": series, "agrees": same_series})
+        if same_series and hc_pos and cat_pos:
+            points.append({"field": "position", "hardcover": hc_pos, "catalogue": cat_pos,
+                           "agrees": hc_pos == cat_pos})
+    cat_year = _year(year)
+    if cat_year is not None:
+        edition_year = _year(record.get("edition_year"))
+        first_year = _year(record.get("first_year"))
+        if record.get("via") == "asin" and edition_year is not None:
+            points.append({"field": "year", "hardcover": str(edition_year), "catalogue": str(cat_year),
+                           "agrees": abs(edition_year - cat_year) <= YEAR_SLACK})
+        elif first_year is not None:
+            # first publication may be decades before the audiobook; only "after it" contradicts it
+            points.append({"field": "first published", "hardcover": str(first_year), "catalogue": str(cat_year),
+                           "agrees": first_year <= cat_year + YEAR_SLACK})
+    if any(p["agrees"] is False for p in points):
+        verdict = "disagrees"
+    elif points:
+        verdict = "agrees"
+    else:
+        verdict = "nothing to compare"
+    return {"verdict": verdict, "points": points}
+
+
+def evidence_for(product) -> dict | None:
+    """The Hardcover evidence for a matched catalogue product, for the row's detail; never raises.
+
+    None when Hardcover is off (no toggle or no token) or there is no product: then nothing was
+    asked, nothing was cached, and the caller stores nothing. Otherwise one of
+    ``{"status": "found", "record": ..., "verdict": ..., "points": [...]}``,
+    ``{"status": "not_found"}`` or ``{"status": "error", "kind": ..., "message": ...}``.
+    """
+    if product is None or not getattr(product, "asin", ""):
+        return None
+    if not enabled():
+        return None
+    authors = [str(a) for a in (getattr(product, "authors", None) or []) if a]
+    try:
+        record = lookup(product.asin, product.title, authors[0] if authors else "", token())
+        if not record.get("found"):
+            return {"status": "not_found"}
+        result = compare(record, product.title, authors, product.series, product.sequence, product.year)
+        return {"status": "found", "record": record, **result}
+    except HardcoverError as exc:
+        return {"status": "error", "kind": exc.kind, "message": str(exc)}
+    except Exception as exc:  # noqa: BLE001 - nothing from here may stop a scan
+        return {"status": "error", "kind": "error", "message": f"Hardcover lookup failed ({type(exc).__name__})"}
