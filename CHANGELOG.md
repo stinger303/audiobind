@@ -7,6 +7,63 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.25.0] - 2026-11-18
+
+**Twenty commits from four audit passes — two over the interface, two over the code — with no change
+to the file layout on disk, the CLI or any setting name.** The wishlist can no longer fetch a second
+torrent because you fixed a typo in a search title; a disk that stops answering ffprobe now fails the
+book instead of converting it with the chapters missing; and the status poll that every open tab runs
+every few seconds is about fifty times cheaper.
+
+### Added
+- **Re-queue.** A wishlist row that is `downloading`, `downloaded` or `in_library` now has a
+  **Re-queue** button (`POST /api/wishlist/requeue`). It asks first, names the book, and says plainly
+  that the torrent already in the client is not removed — this is the deliberate way back to
+  searching, now that editing a title no longer does it by accident. A status that cannot be
+  re-queued is a 409, an unknown ASIN a 404, a malformed one a 400.
+- **An unsaved-settings guard.** Leaving Settings with changed values asks before discarding them.
+- **Expired sessions go to sign-in.** Every page, instead of rendering against a session that has
+  already lapsed and failing somewhere less obvious.
+
+### Changed
+- **Saving a search title no longer re-queues the book.** Only `wanted`, `not_found` and `error` rows
+  go back to `wanted`; `downloading`, `downloaded` and `in_library` keep their status, note, misses and
+  `checked_at`. This closes the path where retitling a book mid-download grabbed a second torrent and
+  orphaned the first, and where retitling a finished book downloaded it again. `wishlist_requeue` is
+  the explicit equivalent, and it is the only thing that bypasses `WISHLIST_TRANSITIONS`.
+- Wishlist buttons name their book, and re-queuing or removing a book that is already downloading
+  asks first. Convert anyway, Re-match all and Reset ask too.
+- The settings modal traps focus, every control is labelled, and focus is visible on the sliders, the
+  filter box and the rail links.
+- Phone text boxes are 16px so iOS does not zoom on focus; placeholder text is readable.
+
+### Fixed
+- **A non-object `detail` no longer 500s the status page.** `[]`, `null` or `5` in that column used to
+  raise in `detail_panel` and take the whole page with it.
+- **An ffprobe timeout on a source file fails the book.** It used to read as "no chapters", so the
+  output check passed against the shortened list and the m4b was written permanently without them.
+  A file that genuinely has no chapter atoms still converts.
+- An ffprobe timeout is logged rather than silently reading as "no chapters" or "no streams".
+- Swallowed wishlist and cover failures during a page render leave a debug traceback.
+- No backoff sleep after the final catalog attempt.
+
+### Performance
+- `/api/state` poll: **24.4 → 0.5 ms** at 3,000 rows, from covering indexes on `units(updated_at)` and
+  `units(status, hours, out_mb)`. `counts()` 26 → 0.12 ms, `rev()` 24.7 → 0.12 ms,
+  `library_totals()` 24 → 0.35 ms.
+- Status page render: **152 → 96 ms**, from reading overrides and detail once per render instead of
+  per row.
+- `library_stats` and the library totals sum in SQLite instead of loading every unit.
+- `rail_counts` looks up the queued books instead of scanning every row, and `/api/units` skips blobs.
+- `set_effective` reads all settings in one query: 44 → 1 lock hold per page and per poll.
+- `norm()` is cached (bounded) and its regexes are precompiled.
+- The tally and sharer scans read only the columns they use, not every row's `detail` blob.
+- Cost: a single unit re-save 90 → 200 µs and the database grows ~1.3%. A full 5,000-book re-save
+  pays ~0.55 s once; the poll pays it back on the next tick.
+
+### Tests
+- 1,951 → **2,016** (65 new), with a regression test for each fixed bug above.
+
 ## [0.24.0] - 2026-11-18
 
 **A fresh install now works from the LAN without editing a field first.** With `ALLOWED_HOSTS` unset,
