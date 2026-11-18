@@ -148,9 +148,11 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
         except urllib.error.HTTPError as exc:
             if exc.code in (400, 404):
                 return None
-            time.sleep(1.2 * (attempt + 1))
+            if attempt < tries - 1:  # no backoff after the last try: nothing follows it
+                time.sleep(1.2 * (attempt + 1))
         except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-            time.sleep(1.2 * (attempt + 1))
+            if attempt < tries - 1:
+                time.sleep(1.2 * (attempt + 1))
     return None
 
 

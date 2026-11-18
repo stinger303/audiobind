@@ -98,34 +98,50 @@ def probe_tags(path: str | Path, timeout: int = 30) -> dict[str, str]:
     return tags
 
 
-def probe_chapters(path: str | Path) -> list[dict]:
-    result = subprocess.run(
-        ["ffprobe", *PROTOCOL_WHITELIST, "-v", "error", "-show_chapters", "-of", "json", str(path)],
-        capture_output=True,
-        text=True,
-    )
+#: probe_chapters / probe_streams read only container metadata, so a healthy run is
+#: sub-second; the cap is for an ffprobe wedged on a dying NAS disk, which used to hold the
+#: encoder (or the manual-action thread) forever
+LIST_PROBE_TIMEOUT = 120
+
+
+def probe_chapters(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT) -> list[dict]:
+    """The file's chapters; [] when there are none, ffprobe's output is unreadable, or it timed out."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", *PROTOCOL_WHITELIST, "-v", "error", "-show_chapters", "-of", "json", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return []
     try:
         return json.loads(result.stdout or "{}").get("chapters", []) or []
     except ValueError:
         return []
 
 
-def probe_streams(path: str | Path) -> list[dict]:
-    result = subprocess.run(
-        [
-            "ffprobe",
-            *PROTOCOL_WHITELIST,
-            "-v",
-            "error",
-            "-show_entries",
-            "stream=index,codec_type,codec_name,channels,bit_rate:stream_disposition=attached_pic",
-            "-of",
-            "json",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-    )
+def probe_streams(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT) -> list[dict]:
+    """The file's streams; [] when ffprobe's output is unreadable or it timed out."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                *PROTOCOL_WHITELIST,
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=index,codec_type,codec_name,channels,bit_rate:stream_disposition=attached_pic",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return []
     try:
         return json.loads(result.stdout or "{}").get("streams", []) or []
     except ValueError:
