@@ -145,6 +145,11 @@ WISHLIST_TRANSITIONS: dict[str, frozenset[str]] = {
 }
 #: the states a Retry click resets to "wanted"
 WISHLIST_RETRYABLE = frozenset({WISHLIST_NOT_FOUND, WISHLIST_ERROR})
+#: the states where a watcher search would actually run (or could): saving a new search title
+#: resets only these to "wanted"
+WISHLIST_SEARCHABLE = frozenset({WISHLIST_WANTED}) | WISHLIST_RETRYABLE
+#: the states past searching: only an explicit Re-queue (wishlist_requeue) moves them back to "wanted"
+WISHLIST_REQUEUEABLE = frozenset({WISHLIST_DOWNLOADING, WISHLIST_DOWNLOADED, WISHLIST_IN_LIBRARY})
 
 
 def wishlist_transition_ok(current: str, new: str) -> bool:
@@ -1100,21 +1105,52 @@ class State:
         return misses
 
     def wishlist_set_search_title(self, asin: str, title: str) -> dict | None:
-        """Set (or, when ``title`` is blank, clear) the title the watcher searches for. Either way
-        the row goes back to "wanted" with the note and misses cleared, so the next cycle searches
-        it at once. The display title is never touched. Returns the row, or None when it is gone."""
+        """Set (or, when ``title`` is blank, clear) the title the watcher searches for. The new
+        title is always saved; the display title is never touched.
+
+        Only a row where a search would actually run - "wanted", "not_found" or "error"
+        (WISHLIST_SEARCHABLE) - goes back to "wanted" with the note, misses and checked_at
+        cleared, so the next cycle searches it at once. A "downloading", "downloaded" or
+        "in_library" row keeps its status, note, misses and checked_at: the book is already past
+        searching, and putting it back to "wanted" would make the watcher grab a second torrent
+        (orphaning the first) or re-download a book the user owns. ``wishlist_requeue`` is the
+        explicit way to search for such a row again. Returns the row, or None when it is gone."""
         title = " ".join(str(title or "").split())
         now = time.time()
         with self._lock, self._txn():
-            row = self.connection.execute("SELECT asin FROM wishlist WHERE asin = ?", (asin,)).fetchone()
+            row = self.connection.execute("SELECT status FROM wishlist WHERE asin = ?", (asin,)).fetchone()
             if row is None:
                 return None
-            self.connection.execute(
-                "UPDATE wishlist SET search_title = ?, status = ?, note = '', misses = 0, checked_at = 0, "
-                "updated_at = ? WHERE asin = ?",
-                (title or None, WISHLIST_WANTED, now, asin),
-            )
+            if (row["status"] or WISHLIST_WANTED) in WISHLIST_SEARCHABLE:
+                self.connection.execute(
+                    "UPDATE wishlist SET search_title = ?, status = ?, note = '', misses = 0, checked_at = 0, "
+                    "updated_at = ? WHERE asin = ?",
+                    (title or None, WISHLIST_WANTED, now, asin),
+                )
+            else:
+                self.connection.execute(
+                    "UPDATE wishlist SET search_title = ?, updated_at = ? WHERE asin = ?",
+                    (title or None, now, asin),
+                )
         return self.wishlist_get(asin)
+
+    def wishlist_requeue(self, asin: str) -> bool:
+        """Re-queue: a "downloading", "downloaded" or "in_library" row goes back to "wanted" (and to
+        the front of the watcher's queue), so the watcher searches for it again. This is a
+        deliberate override of WISHLIST_TRANSITIONS, for the one explicit click that asks for it.
+        The torrent already in qBittorrent is NOT removed or stopped, and the row's tracker_tid /
+        torrent_hash stay until a new grab replaces them. True when it moved."""
+        now = time.time()
+        with self._lock, self._txn():
+            row = self.connection.execute("SELECT status FROM wishlist WHERE asin = ?", (asin,)).fetchone()
+            if row is None or row["status"] not in WISHLIST_REQUEUEABLE:
+                return False
+            self.connection.execute(
+                "UPDATE wishlist SET status = ?, misses = 0, checked_at = 0, updated_at = ?, "
+                "note = ? WHERE asin = ?",
+                (WISHLIST_WANTED, now, f"re-queued ({time.strftime('%Y-%m-%d %H:%M', time.localtime(now))})", asin),
+            )
+        return True
 
     def wishlist_retry(self, asin: str) -> bool:
         """Retry: a "not_found" or "error" row goes back to "wanted" (and to the front of the

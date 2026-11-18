@@ -186,12 +186,11 @@ class TestWishlistConfirmsWhenTheTorrentIsAlreadyRunning(unittest.TestCase):
         self.assertIn("does not stop or delete the torrent", fn)
         self.assertLess(fn.index("confirm("), fn.index("abPost("))
 
-    def test_saving_a_title_confirms_because_it_requeues_the_book(self):
+    def test_saving_a_title_no_longer_requeues_so_it_does_not_confirm(self):
         fn = body_of(js("DISCOVER_SCRIPT"), "abEditTitle")
-        self.assertIn("abWishlistInFlight(row)", fn)
-        self.assertIn("second copy to qBittorrent", fn)
-        self.assertLess(fn.index("confirm("), fn.index("/api/wishlist/title"))
-        # the server really does reset the status; if that ever stops, this warning is wrong
+        self.assertNotIn("confirm(", fn)
+        # the page only flips the row to WANTED when the server says it did
+        self.assertIn("item.status !== 'wanted'", fn)
         with tempfile.TemporaryDirectory() as tmp:
             state = State(Path(tmp))
             try:
@@ -200,7 +199,14 @@ class TestWishlistConfirmsWhenTheTorrentIsAlreadyRunning(unittest.TestCase):
                 row = state.wishlist_set_search_title("B005EHN61O", "Dune Frank Herbert")
             finally:
                 state.close()
-        self.assertEqual(row["status"], "wanted")
+        self.assertEqual((row["status"], row["search_title"]), ("downloading", "Dune Frank Herbert"))
+
+    def test_requeue_names_the_book_warns_about_the_torrent_and_confirms_before_sending(self):
+        fn = body_of(js("DISCOVER_SCRIPT"), "abRequeue")
+        self.assertIn("abWishlistTitle(row)", fn)
+        self.assertIn("is not removed from qBittorrent", fn)
+        self.assertIn("second copy to qBittorrent", fn)
+        self.assertLess(fn.index("confirm("), fn.index("/api/wishlist/requeue"))
 
 
 class TestSettingsKeepUnsavedEdits(unittest.TestCase):

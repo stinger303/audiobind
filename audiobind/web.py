@@ -66,7 +66,7 @@ from .control import CONTROL
 from .covers import resolve as resolve_cover
 from .covers import valid_asin
 from .pipeline import CONVERT_LOCK, process_unit
-from .state import LOCKABLE_FIELDS, SOURCE_INGEST, key_source
+from .state import LOCKABLE_FIELDS, SOURCE_INGEST, WISHLIST_REQUEUEABLE, key_source
 from .units import files_under, find_unit, foreign_audio, owned_paths
 from .util import loads_dict
 
@@ -3781,6 +3781,29 @@ function abRetry(btn) {
     })
     .catch(() => { abToast('could not reach the daemon'); btn.disabled = false; });
 }
+// Re-queue: a book already handed to qBittorrent (or in the library) goes back to wanted. Confirms first:
+// the existing torrent is not removed, so the watcher can send a second copy.
+function abRequeue(btn) {
+  const row = btn.closest('[data-asin]');
+  if (!row) return;
+  if (!confirm('Search again for \\u201c' + abWishlistTitle(row) + '\\u201d?\\n\\n' +
+      'It is already ' + row.dataset.status.replace('_', ' ') + '. Re-queuing puts it back to wanted and the watcher ' +
+      'searches the tracker again, which can send a second copy to qBittorrent. ' +
+      'The existing torrent is not removed from qBittorrent.')) return;
+  btn.disabled = true;
+  abPost('/api/wishlist/requeue', {asin: row.dataset.asin})
+    .then(out => {
+      if (!out.ok) { abToast(out.res.error || 'that did not work'); btn.disabled = false; return; }
+      const pill = row.querySelector('.ab-disc-pill');
+      if (pill) { pill.textContent = 'WANTED'; pill.className = 'ab-disc-pill ab-wl-wanted'; pill.title = ''; }
+      const note = row.querySelector('.ab-wl-note');
+      if (note) { note.textContent = (out.res.item && out.res.item.note) || ''; note.classList.remove('ab-wl-bad'); }
+      row.dataset.status = 'wanted';
+      btn.remove();
+      abToast('Back to wanted - the watcher searches for it in its next cycle');
+    })
+    .catch(() => { abToast('could not reach the daemon'); btn.disabled = false; });
+}
 // Edit title: the watcher searches this title for the row (blank = the catalog title again)
 function abEditTitle(btn) {
   const row = btn.closest('[data-asin]');
@@ -3809,9 +3832,6 @@ function abEditTitle(btn) {
     else if (e.key === 'Escape') cancel.click();
   };
   save.onclick = () => {
-    if (abWishlistInFlight(row) && !confirm('Search again for \\u201c' + abWishlistTitle(row) + '\\u201d?\\n\\n' +
-        'It is already ' + row.dataset.status + '. Saving a title puts it back to wanted, and the watcher ' +
-        'searches the tracker again - which can send a second copy to qBittorrent.')) return;
     save.disabled = true;
     abPost('/api/wishlist/title', {asin: row.dataset.asin, title: input.value})
       .then(out => {
@@ -3831,6 +3851,13 @@ function abEditTitle(btn) {
           mark.remove();
         }
         row.dataset.search = custom;
+        form.remove();
+        // only a row the server put back to wanted changes; one past searching keeps its status
+        if (item.status !== 'wanted') {
+          abToast('Saved - it is already ' + String(item.status || row.dataset.status).replace('_', ' ') +
+                  ', so it is not searched again. Use Re-queue to search for it again.');
+          return;
+        }
         const pill = row.querySelector('.ab-disc-pill');
         if (pill) { pill.textContent = 'WANTED'; pill.className = 'ab-disc-pill ab-wl-wanted'; pill.title = ''; }
         const note = row.querySelector('.ab-wl-note');
@@ -3838,7 +3865,6 @@ function abEditTitle(btn) {
         const retry = row.querySelector('.ab-wl-retry');
         if (retry) retry.remove();
         row.dataset.status = 'wanted';
-        form.remove();
         abToast(custom ? 'Saved - the watcher searches for that title in its next cycle'
                        : 'Back to the catalog title - the watcher searches for it in its next cycle');
       })
@@ -4197,8 +4223,14 @@ def _wishlist_row_html(row: dict) -> str:
         f'class="ab-wl-retry" aria-label="Retry: {_attr(row["title"])}" onclick="abRetry(this)">Retry</button>'
         if status in ("not_found", "error") else ""
     )
+    requeue = (
+        '<button title="Search for this book again. It is already past searching, so the torrent in qBittorrent '
+        'is not removed and the watcher can send a second copy." '
+        f'class="ab-wl-requeue" aria-label="Re-queue: {_attr(row["title"])}" onclick="abRequeue(this)">Re-queue</button>'
+        if status in WISHLIST_REQUEUEABLE else ""
+    )
     custom = row.get("search_title") or ""
-    searching = f'<div class="ab-wl-search">searching for &#8220;{_html(custom)}&#8221;</div>' if custom else ""
+    searching =f'<div class="ab-wl-search">searching for &#8220;{_html(custom)}&#8221;</div>' if custom else ""
     edit = (
         '<button title="Change the title the watcher searches the tracker for (the title shown here stays)." '
         f'aria-label="Edit title: {_attr(row["title"])}" onclick="abEditTitle(this)">Edit title</button>'
@@ -4211,7 +4243,7 @@ def _wishlist_row_html(row: dict) -> str:
         f'<div class="ab-disc-meta"><div class="ab-disc-t" title="{_attr(row["title"])}">{_html(row["title"])}</div>'
         f'{searching}{by}<div class="ab-disc-m">{" &#183; ".join(facts)}</div>{note}</div>'
         f'<span class="ab-disc-pill ab-wl-{_attr(status)}" title="{_attr(hover)}">{_html(label)}</span>'
-        f'<span class="ab-wl-acts">{retry}{edit}'
+        f'<span class="ab-wl-acts">{retry}{requeue}{edit}'
         f'<button title="Take this book off your wishlist." aria-label="Remove from wishlist: {_attr(row["title"])}" '
         'onclick="abUnwant(this)">Remove</button></span></div>'
     )
@@ -4228,6 +4260,7 @@ def _discover_wishlist_body(state) -> str:
     intro = (
         f'<p class="ab-disc-intro">The books you asked for with <b>Get this</b> or <b>Want</b>. {how}'
         "<b>Retry</b> searches again for a book that was not found or failed; "
+        "<b>Re-queue</b> searches again for one already sent to qBittorrent; "
         "<b>Remove</b> takes a book off.</p>"
     )
     bar = _watcher_bar(status)
@@ -5433,6 +5466,7 @@ POST_ONLY_ROUTES = {
     "/api/settings": "settings are saved with a POST",
     "/api/wishlist/remove": "this wishlist action is a POST",
     "/api/wishlist/retry": "this wishlist action is a POST",
+    "/api/wishlist/requeue": "this wishlist action is a POST",
     "/api/wishlist/title": "this wishlist action is a POST",
     "/api/library/abs-layout": "the layout tool is a POST",
     "/api/control": "control actions are a POST",
@@ -7605,9 +7639,34 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"ok": True, "asin": asin, "item": discover_mod.public_row(row)}).encode(),
                    "application/json")
 
+    def _handle_wishlist_requeue(self) -> None:
+        """POST /api/wishlist/requeue: a downloading / downloaded / in_library row goes back to wanted
+        (the explicit "search again"). The torrent already in qBittorrent is left alone."""
+        payload = self._read_json()
+        if payload is None:
+            return
+        asin = str(payload.get("asin", "")).strip().upper()
+        if not valid_asin(asin):
+            self._send(400, b'{"error":"that is not an ASIN"}', "application/json")
+            return
+        row = self.state.wishlist_get(asin)
+        if row is None:
+            self._send(404, b'{"error":"that book is not on your wishlist"}', "application/json")
+            return
+        if not self.state.wishlist_requeue(asin):
+            body = {"error": "only a book that is downloading, downloaded or in your library can be re-queued "
+                             f"(this one is {row['status']}; Retry covers a book that was not found or failed)"}
+            self._send(409, json.dumps(body).encode(), "application/json")
+            return
+        logging.getLogger("audiobind").info("wishlist: re-queue %s (was %s)", asin, row["status"])
+        row = self.state.wishlist_get(asin) or row
+        self._send(200, json.dumps({"ok": True, "asin": asin, "item": discover_mod.public_row(row)}).encode(),
+                   "application/json")
+
     def _handle_wishlist_title(self) -> None:
         """POST /api/wishlist/title: {"asin", "title"} sets the title the watcher searches for;
-        blank clears it. Either way the row goes back to wanted."""
+        blank clears it. A wanted / not_found / error row goes back to wanted; a row already past
+        searching (downloading / downloaded / in_library) only has the title saved."""
         payload = self._read_json()
         if payload is None:
             return
@@ -7800,6 +7859,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/wishlist/retry":
             self._handle_wishlist_retry()
+            return
+        if path == "/api/wishlist/requeue":
+            self._handle_wishlist_requeue()
             return
         if path == "/api/wishlist/title":
             self._handle_wishlist_title()
