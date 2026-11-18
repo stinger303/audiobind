@@ -4588,8 +4588,8 @@ def _hardcover_section() -> str:
     """Settings > Library > Hardcover evidence: the toggle, the token, Test connection."""
     return (
         '<div class="ab-acct-title">Hardcover evidence</div>'
-        '<div class="ab-acct-who">A second opinion from <a class="ab-alink" href="https://hardcover.app" '
-        'target="_blank" rel="noopener">Hardcover</a>, shown beside the Audible match. Evidence only: it is '
+        '<div class="ab-acct-who">A second opinion from Hardcover (hardcover.app), '
+        'shown beside the Audible match. Evidence only: it is '
         "never the reason a book converts or is held.</div>"
         + _watch_select("hardcover_evidence", "Hardcover evidence", HARDCOVER_EVIDENCE_HINT, titlecase=True)
         + _watch_secret("hardcover_token", "Hardcover API token")
