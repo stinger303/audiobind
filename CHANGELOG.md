@@ -21,6 +21,9 @@ changes.
   Existing installs keep their stored 0.25: change **Max runtime delta** to 0.15 by hand.
 - **The qBittorrent URL defaults to empty** instead of `http://localhost:8083`, which cannot work on the
   template's own bridge network (localhost is Audiobind itself). Empty also means the Watcher says so.
+  A docker-run install that relied on the old default must now set `QBIT_URL` — until it does, a cycle
+  reports the empty value as a configuration error rather than silently pointing at itself. Installs
+  from the template are unaffected: the field has always been there.
 - **The template's host port defaults to 8686**, the number the VPN docs already use, because 8080 is
   the port qBittorrent tends to hold.
 - If the tracker is MyAnonamouse, the session hint now says where MAM issues that value, instead of
