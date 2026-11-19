@@ -13,9 +13,14 @@ import unittest
 import xml.etree.ElementTree as ET
 from unittest import mock
 
-from audiobind import config, web
+from audiobind import config, watcher, web
 from audiobind.config import CONFIG
 from audiobind.state import State
+
+try:
+    from live import LiveServerCase
+except ImportError:
+    from tests.live import LiveServerCase
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TEMPLATE_PATH = ROOT / "templates" / "audiobind.xml"
@@ -407,6 +412,118 @@ class TestVpnCopy(WebCase):
         self.assertIn("The\ndownload itself is qBittorrent's; route qBittorrent through your VPN separately.", lead)
         self.assertIn('Docker tab \u2192\nAudiobind \u2192 Edit \u2192 Show more settings \u2192 "Tracker proxy" \u2192 Apply', section)
         self.assertIn('Docker tab \u2192 Audiobind \u2192 Edit \u2192\nShow more settings \u2192 "Home IP (guard)" \u2192 Apply', section)
+
+
+CONFIGURED = {"tracker_url": "https://tracker.example", "tracker_search_path": "/s",
+              "tracker_search_body": '{"q": "{{title}}"}', "tracker_download_path": "/d",
+              "tracker_cookie_name": "sid", "tracker_session": "x", "qbit_user": "u", "qbit_pass": "p"}
+
+
+class TestFirstVisitTemplate(unittest.TestCase):
+    """ONB-01, ONB-04, ONB-08 in the template; ONB-08 and ONB-04 in the README and install doc."""
+
+    def test_overview_says_it_can_fetch_books_and_search_terms_find_it(self):
+        overview = ET.parse(TEMPLATE_PATH).getroot().find("Overview").text
+        self.assertTrue(overview.endswith(
+            "Optional: a wishlist that searches your private tracker and hands finds to qBittorrent, Deluge, "
+            "Transmission or rTorrent, then converts what lands."))
+        terms = ET.parse(TEMPLATE_PATH).getroot().find("ExtraSearchTerms").text.split()
+        for word in ("wishlist", "tracker", "qbittorrent"):
+            self.assertIn(word, terms)
+
+    def test_the_host_port_defaults_to_8686_and_the_webui_link_still_uses_the_container_port(self):
+        attrs, description, value = field("8080")
+        self.assertEqual((attrs["Default"], value, attrs["Type"]), ("8686", "8686", "Port"))
+        self.assertEqual(description, "Status page and JSON API. Change it if another container already uses this port.")
+        self.assertIn("<WebUI>http://[IP]:[PORT:8080]</WebUI>", TEMPLATE)
+        self.assertEqual(config.Config().web_port, 8080)  # no code default changed
+        self.assertIn("host port 8686", INSTALL)
+
+    def test_auto_convert_says_when_the_first_scan_starts(self):
+        description = field("AUTO_CONVERT")[1]
+        self.assertIn("high converts the books it is sure of on the first scan, which starts as soon as the "
+                      "container does. Choose off to review every match first, then switch to high under Settings.",
+                      description)
+        self.assertEqual(field("AUTO_CONVERT")[0]["Default"], "high")  # copy only: no behaviour change
+        self.assertIn("auto_convert", config.GENERAL_SETTING_KEYS)  # "under Settings" is a real control
+
+    def test_the_readme_beta_box_says_converting_only_reads_the_sources(self):
+        box = README.split("## Status: beta")[1].split("## How it works")[0]
+        self.assertIn("Converting only reads your sources and writes new files to the\noutput folder", box)
+        self.assertIn("The\nfirst scan starts as soon as the container does, and `AUTO_CONVERT=high` (the default)\n"
+                      "converts the books it is sure of; set Auto convert to `off` to review every match first.", box)
+
+
+class TestHostRefusal(LiveServerCase):
+    """ONB-09: the 403 must not advise the thing that locks the IP out."""
+
+    def setUp(self):
+        super().setUp()
+        saved = (CONFIG.allowed_hosts, CONFIG.allowed_hosts_set)
+        self.addCleanup(lambda: setattr(CONFIG, "allowed_hosts", saved[0]))
+        self.addCleanup(lambda: setattr(CONFIG, "allowed_hosts_set", saved[1]))
+
+    def refused(self, host):
+        status, body = self.request("/api/state", None, {"Host": host}, raw=True)
+        self.assertEqual(status, 403)
+        return body.decode()
+
+    def test_unset_says_the_ip_works_and_that_a_list_replaces_the_default(self):
+        CONFIG.allowed_hosts, CONFIG.allowed_hosts_set = ["localhost", "127.0.0.1"], False
+        body = self.refused("tower")
+        self.assertIn("Audiobind doesn't answer to 'tower' yet. It does answer at its IP address (the one you use "
+                      "for the Unraid web UI).", body)
+        self.assertIn("set Allowed hosts (ALLOWED_HOSTS) in the container settings to every name you use, "
+                      "e.g. 192.168.1.10,tower. A list replaces the default, so include the IP.", body)
+        self.assertNotIn("is not allowed", body)
+
+    def test_the_example_is_what_was_asked_for_and_the_port_is_not_part_of_it(self):
+        CONFIG.allowed_hosts, CONFIG.allowed_hosts_set = ["localhost", "127.0.0.1"], False
+        body = self.refused("tower.local:8686")
+        self.assertIn("doesn't answer to 'tower.local' yet", body)
+        self.assertIn("e.g. 192.168.1.10,tower.local.", body)
+
+    def test_with_a_list_set_it_does_not_claim_the_ip_still_works(self):
+        CONFIG.allowed_hosts, CONFIG.allowed_hosts_set = ["tower"], True
+        body = self.refused("192.168.5.2")
+        self.assertIn("Audiobind doesn't answer to '192.168.5.2'.", body)
+        self.assertIn("add '192.168.5.2' to that list and keep the names you already use.", body)
+        self.assertNotIn("It does answer at its IP address", body)
+
+
+class TestWishlistTabHint(WebCase):
+    """ONB-30: say the Wishlist tab is coming, then say how to add a book."""
+
+    def test_unconfigured_says_the_tab_will_appear(self):
+        panel = self.watcher()
+        self.assertIn("A Wishlist tab appears in the sidebar once these settings are complete.", panel)
+        self.assertNotIn("ab-watch-ready", panel)
+
+    def configured(self, **extra):
+        patches = [mock.patch.object(CONFIG, k, v) for k, v in {**CONFIGURED, **extra}.items()]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        config._EFFECTIVE.clear()
+
+    def test_configured_and_enabled_says_ready_and_where_to_add_a_book(self):
+        self.configured()
+        panel = html_mod.unescape(self.watcher())
+        self.assertIn('<div class="ab-acct-who" id="ab-watch-ready"><b>Ready.</b> Add a book: Discover books \u2192 Want.',
+                      panel)
+        self.assertNotIn("A Wishlist tab appears", panel)
+
+    def test_the_next_check_time_is_shown_when_there_is_one(self):
+        self.configured()
+        status = watcher.WATCHER.status(self.state)
+        status["next_cycle_at"] = 1700000000.0
+        with mock.patch.object(watcher.WATCHER, "status", return_value=status):
+            panel = html_mod.unescape(self.watcher())
+        self.assertRegex(panel, r"Want\. Next check \d\d:\d\d\.</div>")
+
+    def test_no_ready_line_when_the_watcher_cannot_run(self):
+        self.configured(qbit_user="", qbit_pass="")  # configured, but nowhere to send a torrent
+        self.assertNotIn("ab-watch-ready", self.watcher())
 
 
 if __name__ == "__main__":

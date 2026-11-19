@@ -55,11 +55,12 @@ Audiobind is a **beta**: a solo project with a single front-end developer, and t
 code is written with heavy AI assistance (designed, reviewed and tested by a human,
 but not hand-written line by line). It reads real audiobook libraries and writes to
 a separate output library, and software like that can fail badly — **you may
-experience data loss**. Audiobind reads your source library and writes converted books
-to a separate output folder; the only thing that ever *deletes* source files is the
-explicit Delete button (a confirmation dialog, no undo). Keep backups, run it against a
-copy first, and pin a tagged release instead of `latest` if reproducible behavior
-matters to you.
+experience data loss**. Converting only reads your sources and writes new files to the
+output folder; the only thing that ever *deletes* source files is the explicit Delete
+button (a confirmation dialog, no undo). Keep backups, run it against a copy first, and
+pin a tagged release instead of `latest` if reproducible behavior matters to you. The
+first scan starts as soon as the container does, and `AUTO_CONVERT=high` (the default)
+converts the books it is sure of; set Auto convert to `off` to review every match first.
 
 ## How it works
 

@@ -17,7 +17,8 @@ Audiobind is pending publication in Community Applications. Until it is listed:
 
 The template sets `PUID=99 PGID=100`, runs the container hardened (`--read-only --tmpfs /tmp
 --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID
---security-opt no-new-privileges:true`) and exposes port 8080 for the web UI. Set
+--security-opt no-new-privileges:true`) and publishes the web UI on host port 8686 (the
+container listens on 8080; change the host port if another container already uses it). Set
 **Allowed hosts** only if you want to restrict the UI to exactly the names you list; unset, it
 answers on this machine and on private LAN IPs.
 
@@ -134,7 +135,9 @@ useful. Acquisition also needs the tracker settings, but that part is optional. 
    IP and hostname you browse from, and keep `localhost,127.0.0.1` for scripts on the server:
    `-e ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.10,tower,tower.local`
 
-3. **Start the container and create the account.** Open `http://<host>:8080`. The first
+3. **Start the container and create the account.** Open the web UI (on Unraid, the container's
+   WebUI link, which uses host port 8686 unless you changed it; with `docker run`,
+   `http://<host>:8080`). The first
    visit opens the setup page: a username (1-64 characters) and a password (at least 8
    characters, typed twice). There is exactly one account; once it exists the setup page is
    gone for good, and every page and API call needs you signed in. Until setup is finished,

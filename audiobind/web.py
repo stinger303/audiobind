@@ -4545,7 +4545,7 @@ def render_watcher_section(state) -> str:
             " (the site's URL, its search and download paths, the search request body, and its session cookie's name and value), "
             "plus the qBittorrent URL, user and password (<code>QBIT_URL</code>, <code>QBIT_USER</code>, "
             "<code>QBIT_PASS</code>). Fill them in below and save - no restart needed - or set them as container "
-            "variables.</div>"
+            "variables. A Wishlist tab appears in the sidebar once these settings are complete.</div>"
             + _watch_connection_fields()
             + _watch_test_and_save()
             + _egress_pin_field()
@@ -4650,6 +4650,12 @@ def render_watcher_section(state) -> str:
     if s["backoff_seconds"]:
         rows.append(("Tracker backoff", f'<span class="warn">no tracker request for {int(s["backoff_seconds"])}s</span>'))
     grid = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
+    ready = ""
+    if s["enabled"] and not s["paused"]:
+        nxt = (f" Next check {_html(time.strftime('%H:%M', time.localtime(float(s['next_cycle_at']))))}."
+               if s["next_cycle_at"] else "")
+        ready = ('<div class="ab-acct-who" id="ab-watch-ready"><b>Ready.</b> Add a book: Discover books '
+                 f"&#8594; Want.{nxt}</div>")
     can_run = s["enabled"] and not s["paused"] and not s["busy"]
     run_btn = (f'<button class="btn" type="button" id="ab-watch-run" onclick="abWatcher(\'run\')"{"" if can_run else " disabled"} '
                'title="Run one cycle now in the background (same caps and pacing as a timed cycle).">'
@@ -4676,7 +4682,7 @@ def render_watcher_section(state) -> str:
         "match to qBittorrent; the ingest folder takes it from there. Everything below can be set here or as a "
         "container variable; a value saved here wins and applies from the next cycle, no restart. The pause switch "
         "is kept across restarts.</div>"
-        f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
+        f'{warn}{ready}<dl class="ab-watch-grid">{grid}</dl>'
         + _egress_pin_field()
         + _watch_connection_fields()
         + _watch_schedule_fields()
@@ -6564,10 +6570,19 @@ class Handler(BaseHTTPRequestHandler):
             # unset ALLOWED_HOSTS: a literal private IP cannot be DNS-rebound, so let it in
             if not CONFIG.allowed_hosts_set and is_private_literal(name):
                 return False
-        if requested:
+        if requested and CONFIG.allowed_hosts_set:
+            # a list is set: exactly its names answer, the IP included only if it is listed
             message = (
-                f"Host '{requested[:100]}' is not allowed. Add it to ALLOWED_HOSTS in the "
-                "container settings to use Audiobind at this address."
+                f"Audiobind doesn't answer to '{name[:100]}'. Allowed hosts (ALLOWED_HOSTS) in the container settings lists "
+                f"exactly the names it answers to: add '{name[:100]}' to that list and keep the names you "
+                "already use."
+            )
+        elif requested:
+            message = (
+                f"Audiobind doesn't answer to '{name[:100]}' yet. It does answer at its IP address (the one you "
+                f"use for the Unraid web UI). To use '{name[:100]}' as well, set Allowed hosts (ALLOWED_HOSTS) in the "
+                f"container settings to every name you use, e.g. 192.168.1.10,{name[:100]}. A list replaces the default, "
+                "so include the IP."
             )
         else:
             message = "Requests must name a Host (HTTP/1.1)."
