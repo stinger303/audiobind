@@ -206,7 +206,7 @@ def replay(corpus_path: Path = CORPUS, cache_path: Path = CACHE) -> Replay:
         found = {u.state_key: u for u in units.discover_units(library, [])}
         found.update({u.state_key: u for u in units.discover_ingest_units(ingest_root, [])})
 
-        def fake_probe(path, timeout: int = 60) -> Probe:
+        def fake_probe(path, timeout: int = 60, raise_on_timeout: bool = False) -> Probe:
             codec = "aac" if Path(path).suffix.lower() in (".m4b", ".m4a") else "mp3"
             return Probe(duration=durations.get(str(path), 0.0), codec=codec, channels="2")
 

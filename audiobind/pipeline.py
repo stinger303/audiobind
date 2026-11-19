@@ -16,7 +16,7 @@ from . import catalog, encode, hardcover, ingest, library, matching
 from . import overrides as overrides_mod
 from .config import CONFIG, effective_auto_tiers, effective_val
 from .control import CONTROL, Stopped
-from .probe import probe
+from .probe import ProbeTimeout, probe
 from .state import SOURCE_INGEST, State, UnitState
 from .units import BookUnit, looks_like_collection, unsafe_path_reason
 from .util import norm
@@ -70,8 +70,17 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
     matching.PIN_GIVE_UP_AFTER)."""
     audit = Audit(unit=unit)
     total = 0.0
+    timed_out = 0
     for path in unit.files:
-        info = probe(path)
+        try:
+            info = probe(path, raise_on_timeout=True)
+        except ProbeTimeout:
+            # never measured, so never recorded: a stored 0.0 would be trusted by plan_chapters (the
+            # key is present) and a forced conversion would drop every source chapter. With the key
+            # missing, plan_chapters re-probes and fails the book instead
+            timed_out += 1
+            audit.unreadable += 1
+            continue
         audit.durations[path] = info.duration
         total += info.duration
         if info.codec:
@@ -80,7 +89,11 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
             audit.channels.add(str(info.channels))
         if not info.ok:
             audit.unreadable += 1
-    audit.hours = round(total / 3600, 2)
+    # a total with an unmeasured file in it is not the book's length: unknown (0), the same as when
+    # nothing could be read, rather than a short figure that matching and the runtime check would use
+    audit.hours = 0.0 if timed_out else round(total / 3600, 2)
+    if timed_out:
+        audit.notes.append(f"ffprobe timed out on {timed_out} file(s): runtime unknown")
     audit.src_mb = round(sum(os.path.getsize(f) for f in unit.files if os.path.exists(f)) / 1e6, 1)
 
     audit.match = matching.match_unit(unit, asin_override, local_hours=audit.hours, pin_failures=pin_failures)
