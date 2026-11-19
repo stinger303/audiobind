@@ -7,6 +7,51 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.25.1-dev1] - 2026-11-19
+
+**Unreleased test build.** Twenty-three fixes from a first-time-setup audit — someone installing the
+container and configuring it knowing nothing about trackers, ffmpeg or VPN namespaces. Almost all of it
+is text, and the only behaviour changes are two template defaults. No file layout, CLI or setting name
+changes.
+
+### Changed
+- **The Community Applications template ships a 15% runtime tolerance**, matching the code and every
+  doc. It shipped 0.25, while `docs/configuration.md` explains that at 25% a wrong edition converts
+  silently — so a fresh CA install converted editions the project had already decided not to trust.
+  Existing installs keep their stored 0.25: change **Max runtime delta** to 0.15 by hand.
+- **The qBittorrent URL defaults to empty** instead of `http://localhost:8083`, which cannot work on the
+  template's own bridge network (localhost is Audiobind itself). Empty also means the Watcher says so.
+- **The template's host port defaults to 8686**, the number the VPN docs already use, because 8080 is
+  the port qBittorrent tends to hold.
+- If the tracker is MyAnonamouse, the session hint now says where MAM issues that value, instead of
+  telling you to find a cookie in your browser.
+- The egress allowlist moved from the Advanced tab to the Watcher tab, next to the guard status that
+  referred to it. The docs were already right; the field wasn't.
+- The Allowed-IP updater moved below the connection fields, and its "off" text no longer claims the
+  watcher refuses to run (it doesn't unless a guard is armed).
+
+### Fixed
+- **Install steps no longer assume a cloned repo**: one `wget` line into Unraid's terminal instead of
+  `cp templates/audiobind.xml`.
+- **The VPN proxy example uses the server's IP**, not a container name — `gluetun` does not resolve on
+  Unraid's default bridge, and a dead proxy fails closed.
+- The port-clash paragraph: sharing the VPN container's network collides with qBittorrent's 8080, so
+  `WEB_PORT` is documented and the template now has the field.
+- The library mount no longer reads read-only in one place and read-write in another, "typed
+  confirmation" is now "a confirmation dialog" (that is what the UI does), the README's MEDIUM row and
+  the region list match the code, and the template points at the VPN doc that exists.
+- Tracker and download-client fields in the template say **Needed for the wishlist** where they are
+  required, say they can be set later under Settings > Watcher, and warn that a pasted bookmark URL
+  stops the container from starting.
+- The folder chain is explained once, as one folder with three names, so the ingest path qBittorrent
+  writes to is not confused with the `/ingest` Audiobind sees.
+- The first-visit 403 no longer advises the exact change that locks the IP out; an empty library says
+  it may be the mount rather than a filter; the Watcher tab says when the Wishlist tab appears; and
+  Settings shows the ingest line the Library page already had.
+
+### Tests
+- 2,023 → **2,086** (63 new), one asserting each promise above, plus the template parsed as XML.
+
 ## [0.25.0] - 2026-11-18
 
 **Twenty commits from four audit passes — two over the interface, two over the code — with no change
