@@ -81,7 +81,19 @@ class ChapterPlan:
 def _durations(unit: BookUnit, durations: dict[str, float] | None) -> dict[str, float]:
     if durations is not None:
         return durations
-    return {path: probe(path).duration for path in unit.files}
+    result: dict[str, float] = {}
+    for path in unit.files:
+        try:
+            result[path] = probe(path, raise_on_timeout=True).duration
+        except ProbeTimeout as exc:
+            # not "no duration": a 0.0 here would drop the whole book's source chapters (and skew the
+            # total the chapter distribution is scaled against) while the book converted anyway
+            raise RuntimeError(
+                f"ffprobe timed out after {exc.timeout}s reading the duration of {path}; "
+                "the book is not converted so it cannot lose chapters - check that the disk is healthy "
+                "and retry"
+            ) from exc
+    return result
 
 
 def plan_chapters(unit: BookUnit, asin: str, durations: dict[str, float] | None = None) -> ChapterPlan:

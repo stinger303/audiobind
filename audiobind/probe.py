@@ -30,7 +30,11 @@ class Probe:
 PROTOCOL_WHITELIST = ["-protocol_whitelist", "file,pipe"]
 
 
-def probe(path: str | Path, timeout: int = 60) -> Probe:
+def probe(path: str | Path, timeout: int = 60, raise_on_timeout: bool = False) -> Probe:
+    """The file's duration, codec and layout; an empty ``Probe()`` (duration 0) when ffprobe fails.
+
+    With ``raise_on_timeout`` a timeout raises ProbeTimeout instead, so the caller can tell a file
+    ffprobe answered about (and which has no duration) from one it never answered for."""
     try:
         result = subprocess.run(
             [
@@ -59,6 +63,9 @@ def probe(path: str | Path, timeout: int = 60) -> Probe:
             channels=str(stream.get("channels") or ""),
         )
     except subprocess.TimeoutExpired:
+        if raise_on_timeout:
+            log.warning("ffprobe timed out after %ss on %s", timeout, path)
+            raise ProbeTimeout(path, timeout, "duration") from None
         log.warning("ffprobe timed out after %ss on %s: its duration is unknown", timeout, path)
         return Probe()
     except (subprocess.SubprocessError, ValueError, OSError):

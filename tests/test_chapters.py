@@ -8,7 +8,7 @@ from audiobind.units import BookUnit, Part
 
 
 def fake_probe(durations: dict):
-    def probe(path, timeout=60):
+    def probe(path, timeout=60, raise_on_timeout=False):
         class Info:
             duration = durations.get(path, 0.0)
             codec = ""

@@ -31,7 +31,7 @@ def unit(*files):
 
 
 def fake_probe(durations):
-    return lambda path, timeout=60: mock.Mock(duration=durations.get(path, 0.0), codec="")
+    return lambda path, timeout=60, raise_on_timeout=False: mock.Mock(duration=durations.get(path, 0.0), codec="")
 
 
 class TestProbeFlag(unittest.TestCase):
