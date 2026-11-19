@@ -280,5 +280,55 @@ class TestEmptyLibrary(WebCase):
         self.assertIn("no books match this filter", page)
 
 
+#: the Group 2 sentences, written out once so a drifting copy fails here
+ONE_FOLDER = ("One folder, three names. Example: host folder /mnt/user/downloads/audiobooks \u2192 Audiobind's Ingest "
+              "path (Audiobind calls it /ingest) \u2192 in qBittorrent, the category's save path is whatever "
+              "qBittorrent's own Docker page maps that host folder to (often /downloads/audiobooks or "
+              "/data/audiobooks). Never type /ingest into qBittorrent.")
+
+
+class TestFolders(WebCase):
+    """ONB-21 (one folder, three names) and ONB-12 (the Settings rail shows the ingest line)."""
+
+    def test_the_category_field_teaches_the_three_names_in_template_and_settings(self):
+        _, description, _ = field("QBIT_CATEGORY")
+        self.assertTrue(description.endswith(ONE_FOLDER), description)
+        self.assertEqual(web.ONE_FOLDER_THREE_NAMES, ONE_FOLDER)
+        self.assertIn("Never type /ingest into qBittorrent.", self.watcher())
+        self.assertNotIn("Point its save path at Audiobind's ingest folder", self.watcher())
+
+    def test_the_names_used_are_the_field_names(self):
+        self.assertIn('Name="Ingest path" Target="/ingest"', TEMPLATE)
+
+    def rail(self, tab="library"):
+        page = web.render_settings(self.state, tab)
+        return page.split('<div class="ab-rail-foot">')[1].split("</aside>")[0]
+
+    def test_the_settings_rail_says_ingest_is_off_and_where_to_turn_it_on(self):
+        with mock.patch.object(CONFIG, "ingest_dir", ""):
+            config._EFFECTIVE.clear()
+            rail = self.rail()
+        self.assertIn("<b>ingest</b>", rail)
+        self.assertIn("(off \u2014 set Ingest path in the container settings)", html_mod.unescape(rail))
+        self.assertNotIn("INGEST_DIR", rail)
+
+    def test_the_settings_rail_shows_the_folder_when_ingest_is_on(self):
+        ingest = self.root / "ingest"
+        ingest.mkdir()
+        with mock.patch.object(CONFIG, "ingest_dir", str(ingest)):
+            config._EFFECTIVE.clear()
+            rail = self.rail("watcher")
+        self.assertIn(f"<b>ingest</b> &larr; <span", rail)
+        self.assertIn(str(ingest), rail)
+        self.assertNotIn("set Ingest path", rail)
+
+    def test_the_library_rail_uses_the_same_off_wording(self):
+        with mock.patch.object(CONFIG, "ingest_dir", ""):
+            config._EFFECTIVE.clear()
+            page = web.render(self.state)
+        self.assertIn("(off \u2014 set Ingest path in the container settings)", html_mod.unescape(page))
+        self.assertNotIn("set INGEST_DIR to use it", page)
+
+
 if __name__ == "__main__":
     unittest.main()

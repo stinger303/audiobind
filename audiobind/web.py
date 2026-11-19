@@ -1761,7 +1761,7 @@ SETTINGS_PAGE = """<!doctype html>
   <div class="ab-rail-spacer"></div>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
-    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
+    <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{ingest_line}{signout}
   </div>
 </aside>
 <div class="ab-scrim" hidden onclick="abNav(false)"></div>
@@ -4279,6 +4279,13 @@ def _discover_wishlist_body(state) -> str:
     )
 
 
+#: under the qBittorrent category field (Settings and the template say the same)
+ONE_FOLDER_THREE_NAMES = (
+    "One folder, three names. Example: host folder /mnt/user/downloads/audiobooks \u2192 Audiobind's Ingest path "
+    "(Audiobind calls it /ingest) \u2192 in qBittorrent, the category's save path is whatever qBittorrent's own "
+    "Docker page maps that host folder to (often /downloads/audiobooks or /data/audiobooks). "
+    "Never type /ingest into qBittorrent.")
+
 #: the one rule for the qBittorrent address (template, Settings and docs say the same)
 QBIT_URL_HINT = ("The address you open qBittorrent's WebUI with, e.g. http://192.168.1.10:8080. Only if Audiobind "
                  "shares a VPN container's network with qBittorrent: http://127.0.0.1:<its port>.")
@@ -4303,8 +4310,7 @@ WATCH_FIELD_HINTS = {
     "qbit_url": QBIT_URL_HINT,
     "qbit_user": "The qBittorrent WebUI login.",
     "qbit_pass": "The qBittorrent WebUI password. It is never shown again once saved.",
-    "qbit_category": ("The category new torrents get. Point its save path at Audiobind's ingest folder so finished "
-                      "books are picked up."),
+    "qbit_category": "The category new torrents get. " + ONE_FOLDER_THREE_NAMES,
     "watch_max_incomplete": "Add nothing while this many torrents in that category are still downloading. 0 = off.",
     "download_client": ("The program the watcher hands torrents to. qBittorrent unless you choose another; only the "
                         "chosen client's settings below are used."),
@@ -5219,6 +5225,7 @@ def render_settings(state, tab: str = "") -> str:
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
         output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
+        ingest_line=_ingest_line(),
         settings_tabs=settings_tab_bar(tab),
         library_panel=panel("library", "\n".join(controls_parts) + render_library_section()),
         watcher_panel=panel("watcher", render_watcher_section(state)),
@@ -5403,7 +5410,7 @@ def _ingest_line() -> str:
     """Rail footer: the ingest folder is the universal way in, watcher configured or not."""
     root = ingest_mod.configured_dir()
     where = f' <span title="{_attr(root)}">{_html(root)}</span>' if root else ""
-    state = "" if root and ingest_mod.ingest_root() is not None else " (set INGEST_DIR to use it)"
+    state = "" if root and ingest_mod.ingest_root() is not None else " (off &#8212; set Ingest path in the container settings)"
     return (
         f'<br><b>ingest</b> &larr;{where}{state}<br><small>Files dropped in the ingest folder are '
         "converted whether or not the watcher is configured.</small>"
