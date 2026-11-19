@@ -135,6 +135,9 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"asin":"B08G9PR
 
 ## Running the watcher through a VPN
 
+**What this covers:** Audiobind's own visits to the tracker (searches and `.torrent` files). The
+download itself is qBittorrent's; route qBittorrent through your VPN separately.
+
 A tracker often ties your session to an IP address, and many people want every request to it
 to leave through a VPN and never from the home connection. Audiobind helps in three ways. They
 stack, so use one, two or all three:
@@ -235,7 +238,8 @@ Use the server's IP address (for example `http://192.168.1.10:8888`). A containe
 default bridge network, use the server's IP.
 
 `TRACKER_PROXY` takes `http://host:port` or `https://host:port`; a value that is not one of those
-stops Audiobind from starting, with a message naming `TRACKER_PROXY`. Every tracker search and download
+stops Audiobind from starting, with a message naming `TRACKER_PROXY`. On Unraid: Docker tab →
+Audiobind → Edit → Show more settings → "Tracker proxy" → Apply (restarts the container). Every tracker search and download
 goes through it. It is **fail-closed**: if the proxy is down or refuses, the request fails and
 the watcher backs off. Audiobind never retries without the proxy and never falls back to a
 direct connection.
@@ -256,7 +260,8 @@ The allowlist is the stronger one: the denylist only catches the one address you
 Both are optional. With neither set, Audiobind makes no lookup at all. If both are set, a home-IP match is reported with the home reason first; any other address that is not the expected one is reported as "the tracker would see X, but this installation only allows Y".
 
 To arm the denylist, set `TRACKER_HOME_IP` to your home connection's public IP address (what your ISP gave you;
-search "what is my IP" from a device on your LAN):
+search "what is my IP" from a device on your LAN). On Unraid: Docker tab → Audiobind → Edit →
+Show more settings → "Home IP (guard)" → Apply (restarts the container):
 
 ```bash
 -e TRACKER_HOME_IP=203.0.113.7

@@ -4294,6 +4294,13 @@ ONE_FOLDER_THREE_NAMES = (
     "Docker page maps that host folder to (often /downloads/audiobooks or /data/audiobooks). "
     "Never type /ingest into qBittorrent.")
 
+#: what the proxy and the IP checks do not cover (ONB-16), and where the two container-only settings
+#: live on Unraid (ONB-17): said the same on the Watcher tab, the Advanced tab, the template and the docs
+VPN_SCOPE_NOTE = ("The proxy and the IP checks cover Audiobind's own visits to the tracker (searches and .torrent "
+                  "files). The download itself is qBittorrent's; route qBittorrent through your VPN separately.")
+UNRAID_CONTAINER_ONLY_PATH = ("On Unraid: Docker tab \u2192 Audiobind \u2192 Edit \u2192 Show more settings \u2192 "
+                              "'Tracker proxy' / 'Home IP (guard)' \u2192 Apply (restarts the container).")
+
 #: the one rule for the qBittorrent address (template, Settings and docs say the same)
 QBIT_URL_HINT = ("The address you open qBittorrent's WebUI with, e.g. http://192.168.1.10:8080. Only if Audiobind "
                  "shares a VPN container's network with qBittorrent: http://127.0.0.1:<its port>.")
@@ -4416,7 +4423,8 @@ def _watch_connection_fields() -> str:
         '<div class="ab-acct-title">Where it looks</div>'
         '<div class="ab-acct-who">The tracker and the qBittorrent it hands torrents to. A value saved here wins over '
         "the container's; Reset to container value goes back to it. Two settings stay container-only: "
-        "<code>TRACKER_PROXY</code> and <code>TRACKER_HOME_IP</code>.</div>"
+        "<code>TRACKER_PROXY</code> and <code>TRACKER_HOME_IP</code>. "
+        f"{_html(UNRAID_CONTAINER_ONLY_PATH)} {_html(VPN_SCOPE_NOTE)}</div>"
         + _watch_text("tracker_url", "Tracker URL", "https://tracker.example")
         + _watch_secret("tracker_session", "Session cookie value")
         + _watch_text("tracker_cookie_name", "Session cookie name", "session_id")
@@ -5289,7 +5297,7 @@ def _container_only_section() -> str:
         '<section class="ab-acct" id="container-only" aria-labelledby="ab-env-head">'
         '<h2 class="ab-acct-head" id="ab-env-head">Set in the container only</h2>'
         '<div class="ab-acct-who">Read from the container\'s environment; change them there and restart the '
-        "container.</div>"
+        f"container. {_html(UNRAID_CONTAINER_ONLY_PATH)} {_html(VPN_SCOPE_NOTE)}</div>"
         '<dl class="ab-watch-grid">'
         f"<dt><code>TRACKER_PROXY</code></dt><dd>{proxy} &#8212; how tracker requests leave the container "
         "(it can hold a login, so its value is never shown)</dd>"

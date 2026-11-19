@@ -366,5 +366,48 @@ class TestSessionHint(WebCase):
         self.assertEqual(sorted(set(labels)), ["Preferences", "Security"])
 
 
+#: the template and the doc say "This covers ..."; the Settings page names what "this" is
+SCOPE = ("covers Audiobind's own visits to the tracker (searches and .torrent files). The download itself is "
+         "qBittorrent's; route qBittorrent through your VPN separately.")
+WEB_SCOPE = ("The proxy and the IP checks cover Audiobind's own visits to the tracker (searches and .torrent files). "
+             "The download itself is qBittorrent's; route qBittorrent through your VPN separately.")
+UNRAID_PATH = ("On Unraid: Docker tab \u2192 Audiobind \u2192 Edit \u2192 Show more settings \u2192 "
+               "'Tracker proxy' / 'Home IP (guard)' \u2192 Apply (restarts the container).")
+
+
+class TestVpnCopy(WebCase):
+    """ONB-16 (tracker visits only) and ONB-17 (where the two container-only settings are on Unraid)."""
+
+    def test_the_watcher_tab_says_what_the_vpn_settings_cover_and_where_the_two_live(self):
+        panel = html_mod.unescape(self.watcher())
+        intro = panel.split('<div class="ab-acct-title">Where it looks</div>')[1].split("</div>")[0]
+        self.assertIn(WEB_SCOPE, intro)
+        self.assertIn(UNRAID_PATH, intro)
+        self.assertLess(intro.index("Two settings stay container-only"), intro.index(UNRAID_PATH))
+        self.assertEqual(web.VPN_SCOPE_NOTE, WEB_SCOPE)
+
+    def test_the_advanced_tab_says_it_too(self):
+        page = html_mod.unescape(web.render_settings(self.state, "advanced"))
+        box = page.split('id="container-only"')[1].split("</section>")[0]
+        self.assertIn(UNRAID_PATH, box)
+        self.assertIn(WEB_SCOPE, box)
+
+    def test_the_unraid_names_are_the_template_field_names(self):
+        self.assertIn('Name="Tracker proxy" Target="TRACKER_PROXY"', TEMPLATE)
+        self.assertIn('Name="Home IP (guard)" Target="TRACKER_HOME_IP"', TEMPLATE)
+        self.assertEqual(field("TRACKER_PROXY")[0]["Display"], "advanced")  # behind "Show more settings"
+
+    def test_the_template_proxy_field_carries_the_scope(self):
+        self.assertIn("This " + SCOPE, field("TRACKER_PROXY")[1])
+
+    def test_the_doc_leads_the_vpn_section_with_the_scope_and_gives_the_click_path_twice(self):
+        section = ACQUISITION.split("## Running the watcher through a VPN")[1]
+        lead = section.split("A tracker often ties")[0]
+        self.assertIn("**What this covers:** Audiobind's own visits to the tracker (searches and `.torrent` files)", lead)
+        self.assertIn("The\ndownload itself is qBittorrent's; route qBittorrent through your VPN separately.", lead)
+        self.assertIn('Docker tab \u2192\nAudiobind \u2192 Edit \u2192 Show more settings \u2192 "Tracker proxy" \u2192 Apply', section)
+        self.assertIn('Docker tab \u2192 Audiobind \u2192 Edit \u2192\nShow more settings \u2192 "Home IP (guard)" \u2192 Apply', section)
+
+
 if __name__ == "__main__":
     unittest.main()
