@@ -184,6 +184,9 @@ class TestDocs(unittest.TestCase):
         self.assertIn("-p 8686:8686", ACQUISITION)
         self.assertIn("http://<server IP>:8686", ACQUISITION)
 
+    def test_the_doc_says_the_watcher_controls_appear_once_configured(self):
+        self.assertIn("appear once the tracker settings are complete", ACQUISITION)
+
     def test_the_shared_network_qbit_rule_in_the_doc(self):
         self.assertIn("QBIT_URL=http://127.0.0.1:<its port>", ACQUISITION)
         self.assertNotIn("127.0.0.1:8083", ACQUISITION)
