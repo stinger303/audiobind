@@ -479,10 +479,13 @@ check("settings: the Save bar is hidden on the Account tab (nothing to save ther
 check("settings: output format select with the three choices and the player note",
       'data-setting="output_format"' in library_tab and '<option value="M4B + MP3"' in library_tab
       and '<option value="MP3"' in library_tab and "Audiobookshelf" in library_tab)
-check("settings: Advanced holds the region, the egress pin and the container-only list",
-      all(t in advanced_tab for t in ('data-setting="region"', 'data-setting="expected_egress"',
-                                      "<code>TRACKER_PROXY</code>", "<code>TRACKER_HOME_IP</code>"))
+check("settings: Advanced holds the region and the container-only list (the egress pin is on Watcher)",
+      all(t in advanced_tab for t in ('data-setting="region"', "<code>TRACKER_PROXY</code>",
+                                      "<code>TRACKER_HOME_IP</code>"))
+      and 'data-setting="expected_egress"' not in advanced_tab
       and 'data-setting="output_format"' not in advanced_tab and 'data-setting="qbit_url"' not in advanced_tab)
+check("settings: the egress pin is on the Watcher tab",
+      'data-setting="expected_egress"' in active_panel(get("/settings?tab=watcher")))
 # 0.21.0-dev5: the Watcher fields hold typed URLs (the tracker, qBittorrent), so "no CDN" means what it
 # guards: nothing is loaded from another host - no external src/href, CSS url() or @import
 EXTERNAL_LOAD = re.compile(r"""(?:src|href)\s*=\s*["']https?://|url\(\s*["']?https?://|@import""", re.I)
