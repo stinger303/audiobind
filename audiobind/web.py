@@ -23,6 +23,7 @@ from . import ingest as ingest_mod
 from . import auth as auth_mod
 from . import discover as discover_mod
 from . import hardcover as hardcover_mod
+from . import ipupdate as ipupdate_mod
 from . import overrides as overrides_mod
 from . import series as series_mod
 from . import watcher as watcher_mod
@@ -4279,6 +4280,13 @@ def _discover_wishlist_body(state) -> str:
     )
 
 
+#: the session hint when Tracker URL is on myanonamouse.net: where that site gives you the value. Only
+#: "Preferences > Security" and the toggle's name are used - both are already in docs/ip-updater.md
+MAM_SESSION_HINT = (
+    "On MyAnonamouse: Preferences \u2192 Security \u2192 create a session for the address the tracker will see "
+    "(your VPN's address if the tracker is reached through one), tick 'Allow session to set dynamic seedbox IP', "
+    "and paste the long value MAM gives you. It is never shown again once saved.")
+
 #: under the qBittorrent category field (Settings and the template say the same)
 ONE_FOLDER_THREE_NAMES = (
     "One folder, three names. Example: host folder /mnt/user/downloads/audiobooks \u2192 Audiobind's Ingest path "
@@ -4375,7 +4383,10 @@ def _watch_secret(key: str, label: str) -> str:
                'autocomplete="new-password" spellcheck="false">')
     if is_set:
         control += '<label class="ab-src ab-src-clear"><input type="checkbox" data-clear> Clear</label>'
-    return _watch_wrap(key, label, WATCH_FIELD_HINTS.get(key, ""), control, secret=True)
+    hint = WATCH_FIELD_HINTS.get(key, "")
+    if key == "tracker_session" and ipupdate_mod.is_mam(str(setting_effective("tracker_url") or "")):
+        hint = MAM_SESSION_HINT
+    return _watch_wrap(key, label, hint, control, secret=True)
 
 
 def _watch_select(key: str, label: str, hint: str, titlecase: bool = False) -> str:

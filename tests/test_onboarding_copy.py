@@ -330,5 +330,41 @@ class TestFolders(WebCase):
         self.assertNotIn("set INGEST_DIR to use it", page)
 
 
+class TestSessionHint(WebCase):
+    """ONB-26: on MyAnonamouse the hint says where the value comes from; elsewhere it keeps the browser route."""
+
+    def hint_for(self, url):
+        with mock.patch.object(CONFIG, "tracker_url", url):
+            config._EFFECTIVE.clear()
+            panel = self.watcher()
+        block = panel.split('data-setting="tracker_session"')[1]
+        return re.search(r'<div class="ab-setting-hint">(.*?)</div>', block, re.S).group(1)
+
+    def test_a_myanonamouse_url_gets_the_site_route(self):
+        for url in ("https://www.myanonamouse.net", "https://t.myanonamouse.net"):
+            with self.subTest(url=url):
+                hint = html_mod.unescape(self.hint_for(url))
+                self.assertIn("On MyAnonamouse: Preferences \u2192 Security \u2192 create a session for the address "
+                              "the tracker will see", hint)
+                self.assertIn("tick 'Allow session to set dynamic seedbox IP'", hint)
+                self.assertIn("paste the long value MAM gives you.", hint)
+                self.assertNotIn("copied from your browser", hint)
+
+    def test_any_other_site_keeps_the_browser_route(self):
+        for url in ("https://tracker.example", "", "https://myanonamouse.net.evil.example"):
+            with self.subTest(url=url):
+                hint = html_mod.unescape(self.hint_for(url))
+                self.assertIn("The value of the site's session cookie, copied from your browser while you are "
+                              "signed in.", hint)
+                self.assertNotIn("Preferences", hint)
+
+    def test_only_labels_the_repo_already_documents_are_used(self):
+        doc = (ROOT / "docs" / "ip-updater.md").read_text(encoding="utf-8")
+        self.assertIn("Preferences \u2192 Security", doc)
+        self.assertIn("Allow session to set dynamic seedbox IP", doc)
+        labels = re.findall(r"(?:Preferences|Security|Account|Profile|Settings)\b", web.MAM_SESSION_HINT)
+        self.assertEqual(sorted(set(labels)), ["Preferences", "Security"])
+
+
 if __name__ == "__main__":
     unittest.main()
