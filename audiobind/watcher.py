@@ -131,7 +131,7 @@ def qbit_category() -> str:
 
 
 def qbit_url() -> str:
-    return _setting("qbit_url") or "http://localhost:8083"
+    return _setting("qbit_url")
 
 
 # the network, behind two factories tests replace

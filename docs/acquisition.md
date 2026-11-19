@@ -165,7 +165,8 @@ home connection.)
 
 Because Audiobind no longer has its own network, **publish its web port on the VPN container**,
 not on Audiobind: remove Audiobind's `-p` and add `-p 8686:8080` to the VPN container (host
-port 8686 here, pick any).
+port 8686 here, pick any). If qBittorrent in that VPN container already uses 8080, see
+**Port clash** under "Things to know" below.
 
 ```bash
 # 1. the VPN container first (Gluetun with WireGuard; see the Gluetun wiki for your provider)
@@ -196,8 +197,13 @@ and publish the port on *that* container.
 Things to know:
 
 - **qBittorrent in the same namespace.** If qBittorrent also runs in the VPN container's
-  network, it is reached at `127.0.0.1`, so set `QBIT_URL=http://127.0.0.1:8083` (use your own
-  WebUI port). Its LAN address will time out, because the VPN container's firewall blocks it.
+  network, it is reached at `127.0.0.1`, so set `QBIT_URL=http://127.0.0.1:<its port>` (use
+  qBittorrent's own WebUI port). Its LAN address will time out, because the VPN container's
+  firewall blocks it. In every other setup, `QBIT_URL` is the address you open qBittorrent's
+  WebUI with, for example `http://192.168.1.10:8080`.
+- **Port clash.** If another app in the VPN container (often qBittorrent) already uses 8080, add
+  `WEB_PORT=8686` to Audiobind and publish `-p 8686:8686` on the VPN container. Audiobind's WebUI
+  link on the Docker tab then stops working; open `http://<server IP>:8686`.
 - **Start order matters.** The VPN container must be running before Audiobind starts, and
   Audiobind must be recreated if the VPN container is recreated (a container attached by name
   keeps pointing at the old network). In Compose use `depends_on: [gluetun]`; on Unraid put the
@@ -218,11 +224,15 @@ If your VPN container offers an HTTP proxy (Gluetun: `HTTPPROXY=on`, port 8888),
 any HTTP CONNECT proxy, point Audiobind at it. The web UI stays on your LAN as it is today.
 
 ```bash
-# on the VPN container: -e HTTPPROXY=on -p 8888:8888   (only if other machines need it)
+# on the VPN container: -e HTTPPROXY=on -p 8888:8888   (publish 8888 so Audiobind can reach it)
 docker run -d --name audiobind ... -p 8686:8080 \
-  -e TRACKER_PROXY=http://gluetun:8888 \
+  -e TRACKER_PROXY=http://<server IP>:8888 \
   ghcr.io/stinger303/audiobind:latest
 ```
+
+Use the server's IP address (for example `http://192.168.1.10:8888`). A container name like
+`gluetun` only works when both containers are on the same custom Docker network; on Unraid's
+default bridge network, use the server's IP.
 
 `TRACKER_PROXY` takes `http://host:port` or `https://host:port`; a value that is not one of those
 stops Audiobind from starting, with a message naming `TRACKER_PROXY`. Every tracker search and download

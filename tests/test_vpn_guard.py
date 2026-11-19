@@ -507,7 +507,8 @@ class TestGuardUI(unittest.TestCase):
     def test_unarmed_says_so(self):
         with mock.patch.object(CONFIG, "tracker_home_ip", ""):
             html = web.render_settings(self.state)
-        self.assertIn("not armed (set the allowed IP on the Advanced tab, or TRACKER_HOME_IP", html)
+        self.assertIn("not armed (set the allowed IP, or TRACKER_HOME_IP", html)
+        self.assertNotIn("Advanced tab", html)
 
 
 OTHER = "203.0.113.9"

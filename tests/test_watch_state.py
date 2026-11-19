@@ -37,7 +37,7 @@ class TestWatcherConfig(unittest.TestCase):
         self.assertEqual(cfg.tracker_session, "")
         self.assertEqual(cfg.watch_interval_min, 60)
         self.assertEqual(cfg.watch_max_per_cycle, 5)
-        self.assertEqual(cfg.qbit_url, "http://localhost:8083")
+        self.assertEqual(cfg.qbit_url, "")  # no default: only the address you open the WebUI with can work
         self.assertEqual((cfg.qbit_user, cfg.qbit_pass), ("", ""))
 
     def test_env_is_read(self):

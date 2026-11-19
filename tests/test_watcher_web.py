@@ -221,7 +221,8 @@ class TestWatcherApi(LiveServerCase):
 
         client = make_client("cookie", transport=transport, limiter=tracker.RateLimiter(spacing=0))
         with tracker_cfg("cookie"), mock.patch.object(CONFIG, "qbit_user", "u"), \
-                mock.patch.object(CONFIG, "qbit_pass", "p"), mock.patch.object(watcher, "make_tracker", return_value=client):
+                mock.patch.object(CONFIG, "qbit_pass", "p"), mock.patch.object(CONFIG, "qbit_url", "http://localhost:8083"), \
+                mock.patch.object(watcher, "make_tracker", return_value=client):
             status, body = self.request("/api/watcher", {"action": "run"})
             self.assertEqual(status, 200, body)
             watcher.WATCHER._worker.join(5)

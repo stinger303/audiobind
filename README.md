@@ -85,7 +85,7 @@ matters to you.
 | Confidence | Meaning | Default behaviour |
 |---|---|---|
 | `HIGH` | title and author both corroborated, clear winner | converted |
-| `MEDIUM` | exact title, author inferred from the catalog | converted (`AUTO_CONVERT=high` converts only HIGH) |
+| `MEDIUM` | exact title, author inferred from the catalog | left for review (converted when `AUTO_CONVERT=medium`) |
 | `LOW` | weak or ambiguous match | left for review |
 | `COLLECTION` | several books in one folder | left for review |
 | held | runtime disagrees with the catalog by >15% - usually the wrong edition, or a shortened rip | not converted |

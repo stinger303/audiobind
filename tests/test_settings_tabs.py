@@ -100,9 +100,9 @@ class TestTabs(TabsCase):
         for marker in ('data-acct="username"', 'name="new_password"', 'name="confirm"', 'action="/logout"'):
             self.assertIn(marker, account)
         _, advanced = active_panel(web.render_settings(self.state, "advanced"))
-        for marker in ('data-setting="region"', 'data-setting="expected_egress"', "<code>TRACKER_PROXY</code>",
-                       "<code>TRACKER_HOME_IP</code>"):
+        for marker in ('data-setting="region"', "<code>TRACKER_PROXY</code>", "<code>TRACKER_HOME_IP</code>"):
             self.assertIn(marker, advanced)
+        self.assertNotIn('data-setting="expected_egress"', advanced)  # moved to the Watcher tab (ONB-32)
 
     def test_the_url_picks_the_tab_and_anything_else_is_library(self):
         for query, tab in (("?tab=watcher", "watcher"), ("?tab=account", "account"), ("?tab=advanced", "advanced"),
@@ -204,7 +204,10 @@ class TestAdvanced(TabsCase):
         page = web.render_settings(self.state, "advanced")
         self.assertIn("<dt><code>TRACKER_PROXY</code></dt><dd>not set &#8212;", page)
 
-    def test_the_watcher_panel_points_at_the_advanced_tab_for_the_egress_pin(self):
+    def test_the_egress_pin_is_on_the_watcher_tab_beside_the_guard_row(self):
         _, panel = active_panel(web.render_settings(self.state, "watcher"))
-        self.assertNotIn('data-setting="expected_egress"', panel)
-        self.assertIn("set the allowed IP on the Advanced tab", panel)
+        self.assertIn('data-setting="expected_egress"', panel)
+        self.assertLess(panel.index("<dt>Guard</dt>"), panel.index('data-setting="expected_egress"'))
+        self.assertLess(panel.index('data-setting="expected_egress"'), panel.index('data-setting="tracker_url"'))
+        self.assertIn("set the allowed IP, or TRACKER_HOME_IP, to arm it", panel)
+        self.assertNotIn("Advanced tab", panel)

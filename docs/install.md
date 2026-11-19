@@ -8,13 +8,12 @@
 
 Audiobind is pending publication in Community Applications. Until it is listed:
 
-1. Copy the template into the Unraid template directory:
+1. Paste this one line into Unraid's terminal to download the template:
    ```bash
-   cp templates/audiobind.xml /boot/config/plugins/dockerMan/templates-user/
+   wget -O /boot/config/plugins/dockerMan/templates-user/audiobind.xml https://raw.githubusercontent.com/stinger303/audiobind/main/templates/audiobind.xml
    ```
-2. In the Unraid web UI, go to **Apps** > **Settings** (gear icon) and check **"Allow install of second instance"**.
-3. Click **Docker** > **Add Container** and select **audiobind** from the template dropdown.
-4. Fill in the paths for your library (read-only), output directory, and appdata, then click **Apply**.
+2. Click **Docker** > **Add Container** and select **audiobind** from the template dropdown.
+3. Fill in the paths for your library, output directory and appdata (the Library path's description explains Read/Write vs Read Only), then click **Apply**.
 
 The template sets `PUID=99 PGID=100`, runs the container hardened (`--read-only --tmpfs /tmp
 --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID
@@ -143,9 +142,10 @@ useful. Acquisition also needs the tracker settings, but that part is optional. 
    container, from your own network. Forgot the password later? See
    [Signing in](#signing-in) (`docker exec -it audiobind audiobind reset-password`).
 
-4. **Wait for the first scan, then review.** Books are discovered within `SCAN_INTERVAL_MIN`
-   minutes, and then you get the status page. Review and held books need attention in the
-   sidebar. You decide what to convert.
+4. **Wait for the first scan, then review.** The first scan starts as soon as the container
+   starts; the Library page shows "Scanning n / m…". After that it scans every
+   `SCAN_INTERVAL_MIN` minutes. Review and held books need attention in the sidebar. You decide
+   what to convert.
 
 Smoke test: `curl -fsS http://<host>:8080/healthz` should print `ok`. It is the one public
 endpoint, so it needs no sign-in.

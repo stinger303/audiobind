@@ -4279,6 +4279,10 @@ def _discover_wishlist_body(state) -> str:
     )
 
 
+#: the one rule for the qBittorrent address (template, Settings and docs say the same)
+QBIT_URL_HINT = ("The address you open qBittorrent's WebUI with, e.g. http://192.168.1.10:8080. Only if Audiobind "
+                 "shares a VPN container's network with qBittorrent: http://127.0.0.1:<its port>.")
+
 #: hints for the watcher's connection settings (Settings > Watcher > Where it looks)
 WATCH_FIELD_HINTS = {
     "tracker_url": "The site's address, e.g. https://tracker.example - no path; the paths are below.",
@@ -4296,7 +4300,7 @@ WATCH_FIELD_HINTS = {
     "tracker_freeleech_param": ("Optional. The parameter that spends a freeleech credit on a download. Empty = "
                                 "Audiobind never spends one."),
     "tracker_user_agent": "Optional. Empty = audiobind/<version>; none = send no User-Agent at all.",
-    "qbit_url": "Your qBittorrent WebUI, e.g. http://qbittorrent:8080.",
+    "qbit_url": QBIT_URL_HINT,
     "qbit_user": "The qBittorrent WebUI login.",
     "qbit_pass": "The qBittorrent WebUI password. It is never shown again once saved.",
     "qbit_category": ("The category new torrents get. Point its save path at Audiobind's ingest folder so finished "
@@ -4433,7 +4437,7 @@ def _download_client_fields() -> str:
         '<div class="ab-acct-title">Download client</div>'
         + select
         + group("qbittorrent",
-                _watch_text("qbit_url", "qBittorrent URL", "http://qbittorrent:8080")
+                _watch_text("qbit_url", "qBittorrent URL", "http://192.168.1.10:8080")
                 + _watch_text("qbit_user", "qBittorrent user")
                 + _watch_secret("qbit_pass", "qBittorrent password"))
         + group("deluge",
@@ -4492,25 +4496,35 @@ def _watch_test_and_save() -> str:
     )
 
 
+def _egress_pin_field() -> str:
+    """Settings > Watcher: the allowed-IP pin, beside the Guard row that refers to it."""
+    return _watch_text("expected_egress", "Only reach the tracker from one IP", "e.g. 198.51.100.7")
+
+
 def render_watcher_section(state) -> str:
     """Settings > Watcher: status, the connection settings, pacing, connection tests, Run / Pause."""
     s = watcher_mod.WATCHER.status(state)
     warn = ""
     if not s["configured"]:
+        # QBIT_URL has no default: while it is empty it is one of the things still to set
+        still = list(s["missing"])
+        if watcher_mod.client_kind() == "qbittorrent" and not watcher_mod.qbit_url():
+            still.append("QBIT_URL")
         return (
             '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
             '<h2 class="ab-acct-head" id="ab-watch-head">Acquisition source (optional)</h2>'
             '<div class="ab-acct-who">Audiobind can optionally look for books on your wishlist at a '
             "private tracker you configure and hand them to qBittorrent. It is off, and you do not need it: "
             "Audiobind converts whatever lands in the ingest folder, from any downloader or a plain "
-            "copy. Still to set: " + ", ".join(f"<code>{_html(m)}</code>" for m in s["missing"]) +
+            "copy. Still to set: " + ", ".join(f"<code>{_html(m)}</code>" for m in still) +
             " (the site's URL, its search and download paths, the search request body, and its session cookie's name and value), "
             "plus the qBittorrent URL, user and password (<code>QBIT_URL</code>, <code>QBIT_USER</code>, "
             "<code>QBIT_PASS</code>). Fill them in below and save - no restart needed - or set them as container "
             "variables.</div>"
-            + _ip_updater_section(s)
             + _watch_connection_fields()
             + _watch_test_and_save()
+            + _egress_pin_field()
+            + _ip_updater_section(s)
             + "</section>"
         )
     if not s["enabled"]:
@@ -4534,7 +4548,7 @@ def render_watcher_section(state) -> str:
         warn += (
             '<div class="ab-hintbox ab-watch-warn" role="alert"><b>Stopped: the tracker would not see the allowed address.</b> '
             f"{_html(s['egress_reason'])}. The watcher will not contact the tracker from here. Either update "
-            '"Only reach the tracker from one IP" on the Advanced tab to the address you really want, or start your VPN '
+            '"Only reach the tracker from one IP" to the address you really want, or start your VPN '
             "container (or fix TRACKER_PROXY); the next cycle will carry on.</div>")
     elif guard == "unknown" and s.get("egress_checked_at"):
         warn += (
@@ -4567,7 +4581,7 @@ def render_watcher_section(state) -> str:
         if guard == "blocked":
             guard_html = f'<span class="warn">{guard_html} &#8212; blocking now</span>'
     else:
-        guard_html = "not armed (set the allowed IP on the Advanced tab, or TRACKER_HOME_IP, to arm it)"
+        guard_html = "not armed (set the allowed IP, or TRACKER_HOME_IP, to arm it)"
     last = s["last_cycle"] or {}
     if last.get("at"):
         parts = [f"{int(last.get('searched') or 0)} searched", f"{int(last.get('sent') or 0)} sent to qBittorrent"]
@@ -4595,7 +4609,8 @@ def render_watcher_section(state) -> str:
         ("Download limit", (f"adds nothing while {int(s['max_incomplete'])} torrent(s) are still downloading"
                             if s["max_incomplete"] else "off")),
         ("Tracker", f"{_html(s['tracker_host'])}" if s.get("tracker_host") else DASH),
-        (("qBittorrent", f"{_html(urlsplit(s['qbit_url']).netloc or s['qbit_url'])} &#183; category <code>{_html(s['qbit_category'])}</code> &#183; "
+        (("qBittorrent", (_html(urlsplit(s['qbit_url']).netloc or s['qbit_url']) if s['qbit_url']
+                          else '<span class="warn">no address set</span>') + f" &#183; category <code>{_html(s['qbit_category'])}</code> &#183; "
                          + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>'))
          if s.get("download_client", "qbittorrent") == "qbittorrent" else
          (_html(s["client_label"]), (f"{_html(urlsplit(s['client_url']).netloc or s['client_url'])}" if s["client_url"]
@@ -4637,10 +4652,11 @@ def render_watcher_section(state) -> str:
         "container variable; a value saved here wins and applies from the next cycle, no restart. The pause switch "
         "is kept across restarts.</div>"
         f'{warn}<dl class="ab-watch-grid">{grid}</dl>'
-        + _ip_updater_section(s)
+        + _egress_pin_field()
         + _watch_connection_fields()
         + _watch_schedule_fields()
         + _watch_test_and_save()
+        + _ip_updater_section(s)
         + f'<div class="ab-acct-row">{run_btn}{toggle}{dry_toggle}<span class="ab-fb" id="ab-watch-fb" role="status"></span></div>'
         + dry_line
         + "</section>"
@@ -4649,9 +4665,12 @@ def render_watcher_section(state) -> str:
 
 #: Settings > Watcher > Allowed-IP updater: one plain sentence per mode, shown under the select
 IP_UPDATER_MODE_HINTS = {
-    "off": "The updater does nothing; the wishlist watcher refuses to run from an unregistered IP.",
+    "off": ("Off (default): nothing automatic. If your VPN's address changes and the IP guard is armed, the "
+            "watcher stops and tells you."),
     "notify": "Shows and logs when the IP has drifted; never writes to the tracker.",
-    "auto": "Updates the tracker's dynamic seedbox IP when it has drifted, at most once an hour.",
+    "auto": ("MAM only: when your VPN's address changes, tells MAM the new one. Needs 'Allow session to "
+             "set dynamic seedbox IP' ticked on MAM's Preferences \u2192 Security page, and TRACKER_HOME_IP set. "
+             "('Seedbox IP' is MAM's name for the address you connect from.)"),
 }
 
 
@@ -5163,7 +5182,7 @@ def render_settings(state, tab: str = "") -> str:
             hint="higher = kinder to the system; ffmpeg runs at this priority",
         )
     )
-    # Advanced: the catalog region, the egress pin, and what only the container can set
+    # Advanced: the catalog region and what only the container can set
     advanced = (
         _setting_select(
             "region",
@@ -5174,7 +5193,6 @@ def render_settings(state, tab: str = "") -> str:
             setting_env("region"),
             hint="Applies to future catalog lookups.",
         )
-        + _watch_text("expected_egress", "Only reach the tracker from one IP", "e.g. 198.51.100.7")
         + _container_only_section()
     )
 
@@ -5921,7 +5939,12 @@ def render(state, status: str = "", query: str = "") -> str:
         if flagged and u.status in ("review", "held", "failed"):
             state.clear_reopen(u.path)
     if not units:
-        rows = f'<tr class="ab-empty"><td colspan="{TOTAL_COLUMNS}">no books match this filter</td></tr>'
+        if not all_units and not status and not query:
+            empty = (f"No books found in {_html(str(CONFIG.library_root))} yet. If a scan has finished and this is "
+                     "still empty, check the Library path in the container settings.")
+        else:
+            empty = "no books match this filter"
+        rows = f'<tr class="ab-empty"><td colspan="{TOTAL_COLUMNS}">{empty}</td></tr>'
 
     def header(key: str, label: str, klass: str) -> str:
         on = key == sort_column

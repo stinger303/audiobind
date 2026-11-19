@@ -338,7 +338,8 @@ class Config:
     wedge_per_cycle: int = 1
     wedge_per_day: int = 3
     watch_max_unsatisfied: int = 0
-    qbit_url: str = "http://localhost:8083"
+    #: no default: only the address the owner opens qBittorrent's WebUI with can work
+    qbit_url: str = ""
     #: the qBittorrent category torrents are added to (its save path is the ingest folder)
     qbit_category: str = "audiobooks"
     qbit_user: str = ""
@@ -445,7 +446,7 @@ class Config:
             wedge_per_cycle=_env_int("WEDGE_MAX_PER_CYCLE", 1),
             wedge_per_day=_env_int("WEDGE_MAX_PER_DAY", 3),
             watch_max_unsatisfied=_env_int("WATCH_MAX_UNSATISFIED", 0),
-            qbit_url=_env("QBIT_URL", "http://localhost:8083").rstrip("/") or "http://localhost:8083",
+            qbit_url=_env("QBIT_URL", "").rstrip("/"),
             qbit_category=_env("QBIT_CATEGORY", "audiobooks") or "audiobooks",
             qbit_user=_env("QBIT_USER", ""),
             qbit_pass=os.environ.get("QBIT_PASS", ""),  # a password keeps its spaces
@@ -665,7 +666,7 @@ def _plain_text(label: str, raw: str, limit: int = 300, keep_spaces: bool = Fals
 
 
 def _qbit_url(raw: str) -> str:
-    """QBIT_URL: http(s)://host[:port][/path], no login in it ("" = the default address)."""
+    """QBIT_URL: http(s)://host[:port][/path], no login in it ("" = not set)."""
     from urllib.parse import urlsplit
 
     raw = raw.strip().rstrip("/")

@@ -20,7 +20,7 @@
 | `NICE` | `10` | ffmpeg CPU priority |
 | `MANUAL_WORKERS` | `2` | Manual actions (Retry, Convert anyway, Use this ASIN, Re-check) allowed at once; more get "another action is already running" |
 | `MAX_RUNTIME_DELTA` | `0.15` | Hold when runtime differs by more than this fraction. 15% because a US/UK edition pair of the same book commonly differs by 16–21%: at 25% the wrong edition converted silently |
-| `REGION` | `us` | Audible region (`us`, `ca`, `uk`, `au`, `fr`, `de`, `it`, `es`, `jp`, `in`) |
+| `REGION` | `us` | Audible region: `us`, `uk`, `ca`, `au` or `de` (the choices Settings offers) |
 | `DRY_RUN` | `false` | Decide and log, write nothing. `true` always starts dry; the UI switch can turn it off afterwards |
 | `WATCH_DRY_RUN` | `false` | The [watcher's](acquisition.md#the-wishlist-watcher-private-tracker) own dry run, separate from `DRY_RUN`: search the tracker and note what it would download, never download. `true` always starts the watcher dry; the Settings > Watcher switch can turn it off afterwards |
 | `WEB_ENABLED` | `true` | Status page |
@@ -37,7 +37,7 @@
 | `WATCH_INTERVAL_MIN` | `60` | Minutes between watcher cycles (10-1440) |
 | `WATCH_MAX_PER_CYCLE` | `5` | Wishlist books one watcher cycle searches at most (1-20) |
 | `WATCH_MAX_INCOMPLETE` | `10` | A cycle adds no torrent while this many in `QBIT_CATEGORY` are still below 99.9 % (`0` = no limit) |
-| `QBIT_URL` | `http://localhost:8083` | qBittorrent WebUI the watcher hands torrents to |
+| `QBIT_URL` | *(unset)* | The address you open qBittorrent's WebUI with, e.g. `http://192.168.1.10:8080`. Only if Audiobind shares a VPN container's network with qBittorrent: `http://127.0.0.1:<its port>` |
 | `QBIT_CATEGORY` | `audiobooks` | The qBittorrent category torrents are added to; its save path is your ingest folder |
 | `QBIT_USER` / `QBIT_PASS` | *(unset)* | qBittorrent WebUI login. Without them the watcher stays disabled (a warning in the log and on Settings) |
 | `DOWNLOAD_CLIENT` | `qbittorrent` | Which client the watcher hands torrents to: `qbittorrent`, `deluge`, `transmission` or `rtorrent`. The default is exactly the behaviour before this setting existed; any other value is a startup error. `QBIT_CATEGORY` is used by every client (Deluge: Label-plugin label, lower-cased; Transmission: label; rTorrent: `custom1`, the ruTorrent label). See [Download clients](#download-clients) |
