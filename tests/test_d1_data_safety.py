@@ -350,5 +350,48 @@ class WebApi01DeleteVersusConversionTests(DeleteCase):
         pipeline.CONVERT_LOCK.release()
 
 
+class WebApi02DeleteVersusLayoutMoveTests(DeleteCase):
+    """A layout move between the delete's read of the row and its removal must never yield a 200
+    with the published files still on disk."""
+
+    def move_layout(self):
+        """What abs_layout.apply does for one book: rename the folder, then record the new output.
+        Once: it runs after the delete's first read of the row (the window the audit found)."""
+        if getattr(self, "moved", None) is not None:
+            return
+        moved = self.out / "Author" / "Series" / "1 - Book"
+        moved.parent.mkdir(parents=True, exist_ok=True)
+        self.out_book.rename(moved)
+        self.state.set_output(self.REL, str(moved / "Book.m4b"), self.state.get(self.REL).detail)
+        self.moved = moved
+
+    def test_a_layout_move_during_the_walk_removes_the_new_folder_or_refuses(self):
+        with self.then("output_sharers", self.move_layout):
+            status, body = self.delete()
+        if status == 200:
+            self.assertEqual(body["output"], "removed", body)
+            self.assertFalse(self.moved.exists(), "200 OK, but the moved book is still published")
+            self.assertIsNone(self.state.get(self.REL))
+        else:
+            self.assertEqual(status, 409, body)
+            self.assertTrue((self.moved / "Book.m4b").exists())
+            self.assertIsNotNone(self.state.get(self.REL))
+
+    def test_the_output_removal_holds_the_encoder_lock(self):
+        held = []
+        real_rmtree = web.shutil.rmtree
+
+        def rmtree(path, *args, **kw):
+            if pathlib.Path(path) == self.out_book:
+                held.append(pipeline.CONVERT_LOCK.locked())
+            return real_rmtree(path, *args, **kw)
+
+        with mock.patch.object(web.shutil, "rmtree", side_effect=rmtree):
+            status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertEqual(held, [True], "a layout move could run while the output was being removed")
+        self.assertFalse(pipeline.CONVERT_LOCK.locked())
+
+
 if __name__ == "__main__":
     unittest.main()
