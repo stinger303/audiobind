@@ -1953,10 +1953,13 @@ body{{align-items:center;justify-content:center;overflow:auto}}
   <p>Create the account that signs in to this server. There is only one account; you can
   change its username and password later in Settings.</p>
   <form method="post" action="/setup">
+    <label for="ab-setup-code">Setup code (printed in the container log when Audiobind first started)</label>
+    <input class="ab-in" id="ab-setup-code" name="setup_code" type="text" autocomplete="off"
+           autocapitalize="characters" spellcheck="false" maxlength="64" autofocus required>
     <label for="ab-setup-username">Username</label>
     <input class="ab-in" id="ab-setup-username" name="username" type="text" value="{setup_username}"
            autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64"
-           autofocus required>
+           required>
     <label for="ab-setup-password">Password (at least {setup_min} characters)</label>
     <input class="ab-in" id="ab-setup-password" name="password" type="password"
            autocomplete="new-password" minlength="{setup_min}" required>
@@ -7467,7 +7470,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(code, json.dumps({"error": message}).encode(), "application/json")
             return
         try:
-            fields, wants_json = self._form_body(("username", "password", "confirm"))
+            fields, wants_json = self._form_body(("username", "password", "confirm", "setup_code"))
         except (ValueError, UnicodeDecodeError):
             self._send(400, b'{"error":"bad request"}', "application/json")
             return
@@ -7480,6 +7483,16 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self._setup_pending():
             refuse_existing()
+            return
+        if not auth_mod.setup_code_matches(self.state, fields.get("setup_code", "")):
+            # SEC-01: no code, no account - checked before anything else is looked at
+            logging.getLogger("audiobind").warning("setup refused (wrong setup code) from %s", self._client_ip())
+            problem = "That setup code is not right. It is printed in the container log when Audiobind first started."
+            if wants_json:
+                self._send(403, json.dumps({"error": problem}).encode(), "application/json")
+            else:
+                page = render_setup(problem, fields.get("username", "").strip())
+                self._send(403, page.encode(), "text/html; charset=utf-8")
             return
         username = fields.get("username", "").strip()
         password = fields.get("password", "")
@@ -7496,6 +7509,7 @@ class Handler(BaseHTTPRequestHandler):
         if not version:  # another setup won the race
             refuse_existing()
             return
+        auth_mod.consume_setup_code(self.state)
         cookie = {"Set-Cookie": auth_mod.session_cookie(auth_mod.SESSIONS.create(version), secure=self._https())}
         logging.getLogger("audiobind").info("account created from %s", self._client_ip())
         if wants_json:
@@ -8776,6 +8790,8 @@ def serve(state):
     Handler.state = state
     auth_mod.SESSIONS.attach(state)
     warn_default_hosts()
+    if not CONFIG.auth_token and not state.has_credentials():
+        auth_mod.announce_setup_code(state)  # SEC-01: the code /setup asks for
     server = BoundedServer(("0.0.0.0", CONFIG.web_port), Handler, CONFIG.max_connections)
     if CONFIG.web_port == 0:
         CONFIG.web_port = server.server_address[1]

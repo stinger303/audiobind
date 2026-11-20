@@ -139,9 +139,17 @@ check("setup: own component class, numeric refs only",
       'class="ab-setup"' in setup_page and "&#183;" in setup_page and "&middot;" not in setup_page)
 check("setup: no scripts, no CDN", "<script" not in setup_page and "http://" not in setup_page
       and "https://" not in setup_page)
+# SEC-01: the one-time setup code (logged at start, kept in the state DB) is required
+check("setup: asks for the setup code and says where it is",
+      'name="setup_code"' in setup_page and "printed in the container log" in setup_page)
+SETUP_FIELDS = {"username": "verify", "password": "verify-pass-1", "confirm": "verify-pass-1"}
+status, headers, _ = fetch("/setup", urllib.parse.urlencode(SETUP_FIELDS).encode(),
+                           {"Content-Type": "application/x-www-form-urlencoded"})
+check("setup without the code is refused", status == 403 and not headers.get("Set-Cookie")
+      and not state.has_credentials(), f"{status}")
 status, headers, _ = fetch(
     "/setup",
-    urllib.parse.urlencode({"username": "verify", "password": "verify-pass-1", "confirm": "verify-pass-1"}).encode(),
+    urllib.parse.urlencode({**SETUP_FIELDS, "setup_code": state.get_meta("setup_code") or ""}).encode(),
     {"Content-Type": "application/x-www-form-urlencoded"},
 )
 COOKIE = (headers.get("Set-Cookie") or "").split(";", 1)[0]

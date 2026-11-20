@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import ipaddress
 import logging
+import os
 import secrets
 import sqlite3
 import threading
@@ -142,6 +143,52 @@ def password_problem(password: str, confirm: str | None = None) -> str:
     ):
         return "The two passwords do not match."
     return ""
+
+
+# ---------------------------------------------------------------- first-run setup code
+
+#: SEC-01: /setup needs this one-time code, so the first peer to reach a fresh install cannot
+#: claim it. Kept in the state DB's meta table until the account is created.
+SETUP_CODE_KEY = "setup_code"
+SETUP_CODE_ENV = "AUDIOBIND_SETUP_CODE"
+SETUP_CODE_LENGTH = 8
+#: no 0/O or 1/I: the code is read off a log line and typed by hand
+SETUP_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def setup_code(state) -> str:
+    """The code /setup asks for: AUDIOBIND_SETUP_CODE when set (never stored), else the one
+    saved in the state DB, made on first use."""
+    forced = os.environ.get(SETUP_CODE_ENV, "").strip()
+    if forced:
+        return forced
+    code = state.get_meta(SETUP_CODE_KEY) or ""
+    if not code:
+        code = "".join(secrets.choice(SETUP_CODE_ALPHABET) for _ in range(SETUP_CODE_LENGTH))
+        state.set_meta(SETUP_CODE_KEY, code)
+    return code
+
+
+def setup_code_matches(state, given: str) -> bool:
+    """Constant-time; case and surrounding spaces do not matter (it is typed off a log line)."""
+    given = (given or "").strip().upper()
+    return bool(given) and hmac.compare_digest(
+        given.encode("utf-8", "replace"), setup_code(state).upper().encode("utf-8", "replace")
+    )
+
+
+def consume_setup_code(state) -> None:
+    """The account exists: the stored code is spent."""
+    state.set_meta(SETUP_CODE_KEY, "")
+
+
+def announce_setup_code(state) -> None:
+    """At start, while setup is pending: put the code in the log, where only someone with
+    access to the container can read it. An AUDIOBIND_SETUP_CODE is not repeated."""
+    if os.environ.get(SETUP_CODE_ENV, "").strip():
+        log.warning("setup code: set by %s  (required to create the first account)", SETUP_CODE_ENV)
+        return
+    log.warning("setup code: %s  (required to create the first account)", setup_code(state))
 
 
 class BearerCache:

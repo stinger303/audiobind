@@ -73,11 +73,20 @@ class AccountCase(LiveServerCase):
             exc.close()
             return out
 
+    def with_code(self, path, fields):
+        """SEC-01: /setup needs the one-time setup code; these tests send the right one
+        unless they say otherwise (SetupCodeTests posts with self.raw to leave it out)."""
+        code = self.state.get_meta("setup_code")
+        if path == "/setup" and code and "setup_code" not in fields:
+            return {**fields, "setup_code": code}
+        return fields
+
     def form(self, path, fields, headers=None):
-        body = urllib.parse.urlencode(fields).encode()
+        body = urllib.parse.urlencode(self.with_code(path, fields)).encode()
         return self.raw(path, body, {"Content-Type": "application/x-www-form-urlencoded", **(headers or {})})
 
     def json_post(self, path, payload, headers=None):
+        payload = self.with_code(path, payload)
         status, hdrs, body = self.raw(
             path, json.dumps(payload).encode(), {"Content-Type": "application/json", **(headers or {})}
         )
@@ -191,6 +200,101 @@ class FirstRunTests(AccountCase):
         )
         self.assertEqual(status, 403)
         self.assertIsNone(self.state.get_credentials())
+
+
+class SetupCodeTests(AccountCase):
+    """SEC-01: the first reachable peer must not be able to claim a fresh install. /setup
+    needs the one-time code that was logged when the server started."""
+
+    FIELDS = {"username": USER, "password": PASSWORD, "confirm": PASSWORD}
+
+    def post_setup(self, extra=None, as_json=False):
+        fields = {**self.FIELDS, **(extra or {})}
+        if as_json:
+            return self.raw("/setup", json.dumps(fields).encode(), {"Content-Type": "application/json"})
+        body = urllib.parse.urlencode(fields).encode()
+        return self.raw("/setup", body, {"Content-Type": "application/x-www-form-urlencoded"})
+
+    def code(self):
+        return auth_mod.setup_code(self.state)
+
+    def test_setup_without_a_code_is_403_and_creates_nothing(self):
+        for as_json in (False, True):
+            status, headers, body = self.post_setup(as_json=as_json)
+            self.assertEqual(status, 403, body)
+            self.assertIsNone(headers.get("Set-Cookie"))
+        self.assertIsNone(self.state.get_credentials())
+
+    def test_wrong_code_is_403(self):
+        for wrong in ("", "WRONGCDE", self.code() + "X"):
+            status, headers, _ = self.post_setup({"setup_code": wrong})
+            self.assertEqual(status, 403, wrong)
+            self.assertIsNone(headers.get("Set-Cookie"))
+        self.assertIsNone(self.state.get_credentials())
+
+    def test_right_code_creates_the_account_and_is_used_up(self):
+        code = self.code()
+        self.assertEqual(len(code), 8)
+        self.assertFalse(set(code) & set("0O1I"), code)
+        status, headers, _ = self.post_setup({"setup_code": code})
+        self.assertEqual(status, 303)
+        self.assertIn(f"{auth_mod.COOKIE_NAME}=", headers["Set-Cookie"])
+        self.assertEqual(self.state.get_credentials().username, USER)
+        self.assertFalse(self.state.get_meta("setup_code"))  # consumed
+
+    def test_the_same_code_cannot_be_used_twice(self):
+        code = self.code()
+        self.assertEqual(self.post_setup({"setup_code": code})[0], 303)
+        status, headers, _ = self.post_setup(
+            {"setup_code": code, "username": "mallory", "password": "mallory-pass", "confirm": "mallory-pass"},
+            as_json=True,
+        )
+        self.assertEqual(status, 409)
+        self.assertIsNone(headers.get("Set-Cookie"))
+        self.assertEqual(self.state.get_credentials().username, USER)
+
+    def test_code_is_stable_across_restarts_until_used(self):
+        self.assertEqual(self.code(), self.code())
+        self.assertEqual(self.code(), self.state.get_meta("setup_code"))
+
+    def test_env_override_is_honoured(self):
+        with mock.patch.dict(os.environ, {"AUDIOBIND_SETUP_CODE": "unattended-42"}):
+            stored = self.state.get_meta("setup_code")
+            if stored:
+                self.assertEqual(self.post_setup({"setup_code": stored})[0], 403)  # the env code wins
+            self.assertEqual(self.post_setup({"setup_code": "nope"})[0], 403)
+            self.assertEqual(self.post_setup({"setup_code": "unattended-42"})[0], 303)
+        self.assertEqual(self.state.get_credentials().username, USER)
+
+    def test_env_override_is_not_generated_or_logged(self):
+        fresh = type(self.state)(self.root / "state-env")
+        try:
+            with mock.patch.dict(os.environ, {"AUDIOBIND_SETUP_CODE": "unattended-42"}), \
+                    self.assertLogs("audiobind", logging.WARNING) as logs:
+                auth_mod.announce_setup_code(fresh)
+            self.assertIsNone(fresh.get_meta("setup_code"))
+        finally:
+            fresh.close()
+        self.assertNotIn("unattended-42", "\n".join(logs.output))
+        self.assertIn("setup code", "\n".join(logs.output))
+
+    def test_start_logs_the_generated_code(self):
+        fresh = type(self.state)(self.root / "state-log")
+        try:
+            with mock.patch.dict(os.environ, {}) as env, self.assertLogs("audiobind", logging.WARNING) as logs:
+                env.pop("AUDIOBIND_SETUP_CODE", None)
+                auth_mod.announce_setup_code(fresh)
+            code = fresh.get_meta("setup_code")
+        finally:
+            fresh.close()
+        self.assertTrue(code)
+        self.assertIn(f"setup code: {code}  (required to create the first account)", "\n".join(logs.output))
+
+    def test_setup_page_asks_for_the_code(self):
+        status, _, body = self.raw("/setup")
+        self.assertEqual(status, 200)
+        self.assertIn(b'name="setup_code"', body)
+        self.assertIn(b"printed in the container log when Audiobind first started", body)
 
 
 class LoginTests(AccountCase):

@@ -138,11 +138,11 @@ useful. Acquisition also needs the tracker settings, but that part is optional. 
 3. **Start the container and create the account.** Open the web UI (on Unraid, the container's
    WebUI link, which uses host port 8686 unless you changed it; with `docker run`,
    `http://<host>:8080`). The first
-   visit opens the setup page: a username (1-64 characters) and a password (at least 8
-   characters, typed twice). There is exactly one account; once it exists the setup page is
-   gone for good, and every page and API call needs you signed in. Until setup is finished,
-   anyone who can reach the port can create the account, so do it right after you start the
-   container, from your own network. Forgot the password later? See
+   visit opens the setup page: the setup code, a username (1-64 characters) and a password (at
+   least 8 characters, typed twice). The setup code is printed in the container log when
+   Audiobind first starts: `docker logs audiobind | grep 'setup code'`. There is exactly one
+   account; once it exists the setup page and the code are gone for good, and every page and
+   API call needs you signed in. Forgot the password later? See
    [Signing in](#signing-in) (`docker exec -it audiobind audiobind reset-password`).
 
 4. **Wait for the first scan, then review.** The first scan starts as soon as the container
@@ -163,7 +163,12 @@ See the [CHANGELOG](../CHANGELOG.md) for what changed in each release.
 
 ### Signing in
 
-On the first start nobody has an account yet, so the first visit opens a setup page - and until someone finishes it, anyone who can reach the port can create the account. Open the page and complete setup right after starting the container.
+On the first start nobody has an account yet, so the first visit opens a setup page. Creating
+the account needs a one-time setup code, which Audiobind prints in the container log when it
+first starts (`docker logs audiobind | grep 'setup code'`), so someone who can merely reach the
+port cannot claim your install. The code stays the same across restarts until the account is
+created, then it is used up. For an unattended install, set `AUDIOBIND_SETUP_CODE` to choose
+the code yourself; it is then not generated or printed.
 
 `/healthz` is the one public endpoint, with or without an account: it needs no sign-in, so an
 uptime monitor can poll it, and it only ever answers `ok` (200) or `stale` (503; the scan loop has
