@@ -654,8 +654,9 @@ def _score_product(product: Product, title: str, author: str, local_hours: float
 def _hint_entry(asin: str, title: str, author: str, local_hours: float) -> dict | None:
     """The scored entry for an ASIN found in the torrent name, or None.
 
-    A candidate, never a pin: it enters the pool at score 1.0 / title 1.0 only when the catalog
-    knows the ASIN and its title clears TITLE_FLOOR against the wanted one; grade() still decides.
+    A candidate, never a pin: it enters the pool at score 1.0 only when the catalog knows the ASIN
+    and its title clears TITLE_FLOOR against the wanted one; grade() still decides. Only the total
+    is boosted: title_sim stays the real similarity, so a barely-matching hint is graded on it.
     """
     try:
         book = catalog.book(asin)
@@ -667,7 +668,7 @@ def _hint_entry(asin: str, title: str, author: str, local_hours: float) -> dict 
     if not title or floor_sim(title, product) < TITLE_FLOOR:
         return None
     entry = _score_product(product, title, author, local_hours)
-    entry.update(score=1.0, title_sim=1.0)
+    entry.update(score=1.0)
     return entry
 
 
