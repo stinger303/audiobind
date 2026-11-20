@@ -13,6 +13,11 @@ folder and point `INGEST_DIR` at it:
   -e INGEST_DIR=/ingest
 ```
 
+Ingest needs **both halves**: the mount and `INGEST_DIR`. With only one of them, ingest stays off, and
+the ingest line in the sidebar (and one log line at start) says which half is missing. On Unraid both are
+under Docker tab → Audiobind → Edit → Show more settings: "Ingest path" is the mount, "Ingest dir" is
+`INGEST_DIR` (set it to `/ingest`).
+
 The one rule: files must be complete before they land in the folder (move them in when
 finished, or use the downloader's "completed" folder), or the app may see a partial book.
 Wishlist acquisition (below) is optional; everything else works the same without it.
@@ -65,6 +70,21 @@ The six settings that existed before this naming (session, membership, proxy, us
 IP guards) still work under their old variable names when the new name is empty (one deprecation line in the log
 at startup, never the value); the new name wins when both are set. The paths, cookie name, search body and
 category have no old name - set them.
+
+**Tracker preset file.** If your tracker publishes an API preset, save it as
+`/config/tracker-preset.json` (see `docs/tracker-preset.example.json`): Settings > Watcher then offers
+"Fill the tracker fields from preset file", names the preset by the file's own `label`, lists the fields
+it will fill and asks before it replaces anything already set. The file is only read to draw that button
+and when you press it; it never changes how Audiobind runs, it cannot carry your session cookie, proxy,
+IP settings or membership, and a file with any bad value saves nothing.
+
+**Checking your setup** (Settings > Watcher). *Check IP* shows the address the tracker would see from
+here, in a box you can copy, and what the egress guard would decide; it works with the guard off or armed,
+and it never contacts the tracker. *Test tracker* runs one real search for the title in the box (it starts
+as a common one) and reports `Found N results; first: <title> — <author>`, or says the site answered but
+found nothing, which points at the search body and category. *Test qBittorrent* also lists the categories
+qBittorrent has, shows where your category saves, and checks that against the folder Audiobind watches;
+it only reads, and it says what it could not tell rather than guessing.
 
 **Account budgets** (all in **Settings > Watcher**, applied from the next cycle; `0` = no limit, and for
 the reserve, none). A freeleech credit is never refunded, so the watcher budgets the account:
@@ -213,7 +233,8 @@ Things to know:
   keeps pointing at the old network). In Compose use `depends_on: [gluetun]`; on Unraid put the
   VPN container above Audiobind in the autostart order (drag to reorder on the Docker tab) and
   give it a short wait.
-- **Verify it** (the image has no `wget` or `curl`, so use Python):
+- **Verify it.** Easiest: Settings > Watcher > **Check IP**. From a terminal (the image has no `wget`
+  or `curl`, so use Python):
 
   ```bash
   docker exec audiobind python3 -c "import urllib.request;print(urllib.request.urlopen('https://ipinfo.io/ip').read().decode())"
