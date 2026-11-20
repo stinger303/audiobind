@@ -14,15 +14,37 @@ NOISE_RE = re.compile(
     r"\b\d+\s*kbps\b|\bdisc\s*\d+\b|\bcd\s*\d+\b|\bbook\s*mark\b",
     re.I,
 )
+#: SEC-05c: what redact_url shows for a value whose login it cannot place with certainty
+URL_HIDDEN = "<url hidden>"
+_URL_SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
+
+
 def redact_url(url) -> str:
     """``url`` with any login in it (``user:pass@``) shown as ``***@`` - safe for a log line or
-    an error message (SEC-05). Everything up to the LAST ``@`` after the scheme is hidden, so a
-    password with a ``/`` or ``@`` in it is hidden too."""
+    an error message (SEC-05). Everything up to the ``@`` after the scheme is hidden, so a
+    password with a ``/`` in it is hidden too. SEC-05c: no ``scheme://`` or more than one ``@``
+    is not guessed at - the whole value becomes URL_HIDDEN."""
     text = str(url or "")
-    start = text.find("://")
-    start = start + 3 if start >= 0 else 0
-    at = text.rfind("@", start)
-    return text if at < 0 else text[:start] + "***" + text[at:]
+    if not text:
+        return ""
+    scheme, sep, rest = text.partition("://")
+    if not sep or not _URL_SCHEME_RE.fullmatch(scheme) or rest.count("@") > 1:
+        return URL_HIDDEN
+    at = rest.find("@")
+    return text if at < 0 else f"{scheme}://***{rest[at:]}"
+
+
+def strip_url_login(url) -> str:
+    """SEC-05c: ``url`` without its login - everything up to the LAST ``@`` (after the scheme, if
+    there is one) is dropped, so a password holding ``/`` or ``@`` goes whole. No ``@``: unchanged."""
+    text = str(url or "")
+    at = text.rfind("@")
+    if at < 0:
+        return text
+    scheme, sep, _rest = text.partition("://")
+    if sep and _URL_SCHEME_RE.fullmatch(scheme):
+        return f"{scheme}://{text[at + 1:]}"
+    return text[at + 1:]
 
 
 YEAR_RE = re.compile(r"[\(\[]\s*(19|20)\d{2}\s*[\)\]]")

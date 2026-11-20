@@ -85,7 +85,7 @@ class RedactTests(unittest.TestCase):
 
         cases = {
             f"http://admin:{SECRET}@qbit:8080/x": "http://***@qbit:8080/x",
-            f"admin:{SECRET}@qbit": "***@qbit",
+            f"admin:{SECRET}@qbit": "<url hidden>",  # SEC-05c: no scheme:// - not guessed at
             f"http://admin:p/{SECRET}@qbit": "http://***@qbit",
             "http://qbit:8080": "http://qbit:8080",
             "": "",

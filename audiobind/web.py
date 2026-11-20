@@ -46,6 +46,7 @@ from .config import (
     SECRET_SETTING_KEYS,
     SETTING_KEYS,
     SETTING_MAP,
+    URL_SETTING_KEYS,
     WATCHER_TEXT_CHECKS,
     effective_val,
     is_custom,
@@ -71,7 +72,7 @@ from .covers import valid_asin
 from .pipeline import CONVERT_LOCK, process_unit
 from .state import LOCKABLE_FIELDS, SOURCE_INGEST, WISHLIST_REQUEUEABLE, key_source
 from .units import files_under, find_unit, foreign_audio, owned_paths
-from .util import loads_dict
+from .util import loads_dict, redact_url
 
 _log = logging.getLogger("audiobind").info
 ICON_PATH = Path(__file__).resolve().parent.parent / "icon.svg"
@@ -2569,8 +2570,12 @@ def _attr(text: str) -> str:
 
 def public_settings(values: dict) -> dict:
     """A settings dict safe to send to a browser: a secret (the tracker session, the qBittorrent
-    password) becomes True/False - is one set - and never its value."""
-    return {key: (bool(value) if key in SECRET_SETTING_KEYS else value) for key, value in values.items()}
+    password) becomes True/False - is one set - and never its value. SEC-05c: an address with an
+    ``@`` in it is masked (redact_url), so no login in a URL reaches a page or a JSON answer."""
+    return {key: (bool(value) if key in SECRET_SETTING_KEYS
+                  else redact_url(value) if key in URL_SETTING_KEYS and "@" in str(value or "")
+                  else value)
+            for key, value in values.items()}
 
 
 def _breakable_path(p) -> str:

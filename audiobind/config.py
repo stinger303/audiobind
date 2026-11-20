@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from .util import strip_url_login
 
 
 TRUTHY = {"1", "true", "yes", "on"}
@@ -809,13 +813,33 @@ def setting_bounds(key: str) -> tuple[int, int]:
     return min(lo, env), max(hi, env)
 
 
+#: SEC-05c: the settings that hold an address; a saved one never carries a login past set_effective
+URL_SETTING_KEYS = frozenset(key for key in SETTING_KEYS if key.endswith("_url"))
+#: (key, sha256 of the stored value) already reported as holding a login - one log line per value
+_LOGIN_LOGGED: set[tuple[str, str]] = set()
+
+
+def _without_login(key: str, value):
+    """SEC-05c: a saved URL with ``user:pass@`` in it (a legacy or malformed value the Settings
+    validator never saw) is used without the login, and that is logged once - never the value."""
+    if key not in URL_SETTING_KEYS or not isinstance(value, str) or "@" not in value:
+        return value
+    seen = (key, hashlib.sha256(value.encode("utf-8", "replace")).hexdigest())
+    if seen not in _LOGIN_LOGGED:
+        _LOGIN_LOGGED.add(seen)
+        logging.getLogger("audiobind").warning(
+            "saved setting %s held a login (user:pass@); it was removed and the address is used "
+            "without it - save the field again to store it clean", key)
+    return strip_url_login(value)
+
+
 def set_effective(state) -> None:
     """Refresh all effective overrides from the State DB."""
     stored = state.get_meta_many([f"setting_{key}" for key in SETTING_KEYS])  # one query, not one per key
     for key in SETTING_KEYS:
         db = stored.get(f"setting_{key}")
         if db is not None:
-            _EFFECTIVE[key] = db
+            _EFFECTIVE[key] = _without_login(key, db)
         else:
             _EFFECTIVE.pop(key, None)
 

@@ -30,6 +30,7 @@ import urllib.request
 
 from .base import AUTH, ERROR, REFUSED, UNAVAILABLE, ClientError, DownloadClient
 from .torrentfile import _skip, info_hash  # noqa: F401 - re-exported through audiobind.qbit
+from ..util import redact_url
 
 TIMEOUT = 20.0
 MAX_ANSWER = 64 * 1024
@@ -67,7 +68,7 @@ class QbitClient(DownloadClient):
         self.url = str(url or "").rstrip("/")
         parts = urllib.parse.urlsplit(self.url)
         if parts.scheme not in ("http", "https") or not parts.netloc:
-            raise QbitError(f"QBIT_URL is not an http(s) URL: {self.url!r}", kind=ERROR)
+            raise QbitError(f"QBIT_URL is not an http(s) URL: {redact_url(self.url)!r}", kind=ERROR)
         self.origin = f"{parts.scheme}://{parts.netloc}"
         self._username = str(username or "")
         self._password = str(password or "")
@@ -94,7 +95,7 @@ class QbitClient(DownloadClient):
             finally:
                 exc.close()
         except (urllib.error.URLError, OSError) as exc:
-            raise QbitError(f"qBittorrent at {self.url} could not be reached ({type(exc).__name__})",
+            raise QbitError(f"qBittorrent at {redact_url(self.url)} could not be reached ({type(exc).__name__})",
                             kind=UNAVAILABLE) from None
 
     def _get(self, path: str, query: dict) -> tuple[int, bytes]:
@@ -112,7 +113,7 @@ class QbitClient(DownloadClient):
             finally:
                 exc.close()
         except (urllib.error.URLError, OSError) as exc:
-            raise QbitError(f"qBittorrent at {self.url} could not be reached ({type(exc).__name__})",
+            raise QbitError(f"qBittorrent at {redact_url(self.url)} could not be reached ({type(exc).__name__})",
                             kind=UNAVAILABLE) from None
 
     def _has_sid(self) -> bool:
