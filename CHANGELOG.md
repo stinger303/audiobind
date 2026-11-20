@@ -7,6 +7,42 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.25.1-dev2] - 2026-11-19
+
+**Unreleased test build.** The second half of the same audit: the places where the product could check
+something for you and didn't. Nothing here changes what a scan or a conversion does — it changes what the
+app tells you it is about to do, and whether it can prove it.
+
+### Added
+- **Check IP.** A button on the Watcher tab reports the address the tracker would see right now, and what
+  the guard would decide if it were armed. It makes no request to the tracker, says so if the lookup
+  itself failed, and offers the value to copy — because that is the address a tracker session has to be
+  created for.
+- **A tracker preset file.** If `/config/tracker-preset.json` exists, the Watcher tab offers to fill the
+  tracker fields from it, names the preset, lists the fields it will change and asks first. It writes the
+  same settings the tab saves; the file is never read at startup. `docs/tracker-preset.example.json` shows
+  the shape.
+- **The qBittorrent test now answers the folder question.** It lists the categories qBittorrent knows, the
+  save path of the configured one, and says whether that path matches the ingest folder Audiobind sees —
+  or exactly what it could not tell.
+
+### Changed
+- **Test tracker runs a real search** with a title you can edit, and reports what came back ("Found 12
+  results; first: …") instead of searching for a nonsense string and calling zero results a success. One
+  request, same as before; the session value is never in the response.
+- **An empty qBittorrent URL now reads as "not configured yet"**, not as a cycle error. A malformed
+  address still fails loudly.
+- Ingest says when it is half-configured: a mounted folder with no `Ingest dir`, or the reverse, names the
+  half that is missing and the Unraid field to set, instead of quietly leaving ingest off.
+
+### Fixed
+- The watcher's disabled reasons, the guard status and the check results all come from one place, so the
+  tab cannot claim a check passed while the watcher says it is off.
+
+### Tests
+- 2,086 → **2,180** (94 new), including a preset file that refuses to carry someone's session, and
+  one asserting the empty-URL path is "off", not an error.
+
 ## [0.25.1-dev1] - 2026-11-19
 
 **Unreleased test build.** Twenty-three fixes from a first-time-setup audit — someone installing the
