@@ -549,7 +549,11 @@ status, _, retried = fetch("/api/wishlist/retry", json.dumps({"asin": "B0VERERR0
                            {"Content-Type": "application/json", "Cookie": COOKIE})
 check("Retry puts an error row back to wanted", status == 200 and json.loads(retried)["item"]["status"] == "wanted")
 CONFIG.tracker_session, CONFIG.qbit_user, CONFIG.qbit_pass = "VERIFY-SECRET-COOKIE", "admin", "VERIFY-SECRET-PASS"
+CONFIG.qbit_url = "http://qbit.example:8080"  # an empty address means "not set", and the watcher stays off
 on_settings = get("/settings?tab=watcher")
+check("watcher: Check IP, the search-title box and the folder-check detail are on the tab",
+      'id="ab-checkip"' in on_settings and 'id="ab-checkip-ip" readonly' in on_settings
+      and 'id="ab-watch-test-query"' in on_settings and 'id="ab-watch-test-fb-detail"' in on_settings)
 check("watcher: enabled section with Run and Pause", '<span class="ok">Enabled</span>' in on_settings
       and 'onclick="abWatcher(\'run\')" title=' in on_settings and "Pause watcher" in on_settings)
 status, _, paused = fetch("/api/watcher", json.dumps({"action": "pause"}).encode(),

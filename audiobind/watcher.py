@@ -114,6 +114,9 @@ def disabled_reason() -> str:
         return f"not set: {', '.join(missing)}"
     kind = client_kind()
     if kind == "qbittorrent":
+        # an empty address is "not filled in yet", never an error; a malformed one still fails loudly
+        if not qbit_url().strip():
+            return "QBIT_URL is not set - the watcher has nowhere to send a torrent"
         if not _setting("qbit_user") or not _setting("qbit_pass"):
             return "QBIT_USER / QBIT_PASS are not set - the watcher has nowhere to send a torrent"
         return ""
@@ -226,41 +229,202 @@ def _client_settings_digest() -> str:
 
 
 # ---------------------------------------------------------------------------- connection tests
-#: the title the tracker test searches for: nothing is called this, so the answer is "no results"
-PROBE_TITLE = "audiobind connection test zqxj"
+#: the title the tracker test searches for until the person types another: a common book, so "found
+#: nothing" points at the search settings and not at an unlucky title
+DEFAULT_TEST_QUERY = "Dune"
+MAX_TEST_QUERY = 200
+
+#: how the folder check decides two container paths are one folder (shown under the qBittorrent test)
+CHAIN_RULE = (
+    "How this is checked: Audiobind and qBittorrent each call the downloads folder by their own container path "
+    "(Audiobind's Ingest path, qBittorrent's category save path). They are the same folder when both Docker pages "
+    "map one host folder to those paths. Audiobind cannot read your host folders from inside its container, so it "
+    "compares what both can see: a finished torrent that qBittorrent reports under its save path must show up, "
+    "by name, inside Audiobind's ingest folder. No finished torrent yet means nothing can be compared.")
+#: the folder check looks at no more than this many finished torrents of the category
+CHAIN_SAMPLE = 20
+
+
+def _first_component(content_path: str, save_path: str) -> str:
+    """The name qBittorrent gave the download inside its save folder: the first path part under
+    ``save_path`` (the folder of a multi-file torrent, the file of a single-file one). "" when there is
+    no usable name - it is only ever joined to the ingest folder, so it must be one plain name."""
+    from pathlib import PurePosixPath
+
+    content = PurePosixPath(content_path.replace("\\", "/"))
+    try:
+        parts = content.relative_to(PurePosixPath(save_path.replace("\\", "/"))).parts
+    except ValueError:
+        parts = (content.name,) if content.name else ()
+    name = parts[0] if parts else ""
+    return "" if name in ("", ".", "..") or "/" in name else name
+
+
+def folder_chain(category: str, check: dict, ingest_dir: str, exists=None) -> dict:
+    """Does what qBittorrent reports match what Audiobind watches? ``{"level", "lines"}``: level is ``ok``
+    (proved: a finished torrent of the category is in the ingest folder), ``problem`` (the category is
+    missing or has no save path, or finished torrents are not in the ingest folder) or ``unknown`` (cannot
+    tell; the lines say exactly what is missing). Nothing is guessed: ``ok`` needs the proof.
+    ``check`` is ``QbitClient.check()``'s answer; ``exists`` (default Path.exists) is the one filesystem read."""
+    from pathlib import Path
+
+    exists = exists or (lambda path: Path(path).exists())
+    categories = check.get("categories")
+    if categories is None:
+        why = check.get("categories_error") or "no answer"
+        return {"level": "unknown", "lines": [
+            f"Could not read qBittorrent's categories ({why}).",
+            f"So it is not known whether category '{category}' exists or where it saves."]}
+    lines = ["qBittorrent's categories: " + (", ".join(sorted(categories, key=str.lower)) or "none yet") + "."]
+    if category not in categories:
+        lines.append(f"Category '{category}' isn't in qBittorrent. Create it there (Categories → Add category) "
+                     "with its save path set to the folder Audiobind's Ingest path points at.")
+        return {"level": "problem", "lines": lines}
+    save_path = categories[category]
+    if not save_path:
+        lines.append(f"Category '{category}' exists but has no save path of its own, so qBittorrent puts its books in "
+                     "its default download folder. Give the category a save path: the folder that your qBittorrent "
+                     "Docker page maps to the same host folder as Audiobind's Ingest path.")
+        return {"level": "problem", "lines": lines}
+    lines.append(f"Category '{category}' exists; qBittorrent saves it to {save_path}.")
+    if not ingest_dir:
+        lines.append("Audiobind's ingest is off (Ingest dir is empty), so there is no folder to compare that with. "
+                     "Docker → Audiobind → Edit → Show more settings → Ingest dir.")
+        return {"level": "unknown", "lines": lines}
+    if not exists(ingest_dir):
+        lines.append(f"Audiobind's ingest folder {ingest_dir} is not there from Audiobind's side (the Ingest path "
+                     "mount is missing), so nothing can be compared.")
+        return {"level": "unknown", "lines": lines}
+    torrents = check.get("torrents")
+    if torrents is None:
+        lines.append(f"Could not read the torrents in '{category}' ({check.get('torrents_error') or 'no answer'}), "
+                     "so the folders could not be compared.")
+        return {"level": "unknown", "lines": lines}
+    done = [t for t in torrents if t.get("progress", 0) >= DONE_PROGRESS][:CHAIN_SAMPLE]
+    if not done:
+        lines.append(f"Nothing has finished in '{category}' yet, so there is nothing to compare: qBittorrent's "
+                     f"{save_path} and Audiobind's {ingest_dir} are not yet shown to be the same folder.")
+        if save_path.rstrip("/") == ingest_dir.rstrip("/"):
+            lines.append("The two paths are spelled the same. That is right only if your qBittorrent container really "
+                         "has the same host folder at that path.")
+        return {"level": "unknown", "lines": lines}
+    seen = [(t, _first_component(t.get("content_path", ""), t.get("save_path") or save_path)) for t in done]
+    for _torrent, name in seen:
+        found = str(Path(ingest_dir) / name) if name else ""
+        if found and exists(found):
+            lines.append(f"Verified: qBittorrent reports '{name}' under {save_path}, and Audiobind finds it at {found}. "
+                         f"So {save_path} (qBittorrent) and {ingest_dir} (Audiobind) are the same folder.")
+            return {"level": "ok", "lines": lines}
+    example = next((name for _t, name in seen if name), "")
+    lines.append(f"qBittorrent has {len(seen)} finished torrent(s) in '{category}'"
+                 + (f" (for example '{example}' under {save_path})" if example else "")
+                 + f", but none of them is in Audiobind's ingest folder {ingest_dir}. Either the two are not the same "
+                 "folder, or the books were moved or deleted after they finished. Check that the category's save path "
+                 "is the folder your qBittorrent Docker page maps to the same host folder as Audiobind's Ingest path.")
+    return {"level": "problem", "lines": lines}
+
+
+def probe_qbit_report() -> dict:
+    """Settings > Watcher "Test qBittorrent" / Download client "Test connection": log in to the selected
+    client with the saved values and ask the version. For qBittorrent it also reads - in the same session,
+    GET requests only, nothing added - its categories and the torrents of the configured category, and says
+    whether the category's save path is the folder Audiobind watches. ``{"ok", "message", "chain", "details",
+    "rule"}``; ``chain`` is "" for the other clients. Nothing is stored; the session is logged out again."""
+    label = client_label()
+    report = {"ok": False, "message": "", "chain": "", "details": [], "rule": ""}
+    if client_kind() == "qbittorrent" and not qbit_url().strip():
+        report["message"] = "QBIT_URL is not set - fill in the qBittorrent URL above and test again"
+        return report
+    try:
+        client = make_client()
+        if client_kind() != "qbittorrent":
+            report.update(ok=True, message=f"Connected - {label} {client.version()}")
+            return report
+        category = qbit_category()
+        check = client.check(category)
+    except ClientError as exc:
+        report["message"] = str(exc)
+        return report
+    except Exception as exc:  # noqa: BLE001 - whatever it is, the answer is "not connected"
+        report["message"] = f"{label} could not be reached ({type(exc).__name__})"
+        return report
+    from . import ingest
+
+    chain = folder_chain(category, check, ingest.configured_dir())
+    report.update(ok=True, message=f"Connected - {label} {check['version']}", chain=chain["level"],
+                  details=chain["lines"], rule=CHAIN_RULE)
+    return report
 
 
 def probe_qbit() -> tuple[bool, str]:
-    """Settings > Watcher "Test qBittorrent" / Download client "Test connection": log in to the
-    selected client with the saved values and ask the version. (ok, message). Nothing is stored;
-    the session is logged out again. The name stays: the route and the default client are qBittorrent."""
-    label = client_label()
-    try:
-        version = make_client().version()
-    except ClientError as exc:
-        return False, str(exc)
-    except Exception as exc:  # noqa: BLE001 - whatever it is, the answer is "not connected"
-        return False, f"{label} could not be reached ({type(exc).__name__})"
-    return True, f"Connected - {label} {version}"
+    """``probe_qbit_report()`` as (ok, message). The name stays: the route and the default client are qBittorrent."""
+    report = probe_qbit_report()
+    return report["ok"], report["message"]
 
 
-def probe_tracker(state) -> tuple[bool, str]:
-    """Settings > Watcher "Test tracker": one search for a title nothing has, through the same client
-    (so the same pacing and backoff) and behind the same egress guard as a cycle. (ok, message)."""
+def _short(text: str, limit: int = 120) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def clean_test_query(raw) -> str:
+    """The title typed into the tracker test: one line, at most MAX_TEST_QUERY characters; empty = the default."""
+    return " ".join(str(raw or "").split())[:MAX_TEST_QUERY] or DEFAULT_TEST_QUERY
+
+
+def probe_tracker(state, query: str = "") -> tuple[bool, str]:
+    """Settings > Watcher "Test tracker": ONE search for ``query`` (a common title by default), through the
+    same client (so the same pacing and backoff) and behind the same egress guard as a cycle. It proves a
+    search works, not only that the site answered. (ok, message). The message is built from the results
+    only, never from a setting, so the session cannot be in it."""
     missing = missing_settings()
     if missing:
         return False, f"not set yet: {', '.join(missing)}"
     verdict, reason, _observed = WATCHER._egress_guard(state)
     if verdict in ("blocked", "unknown"):
         return False, reason
+    title = clean_test_query(query)
     try:
-        found = WATCHER.client().search(PROBE_TITLE)
+        found = WATCHER.client().search(title)
     except tracker.TrackerError as exc:
         return False, str(exc)
     except Exception as exc:  # noqa: BLE001
         return False, f"the tracker could not be reached ({type(exc).__name__})"
-    n = len(found)
-    return True, f"Connected - the tracker answered a test search ({n} {'result' if n == 1 else 'results'})"
+    if not found:
+        return False, f"The site answered but found nothing for '{_short(title, 80)}'. Check the search body and category."
+    n, first = len(found), found[0]
+    who = ", ".join(a for a in first.authors[:2] if a)
+    return True, (f"Found {n} {'result' if n == 1 else 'results'}; first: {_short(first.name) or '(no title)'}"
+                  + (f" — {_short(who)}" if who else ""))
+
+
+def check_ip() -> dict:
+    """Settings > Watcher "Check IP": which address would the tracker see right now, and what would the egress
+    guard decide? Asks only the address lookup (through TRACKER_PROXY when set - the very call the guard makes);
+    the tracker is never contacted, whether the guard is off or armed. Nothing is stored.
+    ``{"ok", "ip", "guard", "message"}``: ``ok`` = the lookup worked; ``guard`` = off | ok | blocked | unknown."""
+    proxy = _setting("tracker_proxy")
+    home, expected = _setting("tracker_home_ip"), _setting("tracker_expected_egress_ip")
+    try:
+        ip = egress.probe(proxy)
+    except Exception as exc:  # noqa: BLE001 - whatever went wrong, the answer is "could not check"
+        why = str(exc) or type(exc).__name__
+        return {"ok": False, "ip": "", "guard": "unknown", "message": (
+            f"Could not check — no request was made to the site. The address lookup failed ({why}). "
+            + ("Check that TRACKER_PROXY is right and the proxy is running." if proxy else
+               "Check this container's internet connection."))}
+    via = "through TRACKER_PROXY" if proxy else "directly from this container, with no proxy"
+    verdict, reason = egress.judge(home, ip, expected)
+    if verdict == "off":
+        decision = ("The guard is off, so nothing is checked or blocked. To lock the watcher to this address, enter it "
+                    "under \"Only reach the tracker from one IP\" and save: from then on the watcher stops, instead of "
+                    "contacting the site, whenever the address is anything else.")
+    elif verdict == "ok":
+        decision = f"The guard is armed and would let the watcher run: {reason}."
+    else:
+        decision = f"The guard is armed and would stop the watcher: {reason}."
+    return {"ok": True, "ip": ip, "guard": verdict,
+            "message": f"The tracker would see {ip} ({via}). {decision} No request was made to the site."}
 
 
 # ---------------------------------------------------------------------------- allowed-IP updater

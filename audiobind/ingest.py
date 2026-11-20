@@ -29,6 +29,29 @@ log = logging.getLogger("audiobind")
 #: a folder missing when the daemon starts stays off until a restart, as the warning says
 _DISABLED_AT_START = ""
 
+#: where the Unraid template mounts the ingest folder inside the container ("Ingest path")
+MOUNT_PATH = "/ingest"
+#: ingest needs BOTH halves: the mount (Ingest path) and the setting that names it (Ingest dir)
+UNRAID_INGEST_DIR = "Docker \u2192 Audiobind \u2192 Edit \u2192 Show more settings \u2192 Ingest dir"
+UNRAID_INGEST_PATH = "Docker \u2192 Audiobind \u2192 Edit \u2192 Show more settings \u2192 Ingest path"
+
+
+def half_configured() -> str:
+    """"" unless ingest is off because only one of its two halves is set, then a plain sentence for the
+    person: the folder is mounted but INGEST_DIR is empty, or INGEST_DIR names a folder that is not there
+    (the mount is missing). Looks at the folders only - nothing is read inside them."""
+    configured = configured_dir()
+    if not configured:
+        if Path(MOUNT_PATH).is_dir():
+            return (f"{MOUNT_PATH} is mounted but Ingest dir is empty, so ingest is off. Set Ingest dir to "
+                    f"{MOUNT_PATH}: {UNRAID_INGEST_DIR} (docker run: -e INGEST_DIR={MOUNT_PATH}).")
+        return ""
+    if not Path(configured).is_dir():
+        return (f"Ingest dir is {configured} but there is no such folder, so ingest cannot run. Mount the folder "
+                f"there: {UNRAID_INGEST_PATH}.")
+    return ""
+
+
 def configured_dir() -> str:
     """The INGEST_DIR setting through the effective-config getter; "" when the feature is off."""
     return str(effective_val("ingest_dir") or "").strip()
@@ -53,6 +76,9 @@ def check_at_start() -> bool:
     _DISABLED_AT_START = ""
     configured = configured_dir()
     if not configured:
+        half = half_configured()
+        if half:
+            log.warning("ingest: %s", half)
         return False
     root = Path(configured)
     problem = ""

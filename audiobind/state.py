@@ -552,6 +552,17 @@ class State:
                 (key, json.dumps(value)),
             )
 
+    def set_meta_many(self, items: dict) -> None:
+        """Several meta values in ONE transaction: all of them are stored or none is."""
+        with self._lock:
+            with self._txn():
+                for key, value in items.items():
+                    self.connection.execute(
+                        "INSERT INTO meta (key, value) VALUES (?,?) "
+                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                        (key, json.dumps(value)),
+                    )
+
     def get_meta(self, key: str, default=None):
         with self._lock:
             row = self.connection.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()

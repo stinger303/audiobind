@@ -23,9 +23,14 @@ SETTINGS = {
 }
 
 
+#: a fictional qBittorrent address: an empty QBIT_URL means "watcher off, not set yet", so a fixture
+#: that wants the watcher on must have one (tests of the empty value patch it back to "")
+QBIT_URL = "http://qbit.example:8080"
+
+
 def tracker_cfg(session: str = "x") -> mock._patch:
     """Patch CONFIG so the watcher is on (``session`` "" = the one missing setting, i.e. off)."""
-    return mock.patch.multiple(CONFIG, tracker_session=session, **SETTINGS)
+    return mock.patch.multiple(CONFIG, tracker_session=session, qbit_url=QBIT_URL, **SETTINGS)
 
 
 def endpoints(**overrides) -> tracker.Endpoints:

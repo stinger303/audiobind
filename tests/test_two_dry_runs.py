@@ -19,7 +19,7 @@ except ImportError:
     from tests.test_watcher import TORRENT, FakeQbit, WatcherCase, answer, entry
     from tests.tracker_cfg import SETTINGS
 
-WATCHER_ON = {**SETTINGS, "tracker_session": "x", "qbit_user": "u", "qbit_pass": "p"}
+WATCHER_ON = {**SETTINGS, "tracker_session": "x", "qbit_user": "u", "qbit_pass": "p", "qbit_url": "http://qbit.example:8080"}
 
 
 class Switches(unittest.TestCase):

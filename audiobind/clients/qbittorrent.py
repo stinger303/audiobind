@@ -2,7 +2,8 @@
 
 POSTs to the WebUI API: ``/api/v2/auth/login``, ``/api/v2/torrents/add`` and
 ``/api/v2/auth/logout``; GETs for ``/api/v2/torrents/info`` and, for the Settings page's
-connection test only, ``/api/v2/app/version``. Quirks of the 5.x build this is written against:
+connection test only, ``/api/v2/app/version`` and ``/api/v2/torrents/categories`` (``check()``:
+read-only, one login, no add). Quirks of the 5.x build this is written against:
 
 * login answers 204 with an EMPTY body on success (older builds: 200 "Ok."); the proof is
   the session cookie in the jar, so that is what is checked. Older builds name it ``SID``;
@@ -227,10 +228,44 @@ class QbitClient(DownloadClient):
             status, answer = self._get("/api/v2/app/version", {})
         finally:
             self.logout()
-        text = answer.decode("utf-8", "replace").strip()
-        if status != 200 or not text or len(text) > 40:
-            raise QbitError(f"qBittorrent answered HTTP {status} to a version check", kind=ERROR)
-        return text[1:] if text[:1] in ("v", "V") else text
+        return _version_text(status, answer)
+
+    def check(self, category: str) -> dict:
+        """The Settings page's fuller connection test. ONE login, then GETs only - nothing is added,
+        changed or deleted: the version, the categories (``{name: save path}``) and, when ``category``
+        exists, the torrents in it (name, save path, content path, progress).
+
+        Raises QbitError exactly like ``version()`` when the login or the version check fails. A
+        failure of the later reads does not lose the version: it is reported as ``categories_error``
+        / ``torrents_error`` and the matching value stays None."""
+        self.login()
+        out: dict = {"version": "", "categories": None, "categories_error": "", "torrents": None, "torrents_error": ""}
+        try:
+            status, answer = self._get("/api/v2/app/version", {})
+            out["version"] = _version_text(status, answer)
+            try:
+                out["categories"] = _category_paths(self._read_json("/api/v2/torrents/categories", {}, "categories"))
+            except QbitError as exc:
+                out["categories_error"] = str(exc)
+            if out["categories"] is not None and category in out["categories"]:
+                try:
+                    out["torrents"] = _torrent_places(
+                        self._read_json("/api/v2/torrents/info", {"category": category}, "torrents"))
+                except QbitError as exc:
+                    out["torrents_error"] = str(exc)
+        finally:
+            self.logout()
+        return out
+
+    def _read_json(self, path: str, query: dict, what: str):
+        """One GET inside an open session, decoded; QbitError with a plain message if it is not JSON."""
+        status, answer = self._get(path, query)
+        if status != 200:
+            raise QbitError(f"qBittorrent could not list its {what} (HTTP {status})", kind=ERROR)
+        try:
+            return json.loads(answer.decode("utf-8", "replace"))
+        except ValueError:
+            raise QbitError(f"qBittorrent answered its {what} list with something unreadable", kind=ERROR) from None
 
     def logout(self) -> None:
         """Best effort: end the WebUI session and forget the cookie."""
@@ -241,6 +276,42 @@ class QbitClient(DownloadClient):
                 pass
         self.logged_in = False
         self.jar.clear()
+
+
+def _version_text(status: int, answer: bytes) -> str:
+    """"v5.0.4" -> "5.0.4"; QbitError when the answer is not a version."""
+    text = answer.decode("utf-8", "replace").strip()
+    if status != 200 or not text or len(text) > 40:
+        raise QbitError(f"qBittorrent answered HTTP {status} to a version check", kind=ERROR)
+    return text[1:] if text[:1] in ("v", "V") else text
+
+
+def _category_paths(data) -> dict[str, str]:
+    """``/api/v2/torrents/categories`` -> ``{category: save path}`` ("" = qBittorrent's default folder)."""
+    if not isinstance(data, dict):
+        raise QbitError("qBittorrent answered its category list with something unexpected", kind=ERROR)
+    out: dict[str, str] = {}
+    for name, entry in data.items():
+        path = entry.get("savePath") if isinstance(entry, dict) else ""
+        out[str(name)] = path.strip() if isinstance(path, str) else ""
+    return out
+
+
+def _torrent_places(data) -> list[dict]:
+    """The few fields of ``/api/v2/torrents/info`` the folder check reads, defensively."""
+    if not isinstance(data, list):
+        raise QbitError("qBittorrent answered its torrent list with something unexpected", kind=ERROR)
+    out = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        try:
+            progress = float(item.get("progress"))
+        except (TypeError, ValueError):
+            progress = 0.0
+        out.append({"name": str(item.get("name") or ""), "save_path": str(item.get("save_path") or ""),
+                    "content_path": str(item.get("content_path") or ""), "progress": progress})
+    return out
 
 
 def _answer_hash(text: bytes) -> str:

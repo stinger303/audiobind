@@ -13,7 +13,7 @@ import unittest
 import xml.etree.ElementTree as ET
 from unittest import mock
 
-from audiobind import config, watcher, web
+from audiobind import config, ingest, watcher, web
 from audiobind.config import CONFIG
 from audiobind.state import State
 
@@ -238,7 +238,8 @@ class TestUpdaterCopy(WebCase):
                 if configured:
                     values = {"tracker_url": "https://tracker.example", "tracker_search_path": "/s",
                               "tracker_search_body": '{"q": "{{title}}"}', "tracker_download_path": "/d",
-                              "tracker_cookie_name": "sid", "tracker_session": "x", "qbit_user": "u", "qbit_pass": "p"}
+                              "tracker_cookie_name": "sid", "tracker_session": "x", "qbit_user": "u", "qbit_pass": "p",
+                              "qbit_url": "http://qbit.example:8080"}
                     patches = [mock.patch.object(CONFIG, k, v) for k, v in values.items()]
                 for p in patches:
                     p.start()
@@ -297,6 +298,13 @@ ONE_FOLDER = ("One folder, three names. Example: host folder /mnt/user/downloads
 
 class TestFolders(WebCase):
     """ONB-21 (one folder, three names) and ONB-12 (the Settings rail shows the ingest line)."""
+
+    def setUp(self):
+        super().setUp()
+        # whether the machine running the tests has an /ingest folder must not change the plain "off" wording
+        patch = mock.patch.object(ingest, "MOUNT_PATH", str(self.root / "no-ingest-mount"))
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def test_the_category_field_teaches_the_three_names_in_template_and_settings(self):
         _, description, _ = field("QBIT_CATEGORY")
@@ -419,7 +427,8 @@ class TestVpnCopy(WebCase):
 
 CONFIGURED = {"tracker_url": "https://tracker.example", "tracker_search_path": "/s",
               "tracker_search_body": '{"q": "{{title}}"}', "tracker_download_path": "/d",
-              "tracker_cookie_name": "sid", "tracker_session": "x", "qbit_user": "u", "qbit_pass": "p"}
+              "tracker_cookie_name": "sid", "tracker_session": "x", "qbit_user": "u", "qbit_pass": "p",
+                              "qbit_url": "http://qbit.example:8080"}
 
 
 class TestFirstVisitTemplate(unittest.TestCase):

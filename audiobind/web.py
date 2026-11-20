@@ -25,6 +25,7 @@ from . import discover as discover_mod
 from . import hardcover as hardcover_mod
 from . import ipupdate as ipupdate_mod
 from . import overrides as overrides_mod
+from . import preset as preset_mod
 from . import series as series_mod
 from . import watcher as watcher_mod
 from .advice import (
@@ -493,6 +494,13 @@ tr.drow[hidden] td{padding:0}
 .ab-fb{font-size:12.5px;color:var(--ab-text3);}
 .ab-fb.ab-good{color:#5fd38d;}
 .ab-fb.ab-bad{color:#f2686b;}
+.ab-fb.ab-warn{color:#e3b341;}
+/* Settings > Watcher: the lines under a test (the folder check), the Check IP row, the preset box */
+.ab-test-detail{font-size:12.5px;color:var(--ab-text3);margin:6px 0 10px;max-width:70ch}
+.ab-test-detail p{margin:3px 0}
+.ab-test-detail .ab-rule{color:var(--ab-text4)}
+.ab-checkip-ip{display:flex;gap:8px;align-items:center;margin:6px 0}
+.ab-checkip-ip input{max-width:22ch;font-family:var(--ab-mono, monospace)}
 /* Settings > Watcher: where a value comes from - "from the container", or "set here" + a way back */
 .ab-src{font-size:11px;font-weight:400;color:var(--ab-text4)}
 .ab-src-here{color:var(--ab-text2)}
@@ -4417,6 +4425,45 @@ def _watch_number(key: str, label: str, value: int, suffix: str, hint: str = "")
     return _watch_wrap(key, label, hint, control)
 
 
+def _preset_box() -> str:
+    """Settings > Watcher > Where it looks: "Fill the tracker fields from preset file" - only when the file is
+    there. A good file: its own label, the fields it will fill, which of them replace something, one button.
+    A bad file: a plain error and no button. The file is read here only to draw this box."""
+    preset, why = preset_mod.load()
+    path = _html(str(preset_mod.path_of()))
+    if preset is None:
+        if not why:
+            return ""
+        return ('<div class="ab-hintbox ab-watch-warn" id="ab-preset-error" role="alert"><b>Tracker preset file.</b> '
+                f"{_html(why)} Nothing was changed. Fix <code>{path}</code>, or remove it.</div>")
+    plan = preset_mod.plan(preset, setting_effective)
+
+    def names(keys) -> str:
+        return ", ".join(_html(preset_mod.label_of(k)) for k in keys)
+
+    parts = [f'<div class="ab-acct-who" id="ab-preset"><b>Tracker preset: {_html(preset.label)}</b> '
+             f"(from <code>{path}</code>). "]
+    if plan["fill"]:
+        parts.append(f"It will fill: {names(plan['fill'])}. ")
+    if plan["replace"]:
+        parts.append(f"It will replace what is set now in: <b>{names(plan['replace'])}</b> (you are asked first). ")
+    if plan["same"]:
+        parts.append(f"Already the same: {names(plan['same'])}. ")
+    parts.append("Your session cookie value is never in a preset: you still paste that yourself. "
+                 "Nothing is saved until you press the button.</div>")
+    if not plan["fill"] and not plan["replace"]:
+        return "".join(parts)
+    return (
+        "".join(parts)
+        + '<div class="ab-acct-row"><button class="btn" type="button" id="ab-preset-fill" onclick="abPreset(false)">'
+        "Fill the tracker fields from preset file</button>"
+        '<span class="ab-fb" id="ab-preset-fb" role="status"></span></div>'
+        '<div class="ab-hintbox" id="ab-preset-confirm" role="alert" hidden><span id="ab-preset-confirm-text"></span> '
+        '<button class="btn" type="button" id="ab-preset-yes" onclick="abPreset(true)">Replace them</button> '
+        '<button class="btn" type="button" id="ab-preset-no" onclick="abPresetCancel()">Cancel</button></div>'
+    )
+
+
 def _watch_connection_fields() -> str:
     """Settings > Watcher > Where it looks: the tracker and qBittorrent connection."""
     return (
@@ -4425,6 +4472,7 @@ def _watch_connection_fields() -> str:
         "the container's; Reset to container value goes back to it. Two settings stay container-only: "
         "<code>TRACKER_PROXY</code> and <code>TRACKER_HOME_IP</code>. "
         f"{_html(UNRAID_CONTAINER_ONLY_PATH)} {_html(VPN_SCOPE_NOTE)}</div>"
+        + _preset_box()
         + _watch_text("tracker_url", "Tracker URL", "https://tracker.example")
         + _watch_secret("tracker_session", "Session cookie value")
         + _watch_text("tracker_cookie_name", "Session cookie name", "session_id")
@@ -4485,6 +4533,7 @@ def _download_client_fields() -> str:
         '<button class="btn" type="button" id="ab-dc-test" onclick="abWatchTest(\'qbit\', \'ab-dc-test-fb\')">'
         "Test connection</button>"
         '<span class="ab-fb" id="ab-dc-test-fb" role="status"></span></div>'
+        '<div class="ab-test-detail" id="ab-dc-test-fb-detail" hidden></div>'
     )
 
 
@@ -4512,18 +4561,50 @@ def _watch_test_and_save() -> str:
     return (
         '<div class="ab-acct-title">Test the connection</div>'
         '<div class="ab-acct-who">Saves what you typed, then makes one request with it. Nothing about the test '
-        "is kept.</div>"
-        '<div class="ab-acct-row">'
+        "is kept. Test tracker runs one real search for the title in the box; the qBittorrent test only reads "
+        "(its version, its categories and where the category saves) and adds nothing.</div>"
+        + _watch_wrap_plain(
+            "Search the tracker for",
+            f'<input type="text" class="ab-in" id="ab-watch-test-query" maxlength="{watcher_mod.MAX_TEST_QUERY}" '
+            f'value="{_attr(watcher_mod.DEFAULT_TEST_QUERY)}" autocomplete="off" spellcheck="false" '
+            'aria-label="Title to search the tracker for">')
+        + '<div class="ab-acct-row">'
         '<button class="btn" type="button" id="ab-watch-test-qbit" onclick="abWatchTest(\'qbit\')">'
         f"Test {_html(watcher_mod.client_label())}</button>"
         '<button class="btn" type="button" id="ab-watch-test-tracker" onclick="abWatchTest(\'tracker\')">Test tracker</button>'
         '<span class="ab-fb" id="ab-watch-test-fb" role="status"></span></div>'
+        '<div class="ab-test-detail" id="ab-watch-test-fb-detail" hidden></div>'
     )
+
+
+def _watch_wrap_plain(label: str, control: str) -> str:
+    """A labelled control that is not a saved setting (no data-setting: the Save button never reads it)."""
+    return f'<div class="ab-setting"><span class="ab-setting-label">{_html(label)}</span>{control}</div>'
 
 
 def _egress_pin_field() -> str:
     """Settings > Watcher: the allowed-IP pin, beside the Guard row that refers to it."""
-    return _watch_text("expected_egress", "Only reach the tracker from one IP", "e.g. 198.51.100.7")
+    return _watch_text("expected_egress", "Only reach the tracker from one IP", "e.g. 198.51.100.7") + _check_ip_block()
+
+
+CHECK_IP_NOTE = (
+    "Which address would the tracker see from here, right now? Works with the guard off or armed. It asks an "
+    "address-lookup service (through the tracker proxy, if you set one) and never contacts the tracker. A tracker "
+    "that ties your session to an address needs the session created for exactly this address.")
+
+
+def _check_ip_block() -> str:
+    """Settings > Watcher: the Check IP button, the address in a box that can be copied, and the guard's verdict."""
+    return (
+        '<div class="ab-setting ab-checkip">'
+        f'<div class="ab-setting-hint">{_html(CHECK_IP_NOTE)}</div>'
+        '<div class="ab-acct-row"><button class="btn" type="button" id="ab-checkip" onclick="abCheckIp()">'
+        'Check IP</button><span class="ab-fb" id="ab-checkip-fb" role="status"></span></div>'
+        '<div class="ab-checkip-ip" id="ab-checkip-row" hidden>'
+        '<input type="text" class="ab-in" id="ab-checkip-ip" readonly aria-label="The address the tracker would see" '
+        'onclick="this.select()">'
+        '<button class="btn" type="button" id="ab-checkip-copy" onclick="abCopyIp()">Copy</button></div></div>'
+    )
 
 
 def render_watcher_section(state) -> str:
@@ -4557,7 +4638,9 @@ def render_watcher_section(state) -> str:
         warn = (
             '<div class="ab-hintbox ab-watch-warn" role="alert"><b>The watcher is disabled.</b> '
             f"{_html(s['reason'])}. "
-            + ("Set the qBittorrent user and password below (or QBIT_USER and QBIT_PASS in the container) and save."
+            + (("Fill in the qBittorrent URL below (or QBIT_URL in the container) and save."
+                if not s["qbit_url"] else
+                "Set the qBittorrent user and password below (or QBIT_USER and QBIT_PASS in the container) and save.")
                if s.get("download_client", "qbittorrent") == "qbittorrent" else
                "Fill in the download client's settings below (or in the container) and save.")
             + "</div>"
@@ -5036,30 +5119,125 @@ function abResetSetting(key) {
 function abDownloadClient(kind) {
   document.querySelectorAll('.ab-dc[data-client]').forEach(g => { g.hidden = g.dataset.client !== kind; });
 }
+function abShowDetail(fbId, body) {
+  const box = document.getElementById(fbId + '-detail');
+  if (!box) return;
+  box.textContent = '';
+  const lines = (body.details || []).slice();
+  if (!lines.length) { box.hidden = true; return; }
+  lines.forEach(t => { const p = document.createElement('p'); p.textContent = t; box.appendChild(p); });
+  if (body.rule) {
+    const p = document.createElement('p'); p.className = 'ab-rule'; p.textContent = body.rule; box.appendChild(p);
+  }
+  box.hidden = false;
+}
 function abWatchTest(target, fbId, url) {
   fbId = fbId || 'ab-watch-test-fb';
   url = url || ('/api/watcher/test-' + target);
   const fb = document.getElementById(fbId);
+  const detail = document.getElementById(fbId + '-detail');
+  if (detail) { detail.hidden = true; detail.textContent = ''; }
+  let payload = {};
+  if (target === 'tracker') {
+    const q = document.getElementById('ab-watch-test-query');
+    if (q) payload = {query: q.value};
+  }
   fb.className = 'ab-fb';
   fb.textContent = 'saving, then testing...';
   abSaveSettings(fbId, true).then(saved => {
     if (!saved) return;
     fb.className = 'ab-fb';
     fb.textContent = 'testing...';
-    return fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: '{}'})
+    return fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})
       .then(r => {
         if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
         return r.json().then(body => ({ok: r.ok && body.ok, body: body}));
       })
       .then(res => {
-        fb.className = 'ab-fb ' + (res.ok ? 'ab-good' : 'ab-bad');
+        // a connected qBittorrent whose folders are not proven right is amber, a proven problem is red
+        const chain = res.body.chain || '';
+        fb.className = 'ab-fb ' + (!res.ok ? 'ab-bad' : chain === 'problem' ? 'ab-bad' : chain === 'unknown' ? 'ab-warn' : 'ab-good');
         fb.textContent = res.body.message || res.body.error || 'no answer';
+        abShowDetail(fbId, res.body);
       });
   }).catch(err => {
     if (String(err && err.message) === 'signed out') return;
     fb.className = 'ab-fb ab-bad';
     fb.textContent = 'could not reach the daemon';
   });
+}
+// ---- Settings > Watcher: fill the tracker fields from the preset file (the server checks the whole file first)
+function abPresetCancel() {
+  document.getElementById('ab-preset-confirm').hidden = true;
+  document.getElementById('ab-preset-fb').textContent = '';
+}
+function abPreset(overwrite) {
+  const fb = document.getElementById('ab-preset-fb');
+  const confirmBox = document.getElementById('ab-preset-confirm');
+  fb.className = 'ab-fb';
+  fb.textContent = 'filling...';
+  fetch('/api/watcher/preset', {method:'POST', headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify({overwrite: overwrite === true})})
+    .then(r => {
+      if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+      return r.json().then(body => ({status: r.status, ok: r.ok, body: body}));
+    })
+    .then(res => {
+      if (res.status === 409 && res.body.needs_confirm) {
+        fb.textContent = '';
+        document.getElementById('ab-preset-confirm-text').textContent =
+          'This replaces what is set now in: ' + (res.body.replace || []).join(', ') + '. Nothing is saved until you say so.';
+        confirmBox.hidden = false;
+        return;
+      }
+      confirmBox.hidden = true;
+      if (!res.ok) { fb.className = 'ab-fb ab-bad'; fb.textContent = res.body.error || 'that did not work'; return; }
+      const n = (res.body.filled || []).length + (res.body.replaced || []).length;
+      fb.className = 'ab-fb ab-good';
+      fb.textContent = 'filled ' + n + ' field' + (n === 1 ? '' : 's') + ' from "' + res.body.label + '" - now paste your session cookie value';
+      setTimeout(() => { location.reload(); }, 1200);
+    })
+    .catch(err => {
+      if (String(err && err.message) === 'signed out') return;
+      fb.className = 'ab-fb ab-bad';
+      fb.textContent = 'could not reach the daemon';
+    });
+}
+// ---- Settings > Watcher: Check IP - which address would the tracker see (never contacts the tracker)
+function abCheckIp() {
+  const fb = document.getElementById('ab-checkip-fb');
+  const row = document.getElementById('ab-checkip-row');
+  const box = document.getElementById('ab-checkip-ip');
+  fb.className = 'ab-fb';
+  fb.textContent = 'checking...';
+  row.hidden = true;
+  fetch('/api/watcher/check-ip', {method:'POST', headers:{'Content-Type':'application/json'}, body: '{}'})
+    .then(r => {
+      if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+      return r.json();
+    })
+    .then(body => {
+      fb.className = 'ab-fb ' + (body.ok && body.guard !== 'blocked' ? 'ab-good' : 'ab-bad');
+      fb.textContent = body.message || body.error || 'no answer';
+      if (body.ip) { box.value = body.ip; row.hidden = false; box.focus(); box.select(); }
+    })
+    .catch(err => {
+      if (String(err && err.message) === 'signed out') return;
+      fb.className = 'ab-fb ab-bad';
+      fb.textContent = 'could not reach the daemon';
+    });
+}
+function abCopyIp() {
+  const box = document.getElementById('ab-checkip-ip');
+  const fb = document.getElementById('ab-checkip-fb');
+  box.focus();
+  box.select();
+  const done = () => { fb.className = 'ab-fb ab-good'; fb.textContent = 'copied ' + box.value; };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(box.value).then(done, () => { if (document.execCommand('copy')) done(); });
+  } else if (document.execCommand('copy')) {
+    done();
+  }
 }
 """
 
@@ -5436,6 +5614,9 @@ def _ingest_line() -> str:
     root = ingest_mod.configured_dir()
     where = f' <span title="{_attr(root)}">{_html(root)}</span>' if root else ""
     state = "" if root and ingest_mod.ingest_root() is not None else " (off &#8212; set Ingest path in the container settings)"
+    half = ingest_mod.half_configured()  # only one of the mount and Ingest dir is there: say which, and where to fix it
+    if half:
+        state = f' <span class="warn">({_html(half)})</span>'
     return (
         f'<br><b>ingest</b> &larr;{where}{state}<br><small>Files dropped in the ingest folder are '
         "converted whether or not the watcher is configured.</small>"
@@ -5503,7 +5684,10 @@ STATUS_CHIP_LABELS = {
 }
 
 #: Settings > Watcher connection tests (POST only): path -> what is tested
-WATCHER_TEST_ROUTES = {"/api/watcher/test-qbit": "qbit", "/api/watcher/test-tracker": "tracker"}
+WATCHER_TEST_ROUTES = {"/api/watcher/test-qbit": "qbit", "/api/watcher/test-tracker": "tracker",
+                       "/api/watcher/check-ip": "ip"}
+#: Settings > Watcher > Where it looks: fill the tracker fields from the preset file (POST only)
+WATCHER_PRESET_ROUTE = "/api/watcher/preset"
 #: Settings > Library > Hardcover evidence: Test connection (POST only)
 HARDCOVER_TEST_ROUTE = "/api/hardcover/test"
 
@@ -5522,6 +5706,7 @@ POST_ONLY_ROUTES = {
     "/api/control": "control actions are a POST",
     **{route: "a connection test is a POST" for route in WATCHER_TEST_ROUTES},
     HARDCOVER_TEST_ROUTE: "a connection test is a POST",
+    WATCHER_PRESET_ROUTE: "filling from the preset file is a POST",
 }
 
 #: ?status= values that open the "Needs you" view
@@ -7754,16 +7939,59 @@ class Handler(BaseHTTPRequestHandler):
                    "application/json")
 
     def _handle_watcher_test(self, target: str) -> None:
-        """POST /api/watcher/test-qbit | test-tracker: one connection test with the saved values.
-        200 {"ok": true, "message": "Connected - ..."} or 502 {"ok": false, "message": why}. The result
-        is only answered, never stored."""
-        if self._read_json() is None:
+        """POST /api/watcher/test-qbit | test-tracker | check-ip: one test with the saved values.
+        200 {"ok": true, "message": "..."} or 502 {"ok": false, "message": why}. The result is only
+        answered, never stored. test-qbit adds "chain", "details" and "rule" (the folder check);
+        test-tracker takes an optional {"query": "<title>"}; check-ip adds "ip" and "guard" and never
+        contacts the tracker. No answer carries a setting's value: the messages are built from results."""
+        payload = self._read_json()
+        if payload is None:
             return
         if target == "qbit":
-            ok, message = watcher_mod.probe_qbit()
+            answer = watcher_mod.probe_qbit_report()
+        elif target == "ip":
+            answer = watcher_mod.check_ip()
         else:
-            ok, message = watcher_mod.probe_tracker(self.state)
-        self._send(200 if ok else 502, json.dumps({"ok": ok, "message": message}).encode(), "application/json")
+            query = payload.get("query", "")
+            if query is not None and not isinstance(query, str):
+                self._send(400, b'{"ok":false,"message":"the search title must be text"}', "application/json")
+                return
+            ok, message = watcher_mod.probe_tracker(self.state, query or "")
+            answer = {"ok": ok, "message": message}
+        self._send(200 if answer["ok"] else 502, json.dumps(answer).encode(), "application/json")
+
+    def _handle_watcher_preset(self) -> None:
+        """POST /api/watcher/preset {"overwrite": bool}: fill the tracker fields from the preset file.
+        The file is checked as a whole first (a bad one is a 400 and nothing is saved). A field that is
+        empty (or still at its built-in value) is filled; a field holding something else is replaced
+        only when the body says ``"overwrite": true`` - otherwise 409 with the fields' names, nothing saved.
+        Everything is stored in one transaction, under the keys the tab's own Save uses."""
+        payload = self._read_json()
+        if payload is None:
+            return
+        preset, why = preset_mod.load()
+        if preset is None:
+            self._send(400, json.dumps({"ok": False, "error": why or "There is no tracker preset file."}).encode(),
+                       "application/json")
+            return
+        set_effective(self.state)
+        plan = preset_mod.plan(preset, setting_effective)
+        overwrite = payload.get("overwrite") is True
+        if plan["replace"] and not overwrite:
+            self._send(409, json.dumps({
+                "ok": False, "needs_confirm": True, "replace": [preset_mod.label_of(k) for k in plan["replace"]],
+                "error": "Some of these fields already hold something else."}).encode(), "application/json")
+            return
+        keys = plan["fill"] + (plan["replace"] if overwrite else [])
+        if keys:
+            self.state.set_meta_many({f"setting_{key}": preset.values[key] for key in keys})
+            set_effective(self.state)
+            watcher_mod.WATCHER.settings_changed(self.state)
+        self._send(200, json.dumps({
+            "ok": True, "label": preset.label,
+            "filled": [preset_mod.label_of(k) for k in plan["fill"]],
+            "replaced": [preset_mod.label_of(k) for k in plan["replace"]] if overwrite else [],
+            "unchanged": [preset_mod.label_of(k) for k in plan["same"]]}).encode(), "application/json")
 
     def _handle_hardcover_test(self) -> None:
         """POST /api/hardcover/test: one request with the saved token (asked for, so it runs even
@@ -7935,6 +8163,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == HARDCOVER_TEST_ROUTE:
             self._handle_hardcover_test()
+            return
+        if path == WATCHER_PRESET_ROUTE:
+            self._handle_watcher_preset()
             return
         if path == "/api/watcher":
             self._handle_watcher()

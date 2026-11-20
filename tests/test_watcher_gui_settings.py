@@ -291,6 +291,11 @@ class FakeQbitVersion:
             raise qbit.QbitError(self.error)
         return self.version_text
 
+    def check(self, category):
+        """What QbitClient.check() answers: here, a qBittorrent with no categories at all."""
+        return {"version": self.version(), "categories": {}, "categories_error": "", "torrents": None,
+                "torrents_error": ""}
+
 
 class FakeTracker:
     def __init__(self, results=(), error=None):
@@ -320,7 +325,11 @@ class TestConnectionTests(WatcherSettingsCase):
         with mock.patch.object(watcher, "make_qbit", return_value=FakeQbitVersion("5.2.4")):
             status, _h, body = self.call("/api/watcher/test-qbit", {})
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body), {"ok": True, "message": "Connected - qBittorrent 5.2.4"})
+        answer = json.loads(body)
+        self.assertEqual((answer["ok"], answer["message"]), (True, "Connected - qBittorrent 5.2.4"))
+        # the fake qBittorrent has no categories, so the folder check reports the missing category
+        self.assertEqual(answer["chain"], "problem")
+        self.assertTrue(any("isn't in qBittorrent" in line for line in answer["details"]))
         with mock.patch.object(watcher, "make_qbit",
                                return_value=FakeQbitVersion(error="qBittorrent login failed (HTTP 200) - check QBIT_USER / QBIT_PASS")):
             status, _h, body = self.call("/api/watcher/test-qbit", {})
@@ -337,14 +346,17 @@ class TestConnectionTests(WatcherSettingsCase):
         self.assertIn("could not be reached", answer["message"])
         self.assertNotIn("UNIQUE-PASS-9", body)
 
-    def test_tracker_connected_uses_one_search_and_stores_nothing(self):
+    def test_tracker_test_uses_one_search_and_stores_nothing(self):
         fake = FakeTracker()
         before = dict(self.state.get_meta(watcher.META_LAST_CYCLE) or {})
         with mock.patch.object(watcher, "make_tracker", return_value=fake):
             status, _h, body = self.call("/api/watcher/test-tracker", {})
-        self.assertEqual(status, 200, body)
-        self.assertEqual(json.loads(body)["message"], "Connected - the tracker answered a test search (0 results)")
-        self.assertEqual(fake.searched, [watcher.PROBE_TITLE])
+        # nothing came back: the site answered, but a search that finds nothing is not a working search
+        self.assertEqual(status, 502, body)
+        self.assertIs(json.loads(body)["ok"], False)
+        self.assertEqual(json.loads(body)["message"],
+                         "The site answered but found nothing for 'Dune'. Check the search body and category.")
+        self.assertEqual(fake.searched, [watcher.DEFAULT_TEST_QUERY])
         self.assertEqual(dict(self.state.get_meta(watcher.META_LAST_CYCLE) or {}), before)
 
     def test_tracker_refusal_and_unreachable_fail_closed(self):
