@@ -7,119 +7,80 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
-## [0.25.1-dev4] - 2026-11-19
+## [0.25.1] - 2026-11-20
 
-**Unreleased test build.** A preset can now carry the category list on its own.
-
-### Fixed
-- **A preset that only lists categories is accepted.** dev3 required fillable tracker fields, so the only
-  way to get the Search category dropdown was to hand over values you may not want filled — and a
-  categories-only file was rejected with a "cannot be used" line on the tab. A preset may now carry
-  fillable settings, a category list, or both; a file with neither is still refused with the plain reason.
-- **A preset with nothing to fill offers no fill button.** The tab names the preset and draws the dropdown,
-  and the apply request refuses an empty plan instead of reporting success while writing nothing.
-
-## [0.25.1-dev3] - 2026-11-19
-
-**Unreleased test build.** Two Settings changes from looking at the page: the search category is now a
-dropdown when the tracker's list is known, and the membership setting says what the site calls it.
-
-### Changed
-- **Search category: a dropdown when it can be one.** The value is the tracker's own category id, dropped
-  into `{{category}}` in the search request — there is no universal list, so Audiobind does not invent
-  one. If the preset file lists them (a new optional `"categories"` object), the field becomes a select
-  showing `Audiobooks (13)` and saves the bare `13`. Without a list it stays a text field whose hint says
-  where the number comes from. **A saved value that is not in the preset's list stays selected** rather
-  than being silently changed, because loading a preset must never alter what the watcher searches.
-- **The membership setting reads "VIP / Premium member"**, since trackers call the top tier one or the
-  other, and the hint names both instead of assuming Premium.
-
-### Docs
-- `docs/tracker-preset.example.json` and the preset paragraph in `docs/acquisition.md` cover `categories`.
-
-## [0.25.1-dev2] - 2026-11-19
-
-**Unreleased test build.** The second half of the same audit: the places where the product could check
-something for you and didn't. Nothing here changes what a scan or a conversion does — it changes what the
-app tells you it is about to do, and whether it can prove it.
+**Everything a two-pass first-time-setup audit found, plus the checks that make setup verifiable.** The
+audit walked the product as someone installing the container who knows nothing about trackers, ffmpeg or
+VPN namespaces. The docs, the Community Applications template and the Settings page no longer contradict
+each other; the app now checks what it used to merely describe; and three shipped defaults that hurt new
+installs are gone. No change to the file layout on disk, the CLI or any setting name.
 
 ### Added
 - **Check IP.** A button on the Watcher tab reports the address the tracker would see right now, and what
-  the guard would decide if it were armed. It makes no request to the tracker, says so if the lookup
-  itself failed, and offers the value to copy — because that is the address a tracker session has to be
-  created for.
+  the guard would decide if it were armed. It contacts no tracker, says so plainly if the lookup itself
+  failed, and offers the value to copy — that address is what a tracker session has to be created for.
 - **A tracker preset file.** If `/config/tracker-preset.json` exists, the Watcher tab offers to fill the
-  tracker fields from it, names the preset, lists the fields it will change and asks first. It writes the
-  same settings the tab saves; the file is never read at startup. `docs/tracker-preset.example.json` shows
-  the shape.
-- **The qBittorrent test now answers the folder question.** It lists the categories qBittorrent knows, the
-  save path of the configured one, and says whether that path matches the ingest folder Audiobind sees —
-  or exactly what it could not tell.
+  tracker fields from it: it names the preset, lists the fields it will change and asks first. It writes
+  the same settings the tab saves and is never read at startup. The file may carry fillable field values, a
+  category list, or both — a file with neither is refused with the reason. `docs/tracker-preset.example.json`
+  shows the shape.
+- **The qBittorrent test answers the folder question.** It lists the categories qBittorrent knows, the save
+  path of the configured one, and whether that path matches the ingest folder Audiobind sees — or exactly
+  what it could not tell.
 
 ### Changed
+- **The Community Applications template ships a 15% runtime tolerance.** It shipped 25% while the code and
+  every doc used 15%, and `docs/configuration.md` explains that at 25% a wrong edition converts silently —
+  so a fresh CA install converted editions the project had already decided not to trust. Existing installs
+  keep their stored value: set **Max runtime delta** to 0.15 by hand.
+- **The qBittorrent URL defaults to empty** instead of `http://localhost:8083`, which cannot work on the
+  template's own bridge network (localhost is Audiobind itself). An empty value now reads as *not
+  configured yet* — the watcher is off with a reason — while a malformed address still fails loudly. A
+  docker-run install that relied on the old default must set `QBIT_URL` once; template installs always had
+  the field.
+- **The template's host port defaults to 8686**, the number the VPN docs already use, because 8080 is the
+  port qBittorrent tends to hold.
 - **Test tracker runs a real search** with a title you can edit, and reports what came back ("Found 12
   results; first: …") instead of searching for a nonsense string and calling zero results a success. One
-  request, same as before; the session value is never in the response.
-- **An empty qBittorrent URL now reads as "not configured yet"**, not as a cycle error. A malformed
-  address still fails loudly.
-- Ingest says when it is half-configured: a mounted folder with no `Ingest dir`, or the reverse, names the
-  half that is missing and the Unraid field to set, instead of quietly leaving ingest off.
-
-### Fixed
-- The watcher's disabled reasons, the guard status and the check results all come from one place, so the
-  tab cannot claim a check passed while the watcher says it is off.
-
-### Tests
-- 2,086 → **2,180** (94 new), including a preset file that refuses to carry someone's session, and
-  one asserting the empty-URL path is "off", not an error.
-
-## [0.25.1-dev1] - 2026-11-19
-
-**Unreleased test build.** Twenty-three fixes from a first-time-setup audit — someone installing the
-container and configuring it knowing nothing about trackers, ffmpeg or VPN namespaces. Almost all of it
-is text, and the only behaviour changes are two template defaults. No file layout, CLI or setting name
-changes.
-
-### Changed
-- **The Community Applications template ships a 15% runtime tolerance**, matching the code and every
-  doc. It shipped 0.25, while `docs/configuration.md` explains that at 25% a wrong edition converts
-  silently — so a fresh CA install converted editions the project had already decided not to trust.
-  Existing installs keep their stored 0.25: change **Max runtime delta** to 0.15 by hand.
-- **The qBittorrent URL defaults to empty** instead of `http://localhost:8083`, which cannot work on the
-  template's own bridge network (localhost is Audiobind itself). Empty also means the Watcher says so.
-  A docker-run install that relied on the old default must now set `QBIT_URL` — until it does, a cycle
-  reports the empty value as a configuration error rather than silently pointing at itself. Installs
-  from the template are unaffected: the field has always been there.
-- **The template's host port defaults to 8686**, the number the VPN docs already use, because 8080 is
-  the port qBittorrent tends to hold.
-- If the tracker is MyAnonamouse, the session hint now says where MAM issues that value, instead of
-  telling you to find a cookie in your browser.
+  request, same as before; the session value never comes back in the response.
+- **Search category is a dropdown when the tracker's list is known.** The value is the tracker's own
+  category id, dropped into `{{category}}`; no universal list exists, so Audiobind does not invent one. If
+  the preset file lists categories the field becomes a select showing `Audiobooks (13)` and saves the bare
+  `13`. A saved value that is not in the list stays selected — loading a preset must never silently change
+  what the watcher searches.
+- **The membership setting reads "VIP / Premium member"**, since trackers call the top tier one or the
+  other, and its hint names both.
+- **Ingest says when it is half-configured**: a mounted folder with no `Ingest dir`, or the reverse, names
+  the half that is missing and the Unraid field to set, instead of quietly leaving ingest off.
 - The egress allowlist moved from the Advanced tab to the Watcher tab, next to the guard status that
-  referred to it. The docs were already right; the field wasn't.
-- The Allowed-IP updater moved below the connection fields, and its "off" text no longer claims the
-  watcher refuses to run (it doesn't unless a guard is armed).
+  referred to it, and the Allowed-IP updater moved below the connection fields.
+- If the tracker is MyAnonamouse the session hint says where that site issues the value, instead of
+  telling you to find a cookie in your browser.
 
 ### Fixed
-- **Install steps no longer assume a cloned repo**: one `wget` line into Unraid's terminal instead of
-  `cp templates/audiobind.xml`.
-- **The VPN proxy example uses the server's IP**, not a container name — `gluetun` does not resolve on
-  Unraid's default bridge, and a dead proxy fails closed.
-- The port-clash paragraph: sharing the VPN container's network collides with qBittorrent's 8080, so
-  `WEB_PORT` is documented and the template now has the field.
-- The library mount no longer reads read-only in one place and read-write in another, "typed
-  confirmation" is now "a confirmation dialog" (that is what the UI does), the README's MEDIUM row and
-  the region list match the code, and the template points at the VPN doc that exists.
-- Tracker and download-client fields in the template say **Needed for the wishlist** where they are
-  required, say they can be set later under Settings > Watcher, and warn that a pasted bookmark URL
+- **The template no longer calls required tracker fields "Optional"**, and every tracker and download-client
+  field says it can be filled in later under Settings > Watcher. Tracker URL warns that a pasted bookmark
   stops the container from starting.
-- The folder chain is explained once, as one folder with three names, so the ingest path qBittorrent
-  writes to is not confused with the `/ingest` Audiobind sees.
-- The first-visit 403 no longer advises the exact change that locks the IP out; an empty library says
-  it may be the mount rather than a filter; the Watcher tab says when the Wishlist tab appears; and
-  Settings shows the ingest line the Library page already had.
+- **The install steps no longer assume a cloned repo**: one `wget` line into Unraid's terminal instead of
+  `cp templates/audiobind.xml` from a folder the user does not have.
+- **The VPN proxy example uses the server's IP**, not a container name — a name does not resolve on Unraid's
+  default bridge, and a dead proxy fails closed.
+- **The port clash is documented**: sharing the VPN container's network collides with qBittorrent's 8080, so
+  `WEB_PORT` is explained and the template has the field.
+- The Allowed-IP updater's "off" text no longer claims the watcher refuses to run; with no guard armed it
+  runs.
+- The library mount no longer reads read-only in one place and read-write in another, "typed confirmation"
+  became "a confirmation dialog" (that is what the UI does), the README's MEDIUM row and the region list
+  match the code, and the template points at the VPN document that exists.
+- The folder chain is explained once, as one folder with three names, so the path qBittorrent writes to is
+  not confused with the `/ingest` Audiobind sees.
+- The first-visit 403 no longer advises the change that locks the IP out; an empty library says it may be
+  the mount rather than a filter; the Watcher tab says when the Wishlist tab appears; and Settings shows
+  the ingest line the Library page already had.
 
 ### Tests
-- 2,023 → **2,086** (63 new), one asserting each promise above, plus the template parsed as XML.
+- 2,023 → **2,199** (176 new), including one assertion per promise above, a preset file that cannot carry
+  someone's session, and the template parsed as XML.
 
 ## [0.25.0] - 2026-11-18
 

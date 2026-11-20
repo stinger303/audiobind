@@ -26,6 +26,10 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.25.1
+* A first-time-setup pass fixed every contradiction between this template, the docs and the Settings page: the template now ships the 15% wrong-edition tolerance the code and docs already use, the qBittorrent URL default is empty instead of a localhost address that cannot work on bridge, and the host port defaults to 8686 because qBittorrent usually holds 8080.
+* Existing installs keep their saved values. Set Max runtime delta to 0.15 by hand, and if you never set qBittorrent URL, set it now.
+* Setup can now be checked instead of guessed: Check IP shows the address the tracker would see, Test tracker runs a real search and reports what it found, Test qBittorrent names the categories and the save path, and a preset file can fill the tracker fields or supply the category list.
 ### 0.25.0
 * Wishlist: saving a search title no longer re-queues the book, so retitling one mid-download can no longer grab a second torrent. A new Re-queue button is the deliberate way back.
 * A disk that stops answering ffprobe now fails the book instead of converting it with chapters missing.
