@@ -384,8 +384,11 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print) -> N
             os.rename(path, backup)
             backups[path] = backup
         for fmt in formats:
-            encode.publish_result(results[fmt], paths[fmt])
+            # CORE-02: recorded before the call - publish_result places the audio, then the
+            # cover, then stats it, so it can fail with the audio already visible. Unlinking a
+            # path that was never created is a no-op below.
             placed.append(paths[fmt])
+            encode.publish_result(results[fmt], paths[fmt])
     except BaseException:
         for path in [*placed, cover]:
             if path not in preexisting:
