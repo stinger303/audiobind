@@ -8,12 +8,16 @@ import pathlib
 import unittest
 from unittest import mock
 
-from audiobind import catalog, encode, ingest, matching, pipeline
+from audiobind import catalog, encode, ingest, matching, pipeline, web
+from audiobind.control import CONTROL
 from audiobind.probe import Probe
+from audiobind.state import UnitState
 
 try:
+    from live import LiveServerCase
     from test_ingest_pipeline import KEY, PHM, PipelineCase
 except ImportError:
+    from tests.live import LiveServerCase
     from tests.test_ingest_pipeline import KEY, PHM, PipelineCase
 
 
@@ -268,6 +272,82 @@ class Core04EveryRequestedFormatTests(PublishCase):
     @staticmethod
     def backups(path: pathlib.Path) -> list[pathlib.Path]:
         return sorted(path.parent.glob(path.name + ".bak-*"))
+
+
+# --------------------------------------------------------------------------- WEBAPI-01/02
+class DeleteCase(LiveServerCase):
+    REL = "Author/Book"
+
+    def setUp(self):
+        super().setUp()
+        CONTROL._queue.clear()
+        self.addCleanup(CONTROL._queue.clear)
+        self.src = self.lib / "Author" / "Book"
+        self.src.mkdir(parents=True)
+        (self.src / "01.mp3").write_bytes(b"audio")
+        self.out_book = self.out / "Author" / "Book"
+        self.out_book.mkdir(parents=True)
+        (self.out_book / "Book.m4b").write_bytes(b"m4b")
+        self.state.save(UnitState(path=self.REL, status="converted", title="Book",
+                                  output=str(self.out_book / "Book.m4b")))
+
+    def delete(self):
+        return self.post({"action": "delete", "path": self.REL, "confirm": True})
+
+    def assert_untouched(self, status, body):
+        self.assertEqual(status, 409, body)
+        self.assertTrue((self.src / "01.mp3").exists(), "the source was removed")
+        self.assertTrue((self.out_book / "Book.m4b").exists(), "the output was removed")
+        self.assertIsNotNone(self.state.get(self.REL), "the row was dropped")
+
+    def then(self, name, action):
+        """Patch web.<name> so ``action`` runs right after the real call (a concurrent request)."""
+        real = getattr(web, name)
+
+        def side_effect(*args, **kw):
+            result = real(*args, **kw)
+            action()
+            return result
+
+        return mock.patch.object(web, name, side_effect=side_effect)
+
+
+class WebApi01DeleteVersusConversionTests(DeleteCase):
+    """A Convert anyway queued while a delete walks the disk must stop the delete untouched."""
+
+    def test_a_force_queued_before_the_delete_is_refused(self):
+        CONTROL.try_enqueue(self.REL)
+        self.assert_untouched(*self.delete())
+
+    def test_a_force_queued_during_the_walk_is_refused_and_nothing_changes(self):
+        with self.then("find_unit", lambda: CONTROL.try_enqueue(self.REL)):
+            status, body = self.delete()
+        self.assert_untouched(status, body)
+
+    def test_a_force_queued_right_before_the_removal_stops_it(self):
+        with self.then("files_under", lambda: CONTROL.try_enqueue(self.REL)):
+            status, body = self.delete()
+        self.assert_untouched(status, body)
+        self.assertFalse(body.get("source_partial"), body)
+
+    def test_a_conversion_holding_the_encoder_makes_the_delete_wait(self):
+        self.assertTrue(pipeline.CONVERT_LOCK.acquire(blocking=False))
+        try:
+            status, body = self.delete()
+        finally:
+            pipeline.CONVERT_LOCK.release()
+        self.assert_untouched(status, body)
+        self.assertIn("try again", body["error"].lower())
+
+    def test_a_normal_delete_still_removes_source_output_and_row(self):
+        status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertEqual((body["source_removed"], body["output"]), (True, "removed"))
+        self.assertFalse(self.src.exists())
+        self.assertFalse(self.out_book.exists())
+        self.assertIsNone(self.state.get(self.REL))
+        self.assertTrue(pipeline.CONVERT_LOCK.acquire(blocking=False))  # never left held
+        pipeline.CONVERT_LOCK.release()
 
 
 if __name__ == "__main__":

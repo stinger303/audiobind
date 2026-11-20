@@ -6911,6 +6911,23 @@ def run_manual(state, unit, force: bool = False, slot=None, reencode: bool = Fal
             slot.release()
 
 
+#: a delete that finds the encoder lock taken: a conversion or a layout move is running
+DELETE_BUSY = (b'{"error":"a book is being converted or the library layout is being changed - '
+               b'nothing was deleted. Try again when it finishes."}')
+
+
+def conversion_claim(rel: str) -> str:
+    """WEBAPI-01: why a conversion has a claim on ``rel`` right now ('' = none).
+
+    begin_unit sets current_unit before it takes the book off the queue, so a manual action is
+    always one or the other from the moment it is queued until its encode ends."""
+    if CONTROL.current_unit == rel:
+        return "cannot delete a book that is currently encoding"
+    if rel in CONTROL.queue_snapshot()["units"]:
+        return "this book is waiting for a manual action - delete it once that finishes"
+    return ""
+
+
 def _os_error_code(exc: OSError) -> str:
     """A client-safe label for an OSError: its errno name, never the message (which
     carries container paths). The full error goes to the log."""
@@ -7924,6 +7941,21 @@ class Handler(BaseHTTPRequestHandler):
             # never take a published book that another row also points at
             out_shared = output_sharers(self.state, rel, out_trash) if out_trash is not None else 0
 
+            # WEBAPI-01: the checks at the top ran before the walk above, and a Convert anyway can
+            # have queued this book since. Decided again under the encoder lock (no encode can
+            # begin while it is held) - taken only for the decision and never waited for: a
+            # conversion holding it gets a busy answer, and nothing has been changed yet
+            if not CONVERT_LOCK.acquire(blocking=False):
+                self._send(409, DELETE_BUSY, "application/json")
+                return
+            try:
+                claim = conversion_claim(rel)
+            finally:
+                CONVERT_LOCK.release()
+            if claim:
+                self._send(409, json.dumps({"error": claim}).encode(), "application/json")
+                return
+
             # HARD DELETE: the published output is removed permanently and the book is
             # forgotten. The source folder is removed too when the library mount allows
             # writes; on a read-only library (the documented, recommended setup) the
@@ -7935,6 +7967,15 @@ class Handler(BaseHTTPRequestHandler):
             source_kept_reason = ""
             if targets:
                 before = files_under([str(t) for t in targets])
+                # WEBAPI-01: once more right before the first removal - the last point at which
+                # stopping leaves the book whole (stopping between targets would leave a partial
+                # source for the queued action to convert)
+                claim = conversion_claim(rel)
+                if claim:
+                    log.info("HARD DELETE %s; stopped before removing anything: %s", rel, claim)
+                    self._send(409, json.dumps({"error": claim, "source_partial": False}).encode(),
+                               "application/json")
+                    return
                 error: OSError | None = None
                 changed = ""
                 for target in targets:
