@@ -7,6 +7,35 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.25.2-dev1] - 2026-11-20
+
+**Unreleased test build.** The "Set up downloading" guide, first half: a real page that asks how your
+books arrive and sets up the download client, with the folder checks in plain language.
+
+### Added
+- **`/setup/downloading`** — a five-step guide (`How books arrive · Download client · The address the
+  tracker sees · Your tracker · Done`), server-rendered like every other page, with the current step kept
+  across a container restart. Nothing runs by itself; every step waits for you.
+- **Two ways in.** A one-time card on the Library page ("Your library is being scanned. Do you also want
+  Audiobind to fetch books for you?") that can be dismissed for good, and a **Set up downloading** button
+  on the Watcher tab whenever the watcher is not configured.
+- **Step 1: how books arrive.** Library only / my own downloader or copy files in / a private tracker
+  through a download client — with the ingest folder's real status (mounted, readable, not the library or
+  output folder, N folders seen) and the exact Unraid click path when it is missing. Anyone who picks the
+  first two options never sees a tracker setting.
+- **Step 2: the download client.** Client, URL, user, password, category. The URL is pre-filled from the
+  address your browser used to reach Audiobind, and the Test button reports what it actually found in
+  plain language, including which address answered when it has to retry the shared-network one.
+
+### Fixed
+- The ingest status is computed once and reused by the wizard, the Library page and Settings, so the three
+  cannot disagree about whether ingest is on.
+
+### Tests
+- 2,199 → **2,271** (72 new), including every step-1 branch, a hostile Host header in the
+  URL pre-fill, Back keeping the arrival choice, progress surviving a reload, and the guide being
+  unreachable when signed out.
+
 ## [0.25.1] - 2026-11-20
 
 **Everything a two-pass first-time-setup audit found, plus the checks that make setup verifiable.** The
