@@ -55,16 +55,35 @@ class CollectionShapeTests(unittest.TestCase):
         audit = self.audit(parts, files)
         self.assertEqual(audit.confidence, "NONE")
 
-    def test_a_flat_folder_of_whole_books_is_still_a_collection(self):
-        files = {f"/b/book{n}.mp3": 10.0 for n in (1, 2, 3)}
-        audit = self.audit([Part(name="", files=list(files))], files)
-        self.assertEqual(audit.confidence, "COLLECTION")
+    # Why the positive cases come in pairs: the new rule (shortest file > 8 h flat, > 16 h for
+    # parts) implies the old one (total / files > 8 h), because the shortest file is never longer
+    # than the average. So no COLLECTION verdict on its own can tell the rules apart - every
+    # folder the new rule calls a collection, the old rule did too. Each test below therefore
+    # pairs a positive with a same-shape twin that the OLD rule called a collection and the NEW
+    # rule does not; the twin fails on the pre-A2/A3 code, the positive pins the new bar from above.
 
-    def test_parts_that_are_each_far_longer_than_one_book_are_still_a_collection(self):
-        files = {f"/b/Vol {n}/v{n}.mp3": 20.0 for n in (1, 2, 3)}
-        parts = [Part(name=f"Vol {n}", files=[f"/b/Vol {n}/v{n}.mp3"]) for n in (1, 2, 3)]
-        audit = self.audit(parts, files)
-        self.assertEqual(audit.confidence, "COLLECTION")
+    def flat(self, hours: list[float]):
+        files = {f"/b/book{n}.mp3": h for n, h in enumerate(hours)}
+        return self.audit([Part(name="", files=list(files))], files).confidence
+
+    def multipart(self, hours: list[float]):
+        files = {f"/b/Vol {n}/v{n}.mp3": h for n, h in enumerate(hours)}
+        parts = [Part(name=f"Vol {n}", files=[path]) for n, path in enumerate(files)]
+        return self.audit(parts, files).confidence
+
+    def test_a2_a_flat_folder_is_a_collection_only_when_every_file_is_book_length(self):
+        # positive: uneven lengths, shortest 9 h > 8 h -> COLLECTION under both rules
+        self.assertEqual(self.flat([9.0, 9.0, 30.0]), "COLLECTION")
+        # twin (separates the rules): average (30+30+3)/3 = 21 h > 8 h, so the OLD average rule
+        # said COLLECTION; the 3 h file is no whole book, so the NEW per-file rule says NONE
+        self.assertEqual(self.flat([30.0, 30.0, 3.0]), "NONE")
+
+    def test_a3_parts_are_a_collection_only_above_the_higher_part_bar(self):
+        # positive: every part over 16 h (shortest 17 h) -> COLLECTION under both rules
+        self.assertEqual(self.multipart([17.0, 17.0, 40.0]), "COLLECTION")
+        # twin (separates the rules): three 12 h parts average 12 h > 8 h, so the OLD rule said
+        # COLLECTION; 12 h is under the NEW 16 h part bar (a long book's discs), so NONE
+        self.assertEqual(self.multipart([12.0, 12.0, 12.0]), "NONE")
 
 
 # --------------------------------------------------------------------------- A4
