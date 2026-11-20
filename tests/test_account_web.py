@@ -415,9 +415,9 @@ class GlobalBudgetTests(AccountCase):
 
 
 class PasswordWhitespaceTests(AccountCase):
-    """SEC-06: the browser and Bearer must agree on what the password is. A header value cannot
-    carry outer whitespace (it is trimmed), so a password cannot have any, and both sign-in
-    paths ignore outer whitespace in what is typed or sent."""
+    """SEC-06: the browser and Bearer must agree on what the password is. A new password cannot
+    have outer whitespace, and both sign-in paths ignore it in what is typed or sent - after first
+    trying the value exactly as sent, so an older padded password keeps working (SEC-06b)."""
 
     PADDED = "  padded password  "
 
@@ -447,11 +447,38 @@ class PasswordWhitespaceTests(AccountCase):
         self.assertEqual(self.raw("/api/units", headers={"Authorization": f"Bearer  {PASSWORD} "})[0], 200)
 
     def test_an_old_padded_password_gets_the_same_answer_on_both_paths(self):
-        # made before the rule (e.g. by an older reset-password): neither path can match it now
+        # SEC-06b: made before the rule (e.g. by an older reset-password). The value as sent is
+        # tried first, so an upgrade never locks that account out - on either path.
         self.state.create_credentials(USER, auth_mod.hash_password(self.PADDED))
         browser = self.login(USER, self.PADDED)[0]
         script = self.raw("/api/units", headers={"Authorization": f"Bearer {self.PADDED}"})[0]
-        self.assertEqual((browser, script), (401, 401))
+        self.assertEqual((browser, script), (303, 200))
+
+    def test_an_old_padded_password_still_passes_the_current_password_check(self):
+        self.state.create_credentials(USER, auth_mod.hash_password(self.PADDED))
+        sid = auth_mod.SESSIONS.create(self.state.get_credentials().version)  # signed in already
+        jar = {"Cookie": f"{auth_mod.COOKIE_NAME}={sid}"}
+        status, _, body = self.account({"action": "username", "username": "reader2", "current": self.PADDED}, jar)
+        self.assertEqual(status, 200, body)
+
+    def test_the_current_password_check_ignores_outer_whitespace_like_sign_in(self):
+        jar = self.setup_account()
+        status, _, body = self.account({"action": "username", "username": "reader2", "current": f" {PASSWORD} "}, jar)
+        self.assertEqual(status, 200, body)
+
+    def test_a_wrong_password_is_refused_when_both_forms_fail(self):
+        self.state.create_credentials(USER, auth_mod.hash_password(self.PADDED))
+        for wrong in ("  wrong password  ", " padded password", "padded password", "  Padded Password  "):
+            self.assertEqual(self.login(USER, wrong)[0], 401, repr(wrong))
+            auth_mod.LIMITER.clear()
+            self.assertEqual(
+                self.raw("/api/units", headers={"Authorization": f"Bearer {wrong}"})[0], 401, repr(wrong)
+            )
+            auth_mod.LIMITER.clear()
+        creds = self.state.get_credentials()
+        self.assertTrue(auth_mod.verify_login_password(self.PADDED, creds))
+        self.assertFalse(auth_mod.verify_login_password("  wrong password  ", creds))
+        self.assertFalse(auth_mod.verify_login_password("padded password", creds))
 
 
 class BearerTests(AccountCase):

@@ -106,6 +106,17 @@ def verify_password(password: str, stored) -> bool:
     return hmac.compare_digest(_pbkdf2(password, salt, rounds), expected)
 
 
+def verify_login_password(given: str, stored) -> bool:
+    """SEC-06b: a password as typed or sent as Bearer. The value exactly as supplied is
+    accepted first, else its login_secret() form: a new password never has outer whitespace,
+    but one hashed before that rule keeps working. Both are always checked when they differ,
+    so the work depends only on the shape of what was sent, never on which one matched."""
+    exact = verify_password(given, stored)
+    stripped = login_secret(given)
+    trimmed = verify_password(stripped, stored) if stripped != given else False
+    return bool(exact) | bool(trimmed)
+
+
 def check_login(creds, username: str, password: str) -> bool:
     """Username and password together, with the same work whichever one is wrong.
 
@@ -117,7 +128,7 @@ def check_login(creds, username: str, password: str) -> bool:
         hashlib.sha256(username.encode("utf-8", "replace")).digest(),
         hashlib.sha256(str(creds.username).encode("utf-8", "replace")).digest(),
     )
-    password_ok = verify_password(password, creds)
+    password_ok = verify_login_password(password, creds)
     return bool(user_ok) & bool(password_ok) & bool(username) & bool(password)
 
 
@@ -133,9 +144,9 @@ def username_problem(username: str) -> str:
 
 
 def login_secret(given: str) -> str:
-    """SEC-06: the one canonical form of a password (or legacy token) as typed in the browser
-    or sent as Bearer: outer whitespace dropped. An HTTP header cannot carry it, so the
-    browser must not count it either - and password_problem() refuses it in a new password."""
+    """SEC-06: the canonical form of a password (or legacy token) as typed in the browser or
+    sent as Bearer: outer whitespace dropped, and password_problem() refuses it in a new
+    password. An account password is still tried as supplied first (verify_login_password)."""
     return given.strip()
 
 

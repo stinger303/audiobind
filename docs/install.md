@@ -189,11 +189,12 @@ API call needs the account.
 * **Scripts:** send the account password as a Bearer token:
   `curl -H "Authorization: Bearer $AUDIOBIND_PASSWORD" localhost:8080/api/state`. Wrong
   passwords count towards the same lockout.
-* **Spaces:** a password cannot start or end with a space (or a tab). An HTTP header cannot
-  carry them, so the sign-in page and Bearer both ignore spaces at the start and end of what
-  is typed or sent, and setup, Settings and `reset-password` refuse a new password that has
-  them. Spaces inside the password are fine. If an older account's password starts or ends with
-  a space, neither way will accept it: set a new one with `reset-password` (below).
+* **Spaces:** a new password cannot start or end with a space (or a tab): setup, Settings and
+  `reset-password` refuse one that does, and the sign-in page and Bearer both ignore spaces at
+  the start and end of what is typed or sent. Spaces inside the password are fine. An older
+  password that does start or end with a space keeps working: what you type is tried exactly
+  as typed first, then without the outer spaces, on the sign-in page, for Bearer and for the
+  current-password check in Settings.
 * **Change the password or username** in **Settings → Account**. Both need the current
   password. The browser you change it from stays signed in. Every other browser is
   signed out.

@@ -7313,10 +7313,10 @@ class Handler(BaseHTTPRequestHandler):
     def _bearer_ok(self, given: str, creds) -> bool:
         """The account password (once an account exists), else the legacy AUTH_TOKEN."""
         if creds is None:
-            return auth_mod.token_matches(given, CONFIG.auth_token)
+            return auth_mod.token_matches(auth_mod.login_secret(given), CONFIG.auth_token)
         if auth_mod.BEARERS.hit(given, creds.version):
             return True
-        if auth_mod.verify_password(given, creds):
+        if auth_mod.verify_login_password(given, creds):  # SEC-06b: as sent, then trimmed
             auth_mod.BEARERS.add(given, creds.version)
             return True
         return False
@@ -7336,8 +7336,8 @@ class Handler(BaseHTTPRequestHandler):
             return 0
         header = self.headers.get("Authorization") or ""
         scheme, _, given = header.partition(" ")
-        given = auth_mod.login_secret(given)  # SEC-06: the same canonical form as the sign-in form
-        if path.startswith("/api/") and scheme.lower() == "bearer" and given:
+        # SEC-06b: passed on as sent; _bearer_ok tries it as is, then trimmed, like the sign-in form
+        if path.startswith("/api/") and scheme.lower() == "bearer" and auth_mod.login_secret(given):
             ip = self._client_ip()
             if creds is not None and auth_mod.BEARERS.hit(given, creds.version):
                 return 0  # a password already proven: no PBKDF2, nothing to count
@@ -7433,13 +7433,13 @@ class Handler(BaseHTTPRequestHandler):
             message, wait = self._locked_out_message(ip)
             reply(429, message, {"Retry-After": str(wait)})
             return
-        password = auth_mod.login_secret(fields.get("password", ""))  # SEC-06: as Bearer sees it
+        password = fields.get("password", "")  # SEC-06b: check_login tries it as sent, then trimmed
         if creds is not None:
             # the account: both fields, one generic answer, the same work either way
             ok = auth_mod.check_login(creds, username, password)
         elif "password" in fields:
             # legacy AUTH_TOKEN, no account yet: any username, the token as the password
-            ok = bool(username) and auth_mod.token_matches(password, CONFIG.auth_token)
+            ok = bool(username) and auth_mod.token_matches(auth_mod.login_secret(password), CONFIG.auth_token)
         else:
             # a pre-0.16 token-only form or script ({"token": ...}) keeps working until an account exists
             ok = auth_mod.token_matches(fields.get("token", ""), CONFIG.auth_token)
@@ -7545,7 +7545,7 @@ class Handler(BaseHTTPRequestHandler):
         if creds is None:
             current_ok = auth_mod.token_matches(current, CONFIG.auth_token)
         else:
-            current_ok = auth_mod.verify_password(current, creds)
+            current_ok = auth_mod.verify_login_password(current, creds)  # SEC-06b: as sign-in does
         if current_ok:
             auth_mod.LIMITER.reset(ip)
         if not current_ok:
