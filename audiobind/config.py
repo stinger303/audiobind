@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .util import redact_url
+
 TRUTHY = {"1", "true", "yes", "on"}
 DEFAULT_ALLOWED_HOSTS = "localhost,127.0.0.1"
 
@@ -247,6 +249,67 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _qbit_url(raw: str) -> str:
+    """QBIT_URL: http(s)://host[:port][/path], no login in it ("" = not set)."""
+    from urllib.parse import urlsplit
+
+    raw = raw.strip().rstrip("/")
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+        parts.port  # noqa: B018 - raises ValueError on a bad port
+        ok = parts.scheme in ("http", "https") and bool(parts.hostname) and parts.username is None \
+            and not parts.query and not parts.fragment
+    except ValueError:
+        ok = False
+    if not ok:
+        raise ValueError("qBittorrent URL: use http://host:port (or https://), with no login in it")
+    return raw
+
+
+def _client_url(label: str, schemes: tuple[str, ...], example: str):
+    """A download client's address: one of ``schemes``, a host, no login, query or fragment ("" = unset)."""
+    from urllib.parse import urlsplit
+
+    def check(raw: str) -> str:
+        raw = raw.strip().rstrip("/")
+        if not raw:
+            return ""
+        try:
+            parts = urlsplit(raw)
+            port = parts.port
+            ok = parts.scheme in schemes and bool(parts.hostname) and parts.username is None \
+                and not parts.query and not parts.fragment and (parts.scheme != "scgi" or bool(port))
+        except ValueError:
+            ok = False
+        if not ok:
+            raise ValueError(f"{label}: use {example}, with no login in it")
+        return raw
+
+    return check
+
+
+#: the download clients' URL validators, shared by Settings (WATCHER_TEXT_CHECKS) and the
+#: environment at load (SEC-05)
+_deluge_url = _client_url("Deluge URL", ("http", "https"), "http://deluge:8112")
+_transmission_url = _client_url(
+    "Transmission URL", ("http", "https"), "http://transmission:9091/transmission/rpc")
+_rtorrent_url = _client_url(
+    "rTorrent URL", ("scgi", "http", "https"), "scgi://rtorrent:5000 or http://rutorrent/RPC2")
+
+
+def _env_url(name: str, check, rejected: list) -> str:
+    """SEC-05: a client URL variable through the same validator as Settings. An invalid one is
+    not used ("" instead) and leaves one line for the startup log, with any login shown as ***."""
+    raw = _env(name, "")
+    try:
+        return check(raw)
+    except ValueError as exc:
+        rejected.append(f"{name} is not used: {exc} (it was {redact_url(raw)!r})")
+        return ""
+
+
 @dataclass
 class Config:
     library_root: Path = Path("/library")
@@ -380,6 +443,8 @@ class Config:
     #: the daemon logs one line each at startup
     deprecated_used: list = field(default_factory=list, repr=False)
     deprecated_ignored: list = field(default_factory=list, repr=False)
+    #: SEC-05: startup log lines for client URL variables that failed validation (redacted)
+    env_rejected: list = field(default_factory=list, repr=False)
 
     ignore_globs: list[str] = field(
         default_factory=lambda: ["@eaDir", "#recycle", "System Volume Information"]
@@ -389,6 +454,7 @@ class Config:
     def from_env(cls) -> Config:
         honoured: list = []
         ignored: list = []
+        rejected: list = []
         session, _ = _resolve("TRACKER_SESSION", honoured, ignored)
         agent, _ = _resolve("TRACKER_USER_AGENT", honoured, ignored)
         proxy, proxy_name = _resolve("TRACKER_PROXY", honoured, ignored)
@@ -446,17 +512,17 @@ class Config:
             wedge_per_cycle=_env_int("WEDGE_MAX_PER_CYCLE", 1),
             wedge_per_day=_env_int("WEDGE_MAX_PER_DAY", 3),
             watch_max_unsatisfied=_env_int("WATCH_MAX_UNSATISFIED", 0),
-            qbit_url=_env("QBIT_URL", "").rstrip("/"),
+            qbit_url=_env_url("QBIT_URL", _qbit_url, rejected),
             qbit_category=_env("QBIT_CATEGORY", "audiobooks") or "audiobooks",
             qbit_user=_env("QBIT_USER", ""),
             qbit_pass=os.environ.get("QBIT_PASS", ""),  # a password keeps its spaces
             download_client=_download_client(_env("DOWNLOAD_CLIENT", "")),
-            deluge_url=_env("DELUGE_URL", ""),
+            deluge_url=_env_url("DELUGE_URL", _deluge_url, rejected),
             deluge_pass=os.environ.get("DELUGE_PASS", ""),
-            transmission_url=_env("TRANSMISSION_URL", ""),
+            transmission_url=_env_url("TRANSMISSION_URL", _transmission_url, rejected),
             transmission_user=_env("TRANSMISSION_USER", ""),
             transmission_pass=os.environ.get("TRANSMISSION_PASS", ""),
-            rtorrent_url=_env("RTORRENT_URL", ""),
+            rtorrent_url=_env_url("RTORRENT_URL", _rtorrent_url, rejected),
             rtorrent_user=_env("RTORRENT_USER", ""),
             rtorrent_pass=os.environ.get("RTORRENT_PASS", ""),
             tracker_user_agent=agent,
@@ -469,6 +535,7 @@ class Config:
             hardcover_evidence=_hardcover_evidence(_env("HARDCOVER_EVIDENCE", "")),
             deprecated_used=honoured,
             deprecated_ignored=ignored,
+            env_rejected=rejected,
         )
 
     def ensure_dirs(self) -> None:
@@ -665,47 +732,6 @@ def _plain_text(label: str, raw: str, limit: int = 300, keep_spaces: bool = Fals
     return text
 
 
-def _qbit_url(raw: str) -> str:
-    """QBIT_URL: http(s)://host[:port][/path], no login in it ("" = not set)."""
-    from urllib.parse import urlsplit
-
-    raw = raw.strip().rstrip("/")
-    if not raw:
-        return ""
-    try:
-        parts = urlsplit(raw)
-        parts.port  # noqa: B018 - raises ValueError on a bad port
-        ok = parts.scheme in ("http", "https") and bool(parts.hostname) and parts.username is None \
-            and not parts.query and not parts.fragment
-    except ValueError:
-        ok = False
-    if not ok:
-        raise ValueError("qBittorrent URL: use http://host:port (or https://), with no login in it")
-    return raw
-
-
-def _client_url(label: str, schemes: tuple[str, ...], example: str):
-    """A download client's address: one of ``schemes``, a host, no login, query or fragment ("" = unset)."""
-    from urllib.parse import urlsplit
-
-    def check(raw: str) -> str:
-        raw = raw.strip().rstrip("/")
-        if not raw:
-            return ""
-        try:
-            parts = urlsplit(raw)
-            port = parts.port
-            ok = parts.scheme in schemes and bool(parts.hostname) and parts.username is None \
-                and not parts.query and not parts.fragment and (parts.scheme != "scgi" or bool(port))
-        except ValueError:
-            ok = False
-        if not ok:
-            raise ValueError(f"{label}: use {example}, with no login in it")
-        return raw
-
-    return check
-
-
 def _from_startup_check(label: str, check, raw: str) -> str:
     """Run one of the start-up validators (which raise RuntimeError naming the variable) and turn
     its message into a page message naming the field instead."""
@@ -742,15 +768,13 @@ WATCHER_TEXT_CHECKS = {
     "qbit_pass": ("qBittorrent password", lambda raw: _plain_text("qBittorrent password", raw, 300, keep_spaces=True)),
     "qbit_category": ("qBittorrent category", lambda raw: _plain_text("qBittorrent category", raw, 200)),
     # the other download clients (download_client itself is a select, checked against its choices)
-    "deluge_url": ("Deluge URL", _client_url("Deluge URL", ("http", "https"), "http://deluge:8112")),
+    "deluge_url": ("Deluge URL", _deluge_url),
     "deluge_pass": ("Deluge password", lambda raw: _plain_text("Deluge password", raw, 300, keep_spaces=True)),
-    "transmission_url": ("Transmission URL", _client_url(
-        "Transmission URL", ("http", "https"), "http://transmission:9091/transmission/rpc")),
+    "transmission_url": ("Transmission URL", _transmission_url),
     "transmission_user": ("Transmission user", lambda raw: _plain_text("Transmission user", raw, 200)),
     "transmission_pass": ("Transmission password",
                           lambda raw: _plain_text("Transmission password", raw, 300, keep_spaces=True)),
-    "rtorrent_url": ("rTorrent URL", _client_url(
-        "rTorrent URL", ("scgi", "http", "https"), "scgi://rtorrent:5000 or http://rutorrent/RPC2")),
+    "rtorrent_url": ("rTorrent URL", _rtorrent_url),
     "rtorrent_user": ("rTorrent user", lambda raw: _plain_text("rTorrent user", raw, 200)),
     "rtorrent_pass": ("rTorrent password", lambda raw: _plain_text("rTorrent password", raw, 300, keep_spaces=True)),
 }
@@ -938,6 +962,11 @@ def deprecated_env_lines(config: Config | None = None) -> list[str]:
     lines = [f"{old} is deprecated, use {new}" for old, new in config.deprecated_used]
     lines += [f"{old} is deprecated and ignored: {new} is set" for old, new in config.deprecated_ignored]
     return lines
+
+
+def rejected_env_lines(config: Config | None = None) -> list[str]:
+    """SEC-05: one startup log line per client URL variable that was not used (login redacted)."""
+    return list((config or CONFIG).env_rejected)
 
 
 #: the settings that must all be present before the watcher can run: (variable, Config attribute)

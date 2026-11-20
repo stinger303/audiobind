@@ -9,7 +9,7 @@ import time
 from . import ingest, web
 from . import series as series_mod
 from . import watcher as watcher_mod
-from .config import CONFIG, deprecated_env_lines, effective_val, set_effective
+from .config import CONFIG, deprecated_env_lines, effective_val, rejected_env_lines, set_effective
 from .control import CONTROL
 from .pipeline import process_unit
 from .prefetch import PREFETCH, already_decided, next_eligible
@@ -211,6 +211,8 @@ def run() -> None:
         CONFIG.scan_interval_min,
     )
     for line in deprecated_env_lines():  # one line per renamed variable still in use; never a value
+        log.warning(line)
+    for line in rejected_env_lines():  # SEC-05: a client URL variable that was not used; login as ***
         log.warning(line)
     set_effective(state)
     # a set-but-missing INGEST_DIR is a warning, not a crash: the library keeps converting

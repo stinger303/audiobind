@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from ..util import redact_url
 from .base import ERROR, UNAVAILABLE, ClientError
 
 TIMEOUT = 20.0
@@ -27,7 +28,7 @@ def http_url(url: str, setting: str) -> tuple[str, str]:
         raise ClientError(f"{setting} is not set", kind=ERROR)
     parts = urllib.parse.urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.netloc or parts.username is not None:
-        raise ClientError(f"{setting} is not an http(s) URL (with no login in it): {url!r}", kind=ERROR)
+        raise ClientError(f"{setting} is not an http(s) URL (with no login in it): {redact_url(url)!r}", kind=ERROR)
     return url, f"{parts.scheme}://{parts.netloc}"
 
 

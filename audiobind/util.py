@@ -14,6 +14,17 @@ NOISE_RE = re.compile(
     r"\b\d+\s*kbps\b|\bdisc\s*\d+\b|\bcd\s*\d+\b|\bbook\s*mark\b",
     re.I,
 )
+def redact_url(url) -> str:
+    """``url`` with any login in it (``user:pass@``) shown as ``***@`` - safe for a log line or
+    an error message (SEC-05). Everything up to the LAST ``@`` after the scheme is hidden, so a
+    password with a ``/`` or ``@`` in it is hidden too."""
+    text = str(url or "")
+    start = text.find("://")
+    start = start + 3 if start >= 0 else 0
+    at = text.rfind("@", start)
+    return text if at < 0 else text[:start] + "***" + text[at:]
+
+
 YEAR_RE = re.compile(r"[\(\[]\s*(19|20)\d{2}\s*[\)\]]")
 #: a number followed by one of these is the title itself ("13 Hours", "7 Habits"), never a sequence
 SEQ_UNIT_WORDS = (
