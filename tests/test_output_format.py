@@ -440,9 +440,22 @@ class BothTests(unittest.TestCase):
         self.assertEqual(self.published, [])
 
     def test_an_existing_main_file_is_not_encoded_again(self):
+        # CORE-04: the M4B alone is not "already published" when the MP3 is also asked for -
+        # only the missing MP3 is encoded, and the M4B stays the unit's output
         out = self.root / "out" / "A" / "T"
         out.mkdir(parents=True)
         (out / "T.m4b").write_bytes(b"x")
+        result = self.run_convert("M4B + MP3")
+        self.assertEqual([e[0] for e in self.encodes], ["mp3"])
+        self.assertEqual(self.published, ["T.mp3"])
+        self.assertEqual(result.path, out / "T.m4b")
+        self.assertFalse(self.audit.already_published)
+
+    def test_every_requested_file_present_is_not_encoded_again(self):
+        out = self.root / "out" / "A" / "T"
+        out.mkdir(parents=True)
+        (out / "T.m4b").write_bytes(b"x")
+        (out / "T.mp3").write_bytes(b"x")
         self.assertIsNone(self.run_convert("M4B + MP3"))
         self.assertEqual(self.encodes, [])
         self.assertTrue(self.audit.already_published)

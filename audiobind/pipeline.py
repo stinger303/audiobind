@@ -235,8 +235,25 @@ def work_dir_for(unit: BookUnit) -> Path:
     return CONFIG.work_dir / hashlib.sha1(unit.state_key.encode("utf-8")).hexdigest()[:8]
 
 
-def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reencode: bool = False):
+def _missing_formats(formats: list[str], paths: dict, reencode: bool) -> list[str]:
+    """CORE-04: the requested formats still to make - every one for a re-encode, else those not on disk."""
+    return list(formats) if reencode else [fmt for fmt in formats if not paths[fmt].exists()]
+
+
+def missing_beside(primary: Path) -> list[str]:
+    """The requested formats with no file beside ``primary`` (same folder and name, its own extension)."""
+    formats = encode.formats_for(effective_val("output_format"))
+    return _missing_formats(formats, {fmt: primary.with_suffix(f".{fmt}") for fmt in formats}, False)
+
+
+def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reencode: bool = False,
+                 at: Path | None = None):
     """Encode, verify and file one book. Returns the EncodeResult (or None in a dry run).
+
+    "Already published" means every requested format is on disk (CORE-04): when only some are,
+    just the missing ones are encoded and placed beside the ones already there, which are left
+    untouched. ``at`` is a published file of this book to file them beside (a book kept where an
+    older layout put it) instead of the current layout's path, so it never gets a second copy.
 
     ``cancelled`` (optional, no arguments) is asked again once the encoder is free: True means
     the book was removed from Audiobind while it waited, and nothing is encoded. ``heartbeat``
@@ -259,27 +276,38 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
     title = book.get("title") or match.product.title
 
     formats = encode.formats_for(effective_val("output_format"))
-    # the first format is the book's main file: the unit's output and the "already published" test
-    paths = {fmt: library.m4b_path(series, authors, title, sequence, ext=fmt) for fmt in formats}
+    # the first format is the book's main file: the unit's output
+    if at is None:
+        paths = {fmt: library.m4b_path(series, authors, title, sequence, ext=fmt) for fmt in formats}
+    else:
+        root = Path(CONFIG.output_root).resolve()
+        if root not in at.resolve().parents:
+            raise ValueError(f"output path escapes the output root: {at}")
+        paths = {fmt: at.with_suffix(f".{fmt}") for fmt in formats}
     out_path = paths[formats[0]]
     audit.out_path = str(out_path)
-    if out_path.exists() and not reencode:
+    todo = _missing_formats(formats, paths, reencode)
+    if not todo:
         audit.already_published = True
         log(f"  already published: {out_path}")
         return None
     if CONTROL.dry_run:
-        for path in paths.values():
-            log(f"  [dry-run] would write {path}")
+        for fmt in todo:
+            log(f"  [dry-run] would write {paths[fmt]}")
         return None  # nothing was written, so it is not "converted"
 
     work_dir = work_dir_for(unit)
     with CONVERT_LOCK:
         # checked again under the lock: a manual action and the daemon can both reach
         # this point for the same book, and only the first may encode it (unless asked to re-encode)
-        if out_path.exists() and not reencode:
+        todo = _missing_formats(formats, paths, reencode)
+        if not todo:
             audit.already_published = True
             log(f"  already published (while waiting for the encoder): {out_path}")
             return None
+        if todo != formats:
+            log(f"  {', '.join(f for f in formats if f not in todo).upper()} already published; "
+                f"adding {', '.join(todo).upper()}")
         if cancelled is not None and cancelled():
             log("  removed from Audiobind while waiting for the encoder - not converted")
             return None
@@ -292,7 +320,7 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
             # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
             plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None)
             results = {}
-            for fmt in formats:
+            for fmt in todo:
                 log(f"  encoding {fmt.upper()}")
                 # nothing is published until every format has encoded and verified: a failed
                 # second encode fails the unit and leaves the library untouched, never an
@@ -310,16 +338,20 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
                     publish=False,
                     sequence=sequence,
                 )
-            result = results[formats[0]]
+            duration = results.get(formats[0], results[todo[0]]).duration
             # CORE-03: metadata.json is written inside the publish, so a failed sidecar rolls
             # back the audio and cover with it, and the previous metadata comes back too
-            _publish_all(formats, results, paths, log=log,
+            _publish_all(todo, results, paths, log=log,
                          sidecar=lambda: _write_sidecar(out_path, book, match, plan.chapters,
-                                                        result.duration, log=log))
-            for fmt in formats:
+                                                        duration, log=log))
+            for fmt in todo:
                 res = results[fmt]
                 log(f"  published {paths[fmt]} ({res.size / 1e6:.0f} MB, {res.chapters} chapters)")
-            return result
+            if formats[0] in results:
+                return results[formats[0]]
+            # the main file was already there and is still the unit's output
+            return dataclasses.replace(results[todo[0]], path=out_path, size=out_path.stat().st_size,
+                                       cover=None)
         finally:
             # a stopped encode leaves only the work directory, which is deleted here, so the
             # library never sees a partial file and the book is simply retried next scan
@@ -616,8 +648,9 @@ def process_unit(
             log("  removed from Audiobind while being checked - not converted")
             return
         kept = "" if reencode else kept_conversion(state, unit)
-        if kept:
-            # no re-encode, no duplicate, no orphaned folder
+        if kept and not missing_beside(Path(kept)):
+            # no re-encode, no duplicate, no orphaned folder (CORE-04: only when every requested
+            # format is there - a missing one is made below, beside the kept file)
             prev = state.get(unit.state_key)
             if prev is not None and prev.status == "converted":
                 # the row is left exactly as it was
@@ -631,7 +664,7 @@ def process_unit(
             return
         try:
             result = convert_unit(audit, log=log, cancelled=dismissed, heartbeat=state.heartbeat,
-                                  reencode=reencode)
+                                  reencode=reencode, at=Path(kept) if kept else None)
             if result is None:  # dry run, already published, or removed while it waited
                 nothing_written()
             else:

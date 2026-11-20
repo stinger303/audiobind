@@ -80,6 +80,25 @@ class PublishCase(PipelineCase):
                 p.stop()
         return pathlib.Path(audit.out_path)
 
+    def run_process(self, key, tag, logs=None, fail_place=None, fail_sidecar=False, **kw):
+        """process_unit with the catalog and probe answered, so the recorded row can be checked."""
+        self.tag = tag
+        patches = self.patches(fail_place=fail_place, fail_sidecar=fail_sidecar) + [
+            mock.patch.object(catalog, "search", return_value=[PHM]),
+            mock.patch.object(catalog, "chapters", return_value=[]),
+            mock.patch.object(pipeline, "probe",
+                              return_value=Probe(duration=3600.0, codec="mp3", channels="2")),
+            mock.patch.object(encode, "probe_chapters", return_value=[]),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            pipeline.process_unit(self.state, ingest.find_any_unit(key),
+                                  log=(logs.append if logs is not None else lambda *_: None), **kw)
+        finally:
+            for p in reversed(patches):
+                p.stop()
+
     @staticmethod
     def listing(folder: pathlib.Path) -> list[str]:
         return sorted(p.name for p in folder.iterdir()) if folder.exists() else []
@@ -119,22 +138,7 @@ class Core03SidecarInsideThePublishTests(PublishCase):
 
     def process(self, key, tag, **fail):
         """The manual Convert anyway through process_unit, so the recorded row can be checked."""
-        self.tag = tag
-        patches = self.patches(**fail) + [
-            mock.patch.object(catalog, "search", return_value=[PHM]),
-            mock.patch.object(catalog, "chapters", return_value=[]),
-            mock.patch.object(pipeline, "probe",
-                              return_value=Probe(duration=3600.0, codec="mp3", channels="2")),
-            mock.patch.object(encode, "probe_chapters", return_value=[]),
-        ]
-        for p in patches:
-            p.start()
-        try:
-            pipeline.process_unit(self.state, ingest.find_any_unit(key), log=lambda *_: None,
-                                  force=True, manual=True, reencode=True)
-        finally:
-            for p in reversed(patches):
-                p.stop()
+        self.run_process(key, tag, force=True, manual=True, reencode=True, **fail)
 
     def first_edition(self):
         m4b = self.convert(KEY, "first")
@@ -180,6 +184,90 @@ class Core03SidecarInsideThePublishTests(PublishCase):
         self.convert(KEY, "first")
         self.assertEqual(self.listing(m4b.parent),
                          ["Project Hail Mary.m4b", "Project Hail Mary.mp3", "cover.jpg", "metadata.json"])
+
+
+# --------------------------------------------------------------------------- CORE-04
+class Core04EveryRequestedFormatTests(PublishCase):
+    """"Already published" means every requested format is on disk, not only the first one."""
+
+    def retry(self, tag="second", logs=None):
+        self.encode_calls.clear()
+        self.run_process(KEY, tag, logs=logs, manual=True)  # Retry now: no force, no re-encode
+
+    def converted(self, output_format):
+        self.output_format = output_format
+        self.run_process(KEY, "first")
+        row = self.state.get(KEY)
+        self.assertEqual(row.status, "converted")
+        return pathlib.Path(row.output)
+
+    def test_a_m4b_book_retried_after_switching_to_dual_gets_its_mp3(self):
+        m4b = self.converted("M4B")
+        self.assertFalse(m4b.with_suffix(".mp3").exists())
+        self.output_format = "M4B + MP3"
+        self.retry()
+        self.assertEqual(m4b.with_suffix(".mp3").read_bytes(), b"second-mp3",
+                         "Retry kept the M4B-only book and never made the requested MP3")
+        self.assertEqual(self.encode_calls, ["mp3"])  # the published M4B is not encoded again
+        self.assertEqual(m4b.read_bytes(), b"first-m4b")
+        self.assertEqual(self.backups(m4b), [])  # nothing replaced, nothing moved aside
+        row = self.state.get(KEY)
+        self.assertEqual((row.status, row.output), ("converted", str(m4b)))
+
+    def test_without_a_stored_output_a_partial_set_is_not_recorded_ready(self):
+        m4b = self.converted("M4B")
+        self.state.delete(KEY)  # no row: only the file at the current layout path is known
+        self.output_format = "M4B + MP3"
+        self.retry()
+        self.assertTrue(m4b.with_suffix(".mp3").exists(),
+                        "the M4B alone was taken as 'already published'")
+        row = self.state.get(KEY)
+        self.assertEqual((row.status, row.output), ("converted", str(m4b)))
+
+    def test_with_both_formats_present_nothing_is_encoded(self):
+        m4b = self.converted("M4B + MP3")
+        before = self.state.get(KEY)
+        self.retry()
+        self.assertEqual(self.encode_calls, [])
+        self.assertEqual((m4b.read_bytes(), m4b.with_suffix(".mp3").read_bytes()), (b"first-m4b", b"first-mp3"))
+        self.assertEqual(self.state.get(KEY).status, before.status)
+
+    def test_an_mp3_deleted_after_a_dual_publish_is_restored_by_the_next_pass(self):
+        m4b = self.converted("M4B + MP3")
+        m4b.with_suffix(".mp3").unlink()
+        self.retry()
+        self.assertEqual(m4b.with_suffix(".mp3").read_bytes(), b"second-mp3")
+        self.assertEqual(self.encode_calls, ["mp3"])
+        self.assertEqual(m4b.read_bytes(), b"first-m4b")
+
+    def test_a_book_kept_at_an_older_layout_gets_the_mp3_beside_it_not_a_second_copy(self):
+        current = self.converted("M4B")
+        old = pathlib.Path(pipeline.CONFIG.output_root) / "Old Layout" / current.name
+        old.parent.mkdir(parents=True)
+        current.rename(old)
+        row = self.state.get(KEY)
+        row.output = str(old)
+        self.state.save(row)
+        self.output_format = "M4B + MP3"
+        self.retry()
+        self.assertEqual(old.with_suffix(".mp3").read_bytes(), b"second-mp3")
+        self.assertFalse(current.exists(), "a duplicate was encoded at the current layout path")
+        self.assertFalse(current.with_suffix(".mp3").exists())
+        self.assertEqual(self.state.get(KEY).output, str(old))
+
+    def test_a_failed_mp3_leaves_the_kept_m4b_and_records_failed_not_ready(self):
+        m4b = self.converted("M4B")
+        self.output_format = "M4B + MP3"
+        self.encode_calls.clear()
+        self.run_process(KEY, "second", manual=True, fail_place=lambda dest: dest.suffix == ".mp3")
+        self.assertEqual(m4b.read_bytes(), b"first-m4b")
+        self.assertFalse(m4b.with_suffix(".mp3").exists())
+        row = self.state.get(KEY)
+        self.assertEqual((row.status, row.output), ("failed", str(m4b)))
+
+    @staticmethod
+    def backups(path: pathlib.Path) -> list[pathlib.Path]:
+        return sorted(path.parent.glob(path.name + ".bak-*"))
 
 
 if __name__ == "__main__":
