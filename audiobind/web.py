@@ -4469,6 +4469,10 @@ def _preset_box() -> str:
 
     parts = [f'<div class="ab-acct-who" id="ab-preset"><b>Tracker preset: {_html(preset.label)}</b> '
              f"(from <code>{path}</code>). "]
+    if not preset.values:
+        # a category list and nothing to fill: name it, say what it does, offer no button that would fill nothing
+        return "".join(parts) + ("It lists the tracker's search categories, so Search category below is a dropdown. "
+                                 "It has no fields to fill, and nothing is saved from it.</div>")
     if plan["fill"]:
         parts.append(f"It will fill: {names(plan['fill'])}. ")
     if plan["replace"]:
@@ -8000,6 +8004,11 @@ class Handler(BaseHTTPRequestHandler):
         if preset is None:
             self._send(400, json.dumps({"ok": False, "error": why or "There is no tracker preset file."}).encode(),
                        "application/json")
+            return
+        if not preset.values:
+            self._send(400, json.dumps({
+                "ok": False, "error": "This preset file only lists search categories; it has no fields to fill. "
+                                      "Nothing was changed."}).encode(), "application/json")
             return
         set_effective(self.state)
         plan = preset_mod.plan(preset, setting_effective)
