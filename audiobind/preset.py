@@ -13,7 +13,7 @@ The file::
 * ``label`` is the preset's own name; the app never names a tracker itself.
 * ``settings`` maps ``TRACKER_*`` names to text. An empty value means "leave this field alone".
 * Only the fields in ``FILLABLE`` can be filled. The ones that are yours - the session cookie's value,
-  Premium member, the proxy, the home address and the allowed address - are refused with a plain
+  VIP / Premium member, the proxy, the home address and the allowed address - are refused with a plain
   message: a file that is shared between people must not carry them.
 * ``categories`` is optional: the tracker's own search-category value -> a readable name. When it is there the
   Search category field on the tab is a dropdown (the saved value is the bare key). It is only ever read to draw

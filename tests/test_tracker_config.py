@@ -254,6 +254,8 @@ class TestSettingsPage(unittest.TestCase):
         for word in ("".join(("my", "anonamouse")), "wedge", "VIP"):
             visible = re.sub(r"wedge_(?:reserve|per_cycle|per_day)", "", pages.lower())  # setting keys, never shown
             visible = visible.replace("tracker_vip", "").replace('data-setting="vip"', "").replace('data-field="vip"', "")
+            # D6: the membership label and its hint name the word users meet; it is a tier, not a site
+            visible = visible.replace("vip / premium member", "").replace("some trackers call it vip, others premium", "")
             self.assertNotIn(word.lower(), visible, word)
 
 

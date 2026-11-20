@@ -114,5 +114,26 @@ class TestCategoryField(PresetWebCase):
         self.assertEqual(len(found.categories), 2)
 
 
+class TestMembershipLabel(PresetWebCase):
+    def test_the_select_reads_vip_slash_premium_and_names_both_words(self):
+        page = web.render_settings(self.state, "watcher")
+        start = page.index('data-setting="vip"')
+        block = page[start:page.index("</select>", start)]
+        self.assertIn(">VIP / Premium member<", block)
+        self.assertNotIn(">Premium member<", page)
+        self.assertIn("Some trackers call it VIP, others Premium", block)
+        self.assertIn("skipped instead of attempted", block)
+        self.assertIn("TRACKER_VIP", block)
+
+    def test_template_and_docs_use_the_same_words(self):
+        root = pathlib.Path(__file__).resolve().parent.parent
+        xml = (root / "templates" / "audiobind.xml").read_text()
+        self.assertIn('Name="Tracker VIP / Premium member" Target="TRACKER_VIP"', xml)
+        self.assertIn("VIP / Premium member", (root / "docs" / "acquisition.md").read_text())
+        for text in (xml, (root / "docs" / "acquisition.md").read_text()):
+            self.assertNotIn("**Premium member**", text)
+            self.assertNotIn("Tracker premium member", text)
+
+
 if __name__ == "__main__":
     unittest.main()

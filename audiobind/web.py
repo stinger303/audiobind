@@ -4511,7 +4511,7 @@ def _watch_connection_fields() -> str:
         + _watch_text("tracker_download_param", "Download parameter", "tid")
         + _watch_text("tracker_freeleech_param", "Freeleech parameter")
         + _watch_text("tracker_user_agent", "User-Agent", "audiobind/<version>")
-        + _watch_select("vip", "Premium member", VIP_HINT, titlecase=True)
+        + _watch_select("vip", "VIP / Premium member", VIP_HINT, titlecase=True)
         + _download_client_fields()
     )
 
@@ -5576,8 +5576,9 @@ WEDGE_HINTS = {
 }
 
 VIP_HINT = (
-    "Whether your account holds the tracker's top membership tier. When this is No, torrents "
-    "restricted to that tier are skipped instead of attempted. (Environment variable TRACKER_VIP.)"
+    "Whether your account holds the tracker's top membership tier. Some trackers call it VIP, others Premium. "
+    "When this is No, torrents restricted to that tier are skipped instead of attempted. "
+    "(Environment variable TRACKER_VIP.)"
 )
 
 EXPECTED_EGRESS_HINT = (

@@ -140,7 +140,7 @@ qBittorrent that is down never costs a credit.
 
 **Membership-restricted torrents.** Some torrents can only be downloaded by a higher membership
 tier, and the API cannot tell the watcher whether your account has it, so it is a setting:
-`TRACKER_VIP` (Settings > Watcher > **Premium member**, default **No**). With No, such a torrent
+`TRACKER_VIP` (Settings > Watcher > **VIP / Premium member**, default **No**). With No, such a torrent
 is skipped and the book's note says so; with Yes it is an ordinary candidate.
 
 The watcher has its own **Dry run** (Settings > Watcher, or `WATCH_DRY_RUN`), separate from the
