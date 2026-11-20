@@ -665,6 +665,15 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-series-hook .btn{flex:none;text-decoration:none}
 
 .ab-disc-wrap{padding:14px 24px 24px;display:flex;flex-direction:column;gap:14px;max-width:1180px}
+.ab-wizcard{flex:none;margin:12px 24px 0;background:var(--ab-surface);border:1px solid rgba(94,106,210,.45);
+  border-radius:10px;padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+  gap:10px 16px;font-size:12.5px;color:var(--ab-text3);line-height:1.5}
+.ab-wizcard-text{flex:1 1 280px;min-width:0}
+.ab-wizcard-text b{color:var(--ab-text);font-weight:600}
+.ab-wizcard .ab-acct-row{flex-wrap:wrap;margin-top:0}
+.ab-wizcard a.btn,.ab-wiz-open a.btn{text-decoration:none}
+.ab-wiz-open{flex-wrap:wrap;margin:6px 0 10px}
+.ab-wiz-open .ab-acct-who{margin-bottom:0;flex:1 1 220px}
 .ab-wiz{max-width:720px;display:flex;flex-direction:column;gap:14px;min-width:0}
 .ab-wiz-steps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0;font-size:12.5px}
 .ab-wiz-steps li{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--ab-border);
@@ -925,6 +934,22 @@ function abNav(open) {
 """
 
 SCRIPT = """
+// The Set up downloading card: "No, just my library" is stored on the server, so the card never returns.
+function abWizardDismiss() {
+  const fb = document.getElementById('ab-wizcard-fb');
+  if (fb) { fb.className = 'ab-fb'; fb.textContent = 'saving...'; }
+  fetch('/api/setup/downloading', {method:'POST', headers:{'Content-Type':'application/json'},
+                                   body: JSON.stringify({action: 'dismiss'})})
+    .then(r => r.json().then(body => ({ok: r.ok && body.ok, body: body})))
+    .then(res => {
+      if (!res.ok) { if (fb) { fb.className = 'ab-fb ab-bad'; fb.textContent = res.body.error || 'that did not work'; } return; }
+      const card = document.getElementById('ab-wizcard');
+      if (card) card.remove();
+      const next = document.getElementById('ab-search');
+      if (next) next.focus();
+    })
+    .catch(() => { if (fb) { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach Audiobind'; } });
+}
 // The button a top-bar click came from. The inline onclick handlers call these synchronously, so
 // the event in flight is still the click (Safari does not focus a clicked button, so
 // document.activeElement is not enough).
@@ -1694,6 +1719,7 @@ PAGE = """<!doctype html>
   </header>
 
 {queue_strip}
+{wizard_card}
 
   <section class="ab-controls" aria-label="Controls">
     {scan_button}
@@ -4672,6 +4698,7 @@ def render_watcher_section(state) -> str:
             "plus the qBittorrent URL, user and password (<code>QBIT_URL</code>, <code>QBIT_USER</code>, "
             "<code>QBIT_PASS</code>). Fill them in below and save - no restart needed - or set them as container "
             "variables. A Wishlist tab appears in the sidebar once these settings are complete.</div>"
+            + _wizard_open_button()
             + _watch_connection_fields()
             + _watch_test_and_save()
             + _egress_pin_field()
@@ -5334,6 +5361,33 @@ def _discover_shell(state, page_title: str, body: str, script: str, active: str 
 
 
 # ---------------------------------------------------------------------------- Set up downloading
+def _wizard_open_button() -> str:
+    """Settings > Watcher, while the watcher is not set up: the way into the guided setup, above the fields."""
+    return (
+        '<div class="ab-acct-row ab-wiz-open">'
+        f'<a class="btn ab-save" id="ab-wiz-open" href="{wizard_mod.PATH}">Set up downloading</a>'
+        '<span class="ab-acct-who">A short guide, one question at a time. It fills in the same fields as below.</span>'
+        "</div>"
+    )
+
+
+def _wizard_card(state) -> str:
+    """The Library page's one-time, dismissible card. Not shown once it was answered, nor while a tracker is
+    already set up. "No, just my library" stores the answer: the card never returns."""
+    if not wizard_mod.card_visible(state, watcher_mod.configured()):
+        return ""
+    lead = "Your library is being scanned." if CONTROL.scanning else "Your library is set up."
+    return (
+        '<section class="ab-wizcard" id="ab-wizcard" aria-labelledby="ab-wizcard-head">'
+        '<div class="ab-wizcard-text"><b id="ab-wizcard-head">Fetch books too?</b> '
+        f"{lead} Do you also want Audiobind to fetch books for you?</div>"
+        '<div class="ab-acct-row">'
+        f'<a class="btn ab-save" id="ab-wizcard-yes" href="{wizard_mod.PATH}">Set up downloading</a>'
+        '<button class="btn" type="button" id="ab-wizcard-no" onclick="abWizardDismiss()">No, just my library</button>'
+        '<span class="ab-fb" id="ab-wizcard-fb" role="status"></span></div></section>'
+    )
+
+
 def _wizard_indicator(step: int, mode: str) -> str:
     """1 How books arrive · 2 Download client · 3 The address the tracker sees · 4 Your tracker · Done.
     The step shown is marked; earlier steps that have a page are links back to it; steps 3-4 and Done are
@@ -5825,6 +5879,7 @@ POST_ONLY_ROUTES = {
     "/api/wishlist/title": "this wishlist action is a POST",
     "/api/library/abs-layout": "the layout tool is a POST",
     "/api/control": "control actions are a POST",
+    wizard_mod.API: "the setup guide's answers are a POST",
     **{route: "a connection test is a POST" for route in WATCHER_TEST_ROUTES},
     HARDCOVER_TEST_ROUTE: "a connection test is a POST",
     WATCHER_PRESET_ROUTE: "filling from the preset file is a POST",
@@ -6440,6 +6495,7 @@ def render(state, status: str = "", query: str = "") -> str:
         dry_button=dry_button,
         dry_note=dry_note,
         queue_strip=queue_strip,
+        wizard_card=_wizard_card(state) if (status in ("", "all") and not query) else "",
         allclear=allclear,
         stat_hours="{}".format(stats["hours"]),
         stat_gb="{}".format(stats["gb"]),
@@ -8165,6 +8221,19 @@ class Handler(BaseHTTPRequestHandler):
         body = {"ok": True, "action": action, **watcher.status(self.state)}
         self._send(200, json.dumps(body).encode(), "application/json")
 
+    def _handle_wizard(self) -> None:
+        """POST /api/setup/downloading {"action": ...}: the Set up downloading guide's answers.
+        "dismiss": the Library page's card is answered for good ("No, just my library")."""
+        payload = self._read_json()
+        if payload is None:
+            return
+        action = str(payload.get("action", "")).lower()
+        if action == "dismiss":
+            self.state.set_meta(wizard_mod.META_DISMISSED, True)
+            self._send(200, b'{"ok":true}', "application/json")
+            return
+        self._send(400, b'{"error":"unknown action"}', "application/json")
+
     def _handle_abs_layout(self) -> None:
         """POST /api/library/abs-layout: {"dry_run": bool, "confirm": bool}.
 
@@ -8302,6 +8371,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/watcher":
             self._handle_watcher()
+            return
+        if path == wizard_mod.API:
+            self._handle_wizard()
             return
         if path == "/api/library/abs-layout":
             self._handle_abs_layout()
