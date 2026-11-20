@@ -28,6 +28,7 @@ from . import overrides as overrides_mod
 from . import preset as preset_mod
 from . import series as series_mod
 from . import watcher as watcher_mod
+from . import wizard as wizard_mod
 from .advice import (
     ATTENTION_STATUSES,
     GROUP_REASONS,
@@ -664,6 +665,20 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-series-hook .btn{flex:none;text-decoration:none}
 
 .ab-disc-wrap{padding:14px 24px 24px;display:flex;flex-direction:column;gap:14px;max-width:1180px}
+.ab-wiz{max-width:720px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.ab-wiz-steps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0;font-size:12.5px}
+.ab-wiz-steps li{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--ab-border);
+  border-radius:99px;color:var(--ab-text3);min-width:0}
+.ab-wiz-steps li.ab-on{border-color:rgba(94,106,210,.45);background:rgba(94,106,210,.14);color:var(--ab-text)}
+.ab-wiz-steps li.ab-later{color:var(--ab-text4)}
+.ab-wiz-steps a{color:var(--ab-text2);text-decoration:none;display:flex;align-items:center;gap:6px;border-radius:4px}
+.ab-wiz-steps a:hover{color:var(--ab-accent-bright);text-decoration:underline}
+.ab-wiz-steps a:focus-visible{outline:2px solid var(--ab-accent-bright);outline-offset:2px}
+.ab-wiz-n{font-family:var(--ab-mono);font-size:11.5px}
+.ab-wiz-title{font-size:15px;font-weight:600;margin:4px 0 0;color:var(--ab-text);overflow-wrap:anywhere}
+.ab-wiz .ab-hintbox{margin-bottom:0}
+.ab-wiz .ab-acct-row{flex-wrap:wrap}
+.ab-wiz a.btn{text-decoration:none}
 .ab-disc-intro{font-size:12.5px;color:var(--ab-text3);line-height:1.5}
 .ab-disc-intro b{color:var(--ab-text2);font-weight:500}
 .ab-disc-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -5276,8 +5291,6 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
     """Discover books: the search form with the recommendations under it (one screen). A typed
     query runs one catalog search and its results replace the recommendations. tab="wishlist"
     renders the separate Wishlist page (the library page's rail, no watcher: falls back to search)."""
-    counts = state.counts()
-    rc = rail_counts(state, counts)
     if tab == "wishlist" and not watcher_mod.configured():
         tab = "search"  # no wishlist surface without the watcher: land on Discover books
     if tab == "wishlist":
@@ -5291,6 +5304,14 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
             body = _discover_search_body(result)
         else:
             body = _discover_search_body({"title": "", "author": ""}) + _discover_recs_body(state)
+    return _discover_shell(state, page_title, body, DISCOVER_SCRIPT, active)
+
+
+def _discover_shell(state, page_title: str, body: str, script: str, active: str = "") -> str:
+    """The rail, the top bar and one content column (the Discover books page's frame; the Set up downloading
+    wizard uses it too). ``body`` and ``script`` go in as they are."""
+    counts = state.counts()
+    rc = rail_counts(state, counts)
     return DISCOVER_PAGE.format(
         **_rail_view_marks(None),
         signout=signout_html(state),
@@ -5308,8 +5329,77 @@ def render_discover(state, tab: str = "search", title: str = "", author: str = "
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         disc_body=body,
         nav_script=NAV_SCRIPT,
-        discover_script=DISCOVER_SCRIPT,
+        discover_script=script,
     )
+
+
+# ---------------------------------------------------------------------------- Set up downloading
+def _wizard_indicator(step: int, mode: str) -> str:
+    """1 How books arrive · 2 Download client · 3 The address the tracker sees · 4 Your tracker · Done.
+    The step shown is marked; earlier steps that have a page are links back to it; steps 3-4 and Done are
+    listed and never clickable (so a link to a page that is not built cannot exist)."""
+    items = []
+    for number, name in wizard_mod.STEPS:
+        label = f'<span class="ab-wiz-n" aria-hidden="true">{number}</span> {_html(name)}'
+        if number == step:
+            items.append(f'<li class="ab-on" aria-current="step">{label}</li>')
+        elif number < step and number in wizard_mod.BUILT and (number == 1 or mode == wizard_mod.MODE_TRACKER):
+            items.append(f'<li class="ab-done"><a href="{wizard_mod.PATH}?step={number}">{label}</a></li>')
+        else:
+            items.append(f'<li class="ab-later" aria-disabled="true">{label}</li>')
+    items.append('<li class="ab-later" aria-disabled="true"><span class="ab-wiz-n" aria-hidden="true">&#10003;</span> Done</li>')
+    return f'<nav aria-label="Set up downloading: the steps"><ol class="ab-wiz-steps">{"".join(items)}</ol></nav>'
+
+
+def _wizard_not_built(step: int) -> str:
+    """A step that is listed but has no page yet: said plainly, with the way back and the page that has every
+    field today. The flow stops here; nothing is half-drawn."""
+    name = dict(wizard_mod.STEPS).get(step, "This step")
+    return (
+        f'<div class="ab-hintbox" role="status"><b>{_html(name)} is not built yet.</b> Everything you set up '
+        "so far is saved, and the rest of the tracker setup does not happen in this guide yet. Until it does, "
+        "the Watcher tab in Settings has every field.</div>"
+        '<div class="ab-acct-row">'
+        f'<a class="btn" href="{wizard_mod.PATH}?step={max(1, step - 1)}" id="ab-wiz-back">Back</a>'
+        '<a class="btn" href="/settings?tab=watcher" id="ab-wiz-settings">Open Settings &rarr; Watcher</a></div>'
+    )
+
+
+def _wizard_body(state, step: int, mode: str, host: str) -> str:
+    """The content of one step. Steps without a page answer with the not-built notice."""
+    return _wizard_not_built(step)
+
+
+def render_wizard(state, step_param=None, host: str = "") -> str:
+    """GET /setup/downloading: the "Set up downloading" guide. ``step_param`` is the ?step= text (None = resume
+    where the person was); ``host`` is the Host the browser used, for the client address pre-fill. Showing a
+    step stores it, so a container restart in the middle resumes there."""
+    set_effective(state)
+    progress = wizard_mod.read(state)
+    step = wizard_mod.resolve_step(step_param, progress["mode"], progress["step"])
+    wizard_mod.remember_step(state, step)
+    total = len(wizard_mod.STEPS)
+    name = dict(wizard_mod.STEPS)[step]
+    body = (
+        '<div class="ab-wiz">'
+        + _wizard_indicator(step, progress["mode"])
+        + f'<h2 class="ab-wiz-title" id="ab-wiz-title">Step {step} of {total}: {_html(name)}</h2>'
+        + _wizard_body(state, step, progress["mode"], host)
+        + "</div>"
+    )
+    return _discover_shell(state, "Set up downloading", body, WIZARD_SCRIPT)
+
+
+WIZARD_SCRIPT = """
+function abToast(text) {
+  const el = document.getElementById('ab-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('on');
+  clearTimeout(abToast.t);
+  abToast.t = setTimeout(() => el.classList.remove('on'), 4000);
+}
+"""
 
 
 def render_settings(state, tab: str = "") -> str:
@@ -6578,6 +6668,12 @@ def allowed_host_names() -> set[str]:
     return {host_name(h) for h in CONFIG.allowed_hosts if host_name(h)}
 
 
+def host_accepted(name: str) -> bool:
+    """The Host check every request passes: ``name`` (port-stripped) is listed in ALLOWED_HOSTS, or - with the
+    list unset - is a literal private IP, which cannot be DNS-rebound."""
+    return name in allowed_host_names() or (not CONFIG.allowed_hosts_set and is_private_literal(name))
+
+
 _HOSTS_WARNED = False
 _REFUSED_HOSTS: set[str] = set()
 
@@ -6781,10 +6877,7 @@ class Handler(BaseHTTPRequestHandler):
         requested = self._request_host()
         if requested:
             name = host_name(requested)
-            if name in allowed_host_names():
-                return False
-            # unset ALLOWED_HOSTS: a literal private IP cannot be DNS-rebound, so let it in
-            if not CONFIG.allowed_hosts_set and is_private_literal(name):
+            if host_accepted(name):
                 return False
         if requested and CONFIG.allowed_hosts_set:
             # a list is set: exactly its names answer, the IP included only if it is listed
@@ -7236,6 +7329,10 @@ class Handler(BaseHTTPRequestHandler):
             eff_interval = effective_val("scan_interval_min")
             healthy = self.state.heartbeat_age() < eff_interval * 60 * 2.5 + 300
             self._send(200 if healthy else 503, b"ok" if healthy else b"stale", "text/plain")
+            return
+        if path.rstrip("/") == wizard_mod.PATH:
+            page = render_wizard(self.state, params.get("step"), self._request_host())
+            self._send(200, page.encode(), "text/html; charset=utf-8")
             return
         if path == "/settings" or path.startswith("/settings"):
             body = render_settings(self.state, params.get("tab", ""))
