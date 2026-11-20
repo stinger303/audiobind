@@ -1,5 +1,5 @@
 {
-  "_comment": "Save as /config/tracker-preset.json. Every value here is a placeholder for a fictional site: replace them. An empty value leaves that field alone. TRACKER_SESSION, TRACKER_VIP, TRACKER_PROXY, TRACKER_HOME_IP and TRACKER_EXPECTED_EGRESS_IP are yours and are refused if they appear here.",
+  "_comment": "Save as /config/tracker-preset.json. Every value here is a placeholder for a fictional site: replace them. An empty value leaves that field alone. TRACKER_SESSION, TRACKER_VIP, TRACKER_PROXY, TRACKER_HOME_IP and TRACKER_EXPECTED_EGRESS_IP are yours and are refused if they appear here. \"categories\" is optional: the tracker's own search-category values and what to call them; with it, Search category becomes a dropdown.",
   "label": "Example tracker",
   "settings": {
     "TRACKER_URL": "https://tracker.example",
@@ -13,5 +13,9 @@
     "TRACKER_DOWNLOAD_PARAM": "tid",
     "TRACKER_FREELEECH_PARAM": "",
     "TRACKER_USER_AGENT": ""
+  },
+  "categories": {
+    "audiobooks": "Audiobooks",
+    "ebooks": "Ebooks"
   }
 }

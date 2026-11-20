@@ -4324,7 +4324,10 @@ WATCH_FIELD_HINTS = {
                             'book, e.g. {"q": "{{title}} {{author}}"}.'),
     "tracker_search_method": "How the search is sent. Most sites take POST.",
     "tracker_search_encoding": "How a POST search is encoded: json, or form for a classic web form.",
-    "tracker_search_category": "Optional. Filled in for {{category}} in the search request, e.g. the audiobook category.",
+    "tracker_search_category": ("Optional. The tracker's own value for the search request, filled in for {{category}} "
+                                "- not one of Audiobind's tiers; every tracker defines its own (often a number). A "
+                                "preset file can supply the list as a dropdown. Empty = {{category}} is left out of "
+                                "the request."),
     "tracker_download_path": "Where the site hands out .torrent files, e.g. /download.php.",
     "tracker_download_param": "The download link's torrent id parameter. Usually tid.",
     "tracker_freeleech_param": ("Optional. The parameter that spends a freeleech credit on a download. Empty = "
@@ -4415,6 +4418,29 @@ def _watch_select(key: str, label: str, hint: str, titlecase: bool = False) -> s
     return _watch_wrap(key, label, hint, f'<select class="ab-in" data-initial="{_attr(selected)}">{opt_html}</select>')
 
 
+CATEGORY_NONE = "None (leave {{category}} out)"
+CATEGORY_DROPDOWN_HINT = ("The tracker's own category for the search request, from your preset file. The value saved "
+                          "is the number or text in brackets. None = {{category}} is left out of the request.")
+
+
+def _watch_category(label: str = "Search category") -> str:
+    """The search category: a dropdown when the preset file supplies the tracker's own list, else a text field.
+    The option value is the bare key; a saved value that is not in the list stays, as its own option."""
+    preset, _why = preset_mod.load()
+    categories = preset.categories if preset is not None else {}
+    if not categories:
+        return _watch_text("tracker_search_category", label)
+    value = str(setting_effective("tracker_search_category") or "").strip()
+    options = [("", CATEGORY_NONE)] + [(k, f"{n} ({k})") for k, n in categories.items()]
+    if value and value not in categories:
+        options.append((value, f"{value} (not in the preset list)"))
+    opt_html = "".join(
+        f'<option value="{_attr(k)}"{" selected" if k == value else ""}>{_html(text)}</option>' for k, text in options
+    )
+    control = f'<select class="ab-in" data-initial="{_attr(value)}">{opt_html}</select>'
+    return _watch_wrap("tracker_search_category", label, CATEGORY_DROPDOWN_HINT, control)
+
+
 def _watch_number(key: str, label: str, value: int, suffix: str, hint: str = "") -> str:
     lo, hi = setting_bounds(key)
     control = (
@@ -4480,7 +4506,7 @@ def _watch_connection_fields() -> str:
         + _watch_text("tracker_search_body", "Search request body", '{"q": "{{title}} {{author}}"}', area=True)
         + _watch_select("tracker_search_method", "Search method", WATCH_FIELD_HINTS["tracker_search_method"])
         + _watch_select("tracker_search_encoding", "Search encoding", WATCH_FIELD_HINTS["tracker_search_encoding"])
-        + _watch_text("tracker_search_category", "Search category")
+        + _watch_category("Search category")
         + _watch_text("tracker_download_path", "Download path", "/download.php")
         + _watch_text("tracker_download_param", "Download parameter", "tid")
         + _watch_text("tracker_freeleech_param", "Freeleech parameter")

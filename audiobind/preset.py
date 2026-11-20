@@ -7,13 +7,17 @@ tab's own Save writes, through the very same checks. Nothing in this module touc
 
 The file::
 
-    {"label": "Name shown on the tab", "settings": {"TRACKER_URL": "https://...", ...}}
+    {"label": "Name shown on the tab", "settings": {"TRACKER_URL": "https://...", ...},
+     "categories": {"13": "Audiobooks", "14": "Ebooks"}}
 
 * ``label`` is the preset's own name; the app never names a tracker itself.
 * ``settings`` maps ``TRACKER_*`` names to text. An empty value means "leave this field alone".
 * Only the fields in ``FILLABLE`` can be filled. The ones that are yours - the session cookie's value,
   Premium member, the proxy, the home address and the allowed address - are refused with a plain
   message: a file that is shared between people must not carry them.
+* ``categories`` is optional: the tracker's own search-category value -> a readable name. When it is there the
+  Search category field on the tab is a dropdown (the saved value is the bare key). It is only ever read to draw
+  that field; applying a preset does not touch it. Absent or empty = a plain text field.
 * The whole file is checked before anything is written. One bad value means no value is saved.
 """
 
@@ -28,6 +32,8 @@ from .config import CONFIG, SETTING_CHOICES, WATCHER_TEXT_CHECKS
 PRESET_FILE = "tracker-preset.json"
 MAX_BYTES = 32 * 1024
 MAX_LABEL = 60
+MAX_CATEGORIES = 100
+MAX_CATEGORY_NAME = 60
 
 #: the file's name for a field -> the settings key the Watcher tab saves it under
 FILLABLE = {
@@ -69,6 +75,8 @@ class Preset:
     label: str
     #: settings key -> the value to save (already checked; empty values are left out)
     values: dict = field(default_factory=dict)
+    #: the tracker's own category value -> readable name (empty = no dropdown)
+    categories: dict = field(default_factory=dict)
 
 
 def path_of(directory=None) -> Path:
@@ -83,6 +91,29 @@ def _check_value(key: str, raw: str) -> str:
             raise ValueError(f"{LABELS[key]}: use one of {', '.join(SETTING_CHOICES[key])}")
         return match.upper() if key == "tracker_search_method" else match.lower()
     return WATCHER_TEXT_CHECKS[key][1](raw)
+
+
+def _check_categories(raw) -> dict:
+    """The optional ``categories`` object as {value: name}, or ValueError with a plain message."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("categories must be an object of the tracker's value -> a readable name")
+    if len(raw) > MAX_CATEGORIES:
+        raise ValueError(f"categories has more than {MAX_CATEGORIES} entries")
+    out: dict = {}
+    for key, name in raw.items():
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("every category needs a name written as text")
+        try:
+            value = WATCHER_TEXT_CHECKS["tracker_search_category"][1](key)
+        except ValueError:
+            raise ValueError("a category value must be one line of plain text") from None
+        name = " ".join(name.split())
+        if not value or len(name) > MAX_CATEGORY_NAME or any(ord(ch) < 32 for ch in name):
+            raise ValueError(f"each category needs a value and a one-line name of at most {MAX_CATEGORY_NAME} characters")
+        out[value] = name
+    return out
 
 
 def parse(text: str) -> tuple[Preset | None, str]:
@@ -117,11 +148,16 @@ def parse(text: str) -> tuple[Preset | None, str]:
                 values[key] = _check_value(key, raw)
             except ValueError as exc:
                 problems.append(str(exc))
+    try:
+        categories = _check_categories(data.get("categories"))
+    except ValueError as exc:
+        problems.append(str(exc))
+        categories = {}
     if problems:
         return None, "; ".join(problems[:5]) + (f"; and {len(problems) - 5} more" if len(problems) > 5 else "")
     if not values:
         return None, "every value in it is empty, so there is nothing to fill"
-    return Preset(label, values), ""
+    return Preset(label, values, categories), ""
 
 
 def load(directory=None) -> tuple[Preset | None, str]:

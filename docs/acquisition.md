@@ -76,7 +76,10 @@ category have no old name - set them.
 "Fill the tracker fields from preset file", names the preset by the file's own `label`, lists the fields
 it will fill and asks before it replaces anything already set. The file is only read to draw that button
 and when you press it; it never changes how Audiobind runs, it cannot carry your session cookie, proxy,
-IP settings or membership, and a file with any bad value saves nothing.
+IP settings or membership, and a file with any bad value saves nothing. An optional `"categories"` object
+maps the tracker's own search-category values to readable names; with it, Settings > Watcher > **Search
+category** becomes a dropdown (it saves the bare value, and a saved value that is not in the list stays
+as its own option), and without it the field is plain text.
 
 **Checking your setup** (Settings > Watcher). *Check IP* shows the address the tracker would see from
 here, in a box you can copy, and what the egress guard would decide; it works with the guard off or armed,
