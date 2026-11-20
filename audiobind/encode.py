@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 import time
@@ -744,11 +745,19 @@ def write_abs_metadata(path: Path, book: dict, match, chapters: list[dict], dura
     }
     # SEC-03: a temp file beside it, then a rename over it - a rename replaces a symlink at
     # ``path`` instead of writing through it (write_text would follow it). O_EXCL refuses a
-    # planted temp name; 0o666 keeps the umask-based mode write_text gave.
+    # planted temp name; 0o666 keeps the umask-based mode write_text gave. SEC-03b: an existing
+    # regular sidecar keeps its own mode (lstat: a symlink lends nothing - it is replaced).
+    try:
+        old = os.lstat(path)
+        keep_mode = stat.S_IMODE(old.st_mode) if stat.S_ISREG(old.st_mode) else None
+    except FileNotFoundError:
+        keep_mode = None
     temp = path.parent / f".{path.name}.{os.urandom(6).hex()}.tmp"
     fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            if keep_mode is not None:
+                os.fchmod(handle.fileno(), keep_mode)
             handle.write(json.dumps(data, indent=2, ensure_ascii=False))
         os.replace(temp, path)
     except BaseException:

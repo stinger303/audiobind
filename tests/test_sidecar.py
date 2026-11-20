@@ -63,6 +63,35 @@ class WriteAbsMetadataTests(SidecarCase):
         os.umask(mask)
         self.assertEqual(target.stat().st_mode & 0o777, 0o666 & ~mask)
 
+    def with_umask(self, mask):
+        old = os.umask(mask)
+        self.addCleanup(os.umask, old)
+
+    def test_a_rewrite_keeps_an_existing_sidecars_mode(self):
+        # SEC-03b: the rename installs a new inode; it must carry the old file's mode
+        self.with_umask(0o022)
+        target = self.book_dir / "metadata.json"
+        target.write_text("{}", encoding="utf-8")
+        os.chmod(target, 0o600)
+        encode.write_abs_metadata(target, BOOK, self.match, [], 3600.0)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["title"], "Moneyball")
+        self.assertEqual(self.leftovers(), [])
+
+    def test_a_fresh_sidecar_still_follows_the_umask(self):
+        self.with_umask(0o027)
+        target = self.book_dir / "metadata.json"
+        encode.write_abs_metadata(target, BOOK, self.match, [], 3600.0)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o640)
+
+    def test_a_replaced_symlink_does_not_lend_its_targets_mode(self):
+        self.with_umask(0o022)
+        os.chmod(self.outside, 0o600)
+        target = self.book_dir / "metadata.json"
+        target.symlink_to(self.outside)
+        encode.write_abs_metadata(target, BOOK, self.match, [], 3600.0)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o644)
+
 
 class PipelineSidecarTests(SidecarCase):
     """pipeline._write_sidecar: what convert_unit calls after publishing."""
