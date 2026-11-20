@@ -79,7 +79,8 @@ and when you press it; it never changes how Audiobind runs, it cannot carry your
 IP settings or membership, and a file with any bad value saves nothing. An optional `"categories"` object
 maps the tracker's own search-category values to readable names; with it, Settings > Watcher > **Search
 category** becomes a dropdown (it saves the bare value, and a saved value that is not in the list stays
-as its own option), and without it the field is plain text.
+as its own option), and without it the field is plain text. `"settings"` may be left empty (or out) when the
+file only lists categories: you get the dropdown and no fill button, and nothing is saved from it.
 
 **Checking your setup** (Settings > Watcher). *Check IP* shows the address the tracker would see from
 here, in a box you can copy, and what the egress guard would decide; it works with the guard off or armed,
