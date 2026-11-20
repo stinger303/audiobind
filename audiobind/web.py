@@ -7336,13 +7336,14 @@ class Handler(BaseHTTPRequestHandler):
             return 0
         header = self.headers.get("Authorization") or ""
         scheme, _, given = header.partition(" ")
-        if path.startswith("/api/") and scheme.lower() == "bearer" and given.strip():
+        given = auth_mod.login_secret(given)  # SEC-06: the same canonical form as the sign-in form
+        if path.startswith("/api/") and scheme.lower() == "bearer" and given:
             ip = self._client_ip()
-            if creds is not None and auth_mod.BEARERS.hit(given.strip(), creds.version):
+            if creds is not None and auth_mod.BEARERS.hit(given, creds.version):
                 return 0  # a password already proven: no PBKDF2, nothing to count
             if not auth_mod.LIMITER.attempt(ip):  # counted before verifying, cleared on success
                 return 429
-            if self._bearer_ok(given.strip(), creds):
+            if self._bearer_ok(given, creds):
                 auth_mod.LIMITER.reset(ip)
                 return 0
             logging.getLogger("audiobind").warning("wrong API credentials from %s", ip)
@@ -7432,12 +7433,13 @@ class Handler(BaseHTTPRequestHandler):
             message, wait = self._locked_out_message(ip)
             reply(429, message, {"Retry-After": str(wait)})
             return
+        password = auth_mod.login_secret(fields.get("password", ""))  # SEC-06: as Bearer sees it
         if creds is not None:
             # the account: both fields, one generic answer, the same work either way
-            ok = auth_mod.check_login(creds, username, fields.get("password", ""))
+            ok = auth_mod.check_login(creds, username, password)
         elif "password" in fields:
             # legacy AUTH_TOKEN, no account yet: any username, the token as the password
-            ok = bool(username) and auth_mod.token_matches(fields["password"], CONFIG.auth_token)
+            ok = bool(username) and auth_mod.token_matches(password, CONFIG.auth_token)
         else:
             # a pre-0.16 token-only form or script ({"token": ...}) keeps working until an account exists
             ok = auth_mod.token_matches(fields.get("token", ""), CONFIG.auth_token)

@@ -132,8 +132,17 @@ def username_problem(username: str) -> str:
     return ""
 
 
+def login_secret(given: str) -> str:
+    """SEC-06: the one canonical form of a password (or legacy token) as typed in the browser
+    or sent as Bearer: outer whitespace dropped. An HTTP header cannot carry it, so the
+    browser must not count it either - and password_problem() refuses it in a new password."""
+    return given.strip()
+
+
 def password_problem(password: str, confirm: str | None = None) -> str:
     """'' when the new password is acceptable, else what is wrong with it."""
+    if password != login_secret(password):
+        return "The password cannot start or end with a space."
     if len(password) < PASSWORD_MIN:
         return f"The password must be at least {PASSWORD_MIN} characters."
     if len(password) > PASSWORD_MAX:

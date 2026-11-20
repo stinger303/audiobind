@@ -414,6 +414,46 @@ class GlobalBudgetTests(AccountCase):
         self.assertEqual(self.login()[0], 429)
 
 
+class PasswordWhitespaceTests(AccountCase):
+    """SEC-06: the browser and Bearer must agree on what the password is. A header value cannot
+    carry outer whitespace (it is trimmed), so a password cannot have any, and both sign-in
+    paths ignore outer whitespace in what is typed or sent."""
+
+    PADDED = "  padded password  "
+
+    def test_password_problem_refuses_outer_whitespace(self):
+        for bad in (" leading-space", "trailing-space ", "\ttabbed-password", "newline-password\n"):
+            self.assertIn("space", auth_mod.password_problem(bad, bad), repr(bad))
+        self.assertEqual(auth_mod.password_problem("inner space ok", "inner space ok"), "")
+
+    def test_setup_refuses_it(self):
+        status, _, body = self.form("/setup", {"username": USER, "password": self.PADDED, "confirm": self.PADDED})
+        self.assertEqual(status, 400)
+        self.assertIn(b"space", body)
+        self.assertIsNone(self.state.get_credentials())
+
+    def test_settings_refuses_it(self):
+        jar = self.setup_account()
+        status, _, body = self.account(
+            {"action": "password", "current": PASSWORD, "new_password": self.PADDED, "confirm": self.PADDED}, jar
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("space", body["error"])
+        self.assertTrue(auth_mod.verify_password(PASSWORD, self.state.get_credentials()))
+
+    def test_both_paths_ignore_outer_whitespace_in_what_is_sent(self):
+        self.state.create_credentials(USER, auth_mod.hash_password(PASSWORD))
+        self.assertEqual(self.login(USER, f" {PASSWORD} ")[0], 303)
+        self.assertEqual(self.raw("/api/units", headers={"Authorization": f"Bearer  {PASSWORD} "})[0], 200)
+
+    def test_an_old_padded_password_gets_the_same_answer_on_both_paths(self):
+        # made before the rule (e.g. by an older reset-password): neither path can match it now
+        self.state.create_credentials(USER, auth_mod.hash_password(self.PADDED))
+        browser = self.login(USER, self.PADDED)[0]
+        script = self.raw("/api/units", headers={"Authorization": f"Bearer {self.PADDED}"})[0]
+        self.assertEqual((browser, script), (401, 401))
+
+
 class BearerTests(AccountCase):
     def setUp(self):
         super().setUp()
