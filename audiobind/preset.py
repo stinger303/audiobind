@@ -11,11 +11,12 @@ The file::
      "categories": {"13": "Audiobooks", "14": "Ebooks"}}
 
 * ``label`` is the preset's own name; the app never names a tracker itself.
-* ``settings`` maps ``TRACKER_*`` names to text. An empty value means "leave this field alone".
+* ``settings`` maps ``TRACKER_*`` names to text. An empty value means "leave this field alone". It may be left
+  out or empty when the file lists ``categories``: a preset carries fillable settings, a category list, or both.
 * Only the fields in ``FILLABLE`` can be filled. The ones that are yours - the session cookie's value,
   VIP / Premium member, the proxy, the home address and the allowed address - are refused with a plain
   message: a file that is shared between people must not carry them.
-* ``categories`` is optional: the tracker's own search-category value -> a readable name. When it is there the
+* ``categories`` is optional when ``settings`` has something to fill: the tracker's own search-category value -> a readable name. When it is there the
   Search category field on the tab is a dropdown (the saved value is the bare key). It is only ever read to draw
   that field; applying a preset does not touch it. Absent or empty = a plain text field.
 * The whole file is checked before anything is written. One bad value means no value is saved.
@@ -131,7 +132,9 @@ def parse(text: str) -> tuple[Preset | None, str]:
     if len(label) > MAX_LABEL or any(ord(ch) < 32 for ch in label):
         return None, f"the label must be one line of at most {MAX_LABEL} characters"
     settings = data.get("settings")
-    if not isinstance(settings, dict) or not settings:
+    if settings is None:
+        settings = {}
+    if not isinstance(settings, dict):
         return None, "it needs \"settings\": an object of TRACKER_* fields to fill"
     values: dict = {}
     problems: list[str] = []
@@ -155,7 +158,9 @@ def parse(text: str) -> tuple[Preset | None, str]:
         categories = {}
     if problems:
         return None, "; ".join(problems[:5]) + (f"; and {len(problems) - 5} more" if len(problems) > 5 else "")
-    if not values:
+    if not values and not categories:
+        if not settings:
+            return None, "it needs \"settings\": an object of TRACKER_* fields to fill"
         return None, "every value in it is empty, so there is nothing to fill"
     return Preset(label, values, categories), ""
 
