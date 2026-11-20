@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -309,9 +310,12 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
                     publish=False,
                     sequence=sequence,
                 )
-            _publish_all(formats, results, paths, log=log)
             result = results[formats[0]]
-            _write_sidecar(out_path, book, match, plan.chapters, result.duration, log=log)
+            # CORE-03: metadata.json is written inside the publish, so a failed sidecar rolls
+            # back the audio and cover with it, and the previous metadata comes back too
+            _publish_all(formats, results, paths, log=log,
+                         sidecar=lambda: _write_sidecar(out_path, book, match, plan.chapters,
+                                                        result.duration, log=log))
             for fmt in formats:
                 res = results[fmt]
                 log(f"  published {paths[fmt]} ({res.size / 1e6:.0f} MB, {res.chapters} chapters)")
@@ -348,7 +352,7 @@ def _backup_path(path: Path, stamp: str) -> Path:
     return candidate
 
 
-def _publish_all(formats: list[str], results: dict, paths: dict, log=print) -> None:
+def _publish_all(formats: list[str], results: dict, paths: dict, log=print, sidecar=None) -> None:
     """Publish every verified format, the m4b (archival copy) first - all of them or none.
 
     If a later format fails to publish (a cross-filesystem copy that runs out of space), the
@@ -362,6 +366,12 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print) -> N
     every format, plus the cover.jpg that belongs to that edition. A failed publish renames
     them back, so the previous edition is left exactly as it was; a successful one keeps them
     (logged) so the replaced book can still be recovered by hand.
+
+    ``sidecar`` (optional, no arguments) writes metadata.json once every format is placed, as
+    part of the same unit (CORE-03): an existing regular metadata.json is first copied to its own
+    ``.bak-<timestamp>`` (a copy, not a rename - the writer may decline to write it), and a failed
+    publish - the sidecar write included - puts it back with the audio and cover. The copy is kept
+    beside a replaced edition's backups and removed when no audio was replaced.
     """
     folder = paths[formats[0]].parent
     new_dirs = []
@@ -371,10 +381,14 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print) -> N
         new_dirs.append(probe_dir)  # deepest first
         probe_dir = probe_dir.parent
     cover = folder / "cover.jpg"
+    meta = folder / "metadata.json"
     preexisting = {path for path in [*paths.values(), cover] if path.exists()}
+    if os.path.lexists(meta):  # lexists: a dangling symlink is not this call's to remove
+        preexisting.add(meta)
     to_back_up = [paths[fmt] for fmt in formats if paths[fmt] in preexisting]
     if to_back_up and cover in preexisting and any(results[fmt].cover is not None for fmt in formats):
         to_back_up.append(cover)  # publishing would overwrite the replaced edition's cover too
+    replacing = bool(to_back_up)
     stamp = time.strftime("%Y%m%dT%H%M%S")
     backups: dict[Path, Path] = {}
     placed = []
@@ -383,14 +397,20 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print) -> N
             backup = _backup_path(path, stamp)
             os.rename(path, backup)
             backups[path] = backup
+        if sidecar is not None and meta.is_file() and not meta.is_symlink():
+            backup = _backup_path(meta, stamp)
+            shutil.copy2(meta, backup)  # content and mode (SEC-03b) both come back on restore
+            backups[meta] = backup
         for fmt in formats:
             # CORE-02: recorded before the call - publish_result places the audio, then the
             # cover, then stats it, so it can fail with the audio already visible. Unlinking a
             # path that was never created is a no-op below.
             placed.append(paths[fmt])
             encode.publish_result(results[fmt], paths[fmt])
+        if sidecar is not None:
+            sidecar()
     except BaseException:
-        for path in [*placed, cover]:
+        for path in [*placed, cover, *([meta] if sidecar is not None else [])]:
             if path not in preexisting:
                 try:
                     path.unlink()
@@ -407,6 +427,10 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print) -> N
             except OSError:
                 break
         raise
+    if not replacing and meta in backups:
+        # no edition was replaced, so there is nothing for the old metadata to pair with
+        with contextlib.suppress(OSError):
+            backups.pop(meta).unlink()
     for path, backup in backups.items():
         log(f"  replaced {path.name}; the previous file is kept at {backup}")
 

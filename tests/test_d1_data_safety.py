@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 from audiobind import catalog, encode, ingest, matching, pipeline
+from audiobind.probe import Probe
 
 try:
     from test_ingest_pipeline import KEY, PHM, PipelineCase
@@ -41,6 +42,7 @@ class PublishCase(PipelineCase):
     def patches(self, fail_place=None, fail_sidecar=False):
         real_place = encode._place
         real_meta = encode.write_abs_metadata
+        real_val = pipeline.effective_val
 
         def place(source, dest, move):
             if fail_place is not None and fail_place(dest):
@@ -57,7 +59,7 @@ class PublishCase(PipelineCase):
         return [
             mock.patch.object(catalog, "book", return_value=self.BOOK),
             mock.patch.object(pipeline, "effective_val",
-                              side_effect=lambda k: self.output_format if k == "output_format" else None),
+                              side_effect=lambda k: self.output_format if k == "output_format" else real_val(k)),
             mock.patch.object(encode, "plan_chapters", return_value=mock.Mock(chapters=[])),
             mock.patch.object(encode, "encode", side_effect=self.fake_encode),
             mock.patch.object(encode, "_place", side_effect=place),
@@ -109,6 +111,75 @@ class Core02RollbackCoversPlacedAudioTests(PublishCase):
         self.assertEqual((m4b.read_bytes(), mp3.read_bytes(), cover.read_bytes()),
                          (b"first-m4b", b"first-mp3", b"first-cover"))
         self.assertEqual(self.listing(m4b.parent), before)
+
+
+# --------------------------------------------------------------------------- CORE-03
+class Core03SidecarInsideThePublishTests(PublishCase):
+    """metadata.json is part of the same publish: a sidecar failure undoes audio and cover too."""
+
+    def process(self, key, tag, **fail):
+        """The manual Convert anyway through process_unit, so the recorded row can be checked."""
+        self.tag = tag
+        patches = self.patches(**fail) + [
+            mock.patch.object(catalog, "search", return_value=[PHM]),
+            mock.patch.object(catalog, "chapters", return_value=[]),
+            mock.patch.object(pipeline, "probe",
+                              return_value=Probe(duration=3600.0, codec="mp3", channels="2")),
+            mock.patch.object(encode, "probe_chapters", return_value=[]),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            pipeline.process_unit(self.state, ingest.find_any_unit(key), log=lambda *_: None,
+                                  force=True, manual=True, reencode=True)
+        finally:
+            for p in reversed(patches):
+                p.stop()
+
+    def first_edition(self):
+        m4b = self.convert(KEY, "first")
+        sidecar = m4b.parent / "metadata.json"
+        sidecar.write_text('{"title": "first"}', encoding="utf-8")
+        sidecar.chmod(0o640)
+        return m4b, sidecar
+
+    def test_a_failed_sidecar_write_restores_audio_cover_and_metadata(self):
+        m4b, sidecar = self.first_edition()
+        mp3, cover = m4b.with_suffix(".mp3"), m4b.parent / "cover.jpg"
+        before = self.listing(m4b.parent)
+
+        self.process("ingest:" + self.OTHER, "second", fail_sidecar=True)
+
+        self.assertEqual((m4b.read_bytes(), mp3.read_bytes(), cover.read_bytes()),
+                         (b"first-m4b", b"first-mp3", b"first-cover"),
+                         "the new edition's audio stayed published after the sidecar failed")
+        self.assertEqual(sidecar.read_text(encoding="utf-8"), '{"title": "first"}')
+        self.assertEqual(sidecar.stat().st_mode & 0o777, 0o640)  # SEC-03b: the mode comes back too
+        self.assertEqual(self.listing(m4b.parent), before)  # every backup went back
+        self.assertEqual(self.state.get("ingest:" + self.OTHER).status, "failed")
+
+    def test_a_first_publish_whose_sidecar_fails_leaves_nothing(self):
+        with self.assertRaises(OSError):
+            self.convert(KEY, "first", fail_sidecar=True)
+        m4b = pipeline.library.m4b_path("", ["Andy Weir"], "Project Hail Mary")
+        self.assertEqual(self.listing(m4b.parent), [])
+
+    def test_a_successful_replace_keeps_the_previous_metadata_with_its_audio(self):
+        m4b, sidecar = self.first_edition()
+        self.process("ingest:" + self.OTHER, "second")
+        self.assertEqual(m4b.read_bytes(), b"second-m4b")
+        self.assertIn('"title": "Project Hail Mary"', sidecar.read_text(encoding="utf-8"))
+        self.assertEqual(sidecar.stat().st_mode & 0o777, 0o640)  # SEC-03b
+        (backup,) = sorted(m4b.parent.glob("metadata.json.bak-*"))
+        self.assertEqual(backup.read_text(encoding="utf-8"), '{"title": "first"}')
+
+    def test_a_first_publish_over_a_stray_sidecar_leaves_no_backup(self):
+        m4b = pipeline.library.m4b_path("", ["Andy Weir"], "Project Hail Mary")
+        m4b.parent.mkdir(parents=True)
+        (m4b.parent / "metadata.json").write_text("{}", encoding="utf-8")
+        self.convert(KEY, "first")
+        self.assertEqual(self.listing(m4b.parent),
+                         ["Project Hail Mary.m4b", "Project Hail Mary.mp3", "cover.jpg", "metadata.json"])
 
 
 if __name__ == "__main__":
