@@ -292,15 +292,35 @@ class TestLockoutBudgets(unittest.TestCase):
         self.assertEqual(auth_mod.limiter_key("10.0.0.7"), "10.0.0.7")
         self.assertEqual(auth_mod.limiter_key("not-an-ip"), "not-an-ip")
 
-    def test_global_budget_stops_a_spread_out_guesser(self):
+    def test_global_budget_is_logged_but_never_denies_a_clean_source(self):
+        # SEC-02 (was test_global_budget_stops_a_spread_out_guesser): junk from unrelated
+        # sources must not lock the owner out. Each source keeps its own hard limit; going over
+        # the global budget is logged, not refused.
         now = [0.0]
         lim = auth_mod.FailLimiter(limit=5, window=600, clock=lambda: now[0], global_limit=12)
-        allowed = sum(lim.attempt(f"10.0.{i}.1") for i in range(4) for _ in range(5))
-        self.assertEqual(allowed, 12)
-        self.assertTrue(lim.blocked("192.168.1.1"))  # a fresh address is refused too
-        self.assertGreater(lim.retry_after("192.168.1.1"), 0)
-        now[0] = 601
+        with self.assertLogs("audiobind", "WARNING") as logs:
+            allowed = sum(lim.attempt(f"10.0.{i}.1") for i in range(4) for _ in range(5))
+        self.assertEqual(allowed, 20)  # 4 sources x their own 5
+        self.assertIn("global", "\n".join(logs.output))
+        self.assertFalse(lim.blocked("192.168.1.1"))  # a fresh address is not refused
+        self.assertEqual(lim.retry_after("192.168.1.1"), 0)
         self.assertTrue(lim.attempt("192.168.1.1"))
+        self.assertFalse(lim.attempt("10.0.0.1"))  # but a spent source stays spent
+
+    def test_a_full_global_window_still_lets_a_clean_key_through(self):
+        lim = auth_mod.FailLimiter(limit=5, window=600)  # the real GLOBAL_FAIL_LIMIT
+        for i in range(auth_mod.GLOBAL_FAIL_LIMIT):
+            lim.record(f"203.0.113.{i}")
+        self.assertTrue(lim.attempt("192.168.1.10"))
+        lim.reset("192.168.1.10")  # it was the owner: signed in
+
+    def test_a_single_key_still_hits_its_own_limit_under_a_full_global_window(self):
+        lim = auth_mod.FailLimiter(limit=5, window=600)
+        for i in range(auth_mod.GLOBAL_FAIL_LIMIT):
+            lim.record(f"203.0.113.{i}")
+        self.assertEqual(sum(lim.attempt("198.51.100.7") for _ in range(8)), 5)
+        self.assertTrue(lim.blocked("198.51.100.7"))
+        self.assertGreater(lim.retry_after("198.51.100.7"), 0)
 
     def test_per_ip_behaviour_is_unchanged_under_the_global_budget(self):
         lim = auth_mod.FailLimiter(limit=5, window=600)

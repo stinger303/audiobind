@@ -380,6 +380,40 @@ class LoginTests(AccountCase):
         self.assertEqual(self.raw("/api/state", headers=jar)[0], 401)
 
 
+class GlobalBudgetTests(AccountCase):
+    """SEC-02: failures from many unrelated sources fill the global budget; the owner, from a
+    clean address, must still get in - by form, by Bearer, and on Settings > Account."""
+
+    def setUp(self):
+        super().setUp()
+        self.state.create_credentials(USER, auth_mod.hash_password(PASSWORD))
+        for i in range(auth_mod.GLOBAL_FAIL_LIMIT):
+            auth_mod.LIMITER.record(f"203.0.113.{i}")  # junk from 30 other addresses
+
+    def test_form_login(self):
+        status, headers, _ = self.login()
+        self.assertEqual(status, 303)
+        self.assertIn(f"{auth_mod.COOKIE_NAME}=", headers["Set-Cookie"])
+
+    def test_bearer(self):
+        self.assertEqual(self.raw("/api/units", headers={"Authorization": f"Bearer {PASSWORD}"})[0], 200)
+
+    def test_current_password_on_settings(self):
+        _, headers, _ = self.login()
+        jar = self.jar(headers)
+        for i in range(auth_mod.GLOBAL_FAIL_LIMIT):  # the login above cleared only its own share
+            auth_mod.LIMITER.record(f"203.0.113.{i}")
+        status, _, body = self.account(
+            {"action": "username", "username": "reader2", "current": PASSWORD}, jar
+        )
+        self.assertEqual(status, 200, body)
+
+    def test_a_single_address_is_still_locked_after_five(self):
+        for _ in range(5):
+            self.assertEqual(self.login(USER, "wrong password")[0], 401)
+        self.assertEqual(self.login()[0], 429)
+
+
 class BearerTests(AccountCase):
     def setUp(self):
         super().setUp()

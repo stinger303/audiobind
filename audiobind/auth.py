@@ -35,8 +35,8 @@ USER_COOKIE_TTL = 30 * 24 * 3600
 #: failed logins (or wrong Bearer tokens) allowed per source IP inside FAIL_WINDOW
 FAIL_LIMIT = 5
 FAIL_WINDOW = 10 * 60
-#: failures allowed from ALL sources together inside FAIL_WINDOW: a guesser spread over many
-#: addresses (or IPv6 addresses inside one /64) cannot get FAIL_LIMIT guesses per address
+#: failures from ALL sources together inside FAIL_WINDOW above which each further attempt is
+#: logged as a warning (SEC-02: logged, never refused - see FailLimiter.attempt)
 GLOBAL_FAIL_LIMIT = 30
 #: hard caps so a flood of requests cannot grow these tables without bound
 MAX_SESSIONS = 256
@@ -376,8 +376,9 @@ def limiter_key(ip: str) -> str:
 
 
 class FailLimiter:
-    """At most ``limit`` failures per key, and ``global_limit`` from every key together, inside
-    a sliding ``window``. Keys are normalised by ``limiter_key`` (IPv6 counted per /64)."""
+    """At most ``limit`` failures per key inside a sliding ``window``; past ``global_limit``
+    from every key together, attempts are logged. Keys are normalised by ``limiter_key``
+    (IPv6 counted per /64)."""
 
     def __init__(
         self,
@@ -414,17 +415,28 @@ class FailLimiter:
         key = limiter_key(key)
         now = self.clock()
         with self._lock:
-            return len(self._recent(key, now)) >= self.limit or self._global_blocked(now)
+            return len(self._recent(key, now)) >= self.limit
 
     def attempt(self, key: str) -> bool:
         """Check the budget and count this attempt in one step, BEFORE the password is
         verified. False = locked out (nothing is counted). On success call ``reset``.
-        Because the count is taken up front, N concurrent guesses are N failures."""
+        Because the count is taken up front, N concurrent guesses are N failures.
+
+        SEC-02: only the key's own limit refuses. Over the global budget the attempt is
+        logged, not refused - otherwise junk from unrelated sources locks the owner out. (A
+        pacing sleep here would hold one of the server's capped connection slots per attempt,
+        which a flood could use to starve the UI, so there is none.)"""
         key = limiter_key(key)
         now = self.clock()
         with self._lock:
-            if len(self._recent(key, now)) >= self.limit or self._global_blocked(now):
+            if len(self._recent(key, now)) >= self.limit:
                 return False
+            if self._global_blocked(now):
+                log.warning(
+                    "sign-in failures from all sources are over the global budget (%d in %d min); "
+                    "still checking %s, which is under its own limit",
+                    len(self._all), int(self.window // 60), key,
+                )
             self._record_locked(key, now)
             return True
 
@@ -437,8 +449,6 @@ class FailLimiter:
             stamps = self._recent(key, now)
             if len(stamps) >= self.limit:
                 waits.append(max(1, int(self.window - (now - stamps[0])) + 1))
-            if self._global_blocked(now):
-                waits.append(max(1, int(self.window - (now - self._all[0][0])) + 1))
             return max(waits)
 
     def _record_locked(self, key: str, now: float) -> None:
