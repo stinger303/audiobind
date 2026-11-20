@@ -7,6 +7,18 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.25.1-dev4] - 2026-11-19
+
+**Unreleased test build.** A preset can now carry the category list on its own.
+
+### Fixed
+- **A preset that only lists categories is accepted.** dev3 required fillable tracker fields, so the only
+  way to get the Search category dropdown was to hand over values you may not want filled — and a
+  categories-only file was rejected with a "cannot be used" line on the tab. A preset may now carry
+  fillable settings, a category list, or both; a file with neither is still refused with the plain reason.
+- **A preset with nothing to fill offers no fill button.** The tab names the preset and draws the dropdown,
+  and the apply request refuses an empty plan instead of reporting success while writing nothing.
+
 ## [0.25.1-dev3] - 2026-11-19
 
 **Unreleased test build.** Two Settings changes from looking at the page: the search category is now a
