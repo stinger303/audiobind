@@ -674,6 +674,29 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-wizcard a.btn,.ab-wiz-open a.btn{text-decoration:none}
 .ab-wiz-open{flex-wrap:wrap;margin:6px 0 10px}
 .ab-wiz-open .ab-acct-who{margin-bottom:0;flex:1 1 220px}
+.ab-wiz-form{display:flex;flex-direction:column;gap:10px}
+.ab-wiz-choices{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+.ab-wiz-choices legend{padding:0;margin-bottom:6px}
+.ab-wiz-choice{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--ab-border);
+  border-radius:8px;background:var(--ab-surface);cursor:pointer;font-size:13px;color:var(--ab-text);min-width:0}
+.ab-wiz-choice:hover{border-color:rgba(94,106,210,.45)}
+.ab-wiz-choice:focus-within{outline:2px solid var(--ab-accent-bright);outline-offset:1px}
+.ab-wiz-choice input{margin:3px 0 0;flex:none;width:16px;height:16px;accent-color:var(--ab-accent-bright)}
+.ab-wiz-choice b{font-weight:500;display:block;overflow-wrap:anywhere}
+.ab-wiz-sub{display:block;font-size:11.5px;color:var(--ab-text3);margin-top:2px;line-height:1.4}
+.ab-wiz-outcome{display:flex;flex-direction:column;gap:12px;min-width:0}
+.ab-wiz-outcome:focus{outline:2px solid var(--ab-accent-bright);outline-offset:4px;border-radius:6px}
+.ab-wiz-outcome:empty{display:none}
+.ab-wiz-checks{list-style:none;margin:8px 0 4px;padding:0;display:flex;flex-direction:column;gap:5px}
+.ab-wiz-checks li{display:flex;gap:8px;align-items:flex-start;overflow-wrap:anywhere}
+.ab-wiz-checks li.ab-good .ab-wiz-glyph{color:#5fd38d}
+.ab-wiz-checks li.ab-bad .ab-wiz-glyph{color:#f2686b}
+.ab-wiz-checks li.ab-warn .ab-wiz-glyph{color:#e3b341}
+.ab-wiz-glyph{flex:none;width:14px;text-align:center}
+.ab-wiz-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.ab-wiz-fix{margin:6px 0 2px}
+.ab-wiz-fix b{color:var(--ab-text)}
+.ab-wiz code{overflow-wrap:anywhere}
 .ab-wiz{max-width:720px;display:flex;flex-direction:column;gap:14px;min-width:0}
 .ab-wiz-steps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0;font-size:12.5px}
 .ab-wiz-steps li{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--ab-border);
@@ -5419,8 +5442,109 @@ def _wizard_not_built(step: int) -> str:
     )
 
 
+#: Step 1's three answers: (value stored, what the person reads, one line under it)
+WIZARD_ARRIVALS = (
+    (wizard_mod.MODE_LIBRARY, "Only my library: nothing to fetch",
+     "Audiobind converts the books that are already in your library. Nothing is downloaded."),
+    (wizard_mod.MODE_FILES, "My own downloader, or I copy files into a folder",
+     "Audiobind watches one folder and converts what shows up in it, whatever put it there."),
+    (wizard_mod.MODE_TRACKER, "A private tracker, through a download client",
+     "Audiobind looks for the books on your wishlist at your tracker and hands them to your download client."),
+)
+
+#: where the person is told to point the ingest folder (the Unraid click path, word for word)
+WIZARD_INGEST_MISSING = (
+    "In Unraid: Docker \u2192 Audiobind \u2192 Edit \u2192 Show more settings \u2192 <b>Ingest path</b> \u2192 pick "
+    "the folder your downloader finishes audiobooks into \u2192 Apply.")
+
+
+def _wizard_check(ok: bool | None, text: str) -> str:
+    """One line of a status list: a glyph AND words, so the state never rests on colour alone."""
+    glyph, klass, word = {True: ("&#10003;", "ab-good", "OK"), False: ("&#10007;", "ab-bad", "Problem"),
+                          None: ("&#9679;", "ab-warn", "Note")}[ok]
+    return (f'<li class="{klass}"><span class="ab-wiz-glyph" aria-hidden="true">{glyph}</span>'
+            f'<span class="ab-wiz-sr">{word}: </span>{text}</li>')
+
+
+def _wizard_ingest_status() -> str:
+    """Step 1, for "my own downloader" and "a private tracker": is the ingest folder there? Reads what ingest
+    computes (mounted, readable, no overlap with the library or output folders, how many folders it holds)."""
+    st = ingest_mod.status()
+    lines = []
+    if not st["configured"]:
+        lines.append(_wizard_check(False, "Audiobind has no ingest folder yet, so it has nowhere to look for books."))
+        if st["half"]:
+            lines.append(_wizard_check(None, _html(st["half"])))
+        note = (f'<p class="ab-wiz-fix">{WIZARD_INGEST_MISSING}</p>'
+                "<p>Applying restarts the container. Open this page again afterwards: it comes back to this step.</p>")
+    else:
+        where = f"<code>{_html(st['dir'])}</code>"
+        lines.append(_wizard_check(st["mounted"], f"The folder {where} is mounted." if st["mounted"] else
+                                   f"There is no folder {where} inside the container: the mount is missing."))
+        if st["mounted"]:
+            lines.append(_wizard_check(st["readable"], "Audiobind can read it." if st["readable"] else
+                                       "Audiobind cannot read it. Check the folder's permissions on the server."))
+            if st["overlap"]:
+                lines.append(_wizard_check(False, "It overlaps your library or output folder, so ingest is switched "
+                                           "off: published books would be picked up again. Pick a different folder. "
+                                           f"<small>({_html(st['overlap'])})</small>"))
+            else:
+                lines.append(_wizard_check(True, "It does not overlap your library or output folder."))
+            if st["folders"] is not None:
+                n = st["folders"]
+                lines.append(_wizard_check(True, f"{n} {'folder' if n == 1 else 'folders'} seen"
+                                           + ("." if n else " yet. That is fine: books show up here when your "
+                                              "downloader finishes them.")))
+        if st["ok"] and not st["running"]:
+            lines.append(_wizard_check(None, "Audiobind checked this folder when it started and switched ingest off "
+                                       "for this run. Restart the container to turn it on."))
+        note = "" if st["ok"] else (f'<p class="ab-wiz-fix">{WIZARD_INGEST_MISSING}</p>'
+                                    "<p>Applying restarts the container. Open this page again afterwards: it comes "
+                                    "back to this step.</p>")
+    return ('<div class="ab-hintbox ab-wiz-ingest" id="ab-wiz-ingest"><b>The ingest folder</b>'
+            f'<ul class="ab-wiz-checks">{"".join(lines)}</ul>{note}</div>')
+
+
+def _wizard_step1(state, mode: str) -> str:
+    """Step 1: how do books arrive? Three answers. "Only my library" closes the flow; "my own downloader" shows the
+    ingest folder and finishes; only "a private tracker" goes on to step 2."""
+    choices = "".join(
+        f'<label class="ab-wiz-choice"><input type="radio" name="ab-arrive" value="{value}"'
+        f'{" checked" if value == mode else ""}>'
+        f'<span><b>{_html(label)}</b><span class="ab-wiz-sub">{_html(sub)}</span></span></label>'
+        for value, label, sub in WIZARD_ARRIVALS
+    )
+    if mode == wizard_mod.MODE_LIBRARY:
+        outcome = ('<div class="ab-hintbox" role="status"><b>Nothing to fetch.</b> Audiobind will convert what is '
+                   "already in your library.</div>"
+                   '<div class="ab-acct-row"><a class="btn ab-save" id="ab-wiz-done" href="/?status=all">'
+                   "Back to the Library</a></div>")
+    elif mode == wizard_mod.MODE_FILES:
+        outcome = (_wizard_ingest_status()
+                   + '<div class="ab-hintbox" role="status"><b>That is all.</b> Audiobind converts every book that '
+                   "appears in the ingest folder, whatever put it there. You will not see the download steps.</div>"
+                   '<div class="ab-acct-row"><a class="btn ab-save" id="ab-wiz-done" href="/?status=all">'
+                   "Back to the Library</a></div>")
+    elif mode == wizard_mod.MODE_TRACKER:
+        outcome = (_wizard_ingest_status()
+                   + '<div class="ab-acct-row"><a class="btn ab-save" id="ab-wiz-next" '
+                   f'href="{wizard_mod.PATH}?step=2">Next: the download client</a></div>')
+    else:
+        outcome = ""
+    return (
+        '<form class="ab-wiz-form" onsubmit="abWizardMode(); return false;" novalidate>'
+        '<fieldset class="ab-wiz-choices"><legend class="ab-acct-who">Audiobind always converts the books in '
+        "your library. How do new books arrive, if any?</legend>" + choices + "</fieldset>"
+        '<div class="ab-acct-row"><button class="btn ab-save" type="submit" id="ab-wiz-continue">Continue</button>'
+        '<span class="ab-fb" id="ab-wiz-fb" role="status"></span></div></form>'
+        f'<div id="ab-wiz-outcome" tabindex="-1" class="ab-wiz-outcome">{outcome}</div>'
+    )
+
+
 def _wizard_body(state, step: int, mode: str, host: str) -> str:
     """The content of one step. Steps without a page answer with the not-built notice."""
+    if step == 1:
+        return _wizard_step1(state, mode)
     return _wizard_not_built(step)
 
 
@@ -5445,6 +5569,30 @@ def render_wizard(state, step_param=None, host: str = "") -> str:
 
 
 WIZARD_SCRIPT = """
+// POST one answer to the guide; resolves {ok, status, body}. A 401 is handled by the page-wide fetch wrapper.
+function abWizPost(payload) {
+  return fetch('/api/setup/downloading', {method:'POST', headers:{'Content-Type':'application/json'},
+                                          body: JSON.stringify(payload)})
+    .then(r => r.json().then(body => ({ok: r.ok && body.ok !== false, status: r.status, body: body})));
+}
+// Step 1: store the answer, then show the page again: it draws what that answer needs.
+function abWizardMode() {
+  const fb = document.getElementById('ab-wiz-fb');
+  const picked = document.querySelector('input[name="ab-arrive"]:checked');
+  fb.className = 'ab-fb';
+  if (!picked) { fb.className = 'ab-fb ab-bad'; fb.textContent = 'Choose one of the three first.'; return; }
+  fb.textContent = 'saving...';
+  abWizPost({action: 'mode', mode: picked.value}).then(res => {
+    if (!res.ok) { fb.className = 'ab-fb ab-bad'; fb.textContent = res.body.error || 'that did not work'; return; }
+    location.href = '/setup/downloading?step=1#ab-wiz-outcome';
+  }).catch(() => { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach Audiobind'; });
+}
+// After an answer the page reloads at the result: put keyboard and screen-reader focus on it.
+(function () {
+  if (location.hash !== '#ab-wiz-outcome') return;
+  const box = document.getElementById('ab-wiz-outcome');
+  if (box && box.textContent.trim()) box.focus();
+})();
 function abToast(text) {
   const el = document.getElementById('ab-toast');
   if (!el) return;
@@ -8223,7 +8371,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_wizard(self) -> None:
         """POST /api/setup/downloading {"action": ...}: the Set up downloading guide's answers.
-        "dismiss": the Library page's card is answered for good ("No, just my library")."""
+        "dismiss": the Library page's card is answered for good ("No, just my library").
+        "mode": step 1's answer (library | files | tracker). Only "tracker" leads on to step 2; the other two
+        also answer the card, so it does not ask a person who has already said what they want."""
         payload = self._read_json()
         if payload is None:
             return
@@ -8231,6 +8381,18 @@ class Handler(BaseHTTPRequestHandler):
         if action == "dismiss":
             self.state.set_meta(wizard_mod.META_DISMISSED, True)
             self._send(200, b'{"ok":true}', "application/json")
+            return
+        if action == "mode":
+            mode = payload.get("mode")
+            if mode not in wizard_mod.MODES:
+                self._send(400, b'{"error":"choose one of: only my library, my own downloader, a private tracker"}',
+                           "application/json")
+                return
+            answers = {wizard_mod.META_MODE: mode, wizard_mod.META_STEP: 1}
+            if mode != wizard_mod.MODE_TRACKER:
+                answers[wizard_mod.META_DISMISSED] = True  # answered: the Library page's card has nothing more to ask
+            self.state.set_meta_many(answers)
+            self._send(200, json.dumps({"ok": True, "mode": mode}).encode(), "application/json")
             return
         self._send(400, b'{"error":"unknown action"}', "application/json")
 

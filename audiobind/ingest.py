@@ -14,6 +14,7 @@ not convert the still-seeding torrent again).
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -65,6 +66,50 @@ def ingest_root() -> Path | None:
     return Path(configured)
 
 
+def overlap_problem(configured: str) -> str:
+    """"" or the sentence naming what the ingest folder overlaps: OUTPUT_ROOT or LIBRARY_ROOT (the folder, a
+    parent of it, or a folder inside it). Published books would be ingested again, or library books would be
+    converted twice under two names. Paths are resolved; nothing is read inside them."""
+    resolved = Path(configured).resolve()
+    for name, other in (("OUTPUT_ROOT", CONFIG.output_root), ("LIBRARY_ROOT", CONFIG.library_root)):
+        other_resolved = Path(other).resolve()
+        if (
+            resolved == other_resolved
+            or other_resolved in resolved.parents
+            or resolved in other_resolved.parents
+        ):
+            return f"INGEST_DIR {configured} overlaps {name} {other}"
+    return ""
+
+
+def status() -> dict:
+    """What the setup guide shows about the ingest folder, from what is on disk right now (it does not wait for
+    a restart; ``running`` says whether the daemon has it on this run). Looks and counts only - nothing is
+    written, and no file inside is opened.
+
+    ``{"configured", "dir", "mounted", "readable", "overlap", "folders", "running", "half", "ok"}``:
+    ``folders`` is the number of visible folders directly inside it (None when it cannot be counted), ``half``
+    is half_configured()'s sentence ("" when both halves are there or neither is), ``ok`` = set, mounted,
+    readable and clear of the library and output folders."""
+    configured = configured_dir()
+    root = Path(configured) if configured else None
+    mounted = bool(root and root.is_dir())
+    readable = mounted and os.access(root, os.R_OK | os.X_OK)
+    overlap = overlap_problem(configured) if mounted else ""
+    folders = None
+    if readable:
+        try:
+            with os.scandir(root) as entries:
+                folders = sum(1 for e in entries if not e.name.startswith(".") and e.is_dir())
+        except OSError:
+            readable = False
+    return {
+        "configured": bool(configured), "dir": configured, "mounted": mounted, "readable": readable,
+        "overlap": overlap, "folders": folders, "running": ingest_root() is not None, "half": half_configured(),
+        "ok": bool(configured) and mounted and readable and not overlap,
+    }
+
+
 def check_at_start() -> bool:
     """Daemon start: an INGEST_DIR that is set must exist. Warn and keep running without it if not.
 
@@ -85,16 +130,7 @@ def check_at_start() -> bool:
     if not root.is_dir():
         problem = f"INGEST_DIR {configured} does not exist or is not a directory"
     else:
-        resolved = root.resolve()
-        for name, other in (("OUTPUT_ROOT", CONFIG.output_root), ("LIBRARY_ROOT", CONFIG.library_root)):
-            other_resolved = Path(other).resolve()
-            if (
-                resolved == other_resolved
-                or other_resolved in resolved.parents
-                or resolved in other_resolved.parents
-            ):
-                problem = f"INGEST_DIR {configured} overlaps {name} {other}"
-                break
+        problem = overlap_problem(configured)
     if problem:
         _DISABLED_AT_START = problem
         log.warning("%s - ingest is DISABLED for this run (fix it and restart to enable)", problem)
