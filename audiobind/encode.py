@@ -697,16 +697,21 @@ def _place(source: Path, dest: Path, move: bool) -> None:
         os.unlink(source)
 
 
-def publish_result(result: EncodeResult, out_path: Path) -> EncodeResult:
+def publish_result(result: EncodeResult, out_path: Path, placed: list | None = None) -> EncodeResult:
     """Move a verified encode into the library (and drop cover.jpg beside it).
 
     Atomic: the library never holds a half-written file, and cover.jpg is only
-    written once the audio is in place.
+    written once the audio is in place. ``placed`` (optional) gets each path appended the
+    moment it is in place, so a caller rolling back knows exactly what this call created.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _place(Path(result.path), out_path, move=True)
+    if placed is not None:
+        placed.append(out_path)
     if result.cover is not None:
         _place(Path(result.cover), out_path.parent / "cover.jpg", move=False)
+        if placed is not None:
+            placed.append(out_path.parent / "cover.jpg")
     result.path = out_path
     result.size = out_path.stat().st_size
     return result

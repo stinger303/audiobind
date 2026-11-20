@@ -397,7 +397,7 @@ class BothTests(unittest.TestCase):
                 raise RuntimeError(f"{fail_on} verification failed")
             return encode.EncodeResult(pathlib.Path(work_dir) / f"o.{kw['fmt']}", 60.0, 10, 1, "x")
 
-        def fake_publish(result, out_path):
+        def fake_publish(result, out_path, placed=None):
             self.published.append(pathlib.Path(out_path).name)
             return result
 

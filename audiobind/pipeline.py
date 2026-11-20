@@ -414,16 +414,15 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print, side
         probe_dir = probe_dir.parent
     cover = folder / "cover.jpg"
     meta = folder / "metadata.json"
-    preexisting = {path for path in [*paths.values(), cover] if path.exists()}
-    if os.path.lexists(meta):  # lexists: a dangling symlink is not this call's to remove
-        preexisting.add(meta)
+    # CORE-02b: lexists - a dangling symlink is there, and not this call's to remove
+    preexisting = {path for path in [*paths.values(), cover, meta] if os.path.lexists(path)}
     to_back_up = [paths[fmt] for fmt in formats if paths[fmt] in preexisting]
     if to_back_up and cover in preexisting and any(results[fmt].cover is not None for fmt in formats):
         to_back_up.append(cover)  # publishing would overwrite the replaced edition's cover too
     replacing = bool(to_back_up)
     stamp = time.strftime("%Y%m%dT%H%M%S")
     backups: dict[Path, Path] = {}
-    placed = []
+    placed: list[Path] = []  # CORE-02b: only what publish_result actually put in place
     try:
         for path in to_back_up:
             backup = _backup_path(path, stamp)
@@ -434,15 +433,15 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print, side
             shutil.copy2(meta, backup)  # content and mode (SEC-03b) both come back on restore
             backups[meta] = backup
         for fmt in formats:
-            # CORE-02: recorded before the call - publish_result places the audio, then the
-            # cover, then stats it, so it can fail with the audio already visible. Unlinking a
-            # path that was never created is a no-op below.
-            placed.append(paths[fmt])
-            encode.publish_result(results[fmt], paths[fmt])
+            # CORE-02: publish_result places the audio, then the cover, then stats it, so it
+            # can fail with the audio already visible. CORE-02b: it records each path the moment
+            # it is in place - a path whose placement failed (or that another writer made after
+            # the snapshot above) is never on the list, so the rollback never unlinks it.
+            encode.publish_result(results[fmt], paths[fmt], placed=placed)
         if sidecar is not None:
             sidecar()
     except BaseException:
-        for path in [*placed, cover, *([meta] if sidecar is not None else [])]:
+        for path in dict.fromkeys(placed):
             if path not in preexisting:
                 try:
                     path.unlink()
