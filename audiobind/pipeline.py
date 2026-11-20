@@ -127,8 +127,9 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
     if audit.confidence == "NONE" and audit.match.rejected:
         audit.notes.append(audit.match.rejected)
 
-    avg_hours = audit.hours / len(unit.files) if unit.files else 0
-    if looks_like_collection(unit, avg_hours) and audit.confidence in ("LOW", "NONE"):
+    # each file's own length; nothing when one went unmeasured (the total is unknown then too)
+    file_hours = [] if timed_out else [audit.durations[f] / 3600 for f in unit.files if f in audit.durations]
+    if looks_like_collection(unit, file_hours) and audit.confidence in ("LOW", "NONE"):
         audit.confidence = "COLLECTION"
 
     if audit.confidence in ("HIGH", "MEDIUM"):

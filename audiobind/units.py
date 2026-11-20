@@ -528,10 +528,23 @@ def _guess(unit: BookUnit, guess_path: str = "", ingest: bool = False) -> None:
             unit.alt_title_guess = clean(author_stem)
 
 
-def looks_like_collection(unit: BookUnit, avg_hours: float) -> bool:
-    """Several whole books sitting in one folder, or a collection-shaped name."""
-    if len(unit.parts) > 1 and avg_hours > 8:
-        return True
-    if 1 < unit.n_files <= 20 and avg_hours > 8:
+#: a flat folder is several whole books when every file in it is at least this long
+COLLECTION_FILE_HOURS = 8
+#: disc / part subfolders are the normal shape of one long book, so their bar is much higher
+COLLECTION_PART_HOURS = 16
+
+
+def looks_like_collection(unit: BookUnit, file_hours: list[float]) -> bool:
+    """Several whole books sitting in one folder, or a collection-shaped name.
+
+    ``file_hours``: each file's own measured length (empty when any file went unmeasured). Each
+    file is judged on its own length, never total / file count: a 15 h book with a 2 h bonus file
+    is not two 8.5 h books.
+    """
+    shortest = min(file_hours) if file_hours else 0.0
+    if len(unit.parts) > 1:
+        if shortest > COLLECTION_PART_HOURS:
+            return True
+    elif 1 < unit.n_files <= 20 and shortest > COLLECTION_FILE_HOURS:
         return True
     return bool(COLLECTION_RE.search(unit.name if unit.key else os.path.basename(unit.path)))

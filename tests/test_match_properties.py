@@ -269,9 +269,9 @@ def check_match(unit: BookUnit, fake: FakeCatalog, hours: float, found: Findings
                 found.add(f"{name} outside [0, 1]", f"{where} {name}={value}")
     # what the pipeline does next with it: the collection tier, the runtime check, the action
     try:
-        avg = hours / len(unit.files) if unit.files else 0
+        file_hours = [hours / len(unit.files)] * len(unit.files) if unit.files else []
         pipeline_tier = match.confidence
-        if units.looks_like_collection(unit, avg) and pipeline_tier in ("LOW", "NONE"):
+        if units.looks_like_collection(unit, file_hours) and pipeline_tier in ("LOW", "NONE"):
             pipeline_tier = "COLLECTION"
         audit = pipeline.Audit(unit=unit, hours=hours, match=match)
         ok = audit.runtime_matches

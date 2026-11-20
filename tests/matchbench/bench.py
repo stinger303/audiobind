@@ -1038,8 +1038,9 @@ def _finish(out: Outcome, unit: BookUnit, match: matching.Match, cap: Capture, h
     out.pool, out.ranked, out.counted_rivals = list(cap.pool), list(cap.ranked), cap.counted_rivals
     out.searches = cap.searches
     tier = match.confidence
-    avg = hours / len(unit.files) if unit.files else 0
-    if tier in ("LOW", "NONE") and looks_like_collection(unit, avg):
+    # the corpus records only the total, so each file is taken as an even share of it
+    file_hours = [hours / len(unit.files)] * len(unit.files) if unit.files else []
+    if tier in ("LOW", "NONE") and looks_like_collection(unit, file_hours):
         tier = "COLLECTION"
     out.tier = tier
     out.reasons = limiting_reasons(match)
