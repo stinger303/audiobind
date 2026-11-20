@@ -419,6 +419,25 @@ class UpsertsMoveRevTests(unittest.TestCase):
         self.check(lambda: self.state.set_alternates("A/B", [{"asin": "B005EHN61O"}]))
         self.assertEqual(self.state.get_alternates("A/B"), [{"asin": "B005EHN61O"}])
 
+    def unlock_check(self, field, pin):
+        """AB-FIX-A2 #4: set a pin, let the row age, unlock it - rev() must move."""
+        pin()
+        self.state.lock_fields("A/B", [field])
+        self.assertIn(field, self.state.locked_fields("A/B"))
+        age_row(self.state, "A/B")
+        before = self.state.rev()
+        self.assertTrue(self.state.unlock_field("A/B", field))
+        self.assertGreater(self.state.get("A/B").updated_at, OLD)
+        self.assertNotEqual(self.state.rev(), before)
+
+    def test_a8_unlock_unlocking_an_asin_pin_moves_rev(self):
+        self.unlock_check("asin", lambda: self.state.set_asin_override("A/B", "B005EHN61O"))
+        self.assertEqual(self.state.get_asin_override("A/B"), "")
+
+    def test_a8_unlock_unlocking_an_override_moves_rev(self):
+        self.unlock_check("narrator", lambda: self.state.set_overrides("A/B", {"narrator": "Someone"}))
+        self.assertEqual(self.state.get_overrides("A/B"), {})
+
     def test_the_rest_of_the_row_is_untouched(self):
         self.state.set_overrides("A/B", {"title": "Corrected"})
         row = self.state.get("A/B")

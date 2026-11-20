@@ -831,9 +831,12 @@ class State:
             )
             if cursor.rowcount == 0:
                 return False
+            # updated_at moves so rev() (the web poll) sees the unlock in every open tab: the
+            # Unlock action returns without a re-audit, so nothing else would move it
             if field == "asin":
                 self.connection.execute(
-                    "UPDATE units SET asin_override = '', pin_failures = 0 WHERE path = ?", (path,)
+                    "UPDATE units SET asin_override = '', pin_failures = 0, updated_at = ? WHERE path = ?",
+                    (time.time(), path),
                 )
                 return True
             row = self.connection.execute(
@@ -848,7 +851,8 @@ class State:
             data = data if isinstance(data, dict) else {}
             data.pop(field, None)
             self.connection.execute(
-                "UPDATE units SET overrides = ? WHERE path = ?", (json.dumps(data) if data else "", path)
+                "UPDATE units SET overrides = ?, updated_at = ? WHERE path = ?",
+                (json.dumps(data) if data else "", time.time(), path),
             )
             if field in ("title", "authors"):
                 try:
