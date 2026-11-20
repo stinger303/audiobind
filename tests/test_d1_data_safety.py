@@ -5,13 +5,15 @@ when it is not?
 """
 
 import pathlib
+import tempfile
+import time
 import unittest
 from unittest import mock
 
-from audiobind import catalog, encode, ingest, matching, pipeline, web
+from audiobind import catalog, encode, ingest, matching, pipeline, watcher, web
 from audiobind.control import CONTROL
 from audiobind.probe import Probe
-from audiobind.state import UnitState
+from audiobind.state import State, UnitState
 
 try:
     from live import LiveServerCase
@@ -19,6 +21,9 @@ try:
 except ImportError:
     from tests.live import LiveServerCase
     from tests.test_ingest_pipeline import KEY, PHM, PipelineCase
+# the watcher fakes (test_watcher_budget itself imports them this way)
+from tests.test_watcher import TORRENT, answer, entry
+from tests.test_watcher_budget import DAY, BudgetCase
 
 
 class PublishCase(PipelineCase):
@@ -391,6 +396,67 @@ class WebApi02DeleteVersusLayoutMoveTests(DeleteCase):
         self.assertEqual(status, 200, body)
         self.assertEqual(held, [True], "a layout move could run while the output was being removed")
         self.assertFalse(pipeline.CONVERT_LOCK.locked())
+
+
+# --------------------------------------------------------------------------- STATECFG-01
+class StateCfg01CreditLedgerOutlivesTheWishlistTests(BudgetCase):
+    """A spent freeleech credit stays counted after the book lands and its wishlist row goes."""
+
+    def test_a_landed_book_still_counts_against_the_daily_cap(self):
+        self.set_budget(wedge_per_day=1)
+        self.want("B000000001", title="Project Hail Mary")
+        self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))
+        self.assertEqual(self.cycle()["sent"], 1)
+        spent_at = time.time()
+
+        # the book is converted: the watcher drops its wishlist row (watcher.py, "in the library")
+        self.assertTrue(self.state.wishlist_remove("B000000001"))
+        self.assertEqual(self.state.wedges_spent_since(spent_at - DAY), 1,
+                         "the spend vanished with the wishlist row")
+
+        self.want("B000000002", title="Artemis")
+        self.fake_tracker(answer(entry(1002, "Artemis")))
+        summary = self.cycle()
+        self.assertEqual((summary["sent"], summary["skipped_budget"]), (0, 1))
+        self.assertEqual(self.downloads(), [], "the daily cap was spent a second time")
+
+        # a day later the first spend has left the window, and the next credit may be spent
+        later = spent_at + DAY + 60
+        self.fake_tracker(answer(entry(1002, "Artemis")), (200, {}, TORRENT))
+        with mock.patch.object(watcher.time, "time", return_value=later):
+            self.assertEqual(self.cycle()["sent"], 1)
+        self.assertEqual(self.state.wedges_spent_since(later - DAY), 1)
+        self.assertEqual(self.state.wedges_spent_since(0), 2)
+
+    def test_a_spend_on_a_row_removed_mid_cycle_is_still_counted(self):
+        self.state.mark_wedge_spent("4242", time.time())  # no wishlist row carries this tid
+        self.assertEqual(self.state.wedges_spent_since(time.time() - DAY), 1)
+
+
+class StateCfg01MigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = pathlib.Path(self.tmp.name)
+
+    def test_an_old_database_keeps_its_spends_and_reopening_is_idempotent(self):
+        state = State(self.dir)
+        now = time.time()
+        # a database from before the ledger table: the spends live on the wishlist rows only
+        state.connection.execute("DROP TABLE IF EXISTS credit_spends")
+        for asin, tid, spent in (("B0000000A1", "11", 1), ("B0000000A2", "12", 1), ("B0000000A3", "13", 0)):
+            state.connection.execute(
+                "INSERT INTO wishlist (asin, title, added_at, tracker_tid, wedge_spent, wedge_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)", (asin, asin, now, tid, spent, now - 60 if spent else None))
+        state.close()
+
+        for _ in range(2):  # every start runs the migration; the back-fill happens once
+            state = State(self.dir)
+            self.assertEqual(state.wedges_spent_since(now - DAY), 2)
+            state.close()
+        state = State(self.dir)
+        self.addCleanup(state.close)
+        self.assertEqual(state.connection.execute("SELECT COUNT(*) FROM wishlist").fetchone()[0], 3)  # additive
 
 
 if __name__ == "__main__":

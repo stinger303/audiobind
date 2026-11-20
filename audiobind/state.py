@@ -307,6 +307,23 @@ class State:
                     # holds; the old column is left in place (harmless, and a downgrade still works).
                     for old in sorted(c for c in existing if c.endswith("_tid") and c != name):
                         self.connection.execute(f"UPDATE wishlist SET tracker_tid = {old} WHERE tracker_tid = ''")
+        # STATECFG-01: the freeleech credit ledger in its own table. A wishlist row is deleted when
+        # its book lands, and a spend counted from that row went with it - reopening the daily cap.
+        # Created once, then seeded with the spends the wishlist rows still carry (additive: the
+        # wishlist columns stay, and are still written, but are no longer what is counted)
+        with self._txn():  # the check inside it: two processes opening the file never both create
+            if not self.connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'credit_spends'"
+            ).fetchone():
+                self.connection.execute(
+                    "CREATE TABLE credit_spends (id INTEGER PRIMARY KEY, tracker_tid TEXT NOT NULL DEFAULT '', "
+                    "spent_at REAL NOT NULL)"
+                )
+                self.connection.execute(
+                    "INSERT INTO credit_spends (tracker_tid, spent_at) SELECT tracker_tid, wedge_at FROM wishlist "
+                    "WHERE wedge_spent > 0 AND wedge_at IS NOT NULL"
+                )
+        self.connection.execute("CREATE INDEX IF NOT EXISTS idx_credit_spends_at ON credit_spends(spent_at)")
 
     def _migrate_locks(self) -> None:
         """Once per database: every correction typed before field locks existed was a human
@@ -1080,17 +1097,21 @@ class State:
         return True
 
     def wedges_spent_since(self, when: float) -> int:
-        """Freeleech credits the watcher has spent since ``when`` (epoch seconds), from the ledger."""
+        """Freeleech credits the watcher has spent since ``when`` (epoch seconds), from the ledger
+        (STATECFG-01: credit_spends, which outlives the wishlist rows)."""
         with self._lock:
             row = self.connection.execute(
-                "SELECT COALESCE(SUM(wedge_spent), 0) FROM wishlist WHERE wedge_spent > 0 AND wedge_at >= ?",
-                (float(when),),
+                "SELECT COUNT(*) FROM credit_spends WHERE spent_at >= ?", (float(when),)
             ).fetchone()
         return int(row[0] or 0)
 
     def mark_wedge_spent(self, tid: str, at: float) -> None:
-        """Record one credit spent on tracker torrent ``tid`` (call after the row carries that tracker_tid)."""
+        """Record one credit spent on tracker torrent ``tid``: a ledger row, counted whatever happens
+        to the wishlist row, plus the row's own marker (call after the row carries that tracker_tid)."""
         with self._lock, self._txn():
+            self.connection.execute(
+                "INSERT INTO credit_spends (tracker_tid, spent_at) VALUES (?, ?)", (str(tid), float(at))
+            )
             self.connection.execute(
                 "UPDATE wishlist SET wedge_spent = 1, wedge_at = ? WHERE tracker_tid = ?",
                 (float(at), str(tid)),
