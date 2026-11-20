@@ -94,7 +94,13 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
     audit.hours = 0.0 if timed_out else round(total / 3600, 2)
     if timed_out:
         audit.notes.append(f"ffprobe timed out on {timed_out} file(s): runtime unknown")
-    audit.src_mb = round(sum(os.path.getsize(f) for f in unit.files if os.path.exists(f)) / 1e6, 1)
+    src_bytes = 0
+    for f in unit.files:
+        try:
+            src_bytes += os.path.getsize(f)
+        except OSError:
+            continue  # removed since the folder was listed: left out, never a failed scan
+    audit.src_mb = round(src_bytes / 1e6, 1)
 
     audit.match = matching.match_unit(unit, asin_override, local_hours=audit.hours, pin_failures=pin_failures)
     abandoned = audit.match.pin_abandoned

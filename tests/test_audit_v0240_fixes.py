@@ -1,17 +1,21 @@
 """Regression tests for the HIGH-impact defects of the v0.24.0 audit (AB-FIX-A), one class per ID."""
 
 import contextlib
+import os
 import pathlib
 import unittest
 from unittest import mock
 
-from audiobind import catalog, encode, ingest, matching, pipeline
+from audiobind import catalog, daemon, encode, ingest, matching, pipeline
+from audiobind.config import CONFIG
 from audiobind.probe import Probe
 from audiobind.units import BookUnit, Part
 
 try:
+    from test_ingest_discovery import touch
     from test_ingest_pipeline import KEY, PHM, PipelineCase
 except ImportError:
+    from tests.test_ingest_discovery import touch
     from tests.test_ingest_pipeline import KEY, PHM, PipelineCase
 
 
@@ -110,6 +114,59 @@ class ConvertAnywayAtCurrentLayoutTests(PipelineCase):
             pipeline.process_unit(self.state, ingest.find_any_unit(KEY), log=lambda *_: None, force=True)
         self.assertEqual(self.encode_calls, [])
         self.assertEqual(out.read_bytes(), b"the previous encode")
+
+
+# --------------------------------------------------------------------------- A5
+class VanishedSourceFileTests(PipelineCase):
+    """A library file removed between os.path.exists and os.path.getsize must not abort the scan."""
+
+    VANISHING = "Andy Weir - Artemis"  # sorts before the second book, so the scan has more to do
+    SECOND = "Andy Weir - Project Hail Mary"
+
+    def setUp(self):
+        super().setUp()
+        lib = CONFIG.library_root
+        touch(str(lib / self.VANISHING / "01.mp3"), b"x" * 1_000_000)
+        touch(str(lib / self.VANISHING / "02.mp3"), b"x" * 2_000_000)
+        touch(str(lib / self.SECOND / "01.mp3"), b"x" * 1_000_000)
+        self.victim = str(lib / self.VANISHING / "02.mp3")
+        real_getsize = os.path.getsize
+
+        def racing_getsize(path):
+            if os.fspath(path) == self.victim and os.path.exists(path):
+                os.unlink(path)  # gone after exists() said it was there
+            return real_getsize(path)
+
+        self.racing_getsize = racing_getsize
+
+    def scan(self):
+        with (
+            mock.patch.object(catalog, "search", return_value=[PHM]),
+            mock.patch.object(catalog, "book", return_value={"title": "Project Hail Mary",
+                                                              "authors": [{"name": "Andy Weir"}]}),
+            mock.patch.object(catalog, "chapters", return_value=[]),
+            mock.patch.object(pipeline, "probe", return_value=Probe(duration=3600.0, codec="mp3", channels="2")),
+            mock.patch.object(encode, "probe_chapters", return_value=[]),
+            mock.patch.object(encode, "encode", side_effect=self.fake_encode),
+            mock.patch.object(os.path, "getsize", side_effect=self.racing_getsize),
+        ):
+            return daemon.scan_once(self.state)
+
+    def test_a5_the_scan_finishes_and_reaches_the_next_book(self):
+        summary = self.scan()
+        self.assertEqual(summary["seen"], 2)
+        self.assertIsNotNone(self.state.get(self.VANISHING))
+        self.assertIsNotNone(self.state.get(self.SECOND))
+
+    def test_a5_the_vanished_file_is_left_out_of_the_source_size(self):
+        unit = ingest.find_any_unit(self.VANISHING)
+        with (
+            mock.patch.object(pipeline, "probe", return_value=Probe(duration=3600.0, codec="mp3", channels="2")),
+            mock.patch.object(matching, "match_unit", return_value=matching.Match()),
+            mock.patch.object(os.path, "getsize", side_effect=self.racing_getsize),
+        ):
+            audit = pipeline.audit_unit(unit)
+        self.assertEqual(audit.src_mb, 1.0)
 
 
 if __name__ == "__main__":
