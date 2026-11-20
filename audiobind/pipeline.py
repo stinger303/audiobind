@@ -228,13 +228,14 @@ def work_dir_for(unit: BookUnit) -> Path:
     return CONFIG.work_dir / hashlib.sha1(unit.state_key.encode("utf-8")).hexdigest()[:8]
 
 
-def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None):
+def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reencode: bool = False):
     """Encode, verify and file one book. Returns the EncodeResult (or None in a dry run).
 
     ``cancelled`` (optional, no arguments) is asked again once the encoder is free: True means
     the book was removed from Audiobind while it waited, and nothing is encoded. ``heartbeat``
     (optional) is called, throttled, from the encode's progress so one long encode never makes
-    the healthcheck read the daemon as stalled.
+    the healthcheck read the daemon as stalled. ``reencode`` (the manual Convert anyway) encodes
+    even when the output already exists; the verified result replaces it atomically on publish.
     """
     unit, match = audit.unit, audit.match
     if not match.product:
@@ -254,7 +255,7 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None):
     paths = {fmt: library.m4b_path(series, authors, title, sequence, ext=fmt) for fmt in formats}
     out_path = paths[formats[0]]
     audit.out_path = str(out_path)
-    if out_path.exists():
+    if out_path.exists() and not reencode:
         audit.already_published = True
         log(f"  already published: {out_path}")
         return None
@@ -266,8 +267,8 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None):
     work_dir = work_dir_for(unit)
     with CONVERT_LOCK:
         # checked again under the lock: a manual action and the daemon can both reach
-        # this point for the same book, and only the first may encode it
-        if out_path.exists():
+        # this point for the same book, and only the first may encode it (unless asked to re-encode)
+        if out_path.exists() and not reencode:
             audit.already_published = True
             log(f"  already published (while waiting for the encoder): {out_path}")
             return None
@@ -551,7 +552,8 @@ def process_unit(
                 rec("ready", output=kept, note="already published - the output file exists")
             return
         try:
-            result = convert_unit(audit, log=log, cancelled=dismissed, heartbeat=state.heartbeat)
+            result = convert_unit(audit, log=log, cancelled=dismissed, heartbeat=state.heartbeat,
+                                  reencode=reencode)
             if result is None:  # dry run, already published, or removed while it waited
                 nothing_written()
             else:

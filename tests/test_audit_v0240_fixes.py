@@ -1,11 +1,18 @@
 """Regression tests for the HIGH-impact defects of the v0.24.0 audit (AB-FIX-A), one class per ID."""
 
+import contextlib
+import pathlib
 import unittest
 from unittest import mock
 
-from audiobind import matching, pipeline
+from audiobind import catalog, encode, ingest, matching, pipeline
 from audiobind.probe import Probe
 from audiobind.units import BookUnit, Part
+
+try:
+    from test_ingest_pipeline import KEY, PHM, PipelineCase
+except ImportError:
+    from tests.test_ingest_pipeline import KEY, PHM, PipelineCase
 
 
 # --------------------------------------------------------------------------- A2 + A3
@@ -48,6 +55,61 @@ class CollectionShapeTests(unittest.TestCase):
         parts = [Part(name=f"Vol {n}", files=[f"/b/Vol {n}/v{n}.mp3"]) for n in (1, 2, 3)]
         audit = self.audit(parts, files)
         self.assertEqual(audit.confidence, "COLLECTION")
+
+
+# --------------------------------------------------------------------------- A4
+class ConvertAnywayAtCurrentLayoutTests(PipelineCase):
+    """Convert anyway must re-encode a book whose output already sits at the current layout path."""
+
+    @contextlib.contextmanager
+    def patched(self):
+        with (
+            mock.patch.object(catalog, "search", return_value=[PHM]),
+            mock.patch.object(catalog, "book", return_value={"title": "Project Hail Mary",
+                                                              "authors": [{"name": "Andy Weir"}]}),
+            mock.patch.object(catalog, "chapters", return_value=[]),
+            mock.patch.object(pipeline, "probe", return_value=Probe(duration=3600.0, codec="mp3", channels="2")),
+            mock.patch.object(encode, "probe_chapters", return_value=[]),
+            mock.patch.object(encode, "encode", side_effect=self.fake_encode),
+        ):
+            yield
+
+    def converted_at_current_layout(self) -> pathlib.Path:
+        self.add_torrent()
+        with self.patched():
+            pipeline.process_unit(self.state, ingest.find_any_unit(KEY), log=lambda *_: None)
+        row = self.state.get(KEY)
+        self.assertEqual(row.status, "converted")
+        out = pathlib.Path(row.output)
+        out.write_bytes(b"the previous encode")
+        self.encode_calls.clear()
+        return out
+
+    def test_a4_convert_anyway_re_encodes_over_the_existing_output(self):
+        out = self.converted_at_current_layout()
+        logs = []
+        with self.patched():
+            pipeline.process_unit(self.state, ingest.find_any_unit(KEY), log=logs.append,
+                                  force=True, manual=True, reencode=True)
+        self.assertEqual(len(self.encode_calls), 1, logs)
+        self.assertEqual(out.read_bytes(), b"m4b")  # the new encode replaced the old file
+        row = self.state.get(KEY)
+        self.assertEqual((row.status, row.output), ("converted", str(out)))
+        self.assertFalse(any("already published" in m for m in logs), logs)
+
+    def test_a_manual_retry_still_leaves_the_existing_output_alone(self):
+        out = self.converted_at_current_layout()
+        with self.patched():
+            pipeline.process_unit(self.state, ingest.find_any_unit(KEY), log=lambda *_: None, manual=True)
+        self.assertEqual(self.encode_calls, [])
+        self.assertEqual(out.read_bytes(), b"the previous encode")
+
+    def test_a_forced_recheck_without_reencode_does_not_encode(self):
+        out = self.converted_at_current_layout()
+        with self.patched():
+            pipeline.process_unit(self.state, ingest.find_any_unit(KEY), log=lambda *_: None, force=True)
+        self.assertEqual(self.encode_calls, [])
+        self.assertEqual(out.read_bytes(), b"the previous encode")
 
 
 if __name__ == "__main__":
