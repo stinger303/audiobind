@@ -590,7 +590,8 @@ class State:
             self.connection.execute(
                 "INSERT INTO units (path, status, asin_override, updated_at, source, pin_failures) "
                 "VALUES (?,?,?,?,?,0) "
-                "ON CONFLICT(path) DO UPDATE SET asin_override = excluded.asin_override, pin_failures = 0",
+                "ON CONFLICT(path) DO UPDATE SET asin_override = excluded.asin_override, pin_failures = 0, "
+                "updated_at = excluded.updated_at",
                 (path, "review", asin, time.time(), key_source(path)),
             )
 
@@ -625,7 +626,8 @@ class State:
         with self._lock:
             self.connection.execute(
                 "INSERT INTO units (path, status, overrides, updated_at, source) VALUES (?,?,?,?,?) "
-                "ON CONFLICT(path) DO UPDATE SET overrides = excluded.overrides",
+                # updated_at moves so rev() (the web poll) sees the edit in every open tab
+                "ON CONFLICT(path) DO UPDATE SET overrides = excluded.overrides, updated_at = excluded.updated_at",
                 (path, "review", json.dumps(data), time.time(), key_source(path)),
             )
 
@@ -640,7 +642,7 @@ class State:
         with self._lock:
             self.connection.execute(
                 "INSERT INTO units (path, status, alternates, updated_at, source) VALUES (?,?,?,?,?) "
-                "ON CONFLICT(path) DO UPDATE SET alternates = excluded.alternates",
+                "ON CONFLICT(path) DO UPDATE SET alternates = excluded.alternates, updated_at = excluded.updated_at",
                 (path, "review", json.dumps(data or []), time.time(), key_source(path)),
             )
 

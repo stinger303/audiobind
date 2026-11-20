@@ -11,12 +11,15 @@ from unittest import mock
 from audiobind import catalog, daemon, encode, ingest, matching, pipeline
 from audiobind.config import CONFIG
 from audiobind.probe import Probe
+from audiobind.state import State, UnitState
 from audiobind.units import BookUnit, Part
 
 try:
+    from live import LiveServerCase
     from test_ingest_discovery import touch
     from test_ingest_pipeline import KEY, PHM, PipelineCase
 except ImportError:
+    from tests.live import LiveServerCase
     from tests.test_ingest_discovery import touch
     from tests.test_ingest_pipeline import KEY, PHM, PipelineCase
 
@@ -217,6 +220,67 @@ class IncompleteReadTests(unittest.TestCase):
         answers = iter([_CutOffResponse(), _Response(b'{"asin": "B005EHN61O"}')])
         with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: next(answers)):
             self.assertEqual(catalog._get_json("https://example.test/a7b"), {"asin": "B005EHN61O"})
+
+
+# --------------------------------------------------------------------------- A8
+OLD = 1000.0  # a row last written long ago
+
+
+def age_row(state: State, path: str) -> None:
+    with state._lock:
+        state.connection.execute("UPDATE units SET updated_at = ? WHERE path = ?", (OLD, path))
+
+
+class UpsertsMoveRevTests(unittest.TestCase):
+    """Every operator edit that upserts a units row must move updated_at, so rev() notices it."""
+
+    def setUp(self):
+        import tempfile
+        self.dir = tempfile.TemporaryDirectory()
+        self.state = State(pathlib.Path(self.dir.name))
+        self.state.save(UnitState(path="A/B", status="review", title="B"))
+        age_row(self.state, "A/B")
+
+    def tearDown(self):
+        self.state.close()
+        self.dir.cleanup()
+
+    def check(self, edit):
+        before = self.state.rev()
+        edit()
+        self.assertGreater(self.state.get("A/B").updated_at, OLD)
+        self.assertNotEqual(self.state.rev(), before)
+
+    def test_a8_set_asin_override_moves_rev(self):
+        self.check(lambda: self.state.set_asin_override("A/B", "B005EHN61O"))
+        self.assertEqual(self.state.get_asin_override("A/B"), "B005EHN61O")
+
+    def test_a8_set_overrides_moves_rev(self):
+        self.check(lambda: self.state.set_overrides("A/B", {"title": "Corrected"}))
+        self.assertEqual(self.state.get_overrides("A/B"), {"title": "Corrected"})
+
+    def test_a8_set_alternates_moves_rev(self):
+        self.check(lambda: self.state.set_alternates("A/B", [{"asin": "B005EHN61O"}]))
+        self.assertEqual(self.state.get_alternates("A/B"), [{"asin": "B005EHN61O"}])
+
+    def test_the_rest_of_the_row_is_untouched(self):
+        self.state.set_overrides("A/B", {"title": "Corrected"})
+        row = self.state.get("A/B")
+        self.assertEqual((row.status, row.title), ("review", "B"))
+
+
+class MetadataSaveMovesRevTests(LiveServerCase):
+    """The narrowed A8 repro: a metadata Save must be visible to another tab's poll."""
+
+    def test_a8_set_meta_moves_rev(self):
+        (self.lib / "A" / "B").mkdir(parents=True)
+        (self.lib / "A" / "B" / "01.mp3").write_bytes(b"audio")
+        self.state.save(UnitState(path="A/B", status="review", title="B"))
+        age_row(self.state, "A/B")
+        before = self.state.rev()
+        status, body = self.post({"action": "set_meta", "path": "A/B", "fields": {"narrator": "Someone"}})
+        self.assertEqual(status, 200, body)
+        self.assertNotEqual(self.state.rev(), before)
 
 
 if __name__ == "__main__":
