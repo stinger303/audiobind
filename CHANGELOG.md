@@ -7,6 +7,24 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.25.1-dev3] - 2026-11-19
+
+**Unreleased test build.** Two Settings changes from looking at the page: the search category is now a
+dropdown when the tracker's list is known, and the membership setting says what the site calls it.
+
+### Changed
+- **Search category: a dropdown when it can be one.** The value is the tracker's own category id, dropped
+  into `{{category}}` in the search request — there is no universal list, so Audiobind does not invent
+  one. If the preset file lists them (a new optional `"categories"` object), the field becomes a select
+  showing `Audiobooks (13)` and saves the bare `13`. Without a list it stays a text field whose hint says
+  where the number comes from. **A saved value that is not in the preset's list stays selected** rather
+  than being silently changed, because loading a preset must never alter what the watcher searches.
+- **The membership setting reads "VIP / Premium member"**, since trackers call the top tier one or the
+  other, and the hint names both instead of assuming Premium.
+
+### Docs
+- `docs/tracker-preset.example.json` and the preset paragraph in `docs/acquisition.md` cover `categories`.
+
 ## [0.25.1-dev2] - 2026-11-19
 
 **Unreleased test build.** The second half of the same audit: the places where the product could check
