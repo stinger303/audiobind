@@ -26,11 +26,10 @@ import itertools
 import json
 import logging
 import urllib.parse
-import urllib.request
 
 from .base import AUTH, ERROR, REFUSED, ClientError, DownloadClient
 from .torrentfile import info_hash, is_hex_hash
-from .transport import basic_auth, http_post, http_url
+from .transport import basic_auth, guarded_opener, http_post, http_url
 
 log = logging.getLogger("audiobind")
 
@@ -48,7 +47,7 @@ class TransmissionClient(DownloadClient):
             url += "/transmission/rpc"  # the address of the web UI was given: the RPC lives here
         self.url, self.origin = url, origin
         self._auth = basic_auth(str(username or ""), str(password or ""))
-        self._opener = urllib.request.build_opener()
+        self._opener = guarded_opener()  # SEC-04: Basic auth never follows a redirect off-origin
         self._session_id = ""
         self._tags = itertools.count(1)
         self.rpc_version = 0

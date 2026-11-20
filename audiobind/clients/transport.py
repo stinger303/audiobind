@@ -39,6 +39,32 @@ def basic_auth(user: str, password: str) -> dict:
     return {"Authorization": "Basic " + token}
 
 
+def _origin(url: str) -> tuple[str, str, int | None]:
+    parts = urllib.parse.urlsplit(url)
+    scheme = parts.scheme.lower()
+    try:
+        port = parts.port
+    except ValueError:
+        port = -1  # unparseable: matches nothing real
+    return scheme, (parts.hostname or "").lower(), port or {"http": 80, "https": 443}.get(scheme)
+
+
+class GuardedRedirects(urllib.request.HTTPRedirectHandler):
+    """SEC-04: urllib copies every header but Content-Type/-Length onto a redirect, to any
+    host. A request carrying Authorization follows a redirect only within its own origin
+    (scheme, host and port - so never https -> http); otherwise the 3xx is the answer."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if req.has_header("Authorization") and _origin(newurl) != _origin(req.full_url):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def guarded_opener(*handlers):
+    """build_opener() with GuardedRedirects in place of the default redirect handler."""
+    return urllib.request.build_opener(GuardedRedirects, *handlers)
+
+
 def http_post(opener, url: str, body: bytes, headers: dict, name: str) -> tuple[int, dict, bytes]:
     """POST ``body``: (status, lower-cased response headers, answer). An HTTP error status is an
     answer, not an exception; not reaching the server at all is ClientError(UNAVAILABLE)."""

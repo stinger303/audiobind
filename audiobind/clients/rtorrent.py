@@ -27,12 +27,11 @@ from __future__ import annotations
 import re
 import socket
 import urllib.parse
-import urllib.request
 import xmlrpc.client
 
 from .base import AUTH, ERROR, REFUSED, UNAVAILABLE, ClientError, DownloadClient
 from .torrentfile import info_hash
-from .transport import MAX_ANSWER, TIMEOUT, basic_auth, http_post
+from .transport import MAX_ANSWER, TIMEOUT, basic_auth, guarded_opener, http_post
 
 #: what a category may hold when it is written into an rTorrent command (quoted, so spaces are fine)
 _CATEGORY_RE = re.compile(r"^[A-Za-z0-9 _.\-]*$")
@@ -63,7 +62,7 @@ class RTorrentClient(DownloadClient):
         self.url = url
         self._scgi = (parts.hostname, port) if parts.scheme == "scgi" else None
         self._auth = basic_auth(str(username or ""), str(password or ""))
-        self._opener = urllib.request.build_opener()
+        self._opener = guarded_opener()  # SEC-04: Basic auth never follows a redirect off-origin
         self._version = ""
         self.logged_in = False
 
