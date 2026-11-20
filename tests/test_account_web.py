@@ -290,6 +290,47 @@ class SetupCodeTests(AccountCase):
         self.assertTrue(code)
         self.assertIn(f"setup code: {code}  (required to create the first account)", "\n".join(logs.output))
 
+    def test_wrong_codes_count_towards_the_sign_in_lockout(self):
+        # SEC-01b: guesses are metered like sign-ins; the code itself is not spent by them
+        code = self.code()
+        for i in range(auth_mod.FAIL_LIMIT):
+            self.assertEqual(self.post_setup({"setup_code": f"WRONG{i}"})[0], 403, i)
+        status, headers, _ = self.post_setup({"setup_code": code}, as_json=True)
+        self.assertEqual(status, 429)
+        self.assertTrue(int(headers["Retry-After"]) > 0)
+        self.assertIsNone(self.state.get_credentials())
+        self.assertEqual(self.state.get_meta("setup_code"), code)  # not consumed
+        auth_mod.LIMITER.clear()
+        self.assertEqual(self.post_setup({"setup_code": code})[0], 303)
+
+    def test_an_override_the_form_cannot_take_is_refused_at_start(self):
+        for bad in ("A" * 65, "two words", "bad_code!", "café-42"):
+            fresh = type(self.state)(self.root / f"state-bad-{len(bad)}-{bad[:3]}")
+            try:
+                with mock.patch.dict(os.environ, {"AUDIOBIND_SETUP_CODE": bad}), \
+                        self.assertLogs("audiobind", logging.WARNING) as logs:
+                    auth_mod.announce_setup_code(fresh)
+                    used = auth_mod.setup_code(fresh)
+                generated = fresh.get_meta("setup_code")
+            finally:
+                fresh.close()
+            out = "\n".join(logs.output)
+            self.assertNotEqual(used, bad, bad)
+            self.assertEqual(used, generated, bad)  # the generated code takes over, and is logged
+            self.assertIn(f"setup code: {generated}", out, bad)
+            self.assertIn("AUDIOBIND_SETUP_CODE", out, bad)
+            self.assertIn("64", out, bad)
+            self.assertNotIn(bad, out, bad)
+
+    def test_the_longest_valid_override_fits_the_form(self):
+        longest = ("AB-12" * 13)[:64]
+        with mock.patch.dict(os.environ, {"AUDIOBIND_SETUP_CODE": longest}):
+            self.assertEqual(auth_mod.setup_code(self.state), longest)
+            page = self.raw("/setup")[2].decode()
+            field = re.search(r'name="setup_code"[^>]*maxlength="(\d+)"', page)
+            self.assertEqual(int(field.group(1)), len(longest))
+            self.assertEqual(self.post_setup({"setup_code": longest.lower()})[0], 303)
+
     def test_setup_page_asks_for_the_code(self):
         status, _, body = self.raw("/setup")
         self.assertEqual(status, 200)

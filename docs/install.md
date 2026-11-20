@@ -168,7 +168,10 @@ the account needs a one-time setup code, which Audiobind prints in the container
 first starts (`docker logs audiobind | grep 'setup code'`), so someone who can merely reach the
 port cannot claim your install. The code stays the same across restarts until the account is
 created, then it is used up. For an unattended install, set `AUDIOBIND_SETUP_CODE` to choose
-the code yourself; it is then not generated or printed.
+the code yourself; it is then not generated or printed. It must be at most 64 characters of
+`A-Z`, `0-9` and `-` (case does not matter). One that breaks that rule is not used: the log says
+so and prints a generated code instead. A wrong setup code counts towards the same lockout as a
+wrong password (five per IP in 10 minutes).
 
 `/healthz` is the one public endpoint, with or without an account: it needs no sign-in, so an
 uptime monitor can poll it, and it only ever answers `ok` (200) or `stale` (503; the scan loop has

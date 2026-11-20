@@ -174,12 +174,24 @@ SETUP_CODE_ENV = "AUDIOBIND_SETUP_CODE"
 SETUP_CODE_LENGTH = 8
 #: no 0/O or 1/I: the code is read off a log line and typed by hand
 SETUP_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+#: SEC-01b: what an AUDIOBIND_SETUP_CODE may be - the setup form's field takes 64 characters
+SETUP_CODE_MAX = 64
+_SETUP_CODE_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
+
+
+def _setup_code_override() -> tuple[str, bool]:
+    """(the usable AUDIOBIND_SETUP_CODE or '', whether one was set but breaks the rule)."""
+    forced = os.environ.get(SETUP_CODE_ENV, "").strip()
+    if not forced:
+        return "", False
+    ok = len(forced) <= SETUP_CODE_MAX and forced.isascii() and set(forced.upper()) <= _SETUP_CODE_CHARS
+    return (forced, False) if ok else ("", True)
 
 
 def setup_code(state) -> str:
-    """The code /setup asks for: AUDIOBIND_SETUP_CODE when set (never stored), else the one
-    saved in the state DB, made on first use."""
-    forced = os.environ.get(SETUP_CODE_ENV, "").strip()
+    """The code /setup asks for: AUDIOBIND_SETUP_CODE when set and valid (never stored), else
+    the one saved in the state DB, made on first use."""
+    forced, _ = _setup_code_override()
     if forced:
         return forced
     code = state.get_meta(SETUP_CODE_KEY) or ""
@@ -204,8 +216,15 @@ def consume_setup_code(state) -> None:
 
 def announce_setup_code(state) -> None:
     """At start, while setup is pending: put the code in the log, where only someone with
-    access to the container can read it. An AUDIOBIND_SETUP_CODE is not repeated."""
-    if os.environ.get(SETUP_CODE_ENV, "").strip():
+    access to the container can read it. An AUDIOBIND_SETUP_CODE is not repeated; one that
+    breaks the rule is not used (nor echoed), and the generated code is announced instead."""
+    forced, invalid = _setup_code_override()
+    if invalid:
+        log.error(
+            "%s is not used: it must be 1-%d characters of A-Z, 0-9 and '-' (case does not matter); "
+            "using a generated setup code instead", SETUP_CODE_ENV, SETUP_CODE_MAX,
+        )
+    if forced:
         log.warning("setup code: set by %s  (required to create the first account)", SETUP_CODE_ENV)
         return
     log.warning("setup code: %s  (required to create the first account)", setup_code(state))
