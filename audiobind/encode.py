@@ -742,5 +742,17 @@ def write_abs_metadata(path: Path, book: dict, match, chapters: list[dict], dura
         "abridged": bool(book.get("isAbridged", False)),
         "duration": round(duration, 2),
     }
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    # SEC-03: a temp file beside it, then a rename over it - a rename replaces a symlink at
+    # ``path`` instead of writing through it (write_text would follow it). O_EXCL refuses a
+    # planted temp name; 0o666 keeps the umask-based mode write_text gave.
+    temp = path.parent / f".{path.name}.{os.urandom(6).hex()}.tmp"
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, indent=2, ensure_ascii=False))
+        os.replace(temp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temp)
+        raise
     return data

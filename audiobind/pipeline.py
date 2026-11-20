@@ -311,9 +311,7 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
                 )
             _publish_all(formats, results, paths, log=log)
             result = results[formats[0]]
-            encode.write_abs_metadata(
-                out_path.parent / "metadata.json", book, match, plan.chapters, result.duration
-            )
+            _write_sidecar(out_path, book, match, plan.chapters, result.duration, log=log)
             for fmt in formats:
                 res = results[fmt]
                 log(f"  published {paths[fmt]} ({res.size / 1e6:.0f} MB, {res.chapters} chapters)")
@@ -324,6 +322,20 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
             shutil.rmtree(work_dir, ignore_errors=True)
             CONTROL.set_heartbeat(None)
             CONTROL.end_unit()
+
+
+def _write_sidecar(out_path: Path, book: dict, match, chapters: list[dict], duration: float, log=print) -> None:
+    """SEC-03: metadata.json beside the published book - only inside OUTPUT_ROOT and never
+    through a symlink. A refused sidecar is logged and skipped; the conversion stands."""
+    sidecar = out_path.parent / "metadata.json"
+    root = Path(CONFIG.output_root).resolve()
+    if root not in sidecar.parent.resolve().parents:
+        log(f"  metadata.json skipped: {sidecar.parent} is outside the output root")
+        return
+    if sidecar.is_symlink():
+        log(f"  metadata.json skipped: {sidecar} is a symlink")
+        return
+    encode.write_abs_metadata(sidecar, book, match, chapters, duration)
 
 
 def _backup_path(path: Path, stamp: str) -> Path:
