@@ -241,7 +241,8 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
     the book was removed from Audiobind while it waited, and nothing is encoded. ``heartbeat``
     (optional) is called, throttled, from the encode's progress so one long encode never makes
     the healthcheck read the daemon as stalled. ``reencode`` (the manual Convert anyway) encodes
-    even when the output already exists; the verified result replaces it atomically on publish.
+    even when the output already exists; the old files are renamed aside to ``.bak-<timestamp>``
+    and the verified result takes their place (restored if the publish fails - see _publish_all).
     """
     unit, match = audit.unit, audit.match
     if not match.product:
@@ -308,7 +309,7 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
                     publish=False,
                     sequence=sequence,
                 )
-            _publish_all(formats, results, paths)
+            _publish_all(formats, results, paths, log=log)
             result = results[formats[0]]
             encode.write_abs_metadata(
                 out_path.parent / "metadata.json", book, match, plan.chapters, result.duration
@@ -325,7 +326,17 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
             CONTROL.end_unit()
 
 
-def _publish_all(formats: list[str], results: dict, paths: dict) -> None:
+def _backup_path(path: Path, stamp: str) -> Path:
+    """A free ``<path>.bak-<stamp>[-n]`` name beside ``path`` (same filesystem, so a rename)."""
+    candidate = path.with_name(f"{path.name}.bak-{stamp}")
+    n = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.name}.bak-{stamp}-{n}")
+        n += 1
+    return candidate
+
+
+def _publish_all(formats: list[str], results: dict, paths: dict, log=print) -> None:
     """Publish every verified format, the m4b (archival copy) first - all of them or none.
 
     If a later format fails to publish (a cross-filesystem copy that runs out of space), the
@@ -333,6 +344,12 @@ def _publish_all(formats: list[str], results: dict, paths: dict) -> None:
     created, so the library never keeps an m4b without the mp3 the owner asked for - which the
     next scan would otherwise take as "already published" and never finish. Files that were
     there before are never removed.
+
+    An output that already exists (a Convert anyway, or a *different* source whose catalog
+    metadata resolves to the same path) is first renamed aside to ``<path>.bak-<timestamp>`` -
+    every format, plus the cover.jpg that belongs to that edition. A failed publish renames
+    them back, so the previous edition is left exactly as it was; a successful one keeps them
+    (logged) so the replaced book can still be recovered by hand.
     """
     folder = paths[formats[0]].parent
     new_dirs = []
@@ -343,8 +360,17 @@ def _publish_all(formats: list[str], results: dict, paths: dict) -> None:
         probe_dir = probe_dir.parent
     cover = folder / "cover.jpg"
     preexisting = {path for path in [*paths.values(), cover] if path.exists()}
+    to_back_up = [paths[fmt] for fmt in formats if paths[fmt] in preexisting]
+    if to_back_up and cover in preexisting and any(results[fmt].cover is not None for fmt in formats):
+        to_back_up.append(cover)  # publishing would overwrite the replaced edition's cover too
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    backups: dict[Path, Path] = {}
     placed = []
     try:
+        for path in to_back_up:
+            backup = _backup_path(path, stamp)
+            os.rename(path, backup)
+            backups[path] = backup
         for fmt in formats:
             encode.publish_result(results[fmt], paths[fmt])
             placed.append(paths[fmt])
@@ -355,12 +381,19 @@ def _publish_all(formats: list[str], results: dict, paths: dict) -> None:
                     path.unlink()
                 except OSError:
                     pass
+        for path, backup in backups.items():
+            try:
+                os.replace(backup, path)  # over whatever this run placed there
+            except OSError as exc:
+                log(f"  could not restore {path} from {backup}: {exc}")
         for directory in new_dirs:
             try:
                 directory.rmdir()  # only ever an empty folder this call made
             except OSError:
                 break
         raise
+    for path, backup in backups.items():
+        log(f"  replaced {path.name}; the previous file is kept at {backup}")
 
 
 def record(

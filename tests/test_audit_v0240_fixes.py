@@ -121,6 +121,91 @@ class ConvertAnywayAtCurrentLayoutTests(PipelineCase):
         self.assertEqual(out.read_bytes(), b"the previous encode")
 
 
+class ForcedConvertKeepsThePreviousEditionTests(PipelineCase):
+    """AB-FIX-A2 #1: a forced convert over an existing output moves the old files aside first.
+
+    The output path comes from catalog metadata alone, so a *different* source that resolves to
+    the same author/title shares it: forcing that second source must not destroy the first
+    book's audio, and a failed dual-format publish must leave the first pair exactly as it was.
+    """
+
+    OTHER = "Andy Weir - Project Hail Mary (Other Edition) [TRACKER]"
+
+    def setUp(self):
+        super().setUp()
+        self.add_torrent()
+        self.add_torrent(name=self.OTHER)
+        self.cover = self.root / "cover-src.jpg"
+
+    def convert(self, key, tag, fail_ext=None, reencode=False, logs=None):
+        unit = ingest.find_any_unit(key)
+        audit = pipeline.Audit(unit=unit, match=matching.Match(product=PHM, confidence="HIGH"), action="convert")
+
+        def fake_encode(unit, match, book, work_dir, out_path, **kw):
+            work_dir.mkdir(parents=True, exist_ok=True)
+            temp = work_dir / f"output.{kw['fmt']}"
+            temp.write_bytes(f"{tag}-{kw['fmt']}".encode())
+            self.cover.write_bytes(f"{tag}-cover".encode())
+            return encode.EncodeResult(path=temp, duration=7200.0, size=3, chapters=2,
+                                       chapters_source="test", cover=self.cover)
+
+        real_place = encode._place
+
+        def place(source, dest, move):
+            if fail_ext and dest.suffix == fail_ext:
+                raise OSError(28, "No space left on device")
+            return real_place(source, dest, move)
+
+        with (
+            mock.patch.object(catalog, "book", return_value={"title": "Project Hail Mary",
+                                                              "authors": [{"name": "Andy Weir"}]}),
+            mock.patch.object(pipeline, "effective_val",
+                              side_effect=lambda k: "M4B + MP3" if k == "output_format" else None),
+            mock.patch.object(encode, "plan_chapters", return_value=mock.Mock(chapters=[])),
+            mock.patch.object(encode, "encode", side_effect=fake_encode),
+            mock.patch.object(encode, "_place", side_effect=place),
+        ):
+            pipeline.convert_unit(audit, log=(logs.append if logs is not None else lambda *_: None),
+                                  reencode=reencode)
+        return pathlib.Path(audit.out_path)
+
+    @staticmethod
+    def backups(path: pathlib.Path) -> list[pathlib.Path]:
+        return sorted(path.parent.glob(path.name + ".bak-*"))
+
+    def test_forcing_a_different_unit_onto_the_same_path_keeps_the_first_book_recoverable(self):
+        m4b = self.convert(KEY, "first")
+        mp3 = m4b.with_suffix(".mp3")
+        self.assertEqual((m4b.read_bytes(), mp3.read_bytes()), (b"first-m4b", b"first-mp3"))
+
+        logs = []
+        self.assertEqual(self.convert("ingest:" + self.OTHER, "second",
+                                      reencode=True, logs=logs), m4b)  # the same path
+        self.assertEqual((m4b.read_bytes(), mp3.read_bytes()), (b"second-m4b", b"second-mp3"))
+        for path, old in ((m4b, b"first-m4b"), (mp3, b"first-mp3"),
+                          (m4b.parent / "cover.jpg", b"first-cover")):
+            (backup,) = self.backups(path)
+            self.assertEqual(backup.read_bytes(), old)
+            self.assertTrue(any(str(backup) in m for m in logs), logs)  # a human can find it
+
+    def test_a_failed_dual_format_publish_leaves_the_original_pair_intact(self):
+        m4b = self.convert(KEY, "first")
+        mp3 = m4b.with_suffix(".mp3")
+        cover = m4b.parent / "cover.jpg"
+        before = sorted(p.name for p in m4b.parent.iterdir())
+
+        with self.assertRaises(OSError):  # the m4b is replaced, then the mp3 runs out of space
+            self.convert("ingest:" + self.OTHER, "second", fail_ext=".mp3", reencode=True)
+        self.assertEqual((m4b.read_bytes(), mp3.read_bytes(), cover.read_bytes()),
+                         (b"first-m4b", b"first-mp3", b"first-cover"))
+        self.assertEqual(sorted(p.name for p in m4b.parent.iterdir()), before)  # backups restored
+
+    def test_nothing_is_backed_up_when_nothing_was_there(self):
+        m4b = self.convert(KEY, "first", reencode=True)
+        self.assertEqual(sorted(p.name for p in m4b.parent.iterdir()),
+                         ["Project Hail Mary.m4b", "Project Hail Mary.mp3", "cover.jpg", "metadata.json"])
+
+
 # --------------------------------------------------------------------------- A5
 class VanishedSourceFileTests(PipelineCase):
     """A library file removed between os.path.exists and os.path.getsize must not abort the scan."""
