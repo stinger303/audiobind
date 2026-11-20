@@ -8,7 +8,6 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .util import redact_url
 
 TRUTHY = {"1", "true", "yes", "on"}
 DEFAULT_ALLOWED_HOSTS = "localhost,127.0.0.1"
@@ -301,12 +300,13 @@ _rtorrent_url = _client_url(
 
 def _env_url(name: str, check, rejected: list) -> str:
     """SEC-05: a client URL variable through the same validator as Settings. An invalid one is
-    not used ("" instead) and leaves one line for the startup log, with any login shown as ***."""
+    not used ("" instead) and leaves one line for the startup log: the variable and why, never
+    the value (SEC-05b: redacting a malformed value is a guess that can keep part of a login)."""
     raw = _env(name, "")
     try:
         return check(raw)
     except ValueError as exc:
-        rejected.append(f"{name} is not used: {exc} (it was {redact_url(raw)!r})")
+        rejected.append(f"{name} is not used: {exc}")
         return ""
 
 

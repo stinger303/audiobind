@@ -42,9 +42,19 @@ class EnvUrlTests(unittest.TestCase):
             lines = config.rejected_env_lines(from_env({name: url}))
             self.assertEqual(len(lines), 1, name)
             self.assertIn(name, lines[0])
-            self.assertIn("***@", lines[0])
+            self.assertIn("no login in it", lines[0])  # the validation error says why
             self.assertNotIn(SECRET, lines[0])
             self.assertNotIn("admin", lines[0])
+
+    def test_a_malformed_url_with_a_login_never_reaches_the_log(self):
+        # SEC-05b: the redactor guesses where the login is; for a malformed value it can guess
+        # wrong, so the rejected value is left out of the line altogether
+        for name in ENV_URLS:
+            for url in (f"admin:{SECRET}://qbit", f"http://admin:{SECRET}", f"http//admin:{SECRET}@x"):
+                lines = config.rejected_env_lines(from_env({name: url}))
+                self.assertEqual(len(lines), 1, (name, url))
+                self.assertIn(name, lines[0])
+                self.assertNotIn(SECRET, lines[0], (name, url))
 
     def test_the_daemon_puts_the_lines_in_the_log(self):
         from audiobind import daemon
@@ -90,6 +100,16 @@ class RedactTests(unittest.TestCase):
         self.assertIn("TRANSMISSION_URL", message)
         self.assertNotIn(SECRET, message)
         self.assertIn("***@tm:9091", message)
+
+    def test_rtorrent_constructor_does_not_echo_the_login(self):
+        from audiobind.clients.rtorrent import RTorrentClient
+
+        for url in (f"http://admin:{SECRET}@rutorrent/RPC2", f"scgi://admin:{SECRET}@rt:5000",
+                    f"scgi://admin:{SECRET}", f"admin:{SECRET}://rt"):
+            with self.assertRaises(base.ClientError, msg=url) as caught:
+                RTorrentClient(url)
+            self.assertIn("RTORRENT_URL", str(caught.exception), url)
+            self.assertNotIn(SECRET, str(caught.exception), url)
 
 
 class EnvUrlPageTests(LiveServerCase):

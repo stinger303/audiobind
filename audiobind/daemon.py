@@ -212,7 +212,7 @@ def run() -> None:
     )
     for line in deprecated_env_lines():  # one line per renamed variable still in use; never a value
         log.warning(line)
-    for line in rejected_env_lines():  # SEC-05: a client URL variable that was not used; login as ***
+    for line in rejected_env_lines():  # SEC-05: a client URL variable that was not used; never its value
         log.warning(line)
     set_effective(state)
     # a set-but-missing INGEST_DIR is a warning, not a crash: the library keeps converting

@@ -54,11 +54,12 @@ class RTorrentClient(DownloadClient):
             port = parts.port
         except ValueError:
             port = None
+        # SEC-05b: the refusals never echo the URL - it may hold a login, malformed or not
         if parts.username is not None or parts.scheme not in ("scgi", "http", "https") or not parts.hostname:
             raise ClientError("RTORRENT_URL is not valid: use scgi://host:port or http(s)://host/RPC2 "
-                              f"(with no login in it): {url!r}", kind=ERROR)
+                              "(with no login in it)", kind=ERROR)
         if parts.scheme == "scgi" and not port:
-            raise ClientError(f"RTORRENT_URL needs a port for SCGI: {url!r}", kind=ERROR)
+            raise ClientError("RTORRENT_URL needs a port for SCGI (scgi://host:port)", kind=ERROR)
         self.url = url
         self._scgi = (parts.hostname, port) if parts.scheme == "scgi" else None
         self._auth = basic_auth(str(username or ""), str(password or ""))
