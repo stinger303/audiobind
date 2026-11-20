@@ -116,6 +116,16 @@ def re_strip(html: str) -> str:
 MAX_BODY = 8 * 1024 * 1024
 
 
+def _content_length(response) -> int | None:
+    """The response's declared Content-Length, or None when it has none (chunked) or it is junk."""
+    headers = getattr(response, "headers", None)
+    value = headers.get("Content-Length") if headers is not None else None
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
     """GET with a global ~0.6 s politeness gap and exponential backoff.
 
@@ -139,8 +149,13 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
             )
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 raw = response.read(MAX_BODY + 1)
+                expected = _content_length(response)
             if len(raw) > MAX_BODY:
                 return None  # oversized: refuse, do not retry
+            if expected is not None and len(raw) < expected:
+                # a bounded read() returns short instead of raising when a Content-Length body
+                # is cut off; a prefix that happens to parse must not be cached as the answer
+                raise http.client.IncompleteRead(raw, expected - len(raw))
             payload = json.loads(raw.decode("utf-8", "replace"))
             if not isinstance(payload, dict):
                 return None  # well-formed but not an object: a failed lookup, do not retry

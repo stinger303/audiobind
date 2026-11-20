@@ -343,6 +343,39 @@ class CutOffCoverTests(unittest.TestCase):
             self.assertFalse(catalog.download(COVER_URL, os.devnull))
 
 
+class ShortContentLengthTests(unittest.TestCase):
+    """AB-FIX-A2 #3: fewer bytes than Content-Length is a failed lookup, never a cached answer."""
+
+    def setUp(self):
+        catalog.cache_clear()
+        self.addCleanup(catalog.cache_clear)
+        sleeper = mock.patch.object(catalog.time, "sleep")
+        sleeper.start()
+        self.addCleanup(sleeper.stop)
+
+    def test_a7_short_a_two_byte_body_under_content_length_20_is_not_cached(self):
+        url = "https://example.test/a7-short"
+        raw = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 20\r\n\r\n{}"
+        with mock.patch.object(catalog.urllib.request, "urlopen",
+                               side_effect=lambda *a, **k: real_response(raw)) as opened:
+            self.assertIsNone(catalog._get_json(url))
+        self.assertEqual(opened.call_count, 3)  # retried like any other transport failure
+        self.assertIsNone(catalog.cache_get(url))
+
+    def test_a7_short_a_complete_body_is_still_an_answer(self):
+        url = "https://example.test/a7-full"
+        raw = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"
+        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: real_response(raw)):
+            self.assertEqual(catalog._get_json(url), {})
+        self.assertEqual(catalog.cache_get(url), {})
+
+    def test_a7_short_no_content_length_header_is_judged_by_the_body_alone(self):
+        url = "https://example.test/a7-chunked"
+        raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n"
+        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: real_response(raw)):
+            self.assertEqual(catalog._get_json(url), {})
+
+
 
 
 # --------------------------------------------------------------------------- A8
