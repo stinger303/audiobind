@@ -417,8 +417,10 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print, side
     # CORE-02b: lexists - a dangling symlink is there, and not this call's to remove
     preexisting = {path for path in [*paths.values(), cover, meta] if os.path.lexists(path)}
     to_back_up = [paths[fmt] for fmt in formats if paths[fmt] in preexisting]
-    if to_back_up and cover in preexisting and any(results[fmt].cover is not None for fmt in formats):
-        to_back_up.append(cover)  # publishing would overwrite the replaced edition's cover too
+    if cover in preexisting and any(results[fmt].cover is not None for fmt in formats):
+        # publishing overwrites cover.jpg - also when only a missing format is added beside a kept
+        # file (CORE-03b), so the existing art is always moved aside first and a rollback restores it
+        to_back_up.append(cover)
     replacing = bool(to_back_up)
     stamp = time.strftime("%Y%m%dT%H%M%S")
     backups: dict[Path, Path] = {}

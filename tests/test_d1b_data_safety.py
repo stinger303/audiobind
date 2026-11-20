@@ -54,5 +54,35 @@ class Core02bRollbackRemovesOnlyWhatItCreatedTests(PublishCase):
         self.assertFalse((m4b.parent / "cover.jpg").exists())
 
 
+# --------------------------------------------------------------------------- CORE-03b
+class Core03bCoverBackedUpWhenOnlyAFormatIsAddedTests(PublishCase):
+    """Adding a missing format writes cover.jpg too: the existing art must be backed up first."""
+
+    def kept_m4b_with_cover(self):
+        self.output_format = "M4B"
+        m4b = self.convert(KEY, "first")
+        cover = m4b.parent / "cover.jpg"
+        cover.write_bytes(b"owner-cover")
+        self.output_format = "MP3"  # only the missing format is requested; the M4B is not replaced
+        return m4b, cover
+
+    def test_a_failed_sidecar_leaves_the_existing_cover_byte_identical(self):
+        m4b, cover = self.kept_m4b_with_cover()
+        before = self.listing(m4b.parent)
+        with self.assertRaises(OSError):
+            self.convert(KEY, "second", fail_sidecar=True)
+        self.assertEqual(cover.read_bytes(), b"owner-cover", "the rollback left the new cover over the old art")
+        self.assertEqual(m4b.read_bytes(), b"first-m4b")
+        self.assertEqual(self.listing(m4b.parent), before)  # the MP3 went, the backup came back
+
+    def test_a_successful_add_keeps_the_previous_cover_as_a_backup(self):
+        m4b, cover = self.kept_m4b_with_cover()
+        self.convert(KEY, "second")
+        self.assertEqual(m4b.with_suffix(".mp3").read_bytes(), b"second-mp3")
+        self.assertEqual(cover.read_bytes(), b"second-cover")
+        (backup,) = sorted(m4b.parent.glob("cover.jpg.bak-*"))
+        self.assertEqual(backup.read_bytes(), b"owner-cover")
+
+
 if __name__ == "__main__":
     unittest.main()
