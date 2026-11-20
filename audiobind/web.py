@@ -697,6 +697,13 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-wiz-fix{margin:6px 0 2px}
 .ab-wiz-fix b{color:var(--ab-text)}
 .ab-wiz code{overflow-wrap:anywhere}
+.ab-wiz .ab-in{width:100%;max-width:420px;box-sizing:border-box}
+.ab-wiz select.ab-in{width:auto;max-width:100%}
+.ab-wiz .ab-setting[hidden]{display:none}
+.ab-wiz .ab-fb,.ab-wiz .ab-test-detail{overflow-wrap:anywhere;min-width:0}
+.ab-wiz .ab-test-detail:focus{outline:2px solid var(--ab-accent-bright);outline-offset:2px}
+.ab-wiz .ab-src-clear{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ab-text3)}
+.ab-wiz .ab-src-clear[hidden]{display:none}
 .ab-wiz{max-width:720px;display:flex;flex-direction:column;gap:14px;min-width:0}
 .ab-wiz-steps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0;font-size:12.5px}
 .ab-wiz-steps li{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--ab-border);
@@ -5541,10 +5548,99 @@ def _wizard_step1(state, mode: str) -> str:
     )
 
 
+def _wizard_field(field_id: str, label: str, control: str, hint: str = "", wrap_attrs: str = "") -> str:
+    """One labelled box of step 2. The hint is tied to the control (aria-describedby) so it is read with it."""
+    hint_html = f'<div class="ab-setting-hint" id="{field_id}-hint">{hint}</div>' if hint else ""
+    return (f'<div class="ab-setting" id="{field_id}-wrap"{wrap_attrs}>'
+            f'<label class="ab-setting-label" for="{field_id}">{_html(label)}</label>{hint_html}{control}</div>')
+
+
+def _wizard_client_info(host: str) -> dict:
+    """What step 2's boxes hold for each download client: the saved address, user and category, whether a password
+    is saved (never the password), and the keys they are saved under - the Watcher tab's own. The qBittorrent
+    address, when none is saved, is the Host the browser used with qBittorrent's usual port."""
+    prefill = wizard_mod.default_client_url(host, lambda name: host_accepted(name))
+    placeholders = {"qbittorrent": "http://your-server:8080", "deluge": "http://your-server:8112",
+                    "transmission": "http://your-server:9091/transmission/rpc", "rtorrent": "scgi://your-server:5000"}
+    info = {}
+    for kind, label in DOWNLOAD_CLIENTS.items():
+        keys = wizard_mod.CLIENT_KEYS[kind]
+        url = str(setting_effective(keys["url"]) or "")
+        prefilled = kind == "qbittorrent" and not url and bool(prefill)
+        info[kind] = {
+            "label": label, "keys": keys, "url": prefill if prefilled else url, "prefilled": prefilled,
+            "placeholder": placeholders[kind], "has_user": bool(keys["user"]),
+            "user": str(setting_effective(keys["user"]) or "") if keys["user"] else "",
+            "pass_set": bool(setting_effective(keys["pass"])),
+        }
+    return info
+
+
+def _wizard_step2(state, host: str) -> str:
+    """Step 2: which download client, and how to sign in to it. Saved under the Watcher tab's own keys; Test
+    saves, then runs the tab's client check and answers in plain words."""
+    kind = watcher_mod.client_kind()
+    info = _wizard_client_info(host)
+    now = info[kind]
+    options = "".join(
+        f'<option value="{_attr(key)}"{" selected" if key == kind else ""}>{_html(label)}</option>'
+        for key, label in DOWNLOAD_CLIENTS.items())
+    category = str(setting_effective("qbit_category") or wizard_mod.DEFAULT_CATEGORY)
+    url_hint = ("The address you open the client's web page (its WebUI) with."
+                + (" This is the address you are using to open Audiobind, with qBittorrent's usual port 8080. Change "
+                   "it if yours is different." if now["prefilled"] else ""))
+    pass_placeholder = "set - leave blank to keep it" if now["pass_set"] else "not set"
+    fields = (
+        _wizard_field("ab-wiz-client", "Download client",
+                      f'<select class="ab-in" id="ab-wiz-client" aria-describedby="ab-wiz-client-hint" '
+                      f'onchange="abWizardClient(this.value)">{options}</select>',
+                      "The program Audiobind hands torrents to. qBittorrent is the usual one.")
+        + _wizard_field("ab-wiz-url", "Address (URL)",
+                        f'<input type="text" class="ab-in" id="ab-wiz-url" value="{_attr(now["url"])}" '
+                        f'placeholder="{_attr(now["placeholder"])}" autocomplete="off" spellcheck="false" '
+                        'autocapitalize="none" inputmode="url" aria-describedby="ab-wiz-url-hint">', url_hint)
+        + _wizard_field("ab-wiz-user", "User name",
+                        f'<input type="text" class="ab-in" id="ab-wiz-user" value="{_attr(now["user"])}" '
+                        'autocomplete="off" spellcheck="false" autocapitalize="none" '
+                        'aria-describedby="ab-wiz-user-hint">',
+                        "The one you sign in to the client's web page with.",
+                        wrap_attrs="" if now["has_user"] else " hidden")
+        + _wizard_field("ab-wiz-pass", "Password",
+                        f'<input type="password" class="ab-in" id="ab-wiz-pass" value="" '
+                        f'placeholder="{pass_placeholder}" autocomplete="new-password" spellcheck="false" '
+                        'aria-describedby="ab-wiz-pass-hint">'
+                        f'<label class="ab-src ab-src-clear" id="ab-wiz-clear-wrap"{"" if now["pass_set"] else " hidden"}>'
+                        '<input type="checkbox" id="ab-wiz-clear"> Clear the saved password</label>',
+                        "It is saved on the server and never shown here again.")
+        + _wizard_field("ab-wiz-category", "Category",
+                        f'<input type="text" class="ab-in" id="ab-wiz-category" value="{_attr(category)}" '
+                        'autocomplete="off" spellcheck="false" autocapitalize="none" '
+                        'aria-describedby="ab-wiz-category-hint">',
+                        "The label Audiobind puts on the torrents it adds, so its books stay apart from the rest. "
+                        "Test shows whether the client has it and where it saves it.")
+    )
+    return (
+        '<p class="ab-acct-who">Audiobind logs in to your download client to hand it torrents. Fill in the boxes '
+        "and press Test: it signs in, looks at the categories and adds nothing.</p>"
+        f'<form class="ab-wiz-form" id="ab-wiz-client-form" data-clients="{_attr(json.dumps(info))}" '
+        'onsubmit="abWizardClientTest(); return false;" novalidate>'
+        + fields
+        + '<div class="ab-acct-row"><button class="btn ab-save" type="submit" id="ab-wiz-test">Test</button>'
+        '<span class="ab-fb" id="ab-wiz-test-fb" role="status"></span></div>'
+        '<div class="ab-test-detail" id="ab-wiz-test-fb-detail" tabindex="-1" hidden></div>'
+        '<div class="ab-acct-row">'
+        f'<a class="btn" id="ab-wiz-back" href="{wizard_mod.PATH}?step=1">Back</a>'
+        '<button class="btn ab-save" type="button" id="ab-wiz-continue" onclick="abWizardClientContinue()">'
+        "Continue</button></div></form>"
+    )
+
+
 def _wizard_body(state, step: int, mode: str, host: str) -> str:
     """The content of one step. Steps without a page answer with the not-built notice."""
     if step == 1:
         return _wizard_step1(state, mode)
+    if step == 2:
+        return _wizard_step2(state, host)
     return _wizard_not_built(step)
 
 
@@ -5586,6 +5682,73 @@ function abWizardMode() {
     if (!res.ok) { fb.className = 'ab-fb ab-bad'; fb.textContent = res.body.error || 'that did not work'; return; }
     location.href = '/setup/downloading?step=1#ab-wiz-outcome';
   }).catch(() => { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach Audiobind'; });
+}
+// Step 2. The boxes hold one client at a time; each client's values and keys come from the form's data-clients.
+function abWizClients() { return JSON.parse(document.getElementById('ab-wiz-client-form').dataset.clients); }
+function abWizardClient(kind) {
+  const c = abWizClients()[kind];
+  document.getElementById('ab-wiz-url').value = c.url;
+  document.getElementById('ab-wiz-url').placeholder = c.placeholder;
+  document.getElementById('ab-wiz-user').value = c.user;
+  document.getElementById('ab-wiz-user-wrap').hidden = !c.has_user;
+  document.getElementById('ab-wiz-pass').value = '';
+  document.getElementById('ab-wiz-pass').placeholder = c.pass_set ? 'set - leave blank to keep it' : 'not set';
+  document.getElementById('ab-wiz-clear-wrap').hidden = !c.pass_set;
+  document.getElementById('ab-wiz-clear').checked = false;
+}
+// Save the boxes under the Watcher tab's own settings keys, through the tab's own save. A blank password keeps
+// the saved one. Resolves true when saved; says why in `fb` when not.
+function abWizSave(fb) {
+  const kind = document.getElementById('ab-wiz-client').value;
+  const keys = abWizClients()[kind].keys;
+  const settings = {download_client: kind, qbit_category: document.getElementById('ab-wiz-category').value.trim()};
+  settings[keys.url] = document.getElementById('ab-wiz-url').value.trim();
+  if (keys.user) settings[keys.user] = document.getElementById('ab-wiz-user').value.trim();
+  const pass = document.getElementById('ab-wiz-pass').value;
+  if (pass) settings[keys.pass] = pass;
+  const clear = document.getElementById('ab-wiz-clear').checked && !pass ? [keys.pass] : [];
+  if (!settings[keys.url]) {
+    fb.className = 'ab-fb ab-bad'; fb.textContent = 'Type the address first.'; return Promise.resolve(false);
+  }
+  return fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
+                                 body: JSON.stringify({settings: settings, clear: clear})})
+    .then(r => r.json().then(body => ({ok: r.ok, body: body})))
+    .then(res => {
+      if (!res.ok) { fb.className = 'ab-fb ab-bad'; fb.textContent = res.body.error || 'that was not saved'; return false; }
+      return true;
+    });
+}
+function abWizDetail(body) {
+  const box = document.getElementById('ab-wiz-test-fb-detail');
+  box.textContent = '';
+  (body.details || []).forEach(t => { const p = document.createElement('p'); p.textContent = t; box.appendChild(p); });
+  if (body.rule) { const p = document.createElement('p'); p.className = 'ab-rule'; p.textContent = body.rule; box.appendChild(p); }
+  box.hidden = !box.childNodes.length;
+}
+function abWizardClientTest() {
+  const fb = document.getElementById('ab-wiz-test-fb');
+  const btn = document.getElementById('ab-wiz-test');
+  document.getElementById('ab-wiz-test-fb-detail').hidden = true;
+  fb.className = 'ab-fb'; fb.textContent = 'saving, then signing in...';
+  btn.disabled = true;
+  abWizSave(fb).then(saved => {
+    if (!saved) return;
+    fb.textContent = 'signing in... this can take a few seconds';
+    return abWizPost({action: 'test'}).then(res => {
+      const b = res.body;
+      fb.className = 'ab-fb ' + (!b.ok || b.chain === 'problem' ? 'ab-bad' : b.chain === 'unknown' ? 'ab-warn' : 'ab-good');
+      fb.textContent = b.message || b.error || 'no answer';
+      if (b.saved_url) document.getElementById('ab-wiz-url').value = b.saved_url;
+      abWizDetail(b);
+    });
+  }).catch(() => { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach Audiobind'; })
+    .finally(() => { btn.disabled = false; });
+}
+function abWizardClientContinue() {
+  const fb = document.getElementById('ab-wiz-test-fb');
+  fb.className = 'ab-fb'; fb.textContent = 'saving...';
+  abWizSave(fb).then(saved => { if (saved) location.href = '/setup/downloading?step=3'; })
+    .catch(() => { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach Audiobind'; });
 }
 // After an answer the page reloads at the result: put keyboard and screen-reader focus on it.
 (function () {
@@ -8373,7 +8536,8 @@ class Handler(BaseHTTPRequestHandler):
         """POST /api/setup/downloading {"action": ...}: the Set up downloading guide's answers.
         "dismiss": the Library page's card is answered for good ("No, just my library").
         "mode": step 1's answer (library | files | tracker). Only "tracker" leads on to step 2; the other two
-        also answer the card, so it does not ask a person who has already said what they want."""
+        also answer the card, so it does not ask a person who has already said what they want.
+        "test": step 2's Test on the saved values (200 ok, 502 not), in plain words; see wizard.test_client."""
         payload = self._read_json()
         if payload is None:
             return
@@ -8393,6 +8557,14 @@ class Handler(BaseHTTPRequestHandler):
                 answers[wizard_mod.META_DISMISSED] = True  # answered: the Library page's card has nothing more to ask
             self.state.set_meta_many(answers)
             self._send(200, json.dumps({"ok": True, "mode": mode}).encode(), "application/json")
+            return
+        if action == "test":
+            set_effective(self.state)
+            folder = ingest_mod.configured_dir()
+            extra = [f"Audiobind reads its ingest folder: {folder}." if folder else
+                     "Audiobind has no ingest folder yet (step 1 shows how to set it).", ONE_FOLDER_THREE_NAMES]
+            answer = wizard_mod.test_client(self.state, extra)
+            self._send(200 if answer["ok"] else 502, json.dumps(answer).encode(), "application/json")
             return
         self._send(400, b'{"error":"unknown action"}', "application/json")
 

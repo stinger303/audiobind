@@ -148,3 +148,65 @@ def loopback_url(url: str) -> str:
     if parts.scheme not in ("http", "https") or not host or host in ("127.0.0.1", "localhost", "::1"):
         return ""
     return f"{parts.scheme}://127.0.0.1:{port or (443 if parts.scheme == 'https' else 80)}"
+
+
+def _plain(message: str) -> str:
+    """The client test's "Connected - qBittorrent 5.0.4" as the guide says it: "Signed in to qBittorrent 5.0.4"."""
+    return "Signed in to " + message[len("Connected - "):] if message.startswith("Connected - ") else message
+
+
+def test_client(state, extra_details=()) -> dict:
+    """Step 2's Test: the Watcher tab's own client check (``watcher.probe_qbit_report``) on the saved values, said
+    in plain words, with one addition for qBittorrent. If the address does not answer at all, the same login is
+    tried once on ``127.0.0.1:<same port>`` (Audiobind and qBittorrent sharing one container network, where the
+    server's LAN address is not the way in). The answer says which address answered; when it was the loopback one
+    it is saved as the qBittorrent URL, because that is the address Audiobind can actually reach.
+
+    ``{"ok", "message", "chain", "details", "rule", "answered", "retried", "saved_url"}``. Never a setting's
+    value other than the two addresses: the messages are built from results, and a password is not among them.
+    ``extra_details`` are appended to a successful answer (the folder the ingest reads, and the one-folder
+    explanation)."""
+    from . import watcher
+    from .config import WATCHER_TEXT_CHECKS, set_effective
+
+    set_effective(state)
+    first = watcher.client_url()
+    if not first.strip():
+        return {"ok": False, "message": f"There is no address yet. Type the address of {watcher.client_label()}'s web "
+                                        "page and test again.", "chain": "", "details": [], "rule": "",
+                "answered": "", "retried": False, "saved_url": ""}
+    report = watcher.probe_qbit_report()
+    answer = {"ok": report["ok"], "message": _plain(report["message"]), "chain": report["chain"],
+              "details": list(report["details"]), "rule": report["rule"], "answered": first if report["ok"] else "",
+              "retried": False, "saved_url": ""}
+    if not report["ok"] and watcher.client_kind() == "qbittorrent" and report["kind"] == "unavailable":
+        alt = loopback_url(first)
+        if alt:
+            second = watcher.probe_qbit_report(url=alt)
+            answer["retried"] = True
+            if second["kind"] in ("", "auth"):  # something answered there: it is the way in from here
+                try:
+                    stored = WATCHER_TEXT_CHECKS["qbit_url"][1](alt)
+                except ValueError:
+                    stored = ""
+                if stored:
+                    state.set_meta("setting_qbit_url", stored)
+                    set_effective(state)
+                    watcher.WATCHER.settings_changed(state)
+                    answer["saved_url"] = stored
+                tail = (f"qBittorrent did not answer at {first}, but it did at {alt}: it shares Audiobind's network, "
+                        "so that is the address Audiobind has to use. It is saved now.")
+                if second["ok"]:
+                    answer.update(ok=True, message=_plain(second["message"]) + ". " + tail, chain=second["chain"],
+                                  details=list(second["details"]), rule=second["rule"], answered=alt)
+                else:
+                    answer["message"] = f"{second['message']}. {tail} Fix the user name or password and test again."
+                    answer["details"] = []
+            else:
+                answer["message"] = (f"Nothing answered at {first}, and nothing answered at {alt} either. Check that "
+                                     "qBittorrent is running, that the WebUI is switched on, and that this is the "
+                                     "address you open its WebUI with.")
+                answer["details"] = [f"At {first}: {report['message']}.", f"At {alt}: {second['message']}."]
+    if answer["ok"]:
+        answer["details"] += list(extra_details)
+    return answer

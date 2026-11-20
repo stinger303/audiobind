@@ -153,8 +153,10 @@ def make_ip_transport():
     return ipupdate.urllib_transport(_setting("tracker_proxy"), tracker.resolve_user_agent(_setting("tracker_user_agent")))
 
 
-def make_qbit() -> qbit.QbitClient:
-    return qbit.QbitClient(qbit_url(), _setting("qbit_user"), _setting("qbit_pass"))
+def make_qbit(url: str | None = None) -> qbit.QbitClient:
+    """The qBittorrent client for the saved settings; ``url`` tries the same login at another address
+    (the setup guide's one retry on this container's own loopback) without saving anything."""
+    return qbit.QbitClient(qbit_url() if url is None else url, _setting("qbit_user"), _setting("qbit_pass"))
 
 
 def client_kind() -> str:
@@ -324,29 +326,32 @@ def folder_chain(category: str, check: dict, ingest_dir: str, exists=None) -> di
     return {"level": "problem", "lines": lines}
 
 
-def probe_qbit_report() -> dict:
+def probe_qbit_report(url: str | None = None) -> dict:
     """Settings > Watcher "Test qBittorrent" / Download client "Test connection": log in to the selected
     client with the saved values and ask the version. For qBittorrent it also reads - in the same session,
     GET requests only, nothing added - its categories and the torrents of the configured category, and says
     whether the category's save path is the folder Audiobind watches. ``{"ok", "message", "chain", "details",
-    "rule"}``; ``chain`` is "" for the other clients. Nothing is stored; the session is logged out again."""
+    "rule", "kind"}``; ``chain`` is "" for the other clients, ``kind`` is the ClientError kind of a failure
+    (unavailable | auth | refused | error; "" on success). ``url`` (qBittorrent only) tests that address instead
+    of the saved one. Nothing is stored; the session is logged out again."""
     label = client_label()
-    report = {"ok": False, "message": "", "chain": "", "details": [], "rule": ""}
-    if client_kind() == "qbittorrent" and not qbit_url().strip():
+    report = {"ok": False, "message": "", "chain": "", "details": [], "rule": "", "kind": ""}
+    qbit_only = url is not None and client_kind() == "qbittorrent"
+    if client_kind() == "qbittorrent" and not (url if qbit_only else qbit_url()).strip():
         report["message"] = "QBIT_URL is not set - fill in the qBittorrent URL above and test again"
         return report
     try:
-        client = make_client()
+        client = make_qbit(url) if qbit_only else make_client()
         if client_kind() != "qbittorrent":
             report.update(ok=True, message=f"Connected - {label} {client.version()}")
             return report
         category = qbit_category()
         check = client.check(category)
     except ClientError as exc:
-        report["message"] = str(exc)
+        report["message"], report["kind"] = str(exc), exc.kind
         return report
     except Exception as exc:  # noqa: BLE001 - whatever it is, the answer is "not connected"
-        report["message"] = f"{label} could not be reached ({type(exc).__name__})"
+        report["message"], report["kind"] = f"{label} could not be reached ({type(exc).__name__})", "unavailable"
         return report
     from . import ingest
 

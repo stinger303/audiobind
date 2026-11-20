@@ -618,6 +618,66 @@ check("watcher settings: no unexpanded {placeholders}",
 check("watcher settings: no CDN references", not EXTERNAL_LOAD.search(on_settings))
 node_check("watcher settings", on_settings, "watcher-settings.js")
 CONFIG.tracker_session, CONFIG.qbit_user, CONFIG.qbit_pass = "", "", ""
+CONFIG.qbit_url = ""  # a fresh install has no download client address: the wizard pre-fills one
+
+# ---- the "Set up downloading" wizard (0.26.0, pass A): card, entry button, steps 1-2, the guard
+print("\nset up downloading wizard:")
+WIZ = "/setup/downloading"
+status, headers, _ = fetch(WIZ)
+check("wizard: signed out, the page goes to the sign-in", status == 303 and headers.get("Location") == "/login",
+      f"{status} {headers.get('Location')}")
+status, _, _ = fetch("/api/setup/downloading", b'{"action":"dismiss"}', {"Content-Type": "application/json"})
+check("wizard: signed out, an answer is refused", status in (401, 403), str(status))
+status, headers, _ = fetch("/api/setup/downloading", headers={"Cookie": COOKIE})
+check("wizard: the answer route is POST only", status == 405 and headers.get("Allow") == "POST", str(status))
+library_page = get("/")
+check("wizard: the Library page shows the one-time card",
+      'id="ab-wizcard"' in library_page and ">No, just my library</button>" in library_page
+      and f'href="{WIZ}">Set up downloading</a>' in library_page)
+check("wizard: the Watcher tab has the Set up downloading button",
+      'id="ab-wiz-open"' in get("/settings?tab=watcher"))
+step1 = get(WIZ)
+check("wizard: step 1 is served with the three answers and the whole step list",
+      "Step 1 of 4" in step1 and step1.count('<input type="radio" name="ab-arrive"') == 3
+      and all(n in step1 for n in ("How books arrive", "Download client", "The address the tracker sees",
+                                   "Your tracker", "Done")))
+check("wizard: no unexpanded {placeholders}", not re.search(r"\{(disc_body|discover_script|page_title|styles)\}", step1))
+check("wizard: no CDN references", not EXTERNAL_LOAD.search(step1))
+node_check("wizard step 1", step1, "wizard-1.js")
+status, _, answer = post_json("/api/setup/downloading", {"action": "mode", "mode": "tracker"})
+check("wizard: the 'private tracker' answer is stored", status == 200 and json.loads(answer).get("mode") == "tracker",
+      f"{status} {answer}")
+step1_after = get(WIZ + "?step=1")
+check("wizard: step 1 then shows the ingest status and the way on",
+      'id="ab-wiz-ingest"' in step1_after and 'id="ab-wiz-next"' in step1_after and 'value="tracker" checked' in step1_after)
+step2 = get(WIZ + "?step=2")
+check("wizard: step 2 is served and the address is pre-filled from the Host the browser used",
+      "Step 2 of 4" in step2 and 'id="ab-wiz-url" value="http://127.0.0.1:8080"' in step2)
+check("wizard: step 2 has every box labelled", all(f'for="ab-wiz-{f}"' in step2
+                                                  for f in ("client", "url", "user", "pass", "category")))
+check("wizard: Back goes to step 1", f'id="ab-wiz-back" href="{WIZ}?step=1"' in step2)
+node_check("wizard step 2", step2, "wizard-2.js")
+status, _, _ = post_json("/api/settings", {"settings": {"qbit_pass": "VERIFY WIZ PASS", "qbit_url": "http://127.0.0.1:1",
+                                                        "qbit_user": "verify-wiz-user"}})
+status, _, tested = post_json("/api/setup/downloading", {"action": "test"})
+test_answer = json.loads(tested)
+check("wizard: Test answers in plain words and retries once on the loopback address",
+      status == 502 and test_answer.get("ok") is False and test_answer.get("retried") is False
+      and test_answer.get("message"), f"{status} {tested}")
+check("wizard: the password is never served (step 2, the test answer, the Watcher tab)",
+      "VERIFY WIZ PASS" not in get(WIZ + "?step=2") + tested + get("/settings?tab=watcher"))
+step3 = get(WIZ + "?step=3")
+check("wizard: step 3 says it is not built yet and offers the way back",
+      "is not built yet" in step3 and f'href="{WIZ}?step=2"' in step3)
+status, _, _ = post_json("/api/settings", {"reset_keys": ["qbit_url", "qbit_user", "qbit_pass"]})
+status, _, _ = post_json("/api/setup/downloading", {"action": "mode", "mode": "library"})
+done_page = get(WIZ + "?step=1")
+check("wizard: 'only my library' closes the flow with the plain sentence and goes back to the Library",
+      "Audiobind will convert what is already in your library." in done_page and 'href="/?status=all"' in done_page
+      and "Step 1 of 4" in get(WIZ + "?step=2"))
+check("wizard: answering it also answers the Library card", 'id="ab-wizcard"' not in get("/"))
+status, _, _ = post_json("/api/setup/downloading", {"action": "mode", "mode": "teleport"})
+check("wizard: an answer it does not know is refused", status == 400, str(status))
 
 creds = state.get_credentials()
 served = html + settings_page + get("/api/state") + get("/api/units")
