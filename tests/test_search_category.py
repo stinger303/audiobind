@@ -114,6 +114,90 @@ class TestCategoryField(PresetWebCase):
         self.assertEqual(len(found.categories), 2)
 
 
+class TestCategoriesOnlyPreset(PresetWebCase):
+    """D7: a preset may carry fillable settings, a category list, or both - never neither."""
+
+    ONLY = {"label": "Categories only", "categories": CATS}
+    BUTTON = "Fill the tracker fields from preset file"
+
+    def page(self):
+        return web.render_settings(self.state, "watcher")
+
+    def test_parse_accepts_absent_or_empty_settings_with_a_list(self):
+        for data in (self.ONLY, {**self.ONLY, "settings": {}}, {**self.ONLY, "settings": {"TRACKER_URL": ""}}):
+            with self.subTest(data=data):
+                found, why = preset.parse(json.dumps(data))
+                self.assertEqual((why, found.values, found.categories), ("", {}, CATS))
+
+    def test_categories_only_shows_the_dropdown_names_the_preset_and_offers_no_button(self):
+        self.put(self.ONLY)
+        page = self.page()
+        self.assertIn("<select", field(page))
+        self.assertIn('<option value="13">Audiobooks (13)</option>', field(page))
+        self.assertIn("Tracker preset: Categories only", page)
+        self.assertNotIn(self.BUTTON, page)
+        self.assertNotIn('id="ab-preset-fill"', page)
+        self.assertNotIn('id="ab-preset-error"', page)
+        self.assertNotIn("cannot be used", page)
+
+    def test_settings_only_is_unchanged_a_text_field_and_the_button(self):
+        self.put(GOOD)
+        page = self.page()
+        self.assertIn('type="text"', field(page))
+        self.assertNotIn("<select", field(page))
+        self.assertIn(self.BUTTON, page)
+        self.assertNotIn('id="ab-preset-error"', page)
+
+    def test_both_gives_the_dropdown_and_the_button(self):
+        self.put({**GOOD, "categories": CATS})
+        page = self.page()
+        self.assertIn("<select", field(page))
+        self.assertIn(self.BUTTON, page)
+        self.assertNotIn('id="ab-preset-error"', page)
+
+    def test_neither_keeps_the_existing_rejection(self):
+        for data, message in (({"label": "x"}, "needs"), ({"label": "x", "settings": {}}, "needs"),
+                              ({"label": "x", "settings": {}, "categories": {}}, "needs"),
+                              ({"label": "x", "settings": {"TRACKER_URL": ""}}, "nothing to fill")):
+            with self.subTest(data=data):
+                found, why = preset.parse(json.dumps(data))
+                self.assertIsNone(found)
+                self.assertIn(message, why)
+        self.put({"label": "x", "settings": {}})
+        page = self.page()
+        self.assertIn('id="ab-preset-error"', page)
+        self.assertIn("cannot be used", page)
+        self.assertIn('type="text"', field(page))
+
+    def test_a_label_and_the_other_rules_still_apply_to_a_categories_only_file(self):
+        for data in ({"categories": CATS}, {"label": "  ", "categories": CATS},
+                     {**self.ONLY, "settings": {"TRACKER_SESSION": "x"}},
+                     {**self.ONLY, "settings": {"TRACKER_NOPE": "x"}},
+                     {**self.ONLY, "settings": {"TRACKER_URL": "not a url"}},
+                     {**self.ONLY, "categories": ["13"]}):
+            with self.subTest(data=data):
+                found, why = preset.parse(json.dumps(data))
+                self.assertIsNone(found)
+                self.assertTrue(why)
+
+    def test_the_apply_endpoint_refuses_a_categories_only_preset_and_writes_nothing(self):
+        self.put(self.ONLY)
+        self.save({"settings": {"tracker_url": "https://kept.example", "tracker_search_category": "99"}})
+        keys = list(config.SETTING_KEYS)
+        before = {k: self.state.get_meta(f"setting_{k}") for k in keys}
+        effective = {k: config.setting_effective(k) for k in keys}
+        for payload in ({}, {"overwrite": True}):
+            with self.subTest(payload=payload):
+                status, body = self.fill(**payload)
+                self.assertEqual(status, 400, body)
+                self.assertFalse(body["ok"])
+                self.assertIn("no fields to fill", body["error"])
+        self.assertEqual({k: self.state.get_meta(f"setting_{k}") for k in keys}, before)
+        self.assertEqual({k: config.setting_effective(k) for k in keys}, effective)
+        self.assertEqual(before["tracker_url"], "https://kept.example")
+        self.assertEqual(before["tracker_search_category"], "99")
+
+
 class TestMembershipLabel(PresetWebCase):
     def test_the_select_reads_vip_slash_premium_and_names_both_words(self):
         page = web.render_settings(self.state, "watcher")
