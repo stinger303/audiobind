@@ -5,6 +5,7 @@ import http.client
 import io
 import os
 import pathlib
+import tempfile
 import unittest
 from unittest import mock
 
@@ -305,6 +306,43 @@ class IncompleteReadTests(unittest.TestCase):
         answers = iter([_CutOffResponse(), _Response(b'{"asin": "B005EHN61O"}')])
         with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: next(answers)):
             self.assertEqual(catalog._get_json("https://example.test/a7b"), {"asin": "B005EHN61O"})
+
+
+class _FakeSocket:
+    def __init__(self, raw: bytes):
+        self.raw = raw
+
+    def makefile(self, *_args, **_kw):
+        return io.BytesIO(self.raw)
+
+
+def real_response(raw: bytes) -> http.client.HTTPResponse:
+    """A real HTTPResponse parsed from ``raw`` (status line, headers, body), as urlopen returns."""
+    response = http.client.HTTPResponse(_FakeSocket(raw), method="GET")
+    response.begin()
+    return response
+
+
+COVER_URL = "https://m.media-amazon.com/images/I/51abc.jpg"
+
+
+class CutOffCoverTests(unittest.TestCase):
+    """AB-FIX-A2 #2: a cover whose chunked body is cut off is a failed download, not a crash."""
+
+    def test_a7_cover_a_cut_off_cover_body_returns_false(self):
+        self.assertTrue(catalog.allowed_image_url(COVER_URL))
+        dest = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory())) / "c.jpg"
+        # a real chunked response that promises 0x2000 bytes and ends after 10
+        raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2000\r\n" + b"\xff\xd8" + b"x" * 8
+        with mock.patch.object(catalog._image_opener, "open", return_value=real_response(raw)):
+            self.assertFalse(catalog.download(COVER_URL, str(dest)))
+        self.assertFalse(dest.exists())
+
+    def test_a7_cover_the_double_raises_incomplete_read(self):
+        with mock.patch.object(catalog._image_opener, "open", return_value=_CutOffResponse()):
+            self.assertFalse(catalog.download(COVER_URL, os.devnull))
+
+
 
 
 # --------------------------------------------------------------------------- A8

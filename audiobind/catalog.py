@@ -303,7 +303,9 @@ def download(url: str, destination: str) -> bool:
         with open(destination, "wb") as handle:
             handle.write(data)
         return True
-    except (urllib.error.URLError, OSError, TimeoutError):
+    # IncompleteRead (a chunked body cut off mid-read) is an HTTPException, not an OSError:
+    # an optional cover must never fail the conversion that asked for it
+    except (urllib.error.URLError, OSError, TimeoutError, http.client.IncompleteRead):
         return False
 
 
