@@ -290,18 +290,28 @@ class SetupCodeTests(AccountCase):
         self.assertTrue(code)
         self.assertIn(f"setup code: {code}  (required to create the first account)", "\n".join(logs.output))
 
-    def test_wrong_codes_count_towards_the_sign_in_lockout(self):
-        # SEC-01b: guesses are metered like sign-ins; the code itself is not spent by them
+    def test_wrong_codes_never_lock_out_the_right_one(self):
+        # SEC-01c: a peer on the owner's limiter key (same NAT, proxy or /64) cannot 429 the
+        # owner's correct code - wrong codes are only logged, never metered or delayed
         code = self.code()
-        for i in range(auth_mod.FAIL_LIMIT):
-            self.assertEqual(self.post_setup({"setup_code": f"WRONG{i}"})[0], 403, i)
-        status, headers, _ = self.post_setup({"setup_code": code}, as_json=True)
-        self.assertEqual(status, 429)
-        self.assertTrue(int(headers["Retry-After"]) > 0)
-        self.assertIsNone(self.state.get_credentials())
-        self.assertEqual(self.state.get_meta("setup_code"), code)  # not consumed
-        auth_mod.LIMITER.clear()
-        self.assertEqual(self.post_setup({"setup_code": code})[0], 303)
+        wrong = max(6, auth_mod.FAIL_LIMIT + 1)
+        with self.assertLogs("audiobind", logging.WARNING) as logs:
+            for i in range(wrong):
+                self.assertEqual(self.post_setup({"setup_code": f"WRONG{i}"})[0], 403, i)
+        refused = [line for line in logs.output if "wrong setup code" in line]
+        self.assertEqual(len(refused), wrong)
+        self.assertTrue(all("127.0.0.1" in line for line in refused))  # the source address
+        self.assertEqual(self.state.get_meta("setup_code"), code)  # not consumed by guesses
+        status, headers, _ = self.post_setup({"setup_code": code})
+        self.assertEqual(status, 303)
+        self.assertEqual(self.state.get_credentials().username, USER)
+        self.assertFalse(self.state.get_meta("setup_code"))  # consumed
+        status, _, _ = self.post_setup(
+            {"setup_code": code, "username": "mallory", "password": "mallory-pass", "confirm": "mallory-pass"},
+            as_json=True,
+        )
+        self.assertEqual(status, 409)  # still single-use
+        self.assertEqual(self.state.get_credentials().username, USER)
 
     def test_an_override_the_form_cannot_take_is_refused_at_start(self):
         for bad in ("A" * 65, "two words", "bad_code!", "café-42"):

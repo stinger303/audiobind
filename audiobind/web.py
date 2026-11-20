@@ -7487,17 +7487,10 @@ class Handler(BaseHTTPRequestHandler):
             refuse_existing()
             return
         ip = self._client_ip()
-        if not auth_mod.LIMITER.attempt(ip):  # SEC-01b: code guesses share the sign-in budget
-            message, wait = self._locked_out_message(ip)
-            if wants_json:
-                self._send(429, json.dumps({"error": message}).encode(), "application/json",
-                           {"Retry-After": str(wait)})
-            else:
-                page = render_setup(message, fields.get("username", "").strip())
-                self._send(429, page.encode(), "text/html; charset=utf-8", {"Retry-After": str(wait)})
-            return
         if not auth_mod.setup_code_matches(self.state, fields.get("setup_code", "")):
-            # SEC-01: no code, no account - checked before anything else is looked at
+            # SEC-01: no code, no account - checked before anything else is looked at.
+            # SEC-01c: never metered - 40 random bits need no limiter, and a peer sharing the
+            # owner's limiter key must not be able to lock out the right code; the log is the trail
             logging.getLogger("audiobind").warning("setup refused (wrong setup code) from %s", ip)
             problem = "That setup code is not right. It is printed in the container log when Audiobind first started."
             if wants_json:
@@ -7506,7 +7499,6 @@ class Handler(BaseHTTPRequestHandler):
                 page = render_setup(problem, fields.get("username", "").strip())
                 self._send(403, page.encode(), "text/html; charset=utf-8")
             return
-        auth_mod.LIMITER.reset(ip)  # the right code: this address's failures go, as after a sign-in
         username = fields.get("username", "").strip()
         password = fields.get("password", "")
         problem = auth_mod.username_problem(username) or auth_mod.password_problem(

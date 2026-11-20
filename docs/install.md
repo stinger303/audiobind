@@ -170,8 +170,8 @@ port cannot claim your install. The code stays the same across restarts until th
 created, then it is used up. For an unattended install, set `AUDIOBIND_SETUP_CODE` to choose
 the code yourself; it is then not generated or printed. It must be at most 64 characters of
 `A-Z`, `0-9` and `-` (case does not matter). One that breaks that rule is not used: the log says
-so and prints a generated code instead. A wrong setup code counts towards the same lockout as a
-wrong password (five per IP in 10 minutes).
+so and prints a generated code instead. A wrong setup code is refused and logged with the address
+it came from; it never locks anyone out, so the right code always works.
 
 `/healthz` is the one public endpoint, with or without an account: it needs no sign-in, so an
 uptime monitor can poll it, and it only ever answers `ok` (200) or `stale` (503; the scan loop has
