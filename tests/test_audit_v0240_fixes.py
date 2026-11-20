@@ -1,6 +1,8 @@
 """Regression tests for the HIGH-impact defects of the v0.24.0 audit (AB-FIX-A), one class per ID."""
 
 import contextlib
+import http.client
+import io
 import os
 import pathlib
 import unittest
@@ -167,6 +169,54 @@ class VanishedSourceFileTests(PipelineCase):
         ):
             audit = pipeline.audit_unit(unit)
         self.assertEqual(audit.src_mb, 1.0)
+
+
+# --------------------------------------------------------------------------- A7
+class _CutOffResponse(io.BytesIO):
+    """A chunked response whose connection drops mid-body."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, *_args):
+        raise http.client.IncompleteRead(b'{"asin": "B0', 40)
+
+
+class _Response(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class IncompleteReadTests(unittest.TestCase):
+    def setUp(self):
+        catalog.cache_clear()
+        self.addCleanup(catalog.cache_clear)
+        sleeper = mock.patch.object(catalog.time, "sleep")  # no politeness gap / backoff waits
+        sleeper.start()
+        self.addCleanup(sleeper.stop)
+
+    def test_a7_a_cut_off_body_is_a_failed_lookup_not_an_exception(self):
+        with mock.patch.object(catalog.urllib.request, "urlopen",
+                               side_effect=lambda *a, **k: _CutOffResponse()) as opened:
+            self.assertIsNone(catalog._get_json("https://example.test/a7"))
+        self.assertEqual(opened.call_count, 3)  # retried like any other transport failure
+        self.assertIsNone(catalog.cache_get("https://example.test/a7"))
+
+    def test_a7_every_caller_sees_an_empty_result(self):
+        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: _CutOffResponse()):
+            self.assertEqual(catalog.search(title="Dune"), [])
+            self.assertEqual(catalog.book("B005EHN61O"), {})
+
+    def test_a7_a_retry_after_a_cut_off_body_still_gets_the_answer(self):
+        answers = iter([_CutOffResponse(), _Response(b'{"asin": "B005EHN61O"}')])
+        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: next(answers)):
+            self.assertEqual(catalog._get_json("https://example.test/a7b"), {"asin": "B005EHN61O"})
 
 
 if __name__ == "__main__":

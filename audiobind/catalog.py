@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import threading
 import time
@@ -150,7 +151,8 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
                 return None
             if attempt < tries - 1:  # no backoff after the last try: nothing follows it
                 time.sleep(1.2 * (attempt + 1))
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        # IncompleteRead (a chunked body cut off mid-read) is an HTTPException, not an OSError
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError, http.client.IncompleteRead):
             if attempt < tries - 1:
                 time.sleep(1.2 * (attempt + 1))
     return None
