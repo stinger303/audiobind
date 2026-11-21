@@ -30,6 +30,39 @@ the JSON document its search expects, and the name and value of its session cook
 for the qBittorrent WebUI) the watcher is off: no thread, no network, and Settings > Watcher
 names what is still missing.
 
+### The guided setup ("Set up downloading")
+
+Instead of filling the Watcher tab field by field, you can use the guide at `/setup/downloading`.
+It is reachable from the Library page's one-time card and from the **Set up downloading** button
+on Settings > Watcher, and only when you are signed in. It saves into the very same settings the
+Watcher tab saves, through the same checks, and remembers where you were across a container
+restart.
+
+1. **How books arrive**: only your library, your own downloader (the ingest folder), or a
+   private tracker through a download client. Only the last one goes on to steps 2-4.
+2. **Download client**: which client, its address and sign-in, and the category. **Test** signs
+   in and looks at the categories; it adds nothing.
+3. **The address the tracker sees**: a tracker session is bound to the address it was created
+   from. The step shows the address Audiobind's tracker requests leave from (through
+   `TRACKER_PROXY` when set) and when it was last checked. When "Only reach the tracker from one
+   IP" (`TRACKER_EXPECTED_EGRESS_IP`) is set it says whether the two match, and what happens when
+   they do not: the session is refused, so create a new one from the address shown. **Check
+   again** asks the same address lookup the egress guard uses, once; it never contacts the
+   tracker. Showing the page sends nothing, and a failed lookup never blocks **Continue**.
+4. **Your tracker**: the site's address, the session cookie (a value you create on the site's own
+   preferences page and paste in - Audiobind never asks for your tracker password), the cookie's
+   name, then the search settings (path, request, method, encoding, category, download path).
+   **Test** saves what you changed, then sends exactly **one** search with your configured
+   request, through the watcher's own client (so its spacing and backoff apply, and a backoff in
+   force means nothing is sent) and behind the egress guard. It answers in plain words, such as
+   "12 results, first: ..."; never the cookie, the address or the site's raw answer. The download
+   parameter, freeleech parameter, User-Agent and VIP keep their values; the Watcher tab has them.
+
+**Continue** on step 4 leads to the end of the guide: a summary of what is set up (tracker,
+download client, ingest folder, the address the tracker sees, and a note if the watcher is paused
+or in dry run) and what happens next, or "Almost done" with each missing piece and the step that
+fixes it.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `TRACKER_URL` | *(unset)* | **Required.** Base URL, e.g. `https://tracker.example`. No path, query or login; a malformed value stops startup |

@@ -723,6 +723,11 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-wiz-ip{font-family:var(--ab-mono);overflow-wrap:anywhere;word-break:break-all}
 .ab-wiz-when{margin:4px 0 0;font-size:12px;color:var(--ab-text3)}
 .ab-wiz-addr{min-width:0;overflow-wrap:anywhere}
+.ab-wiz-group{border:1px solid var(--ab-border);border-radius:8px;margin:0;padding:10px 12px 12px;min-width:0;
+  display:flex;flex-direction:column;gap:10px}
+.ab-wiz-group legend{padding:0 4px;font-size:12.5px;color:var(--ab-text2)}
+.ab-wiz-next{margin:6px 0 4px;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.ab-wiz textarea.ab-in{max-width:100%;resize:vertical}
 .ab-disc-intro{font-size:12.5px;color:var(--ab-text3);line-height:1.5}
 .ab-disc-intro b{color:var(--ab-text2);font-weight:500}
 .ab-disc-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -5462,33 +5467,23 @@ def _wizard_card(state) -> str:
 
 def _wizard_indicator(step: int, mode: str) -> str:
     """1 How books arrive · 2 Download client · 3 The address the tracker sees · 4 Your tracker · Done.
-    The step shown is marked; earlier steps that have a page are links back to it; steps 3-4 and Done are
-    listed and never clickable (so a link to a page that is not built cannot exist)."""
+    The one shown is marked. Once the person chose "a private tracker", every step and Done is a link; before
+    that only step 1 exists for them (``resolve_step`` sends anything else back to it), so the rest are
+    listed and never links."""
+    reachable = mode == wizard_mod.MODE_TRACKER
     items = []
-    for number, name in wizard_mod.STEPS:
-        label = f'<span class="ab-wiz-n" aria-hidden="true">{number}</span> {_html(name)}'
+    for number, name in list(wizard_mod.STEPS) + [(wizard_mod.DONE, "Done")]:
+        glyph = "&#10003;" if number == wizard_mod.DONE else str(number)
+        label = f'<span class="ab-wiz-n" aria-hidden="true">{glyph}</span> {_html(name)}'
+        target = "done" if number == wizard_mod.DONE else str(number)
         if number == step:
             items.append(f'<li class="ab-on" aria-current="step">{label}</li>')
-        elif number < step and number in wizard_mod.BUILT and (number == 1 or mode == wizard_mod.MODE_TRACKER):
-            items.append(f'<li class="ab-done"><a href="{wizard_mod.PATH}?step={number}">{label}</a></li>')
+        elif number == 1 or (reachable and (number in wizard_mod.BUILT or number == wizard_mod.DONE)):
+            klass = "ab-done" if number < step else "ab-ahead"
+            items.append(f'<li class="{klass}"><a href="{wizard_mod.PATH}?step={target}">{label}</a></li>')
         else:
             items.append(f'<li class="ab-later" aria-disabled="true">{label}</li>')
-    items.append('<li class="ab-later" aria-disabled="true"><span class="ab-wiz-n" aria-hidden="true">&#10003;</span> Done</li>')
     return f'<nav aria-label="Set up downloading: the steps"><ol class="ab-wiz-steps">{"".join(items)}</ol></nav>'
-
-
-def _wizard_not_built(step: int) -> str:
-    """A step that is listed but has no page yet: said plainly, with the way back and the page that has every
-    field today. The flow stops here; nothing is half-drawn."""
-    name = dict(wizard_mod.STEPS).get(step, "This step")
-    return (
-        f'<div class="ab-hintbox" role="status"><b>{_html(name)} is not built yet.</b> Everything you set up '
-        "so far is saved, and the rest of the tracker setup does not happen in this guide yet. Until it does, "
-        "the Watcher tab in Settings has every field.</div>"
-        '<div class="ab-acct-row">'
-        f'<a class="btn" href="{wizard_mod.PATH}?step={max(1, step - 1)}" id="ab-wiz-back">Back</a>'
-        '<a class="btn" href="/settings?tab=watcher" id="ab-wiz-settings">Open Settings &rarr; Watcher</a></div>'
-    )
 
 
 #: Step 1's three answers: (value stored, what the person reads, one line under it)
@@ -5761,34 +5756,251 @@ def _wizard_step3(state) -> str:
     )
 
 
+#: step 4's search settings: (settings key, element id suffix, placeholder) - shown under "Search settings"
+WIZARD_SEARCH_FIELDS = (
+    ("tracker_search_path", "tpath", "/search.json"),
+    ("tracker_search_body", "tbody", '{"q": "{{title}} {{author}}"}'),
+    ("tracker_search_method", "tmethod", ""),
+    ("tracker_search_encoding", "tenc", ""),
+    ("tracker_search_category", "tcat", ""),
+    ("tracker_download_path", "tdl", "/download.php"),
+)
+
+#: what a session cookie is, said once, for the person who has none yet. Says where it comes from and
+#: never asks for a password.
+WIZARD_SESSION_WHAT = (
+    "A session cookie is a long code your tracker hands out so a program like Audiobind can search as you "
+    "without ever knowing your password. You make one on your tracker's own website, on its preferences page "
+    "(often under Security): create a session for the address from step 3, copy its value and paste it here. "
+    "Audiobind never asks for your tracker password.")
+
+
+def _wizard_tracker_text(key: str, suffix: str, placeholder: str, area: bool = False) -> str:
+    """One text box of step 4, holding the saved value, with ``data-key`` (the Watcher tab's own settings key)
+    and ``data-initial`` so only what changed is saved."""
+    value = _attr(str(setting_effective(key) or ""))
+    common = (f'class="ab-in" id="ab-wiz-{suffix}" data-key="{key}" data-initial="{value}" '
+              f'placeholder="{_attr(placeholder)}" autocomplete="off" spellcheck="false" '
+              'autocapitalize="none" '
+              f'aria-describedby="ab-wiz-{suffix}-hint"')
+    if area:
+        control = f"<textarea rows=\"3\" {common}>{value}</textarea>"
+    else:
+        url = ' inputmode="url"' if key.endswith("_url") else ""
+        control = f'<input type="text" {common}{url} value="{value}">'
+    hint = _html(WATCH_FIELD_HINTS.get(key, ""))
+    return _wizard_field(f"ab-wiz-{suffix}", wizard_mod.TRACKER_LABELS[key], control, hint)
+
+
+def _wizard_tracker_select(key: str, suffix: str, options: list, hint: str) -> str:
+    """One choice of step 4: ``options`` is [(value, text)]; the saved value is selected."""
+    value = str(setting_effective(key) or "")
+    if not any(v == value for v, _t in options):
+        found = next((v for v, _t in options if v.upper() == value.upper()), None)
+        value = found if found is not None else options[0][0]
+    opts = "".join(f'<option value="{_attr(v)}"{" selected" if v == value else ""}>{_html(t)}</option>'
+                   for v, t in options)
+    control = (f'<select class="ab-in" id="ab-wiz-{suffix}" data-key="{key}" data-initial="{_attr(value)}" '
+               f'aria-describedby="ab-wiz-{suffix}-hint">{opts}</select>')
+    return _wizard_field(f"ab-wiz-{suffix}", wizard_mod.TRACKER_LABELS[key], control, _html(hint))
+
+
+def _wizard_search_fields() -> str:
+    """Step 4's search settings, with the Watcher tab's own hints and choices. The search category is a
+    dropdown when the preset file lists the tracker's categories, as on the Watcher tab."""
+    parts = []
+    preset, _why = preset_mod.load()
+    categories = preset.categories if preset is not None else {}
+    for key, suffix, placeholder in WIZARD_SEARCH_FIELDS:
+        if key in ("tracker_search_method", "tracker_search_encoding"):
+            options = [(c, c) for c in setting_choices(key)]
+            parts.append(_wizard_tracker_select(key, suffix, options, WATCH_FIELD_HINTS[key]))
+        elif key == "tracker_search_category" and categories:
+            options = [("", CATEGORY_NONE)] + [(k, f"{n} ({k})") for k, n in categories.items()]
+            saved = str(setting_effective(key) or "").strip()
+            if saved and saved not in categories:
+                options.append((saved, f"{saved} (not in the preset list)"))
+            parts.append(_wizard_tracker_select(key, suffix, options, CATEGORY_DROPDOWN_HINT))
+        else:
+            parts.append(_wizard_tracker_text(key, suffix, placeholder, area=key == "tracker_search_body"))
+    return "".join(parts)
+
+
+def _wizard_step4(state) -> str:
+    """Step 4: your tracker. The address, the session cookie, then the search settings, saved under the
+    Watcher tab's own keys through its own save (so its checks apply). Test saves, then sends ONE search
+    and says what came back."""
+    session_set = bool(setting_effective("tracker_session"))
+    if session_set:
+        session_hint = ("A session cookie is saved. It is never shown here again; paste a new one to "
+                        "replace it.")
+        what = ""
+    else:
+        session_hint = "Paste the value here. It is saved on the server and never shown again."
+        what = (f'<div class="ab-hintbox" id="ab-wiz-session-what"><b>What is a session cookie?</b> '
+                f"{_html(WIZARD_SESSION_WHAT)}</div>")
+    session = _wizard_field(
+        "ab-wiz-tsession", wizard_mod.TRACKER_LABELS["tracker_session"],
+        '<input type="password" class="ab-in" id="ab-wiz-tsession" data-key="tracker_session" data-secret '
+        f'value="" placeholder="{"set - leave blank to keep it" if session_set else "not set"}" '
+        'autocomplete="new-password" spellcheck="false" aria-describedby="ab-wiz-tsession-hint">'
+        + ('<label class="ab-src ab-src-clear"><input type="checkbox" id="ab-wiz-tclear"> Clear the saved '
+           "session cookie</label>" if session_set else ""),
+        _html(session_hint))
+    query = _wizard_field(
+        "ab-wiz-tquery", "Title to test with",
+        '<input type="text" class="ab-in" id="ab-wiz-tquery" value="" '
+        f'placeholder="{_attr(watcher_mod.DEFAULT_TEST_QUERY)}" autocomplete="off" '
+        'aria-describedby="ab-wiz-tquery-hint">',
+        f"Test searches your tracker once for this title. Empty = {_html(watcher_mod.DEFAULT_TEST_QUERY)}.")
+    return (
+        '<p class="ab-acct-who">Audiobind searches your tracker for the books on your wishlist. Fill in the '
+        "boxes from top to bottom and press Test: it saves them, then sends one search and tells you what "
+        "came back.</p>"
+        '<form class="ab-wiz-form" id="ab-wiz-tracker-form" onsubmit="abWizardTrackerTest(); return false;" '
+        "novalidate>"
+        + _wizard_tracker_text("tracker_url", "turl", "https://tracker.example")
+        + what + session
+        + _wizard_field(
+            "ab-wiz-tcookie", wizard_mod.TRACKER_LABELS["tracker_cookie_name"],
+            '<input type="text" class="ab-in" id="ab-wiz-tcookie" data-key="tracker_cookie_name" '
+            f'data-initial="{_attr(str(setting_effective("tracker_cookie_name") or ""))}" '
+            f'value="{_attr(str(setting_effective("tracker_cookie_name") or ""))}" placeholder="session_id" '
+            'autocomplete="off" spellcheck="false" autocapitalize="none" '
+            'aria-describedby="ab-wiz-tcookie-hint">',
+            "The name your tracker gives that cookie, shown beside it or on your tracker's API page, "
+            "e.g. session_id.")
+        + '<fieldset class="ab-wiz-group"><legend>Search settings</legend>'
+        '<p class="ab-setting-hint">How Audiobind asks your tracker for a book. Your tracker\'s API page '
+        "lists "
+        "these; the two choices already hold the usual answers.</p>"
+        + _wizard_search_fields() + "</fieldset>"
+        + query
+        + '<div class="ab-acct-row"><button class="btn ab-save" type="submit" id="ab-wiz-test">Test</button>'
+        '<span class="ab-fb" id="ab-wiz-test-fb" role="status"></span></div>'
+        '<p class="ab-setting-hint">The rest of the tracker settings (download parameter, freeleech, '
+        "User-Agent, VIP) keep their usual values; Settings &rarr; Watcher has them.</p>"
+        '<div class="ab-acct-row">'
+        f'<a class="btn" id="ab-wiz-back" href="{wizard_mod.PATH}?step=3">Back</a>'
+        '<button class="btn ab-save" type="button" id="ab-wiz-continue" onclick="abWizardTrackerContinue()">'
+        "Continue</button></div></form>"
+    )
+
+
+def _wizard_done(state) -> str:
+    """The end state after step 4: what is now set up, each line with a glyph and words, and what Audiobind
+    does next. Anything still missing is named with the step that fixes it, and the heading says so."""
+    missing = wizard_mod.tracker_missing()
+    if missing:  # the watcher's own reason names the tracker first; the address is what can be said here
+        client_ready = bool(watcher_mod.client_url().strip())
+    else:
+        client_ready = not watcher_mod.disabled_reason()
+    lines = []
+    if missing:
+        lines.append(_wizard_check(False, f"Your tracker: still missing {_html(', '.join(missing))}. "
+                                          f'<a href="{wizard_mod.PATH}?step=4">Step 4</a> has the boxes.'))
+    else:
+        lines.append(_wizard_check(True, "Your tracker: the address, session cookie and search settings are "
+                                         "saved."))
+    label, category = watcher_mod.client_label(), watcher_mod.qbit_category()
+    if client_ready:
+        lines.append(_wizard_check(True, f"Download client: {_html(label)} at "
+                                         f"<code>{_html(watcher_mod.client_url())}</code>, category "
+                                         f"<code>{_html(category)}</code>."))
+    else:
+        lines.append(_wizard_check(False, f"Download client: {_html(label)}'s address or sign-in is not "
+                                          f'finished. <a href="{wizard_mod.PATH}?step=2">Step 2</a> has it.'))
+    st = ingest_mod.status()
+    if st["ok"]:
+        lines.append(_wizard_check(True, "Finished downloads are picked up from "
+                                         f"<code>{_html(st['dir'])}</code>."))
+    else:
+        lines.append(_wizard_check(False, "There is no working ingest folder yet, so finished downloads "
+                                          "cannot reach the converter. "
+                                          f'<a href="{wizard_mod.PATH}?step=1">Step 1</a> '
+                                          "shows how to set it."))
+    view = wizard_mod.address_view(state)
+    step3 = f'<a href="{wizard_mod.PATH}?step=3">Step 3</a>'
+    if not view["ip"]:
+        lines.append(_wizard_check(None, f"The address your tracker sees has not been found yet. {step3} "
+                                         "checks it."))
+    elif view["verdict"] in ("mismatch", "home"):
+        lines.append(_wizard_check(False, f"Your tracker sees <code class=\"ab-wiz-ip\">{_html(view['ip'])}"
+                                          "</code>, and Audiobind will not use it: "
+                                          + ("it is your home connection. " if view["verdict"] == "home" else
+                                             "your session was created for another address. ")
+                                          + f"{step3} says what to do."))
+    else:
+        closing = (" It matches your session's address." if view["verdict"] == "match" else "")
+        lines.append(_wizard_check(True, f"Your tracker sees <code class=\"ab-wiz-ip\">{_html(view['ip'])}"
+                                         f"</code> (checked {_html(view['checked'])}).{closing}"))
+    if watcher_mod.WATCHER.paused(state):
+        lines.append(_wizard_check(None, "The watcher is paused, so nothing is searched until you resume it "
+                                         "on Settings &rarr; Watcher."))
+    if CONTROL.watcher_dry_run:
+        lines.append(_wizard_check(None, "Watcher dry run is on: each round searches and says what it would "
+                                         "add, but adds nothing."))
+    ready = not missing and client_ready and st["ok"] and view["verdict"] not in ("mismatch", "home")
+    if ready:
+        if not wizard_mod.read(state)["dismissed"]:
+            state.set_meta(wizard_mod.META_DISMISSED, True)  # finished: the Library card has nothing to ask
+        interval, per_round = watcher_mod.watch_interval_min(), watcher_mod.watch_max_per_cycle()
+        title = "Done: downloading is set up"
+        nxt = (
+            '<div class="ab-hintbox" id="ab-wiz-next-steps"><b>What happens now</b><ol class="ab-wiz-next">'
+            f"<li>Every {interval} minutes, Audiobind searches your tracker for the books on your "
+            "wishlist: at "
+            f"most {per_round} a round, one request at a time, a few seconds apart.</li>"
+            f"<li>When it finds one, it hands the torrent to {_html(label)} with the category "
+            f"&ldquo;{_html(category)}&rdquo;.</li>"
+            "<li>When the download finishes, the converter picks the book up from the ingest folder, tags it "
+            "and adds it to your library.</li></ol>"
+            "<p>Nothing is fetched until a book is on your wishlist.</p></div>")
+    else:
+        title = "Almost done"
+        nxt = ('<div class="ab-hintbox" id="ab-wiz-next-steps" role="status"><b>Not fetching yet.</b> '
+               "Audiobind fetches nothing until every line marked as a problem is fixed. Everything you "
+               "set up "
+               "so far is saved.</div>")
+    return (
+        f'<h2 class="ab-wiz-title" id="ab-wiz-title">{title}</h2>'
+        f'<div class="ab-hintbox" id="ab-wiz-summary"><b>What is set up</b>'
+        f'<ul class="ab-wiz-checks">{"".join(lines)}</ul></div>'
+        + nxt
+        + '<div class="ab-acct-row">'
+        f'<a class="btn" id="ab-wiz-back" href="{wizard_mod.PATH}?step=4">Back</a>'
+        '<a class="btn ab-save" id="ab-wiz-wishlist" href="/discover/wishlist">Open your wishlist</a>'
+        '<a class="btn" id="ab-wiz-library" href="/?status=all">Back to the Library</a>'
+        '<a class="btn" id="ab-wiz-settings" href="/settings?tab=watcher">Settings &rarr; Watcher</a></div>'
+    )
+
+
 def _wizard_body(state, step: int, mode: str, host: str) -> str:
-    """The content of one step. Steps without a page answer with the not-built notice."""
+    """The content of one step."""
     if step == 1:
         return _wizard_step1(state, mode)
     if step == 2:
         return _wizard_step2(state, host)
     if step == 3:
         return _wizard_step3(state)
-    return _wizard_not_built(step)
+    return _wizard_step4(state)
 
 
 def render_wizard(state, step_param=None, host: str = "") -> str:
     """GET /setup/downloading: the "Set up downloading" guide. ``step_param`` is the ?step= text (None = resume
-    where the person was); ``host`` is the Host the browser used, for the client address pre-fill. Showing a
-    step stores it, so a container restart in the middle resumes there."""
+    where the person was; "done" = the end state); ``host`` is the Host the browser used, for the client
+    address pre-fill. Showing a step stores it, so a container restart in the middle resumes there."""
     set_effective(state)
     progress = wizard_mod.read(state)
     step = wizard_mod.resolve_step(step_param, progress["mode"], progress["step"])
     wizard_mod.remember_step(state, step)
-    total = len(wizard_mod.STEPS)
-    name = dict(wizard_mod.STEPS)[step]
-    body = (
-        '<div class="ab-wiz">'
-        + _wizard_indicator(step, progress["mode"])
-        + f'<h2 class="ab-wiz-title" id="ab-wiz-title">Step {step} of {total}: {_html(name)}</h2>'
-        + _wizard_body(state, step, progress["mode"], host)
-        + "</div>"
-    )
+    if step == wizard_mod.DONE:
+        inner = _wizard_done(state)
+    else:
+        name = dict(wizard_mod.STEPS)[step]
+        inner = (f'<h2 class="ab-wiz-title" id="ab-wiz-title">Step {step} of {len(wizard_mod.STEPS)}: '
+                 f"{_html(name)}</h2>" + _wizard_body(state, step, progress["mode"], host))
+    body = '<div class="ab-wiz">' + _wizard_indicator(step, progress["mode"]) + inner + "</div>"
     return _discover_shell(state, "Set up downloading", body, WIZARD_SCRIPT)
 
 
@@ -5899,6 +6111,53 @@ function abWizardAddress() {
   const box = document.getElementById('ab-wiz-addr');
   if (box && box.dataset.auto === '1') abWizardAddress();
 })();
+// Step 4. Save what changed under the Watcher tab's own keys (data-key), through the tab's own save, so its
+// checks apply. A blank session box keeps the saved cookie. Resolves true when saved; says why in `fb`.
+function abWizTrackerSave(fb) {
+  const settings = {};
+  document.querySelectorAll('#ab-wiz-tracker-form [data-key]').forEach(el => {
+    if (el.hasAttribute('data-secret')) { if (el.value) settings[el.dataset.key] = el.value; return; }
+    const value = el.value.trim();
+    if (value !== el.dataset.initial) settings[el.dataset.key] = value;
+  });
+  const clearBox = document.getElementById('ab-wiz-tclear');
+  const clear = clearBox && clearBox.checked && !settings.tracker_session ? ['tracker_session'] : [];
+  if (!Object.keys(settings).length && !clear.length) return Promise.resolve(true);
+  return fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
+                                 body: JSON.stringify({settings: settings, clear: clear})})
+    .then(r => r.json().then(body => ({ok: r.ok, body: body})))
+    .then(res => {
+      if (!res.ok) {
+        fb.className = 'ab-fb ab-bad'; fb.textContent = res.body.error || 'that was not saved'; return false;
+      }
+      document.querySelectorAll('#ab-wiz-tracker-form [data-key]').forEach(el => {
+        if (el.hasAttribute('data-secret')) el.value = ''; else el.dataset.initial = el.value.trim();
+      });
+      return true;
+    });
+}
+function abWizardTrackerTest() {
+  const fb = document.getElementById('ab-wiz-test-fb');
+  const btn = document.getElementById('ab-wiz-test');
+  fb.className = 'ab-fb'; fb.textContent = 'saving, then searching once...';
+  btn.disabled = true;
+  abWizTrackerSave(fb).then(saved => {
+    if (!saved) return;
+    fb.textContent = 'searching your tracker once... this can take a few seconds';
+    const query = document.getElementById('ab-wiz-tquery').value.trim();
+    return abWizPost({action: 'tracker_test', query: query}).then(res => {
+      fb.className = 'ab-fb ' + (res.body.ok ? 'ab-good' : 'ab-bad');
+      fb.textContent = res.body.message || res.body.error || 'no answer';
+    });
+  }).catch(() => { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach Audiobind'; })
+    .finally(() => { btn.disabled = false; });
+}
+function abWizardTrackerContinue() {
+  const fb = document.getElementById('ab-wiz-test-fb');
+  fb.className = 'ab-fb'; fb.textContent = 'saving...';
+  abWizTrackerSave(fb).then(saved => { if (saved) location.href = '/setup/downloading?step=done'; })
+    .catch(() => { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach Audiobind'; });
+}
 // After an answer the page reloads at the result: put keyboard and screen-reader focus on it.
 (function () {
   if (location.hash !== '#ab-wiz-outcome') return;
@@ -9005,7 +9264,9 @@ class Handler(BaseHTTPRequestHandler):
         also answer the card, so it does not ask a person who has already said what they want.
         "test": step 2's Test on the saved values (200 ok, 502 not), in plain words; see wizard.test_client.
         "address": step 3's Check again - one egress probe, stored as the watcher stores it (200 found,
-        502 not), with the redrawn finding; see wizard.check_address."""
+        502 not), with the redrawn finding; see wizard.check_address.
+        "tracker_test": step 4's Test - ONE search on the saved settings, {"query": optional title}
+        (200 answered, 502 not), in plain words; see wizard.test_tracker."""
         payload = self._read_json()
         if payload is None:
             return
@@ -9039,6 +9300,15 @@ class Handler(BaseHTTPRequestHandler):
             answer = {"ok": not view["failed"], "message": _wizard_address_message(view),
                       "ip": view["ip"], "verdict": view["verdict"], "checked": view["checked"],
                       "html": _wizard_address_box(view)}
+            self._send(200 if answer["ok"] else 502, json.dumps(answer).encode(), "application/json")
+            return
+        if action == "tracker_test":
+            query = payload.get("query", "")
+            if query is not None and not isinstance(query, str):
+                self._send(400, b'{"ok":false,"message":"the title to test with must be text"}',
+                           "application/json")
+                return
+            answer = wizard_mod.test_tracker(self.state, query or "")
             self._send(200 if answer["ok"] else 502, json.dumps(answer).encode(), "application/json")
             return
         self._send(400, b'{"error":"unknown action"}', "application/json")

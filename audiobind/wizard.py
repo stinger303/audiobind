@@ -44,8 +44,11 @@ STEPS = (
     (4, "Your tracker"),
 )
 #: steps that have a page. A step without one is listed, not clickable, and answers with "not built yet".
-BUILT = (1, 2, 3)
+BUILT = (1, 2, 3, 4)
 LAST_STEP = STEPS[-1][0]
+#: the end state after the last step: not a step of its own (the indicator lists it as "Done"), but a
+#: place the person can be, so it is stored and resumed like one. ``?step=done`` asks for it.
+DONE = LAST_STEP + 1
 
 #: the download client's default WebUI port, for the pre-filled address
 QBIT_DEFAULT_PORT = 8080
@@ -67,7 +70,7 @@ def read(state) -> dict:
     step = state.get_meta(META_STEP, 1)
     return {
         "mode": mode if mode in MODES else "",
-        "step": step if isinstance(step, int) and not isinstance(step, bool) and 1 <= step <= LAST_STEP else 1,
+        "step": step if isinstance(step, int) and not isinstance(step, bool) and 1 <= step <= DONE else 1,
         "dismissed": state.get_meta(META_DISMISSED, False) is True,
     }
 
@@ -75,12 +78,15 @@ def read(state) -> dict:
 def resolve_step(requested, mode: str, stored: int) -> int:
     """The step to show. ``requested`` is the ?step= text (or None: resume at ``stored``). Anything past step 1
     needs the "through a download client" answer: the person who chose "only my library" or "my own downloader"
-    never reaches steps 2-4, whatever the address bar says."""
+    never reaches steps 2-4 or the end, whatever the address bar says. ``done`` is the end state."""
     try:
-        step = int(requested) if requested not in (None, "") else stored
+        if requested == "done":
+            step = DONE
+        else:
+            step = int(requested) if requested not in (None, "") else stored
     except (TypeError, ValueError):
         step = stored
-    if not 1 <= step <= LAST_STEP:
+    if not 1 <= step <= DONE:
         step = 1
     return step if mode == MODE_TRACKER else 1
 
@@ -267,3 +273,127 @@ def check_address(state) -> dict:
     reason = "" if ip else f"the egress IP could not be verified ({why})"
     state.set_meta(watcher.META_EGRESS, {"ip": ip, "at": time.time(), "reason": reason})
     return address_view(state)
+
+
+# ---------------------------------------------------------------------------- step 4: your tracker
+#: the settings step 4 fills, in the order a person fills them, with the name the step gives each
+TRACKER_FIELDS = (
+    ("tracker_url", "Your tracker's address"),
+    ("tracker_session", "Session cookie"),
+    ("tracker_cookie_name", "Cookie name"),
+    ("tracker_search_path", "Search path"),
+    ("tracker_search_body", "Search request"),
+    ("tracker_search_method", "Search method"),
+    ("tracker_search_encoding", "Search encoding"),
+    ("tracker_search_category", "Search category"),
+    ("tracker_download_path", "Download path"),
+)
+TRACKER_LABELS = dict(TRACKER_FIELDS)
+
+
+def tracker_missing() -> list[str]:
+    """The step 4 boxes the watcher still needs (the watcher's own list), by the name the step gives them
+    and in the order the step shows them."""
+    from . import watcher
+    from .config import WATCHER_REQUIRED
+
+    needed = {attr for _var, attr in WATCHER_REQUIRED if not watcher._setting(attr)}
+    return [label for key, label in TRACKER_FIELDS if key in needed]
+
+
+def _tracker_failure(status: int, sent: bool, proxy: bool, wait: float) -> str:
+    """A failed search in plain words, from the status code and whether anything was sent - never from the
+    exception's text, which can carry a piece of the tracker's own answer."""
+    if not sent:
+        text = ("Nothing was sent to your tracker: the saved search settings are not usable. Check the "
+                "search request.")
+    elif status == 0:
+        text = "Audiobind could not reach your tracker" + (
+            " through your tracker proxy. Check that the proxy is running." if proxy else
+            ". Check the address and this container's internet connection.")
+    elif status in (401, 403):
+        text = (f"Your tracker turned the request away (it answered {status}). The session cookie is wrong, "
+                "has expired, or was created for a different address than the one in step 3.")
+    elif status == 404:
+        text = "Your tracker has nothing at that search path (it answered 404). Check the search path."
+    elif status == 429:
+        text = "Your tracker asked Audiobind to slow down (it answered 429)."
+    elif status >= 500:
+        text = f"Your tracker had a problem of its own (it answered {status}). Try again later."
+    elif status == 200:
+        text = ("Your tracker answered, but not with search results. Usually the session cookie has expired, "
+                "was pasted wrong, or was created for a different address than the one in step 3. If the "
+                "cookie is fresh, check the search path and the search request against your tracker's API "
+                "page.")
+    else:
+        text = f"Your tracker answered with an error (it answered {status})."
+    if sent and wait > 0:
+        text += (f" To be polite, Audiobind now waits {int(wait) + 1} seconds before it asks your tracker "
+                 "anything again.")
+    return text
+
+
+def _guard_refusal(state, verdict: str, observed: str) -> str:
+    """Why the Test sent nothing when the egress guard said no, in plain words."""
+    if verdict == "unknown":
+        return ("Audiobind could not find out which address your tracker would see, and you asked it to use "
+                "only one, so nothing was sent. Step 3 can check the address again.")
+    view = address_view(state)
+    if view["verdict"] == "home":
+        return (f"Your tracker would see {observed}, your home connection, so nothing was sent. Send "
+                "Audiobind through your VPN (the tracker proxy) and test again.")
+    return (f"Your tracker would see {observed}, but your session is for {view['expected']}, so nothing was "
+            "sent: the session would be refused. Step 3 says what to do.")
+
+
+def test_tracker(state, query: str = "") -> dict:
+    """Step 4's Test: ONE search on the saved settings - the configured search request, the endpoint the
+    tracker allows for this - through the watcher's own client (so its spacing and backoff hold, and a
+    backoff in force means nothing is sent) and behind its egress guard. ``{"ok", "sent", "message"}``.
+
+    The message is built from the parsed results and the status code: never the cookie, the address, a
+    query string or any raw text from the tracker's answer."""
+    from . import tracker, watcher
+    from .config import set_effective
+
+    set_effective(state)
+    missing = tracker_missing()
+    if missing:
+        return {"ok": False, "sent": False,
+                "message": f"Fill in these first: {', '.join(missing)}. Nothing was sent to your tracker."}
+    # the guard is consulted only when armed: unarmed it answers "off" without a probe, but it also clears the
+    # watcher_egress record, which would wipe the address step 3 just found
+    verdict, observed = "off", ""
+    if watcher._setting("tracker_home_ip") or watcher._setting("tracker_expected_egress_ip"):
+        verdict, _reason, observed = watcher.WATCHER._egress_guard(state)
+    if verdict in ("blocked", "unknown"):
+        return {"ok": False, "sent": False, "message": _guard_refusal(state, verdict, observed)}
+    title = watcher.clean_test_query(query)
+    client = watcher.WATCHER.client()
+    before = client.requests
+    try:
+        found = client.search(title)
+    except tracker.TrackerBackoff:
+        wait = client.backoff.remaining()
+        return {"ok": False, "sent": False, "message": (
+            "Nothing was sent: an earlier request to your tracker failed, and Audiobind waits before it asks "
+            f"again so it never hurries your tracker. Try again in {int(wait) + 1} seconds.")}
+    except tracker.TrackerError as exc:
+        sent = client.requests > before
+        status = int(getattr(exc, "status", 0) or 0)
+        return {"ok": False, "sent": sent, "message": _tracker_failure(
+            status, sent, bool(watcher._setting("tracker_proxy")), client.backoff.remaining())}
+    except Exception:  # noqa: BLE001 - anything else is "no usable answer"
+        return {"ok": False, "sent": client.requests > before,
+                "message": "Audiobind could not reach your tracker. Try again in a minute."}
+    if not found:
+        return {"ok": True, "sent": True, "message": (
+            f"Your tracker answered the search, but found nothing for “{watcher._short(title, 80)}”. "
+            "Try a title you know is there; if that finds nothing too, check the search request and "
+            "category.")}
+    n, first = len(found), found[0]
+    who = ", ".join(a for a in first.authors[:2] if a)
+    name = watcher._short(first.name) or "(no title)"
+    return {"ok": True, "sent": True, "message": (
+        f"Your tracker answered: {n} {'result' if n == 1 else 'results'}, first: {name}"
+        + (f" by {watcher._short(who)}" if who else "") + ".")}

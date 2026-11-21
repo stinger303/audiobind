@@ -1,6 +1,7 @@
-"""Set up downloading, step 3: the address the tracker sees. The page shows the last egress check on record and
-sends nothing; Check again runs the watcher's own probe once (stubbed here: no network), stores it where the
-watcher stores it, and says in plain words whether the address is the one the session was made for."""
+"""Set up downloading, step 3: the address the tracker sees. The page shows the last egress check on record
+and sends nothing; Check again runs the watcher's own probe once (stubbed here: no network), stores it
+where the watcher stores it, and says in plain words whether the address is the one the session was made
+for."""
 
 import html
 import json
@@ -108,7 +109,8 @@ class TestTheStep(Step3Case):
         _status, answer, _probe = self.check_again([SEEN])
         self.assertEqual(answer["verdict"], "mismatch")
         text = self.text(self.page3())
-        self.assertIn(f"Your tracker session was created for {OTHER}, but your requests leave from {SEEN}.", text)
+        self.assertIn(f"Your tracker session was created for {OTHER}, but your requests leave from {SEEN}.",
+                      text)
         self.assertIn(f"The session will be refused; create a new one from this address ({SEEN})", text)
 
     def test_the_home_connection_is_named_as_such(self):
@@ -137,7 +139,8 @@ class TestCheckAgain(Step3Case):
         self.assertIn('id="ab-wiz-addr"', second["html"], "the answer redraws the finding")
 
     def test_a_failed_probe_is_said_plainly_and_continue_still_works(self):
-        status, answer, _probe = self.check_again([egress.EgressError("ipinfo.io: TimeoutError; api.ipify.org: URLError")])
+        failure = egress.EgressError("ipinfo.io: TimeoutError; api.ipify.org: URLError")
+        status, answer, _probe = self.check_again([failure])
         self.assertEqual(status, 502)
         self.assertFalse(answer["ok"])
         self.assertEqual(answer["message"], "Checked just now: the address could not be found.")

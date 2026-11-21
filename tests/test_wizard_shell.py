@@ -46,24 +46,22 @@ class TestPage(WizardCase):
         visible = re.sub(r"<script>.*?</script>|<style>.*?</style>", "", page, flags=re.S)
         self.assertNotRegex(visible, r"\{[a-z_]+\}", "no unexpanded placeholder")
 
-    def test_steps_three_and_four_and_done_are_listed_and_never_links(self):
+    def test_in_the_tracker_flow_every_other_step_and_done_is_a_link(self):
         self.set_mode(wizard.MODE_TRACKER)
         _status, page = self.get(wizard.PATH + "?step=2")
         indicator = re.search(r'<ol class="ab-wiz-steps">.*?</ol>', page, re.S).group(0)
-        self.assertEqual(indicator.count("<a "), 1, "only step 1 is a way back")
+        self.assertEqual(indicator.count("<a "), 4)
         self.assertIn('aria-current="step"', indicator)
-        self.assertEqual(indicator.count('aria-disabled="true"'), 3)
-        self.assertNotIn("step=3", indicator)
-        self.assertNotIn("step=4", indicator)
+        self.assertNotIn("aria-disabled", indicator)
+        for target in ("1", "3", "4", "done"):
+            self.assertIn(f'href="{wizard.PATH}?step={target}"', indicator)
 
-    def test_a_step_that_is_not_built_says_so_and_offers_the_way_back(self):
+    def test_no_step_says_it_is_not_built(self):
         self.set_mode(wizard.MODE_TRACKER)
-        for step in (4,):
+        for step in ("1", "2", "3", "4", "done"):
             with self.subTest(step=step):
                 _status, page = self.get(f"{wizard.PATH}?step={step}")
-                self.assertIn("is not built yet", page)
-                self.assertIn(f'href="{wizard.PATH}?step={step - 1}"', page)
-                self.assertIn('href="/settings?tab=watcher"', page)
+                self.assertNotIn("is not built yet", page)
 
     def test_the_wizard_stores_no_setting_and_is_not_on_the_settings_page(self):
         from audiobind import web

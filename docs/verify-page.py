@@ -629,7 +629,7 @@ node_check("watcher settings", on_settings, "watcher-settings.js")
 CONFIG.tracker_session, CONFIG.qbit_user, CONFIG.qbit_pass = "", "", ""
 CONFIG.qbit_url = ""  # a fresh install has no download client address: the wizard pre-fills one
 
-# ---- the "Set up downloading" wizard (0.26.0, pass A): card, entry button, steps 1-2, the guard
+# ---- the "Set up downloading" wizard (0.26.0, passes A and B): card, entry button, steps 1-4, end, guard
 print("\nset up downloading wizard:")
 WIZ = "/setup/downloading"
 status, headers, _ = fetch(WIZ)
@@ -690,6 +690,28 @@ step3 = get(WIZ + "?step=3")
 check("wizard: Check again finds the address (stubbed lookup) and step 3 then shows it with the time",
       status == 200 and json.loads(rechecked).get("ip") == "198.51.100.7"
       and "198.51.100.7" in step3 and "Last checked:" in step3, f"{status} {rechecked}")
+step4 = get(WIZ + "?step=4")
+check("wizard: step 4 is built: every box labelled and in order, Test, Back and Continue",
+      "Step 4 of 4" in step4 and "is not built yet" not in step4
+      and all(f'for="ab-wiz-{f}"' in step4 for f in ("turl", "tsession", "tcookie", "tpath", "tbody",
+                                                     "tmethod", "tenc", "tcat", "tdl"))
+      and step4.index('id="ab-wiz-turl"') < step4.index('id="ab-wiz-tsession"')
+      < step4.index('id="ab-wiz-tpath"')
+      and 'id="ab-wiz-test"' in step4 and f'href="{WIZ}?step=3"' in step4)
+node_check("wizard step 4", step4, "wizard-4.js")
+status, _, tracker_tested = post_json("/api/setup/downloading", {"action": "tracker_test"})
+check("wizard: step 4's Test sends nothing while a box is missing, and says which",
+      status == 502 and json.loads(tracker_tested).get("sent") is False
+      and json.loads(tracker_tested).get("message", "").startswith("Fill in these first:"),
+      f"{status} {tracker_tested}")
+done = get(WIZ + "?step=done")
+check("wizard: the end state renders, names what is missing and links on",
+      'id="ab-wiz-summary"' in done and "Almost done" in done and 'href="/discover/wishlist"' in done
+      and 'href="/?status=all"' in done and f'href="{WIZ}?step=4"' in done)
+node_check("wizard end", done, "wizard-done.js")
+_site = __import__("codecs").decode("zlnabanzbhfr", "rot13")  # spelled indirectly: this file ships too
+check("wizard: no page of the guide names a tracker site",
+      not any(_site in page.lower() for page in (step1, step2, step3, step4, done)))
 status, _, _ = post_json("/api/settings", {"reset_keys": ["qbit_url", "qbit_user", "qbit_pass"]})
 status, _, _ = post_json("/api/setup/downloading", {"action": "mode", "mode": "library"})
 done_page = get(WIZ + "?step=1")
