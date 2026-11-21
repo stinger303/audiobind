@@ -5958,12 +5958,12 @@ def settings_tab(value: str) -> str:
 
 def settings_tab_bar(active: str) -> str:
     """The tab row: the library's chip pills, plain links (a refresh or bookmark keeps the tab)."""
-    links = "".join(
-        f'<a class="chip{" on" if name == active else ""}" href="/settings?tab={name}"'
-        f'{" aria-current=\"page\"" if name == active else ""}>{label}</a>'
-        for name, label in SETTINGS_TABS
-    )
-    return f'<nav class="chips ab-tabs" aria-label="Settings sections">{links}</nav>'
+    links = []
+    for name, label in SETTINGS_TABS:
+        on = name == active
+        current = ' aria-current="page"' if on else ""
+        links.append(f'<a class="chip{" on" if on else ""}" href="/settings?tab={name}"{current}>{label}</a>')
+    return f'<nav class="chips ab-tabs" aria-label="Settings sections">{"".join(links)}</nav>'
 
 
 #: the Account tab's sign-out (the rail keeps its own link too)

@@ -116,11 +116,13 @@ class TestTabs(TabsCase):
     def test_tab_bar_is_four_plain_links_in_order_with_one_on(self):
         page = web.render_settings(self.state, "watcher")
         bar = page.split('<nav class="chips ab-tabs" aria-label="Settings sections">')[1].split("</nav>")[0]
-        self.assertEqual(re.findall(r'<a class="chip(?: on)?" href="/settings\?tab=(\w+)"', bar),
-                         ["library", "watcher", "account", "advanced"])
-        self.assertEqual(re.findall(r">(\w+)</a>", bar), ["Library", "Watcher", "Account", "Advanced"])
-        self.assertEqual(bar.count('class="chip on"'), 1)
-        self.assertNotIn("onclick", bar)
+        self.assertEqual(
+            bar,
+            '<a class="chip" href="/settings?tab=library">Library</a>'
+            '<a class="chip on" href="/settings?tab=watcher" aria-current="page">Watcher</a>'
+            '<a class="chip" href="/settings?tab=account">Account</a>'
+            '<a class="chip" href="/settings?tab=advanced">Advanced</a>',
+        )
         # the banner sits above the tabs; the on tab is the indigo pill
         self.assertLess(page.index("<b>Apply later.</b>"), page.index('class="chips ab-tabs"'))
         self.assertIn(".ab-tabs .chip.on{background:rgba(94,106,210,.14)", web.STYLES)
