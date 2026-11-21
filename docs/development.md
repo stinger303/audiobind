@@ -23,5 +23,9 @@ Any change that can move a match must pass the match-test programme: see
 * **Chapter timings are only trusted when they fit.** Audnex timings are scaled onto the real
   duration only if `local / catalog` is within 0.85-1.20; otherwise per-file chapters are used,
   because the catalog entry is for a different edition.
+* **The output is checked against a measured total, never a guessed one.** A source file ffprobe
+  could not read has no length, so `ChapterPlan.total` is `None` and `encode` refuses the book
+  before ffmpeg runs, naming the file. Summing it as 0 s would make the check blame the merge
+  ("files were dropped") for a file that was never measured.
 * **Audiobookshelf rewrites `metadata.json`** when it scans the new book. Losing our extra
   `duration` key is the app adopting the book, not a failed write.

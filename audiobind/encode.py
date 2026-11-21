@@ -83,8 +83,28 @@ class ChapterPlan:
     sample_rates: set[str] | None = None
 
     @property
-    def total(self) -> float:
+    def unmeasured(self) -> list[str]:
+        """B2: the source files ffprobe gave no length for (it failed on them, or found no audio)."""
+        return [path for path, length in self.durations.items() if not length or length <= 0]
+
+    @property
+    def total(self) -> float | None:
+        """The sources' summed length; None (unknown) when any file went unmeasured - a sum without
+        it is a shorter book than this one, and checking the output against it blames the merge."""
+        if self.unmeasured:
+            return None
         return sum(self.durations.values())
+
+
+def unmeasured_reason(paths: list[str]) -> str:
+    """B2: the failure note for a book with unmeasured files - names them, never "dropped"."""
+    names = [os.path.basename(p)[:80] for p in paths[:3]]
+    more = f" and {len(paths) - 3} more" if len(paths) > 3 else ""
+    return (
+        f"ffprobe could not read {', '.join(names)}{more}, so the book's length is unknown and the "
+        "converted file could not be checked - nothing was converted. Replace or re-rip that file, "
+        "then press Retry now"
+    )[:300]
 
 
 def _durations(unit: BookUnit, durations: dict[str, float] | None) -> dict[str, float]:
@@ -848,6 +868,9 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
     if plan is None:
         plan = plan_chapters(unit, match.asin)
     total_duration = plan.total
+    if total_duration is None:
+        # B2: refused before ffmpeg runs - an output nobody can measure against is never published
+        raise RuntimeError(unmeasured_reason(plan.unmeasured))
     chapters, source = plan.chapters, plan.source
     log(f"  chapters: {len(chapters)} from {source}")
 
