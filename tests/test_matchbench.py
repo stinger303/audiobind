@@ -676,12 +676,22 @@ class TestCaseMutation(unittest.TestCase):
 
     def test_what_is_not_load_bearing_is_only_a_label_under_a_tier_ceiling(self):
         """The accepted remainder: a label (asin_not / none) in a passing case whose max_tier already
-        forbids everything the label could flag. Redundant, not vacuous - and nothing else may join it."""
+        forbids everything the label could flag. Redundant, not vacuous - and nothing else may join it.
+
+        ADV-CASES raised this from 9 to 10 deliberately: `asin_hint_right_name_wrong` pins a wrong pick
+        under a LOW ceiling, where the picked-ASIN label can never be load-bearing (the ceiling already
+        forbids everything it could flag). The label is still required - the harness reads it as the
+        case's labelled edition for the pool check - so it is a reviewed remainder, not a vacuous case.
+        """
         spec = {c["name"]: c["expect"] for c in bench.load_adversarial()["cases"]}
         rest = [r for r in self.rows if r["verdict"] != bench.LOAD_BEARING]
-        self.assertEqual(len(rest), 9)
+        self.assertEqual(len(rest), 10)
         for r in rest:
             self.assertEqual(r["verdict"], bench.BASELINE_ONLY, r)
+            if r["case"] == "asin_hint_right_name_wrong":
+                # the one documented exception: its `asin` is the case's labelled edition
+                self.assertEqual(r["key"], "asin", r)
+                continue
             self.assertIn(r["key"], ("asin_not", "none"), r)
             self.assertIn("max_tier", spec[r["case"]], r)
 
