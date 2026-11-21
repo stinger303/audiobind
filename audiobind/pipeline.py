@@ -333,6 +333,9 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
         if cancelled is not None and cancelled():
             log("  removed from Audiobind while waiting for the encoder - not converted")
             return None
+        # CORE-01c: PCM a hard-killed join left under any book's work directory (it can be tens of GB)
+        for stale in encode.reclaim_stale_parts():
+            log(f"  reclaimed stranded PCM parts: {stale}")
         # a crashed or restarted run leaves its work directory behind under this same name:
         # start clean, so none of its partial files can be taken for this encode's output
         shutil.rmtree(work_dir, ignore_errors=True)

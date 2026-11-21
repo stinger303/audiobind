@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import fcntl
 import json
 import os
 import re
@@ -593,10 +594,109 @@ def normalise_command(source, dest) -> list:
     ]
 
 
+#: CORE-01c: the PCM parts may take at most this share of the scratch filesystem's free space; the
+#: rest is headroom for the encoded output, the logs and whatever else shares that disk
+PCM_SPACE_FRACTION = 0.8
+#: every live parts directory has this file beside it (``parts.owner``) under flock(2): the kernel drops
+#: the lock when its process dies, however it dies, so parts whose owner file is unlocked are stranded.
+#: Beside, not inside: some filesystems (FUSE, NFS) keep an open file's deleted name around, and the
+#: directory it was in then cannot be removed while the lock is held
+_PARTS_OWNER = "parts.owner"
+#: a parts directory with no owner file at all is stranded once it is this old (seconds): one from
+#: before the owner file existed, or a run killed between creating the file and locking it
+_UNOWNED_PARTS_AGE = 60.0
+#: the parts directories this process holds, and the descriptor holding each one's lock
+_PART_CLAIMS: dict[str, int] = {}
+
+
+def pcm_bytes(seconds: float) -> int:
+    """What ``seconds`` of audio takes as the join's 16-bit PCM at the configured rate and layout."""
+    return int(seconds * CONFIG.audio_channels * CONFIG.sample_rate * 2)
+
+
+def check_pcm_space(seconds: float, work_dir: Path) -> None:
+    """Refuse (RuntimeError) a PCM join whose parts would not fit on the scratch disk with headroom."""
+    where = next(p for p in (work_dir, *work_dir.parents) if p.exists())
+    free = shutil.disk_usage(where).free
+    need, budget = pcm_bytes(seconds), int(free * PCM_SPACE_FRACTION)
+    if need > budget:
+        raise RuntimeError(
+            f"not enough scratch space to join mixed codecs: {seconds / 3600:.1f}h of PCM needs "
+            f"{need / 1e9:.1f} GB, {free / 1e9:.1f} GB free on {where} (at most "
+            f"{PCM_SPACE_FRACTION:.0%} used) - free space there or mount a larger /work; nothing was decoded"
+        )
+
+
+def _claim_parts(parts_dir: Path) -> None:
+    """Lock ``parts_dir``'s owner file, then create the directory empty; held until ``_release_parts``."""
+    parts_dir.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(parts_dir.with_name(_PARTS_OWNER), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        shutil.rmtree(parts_dir, ignore_errors=True)
+        parts_dir.mkdir()
+    except BaseException:
+        os.close(fd)
+        raise
+    _PART_CLAIMS[str(parts_dir)] = fd
+
+
+def _drop_owner(parts_dir: Path, fd: int) -> None:
+    """Remove the parts, then unlock and delete the owner file (closed first: see _PARTS_OWNER)."""
+    try:
+        shutil.rmtree(parts_dir, ignore_errors=True)
+    finally:
+        os.close(fd)
+        with contextlib.suppress(OSError):
+            parts_dir.with_name(_PARTS_OWNER).unlink()
+
+
+def _release_parts(parts_dir: Path) -> None:
+    """Delete a parts directory this process claimed, and its lock. Safe to call twice."""
+    fd = _PART_CLAIMS.pop(str(parts_dir), None)
+    if fd is not None:
+        _drop_owner(parts_dir, fd)
+
+
+def reclaim_stale_parts(root: Path | None = None) -> list[Path]:
+    """Delete the PCM parts directories under the work root that no running conversion owns.
+
+    A hard kill (or a power cut) skips every ``finally``; its parts would otherwise stay on the
+    scratch disk until that same book happened to be converted again. Returns what was removed.
+    """
+    root = Path(CONFIG.work_dir if root is None else root)
+    removed = []
+    for parts_dir in sorted({*root.glob("*/parts"), *root.glob("*/*/parts")}):
+        if str(parts_dir) in _PART_CLAIMS or parts_dir.is_symlink() or not parts_dir.is_dir():
+            continue
+        try:
+            fd = os.open(parts_dir.with_name(_PARTS_OWNER), os.O_RDWR)
+        except FileNotFoundError:
+            try:
+                if time.time() - parts_dir.stat().st_mtime < _UNOWNED_PARTS_AGE:
+                    continue
+            except OSError:
+                continue
+            shutil.rmtree(parts_dir, ignore_errors=True)
+            removed.append(parts_dir)
+            continue
+        except OSError:
+            continue
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)  # a live conversion, in this process or another, holds it
+            continue
+        _drop_owner(parts_dir, fd)
+        removed.append(parts_dir)
+    return removed
+
+
 def _normalise_parts(files: list[str], work_dir: Path) -> list[str]:
-    """Decode each source to ``work_dir/parts/NNNN.wav``; the paths, in concat order."""
+    """Decode each source to ``work_dir/parts/NNNN.wav``; the paths, in concat order.
+
+    The caller has claimed ``work_dir/parts`` (``_claim_parts``) and releases it."""
     parts_dir = work_dir / "parts"
-    parts_dir.mkdir(parents=True, exist_ok=True)
     out = []
     for n, source in enumerate(files, 1):
         dest = parts_dir / f"{n:04d}.wav"
@@ -653,6 +753,16 @@ def encode(
     ``plan`` is the chapter plan the caller already built (``plan_chapters``); it is only
     worked out here when the caller did not pass one.
     """
+    try:
+        return _encode(unit, match, book, work_dir, out_path, log=log, copy_audio=copy_audio, plan=plan,
+                       fmt=fmt, publish=publish, sequence=sequence)
+    finally:
+        # CORE-01c: a mixed-codec join's PCM goes however the encode ends, also for a direct caller
+        # with no pipeline cleanup around it (a no-op when nothing was decoded)
+        _release_parts(work_dir / "parts")
+
+
+def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, publish, sequence):
     work_dir.mkdir(parents=True, exist_ok=True)
     if plan is None:
         plan = plan_chapters(unit, match.asin)
@@ -668,6 +778,9 @@ def encode(
         # the concat demuxer decodes every part with the first part's decoder: a FLAC after an MP3
         # is thrown away packet by packet with exit 0 (CORE-01). One codec skips all of this.
         log(f"  audio: mixed codecs {sorted(plan.codecs)} - decoding each file to PCM before joining")
+        # CORE-01c: never start a decode the scratch disk cannot hold to the end
+        check_pcm_space(total_duration, work_dir)
+        _claim_parts(work_dir / "parts")
         joined = _normalise_parts(joined, work_dir)
         copy_audio = False
     concat_file = work_dir / "concat.txt"
@@ -747,8 +860,8 @@ def encode(
     finally:
         CONTROL.detach_process()
         CONTROL.clear_progress()
-        if joined != unit.files:  # the PCM parts (about 635 MB an hour) are spent once joined
-            shutil.rmtree(work_dir / "parts", ignore_errors=True)
+        # the PCM parts (about 635 MB an hour) are spent once joined
+        _release_parts(work_dir / "parts")
 
     errors = [_stderr_tail(stderr_path)]
     if CONTROL.stop_requested:
