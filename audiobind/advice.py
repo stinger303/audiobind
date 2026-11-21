@@ -105,12 +105,40 @@ GROUP_REASONS = {
         "Failed",
         "The encoder gave up on these books. A damaged source file is the usual suspect.",
     ),
+    "encoder_killed": (
+        "Failed",
+        "The encoder was stopped part way, most often because the server ran out of memory. Check "
+        "its free memory, then press Retry now. A damaged source file is the other possibility.",
+    ),
+    "unmeasured": (
+        "Held",
+        "Audiobind could not measure a file in these books, so nothing was converted. Replace or "
+        "re-rip that file, then press Retry now.",
+    ),
     "stopped": (
         "Stopped",
         "These conversions were stopped part way. Nothing broken reached your library; Retry "
         "now starts them over.",
     ),
 }
+
+
+#: C4: the note is the evidence. B2's refusal note (encode.unmeasured_reason), alone on an older
+#: failed row or after C3's lead line on a held one (pipeline.UNMEASURED_HELD)
+_UNMEASURED_FAILED = "ffprobe could not read "
+_UNMEASURED_HELD = "Not converted: one file could not be measured"
+_UNMEASURED_NAMES = re.compile(r"ffprobe could not read (.+?), so the book's length is unknown")
+#: B3: an ffmpeg ended by a signal (encode.killed_by_signal)
+_SIGNALLED = re.compile(r"ffmpeg was killed by (SIG[A-Z0-9]+|signal \d+)")
+
+
+def _refused_unmeasured(note: str) -> bool:
+    return note.startswith(_UNMEASURED_FAILED) or note.startswith(_UNMEASURED_HELD)
+
+
+def _signal_name(note: str) -> str:
+    found = _SIGNALLED.search(note)
+    return found.group(1) if found else ""
 
 
 def group_order() -> tuple:
@@ -124,7 +152,12 @@ def short_reason(status, confidence="", note="", detail=None) -> tuple[str, str]
     confidence = (confidence or "").upper()
     note = (note or "").strip()
     lower = note.lower()
+    if status in ("failed", "held") and _refused_unmeasured(note):
+        # ffmpeg never started: Audiobind declined to convert what it could not check
+        return "unmeasured", "Couldn't measure a file"
     if status == "failed":
+        if _signal_name(note):
+            return "encoder_killed", "Encoder was stopped"
         return "encoder_error", "Encoder error"
     if status == "interrupted":
         return "stopped", "Stopped part way"
@@ -218,6 +251,33 @@ def _explain_base(
             "The encoding was stopped partway through. The half-written file was thrown "
             "away, so nothing broken reached your library.",
             "Press Retry now - it starts over from the beginning.",
+        )
+
+    if status in ("failed", "held") and _refused_unmeasured(note):
+        names = _UNMEASURED_NAMES.search(note)
+        what_file = names.group(1) if names else "one of your files"
+        return (
+            f"Audiobind could not measure {what_file}, so it had no length to check a converted "
+            "copy against - nothing was converted.",
+            "Replace or re-rip that file, then press Retry now."
+            + (" Audiobind also checks it again on the next scan." if status == "held" else ""),
+        )
+
+    signal_name = _signal_name(note) if status == "failed" else ""
+    if signal_name == "SIGKILL":
+        return (
+            "ffmpeg was stopped part way by the system (SIGKILL), so nothing was converted. The "
+            "usual cause is the server running out of memory; a damaged source file is the other "
+            "possibility.",
+            "Check the server's free memory (stop other heavy jobs, or give the container more), "
+            "then press Retry now. If it is stopped again with memory to spare, check the source files.",
+        )
+    if signal_name:
+        return (
+            f"ffmpeg was stopped part way by {signal_name}, so nothing was converted. Something "
+            "outside the encoder stopped it - a container restart or shutdown is the usual cause; "
+            "a damaged source file is less likely.",
+            "Press Retry now. If it is stopped the same way again, check the source files.",
         )
 
     if status == "failed":

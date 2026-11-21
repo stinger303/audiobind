@@ -32,6 +32,13 @@ CASES = (
     ("held", "MEDIUM", DAMAGED_HELD, None, "damaged_files", "Damaged files"),
     ("failed", "", "ffmpeg exited 1", None, "encoder_error", "Encoder error"),
     ("failed", "HIGH", "", None, "encoder_error", "Encoder error"),
+    # C4: the note is the evidence - a refusal never reached the encoder; a signal names its cause
+    ("failed", "HIGH", "ffprobe could not read 02.mp3, so the book's length is unknown", None,
+     "unmeasured", "Couldn't measure a file"),
+    ("held", "HIGH", "Not converted: one file could not be measured, so the converted book could not be "
+     "checked.", None, "unmeasured", "Couldn't measure a file"),
+    ("failed", "HIGH", "ffmpeg was killed by SIGKILL (usually the system running out of memory) while "
+     "encoding", None, "encoder_killed", "Encoder was stopped"),
     ("interrupted", "", "", None, "stopped", "Stopped part way"),
     ("converted", "HIGH", "", None, "converted", ""),
     ("ready", "HIGH", "", None, "converted", ""),
