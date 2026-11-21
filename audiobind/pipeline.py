@@ -231,6 +231,22 @@ def _match_embedded(unit: BookUnit, local_hours: float) -> matching.Match | None
     return retry if retry.confidence != "NONE" else None
 
 
+def _chapter_plan(unit: BookUnit, asin: str, audit: Audit) -> encode.ChapterPlan:
+    """The encoder's chapter plan from the audit's probe: one ffprobe per file, shared by every format.
+
+    AB-MONO-REENC: the probed channel counts and rates ride along, so a re-encode writes min(source,
+    cap) rather than the caps. With no durations (nothing measured) plan_chapters probes itself."""
+    probed = bool(audit.durations)
+    return encode.plan_chapters(
+        unit,
+        asin,
+        durations=audit.durations or None,
+        codecs=set(audit.codecs) if probed else None,
+        channels=set(audit.channels) if probed else None,
+        sample_rates=set(audit.sample_rates) if probed else None,
+    )
+
+
 def _single_aac_mp4(unit: BookUnit, codecs: set[str]) -> bool:
     """One AAC file already in an MP4 container: the only source a remux (``-c:a copy``) can take."""
     return (
@@ -407,8 +423,7 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
         CONTROL.set_heartbeat(heartbeat)
         try:
             # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
-            plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None,
-                                        codecs=set(audit.codecs) if audit.durations else None)
+            plan = _chapter_plan(unit, match.asin, audit)
             results = {}
             for fmt in todo:
                 log(f"  encoding {fmt.upper()}")

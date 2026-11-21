@@ -77,6 +77,10 @@ class ChapterPlan:
     #: the audio codecs across the source files; None when nobody probed them (CORE-01: more
     #: than one means the parts cannot go through the concat demuxer as they are)
     codecs: set[str] | None = None
+    #: AB-MONO-REENC: every channel count and sample rate ffprobe reported across the source files;
+    #: None when nobody probed them (a re-encode then falls back to the configured caps)
+    channels: set[str] | None = None
+    sample_rates: set[str] | None = None
 
     @property
     def total(self) -> float:
@@ -89,16 +93,23 @@ def _durations(unit: BookUnit, durations: dict[str, float] | None) -> dict[str, 
     return _probe_sources(unit)[0]
 
 
-def _probe_sources(unit: BookUnit) -> tuple[dict[str, float], set[str]]:
-    """Every source file's duration, and the set of audio codecs among them."""
+def _probe_sources(unit: BookUnit) -> tuple[dict[str, float], set[str], set[str], set[str]]:
+    """Every source file's duration, and the sets of audio codecs, channel counts and sample rates
+    among them."""
     result: dict[str, float] = {}
     codecs: set[str] = set()
+    channels: set[str] = set()
+    rates: set[str] = set()
     for path in unit.files:
         try:
             info = probe(path, raise_on_timeout=True)
             result[path] = info.duration
             if info.codec:
                 codecs.add(info.codec)
+            if info.channels:
+                channels.add(str(info.channels))
+            if info.sample_rate:
+                rates.add(str(info.sample_rate))
         except ProbeTimeout as exc:
             # not "no duration": a 0.0 here would drop the whole book's source chapters (and skew the
             # total the chapter distribution is scaled against) while the book converted anyway
@@ -107,21 +118,76 @@ def _probe_sources(unit: BookUnit) -> tuple[dict[str, float], set[str]]:
                 "the book is not converted so it cannot lose chapters - check that the disk is healthy "
                 "and retry"
             ) from exc
-    return result, codecs
+    return result, codecs, channels, rates
 
 
 def plan_chapters(
-    unit: BookUnit, asin: str, durations: dict[str, float] | None = None, codecs: set[str] | None = None
+    unit: BookUnit,
+    asin: str,
+    durations: dict[str, float] | None = None,
+    codecs: set[str] | None = None,
+    channels: set[str] | None = None,
+    sample_rates: set[str] | None = None,
 ) -> ChapterPlan:
     """Build the chapter plan for ``encode()``, probing each source file at most once.
 
-    Pass ``durations`` (and ``codecs``) when the files were already probed (the audit does), and
-    nothing is probed again.
+    Pass ``durations`` (and ``codecs``, ``channels``, ``sample_rates``) when the files were already
+    probed (the audit does), and nothing is probed again.
     """
     if durations is None or set(durations) != set(unit.files):
-        durations, codecs = _probe_sources(unit)
+        durations, codecs, channels, sample_rates = _probe_sources(unit)
     chapters, source = build_chapters(catalog.chapters(asin), sum(durations.values()), unit, durations)
-    return ChapterPlan(chapters=chapters, source=source, durations=durations, codecs=codecs)
+    return ChapterPlan(chapters=chapters, source=source, durations=durations, codecs=codecs,
+                       channels=channels, sample_rates=sample_rates)
+
+
+#: the sample rates each encoder accepts (ffmpeg ``-h encoder=aac`` / ``encoder=libmp3lame``); any
+#: other rate makes ffmpeg refuse to open the encoder
+ENCODER_RATES = {
+    "aac": (96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350),
+    "mp3": (48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000),
+}
+
+
+def _lowest_figure(figures: set[str] | None) -> int | None:
+    """The lowest whole, positive figure ffprobe reported; None when there is none."""
+    values = []
+    for figure in figures or ():
+        try:
+            value = int(figure)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            values.append(value)
+    return min(values) if values else None
+
+
+def output_shape(
+    channels: set[str] | None, sample_rates: set[str] | None, codec: str = "aac"
+) -> tuple[int, int]:
+    """AB-MONO-REENC: the (channels, rate) a re-encode writes - min(source, cap) on each axis.
+
+    AUDIO_CHANNELS and SAMPLE_RATE are caps (AB-MONO-CAP), so a re-encode never upmixes and never
+    raises a rate: a mono 48 kHz book comes out mono at 44100, a stereo 22050 Hz one under
+    AUDIO_CHANNELS=1 comes out mono at 22050.
+
+    The source figure for a book of several files is the *lowest* any file reports: they all go to
+    one stream with one shape, and taking the lowest is the only choice that never upmixes or raises
+    the rate of any part (a stereo part beside a mono one is downmixed, never the mono part
+    upmixed). Each axis is decided on its own. An axis with no usable figure (not probed, or
+    ffprobe gave nothing) falls back to its cap - the behaviour before AB-MONO-REENC.
+
+    A rate the encoder cannot write (37800 Hz, say) steps down to the next one it can; only below
+    the encoder's lowest rate is that one taken instead.
+    """
+    source_ch, source_rate = _lowest_figure(channels), _lowest_figure(sample_rates)
+    out_ch = min(source_ch, CONFIG.audio_channels) if source_ch else CONFIG.audio_channels
+    out_rate = min(source_rate, CONFIG.sample_rate) if source_rate else CONFIG.sample_rate
+    rates = ENCODER_RATES.get(codec)
+    if rates and out_rate not in rates:
+        lower = [rate for rate in rates if rate <= out_rate]
+        out_rate = max(lower) if lower else min(rates)
+    return out_ch, out_rate
 
 
 def _empty(start: float, end: float) -> bool:
@@ -420,13 +486,20 @@ def build_command(
     copy_audio: bool = False,
     bitrate: int = 128,
     tags: dict | None = None,
+    channels: int | None = None,
+    sample_rate: int | None = None,
 ) -> list:
     """The ffmpeg argv (without the nice prefix) for one output file.
 
     m4b: ffmetadata input carries tags and chapters. mp3: chapters cannot ride along (ffmpeg
     drops them), so tags are ``-metadata`` args and the chapters are written afterwards by
     ``id3.write_chapters``; the cover becomes an APIC frame.
+
+    ``channels``/``sample_rate`` are what a re-encode writes (``output_shape``: min of source and
+    cap); left at None they are the configured caps.
     """
+    channels = CONFIG.audio_channels if channels is None else channels
+    sample_rate = CONFIG.sample_rate if sample_rate is None else sample_rate
     command = [
         FFMPEG,
         "-y",
@@ -472,9 +545,9 @@ def build_command(
             "-b:a",
             f"{mp3_bitrate(bitrate)}k",
             "-ac",
-            str(CONFIG.audio_channels),
+            str(channels),
             "-ar",
-            str(CONFIG.sample_rate),
+            str(sample_rate),
             "-f",
             "mp3",
             str(temp_out),
@@ -495,9 +568,9 @@ def build_command(
             "-b:a",
             f"{bitrate}k",
             "-ac",
-            str(CONFIG.audio_channels),
+            str(channels),
             "-ar",
-            str(CONFIG.sample_rate),
+            str(sample_rate),
         ]
     command += [
         # use_metadata_tags makes the mp4 muxer drop the cover: never add it
@@ -556,10 +629,11 @@ def _check_decode(stderr: str, what: str) -> None:
         )
 
 
-def normalise_command(source, dest) -> list:
+def normalise_command(source, dest, channels: int | None = None, sample_rate: int | None = None) -> list:
     """ffmpeg argv decoding one part of a mixed-codec book to the uniform lossless intermediate.
 
-    Every part comes out as 16-bit PCM WAV at the final encode's rate and layout, so the concat
+    Every part comes out as 16-bit PCM WAV at the final encode's rate and layout (``channels`` /
+    ``sample_rate``, the configured caps when None), so the concat
     demuxer sees one stream it can join: it has a single decoder for all parts (CORE-01). Not FLAC:
     the demuxer applies the first file's STREAMINFO to every part and rejects the second one's
     frames just the same. ``-rf64 auto`` lifts the 4 GB RIFF cap (about 6.7 hours of one file).
@@ -583,9 +657,9 @@ def normalise_command(source, dest) -> list:
         "-c:a",
         "pcm_s16le",
         "-ac",
-        str(CONFIG.audio_channels),
+        str(CONFIG.audio_channels if channels is None else channels),
         "-ar",
-        str(CONFIG.sample_rate),
+        str(CONFIG.sample_rate if sample_rate is None else sample_rate),
         "-rf64",
         "auto",
         "-f",
@@ -609,16 +683,20 @@ _UNOWNED_PARTS_AGE = 60.0
 _PART_CLAIMS: dict[str, int] = {}
 
 
-def pcm_bytes(seconds: float) -> int:
-    """What ``seconds`` of audio takes as the join's 16-bit PCM at the configured rate and layout."""
-    return int(seconds * CONFIG.audio_channels * CONFIG.sample_rate * 2)
+def pcm_bytes(seconds: float, channels: int | None = None, sample_rate: int | None = None) -> int:
+    """What ``seconds`` of audio takes as the join's 16-bit PCM at the given (default: configured)
+    rate and layout."""
+    channels = CONFIG.audio_channels if channels is None else channels
+    sample_rate = CONFIG.sample_rate if sample_rate is None else sample_rate
+    return int(seconds * channels * sample_rate * 2)
 
 
-def check_pcm_space(seconds: float, work_dir: Path) -> None:
+def check_pcm_space(seconds: float, work_dir: Path, channels: int | None = None,
+                    sample_rate: int | None = None) -> None:
     """Refuse (RuntimeError) a PCM join whose parts would not fit on the scratch disk with headroom."""
     where = next(p for p in (work_dir, *work_dir.parents) if p.exists())
     free = shutil.disk_usage(where).free
-    need, budget = pcm_bytes(seconds), int(free * PCM_SPACE_FRACTION)
+    need, budget = pcm_bytes(seconds, channels, sample_rate), int(free * PCM_SPACE_FRACTION)
     if need > budget:
         raise RuntimeError(
             f"not enough scratch space to join mixed codecs: {seconds / 3600:.1f}h of PCM needs "
@@ -692,7 +770,8 @@ def reclaim_stale_parts(root: Path | None = None) -> list[Path]:
     return removed
 
 
-def _normalise_parts(files: list[str], work_dir: Path) -> list[str]:
+def _normalise_parts(files: list[str], work_dir: Path, channels: int | None = None,
+                     sample_rate: int | None = None) -> list[str]:
     """Decode each source to ``work_dir/parts/NNNN.wav``; the paths, in concat order.
 
     The caller has claimed ``work_dir/parts`` (``_claim_parts``) and releases it."""
@@ -703,7 +782,7 @@ def _normalise_parts(files: list[str], work_dir: Path) -> list[str]:
         stderr_path = parts_dir / f"{n:04d}.log"
         with stderr_path.open("wb") as stderr_file:
             proc = subprocess.Popen(
-                _nice_prefix() + normalise_command(source, dest), stdout=subprocess.DEVNULL, stderr=stderr_file
+                _nice_prefix() + normalise_command(source, dest, channels, sample_rate), stdout=subprocess.DEVNULL, stderr=stderr_file
             )
         CONTROL.attach_process(proc)
         try:
@@ -775,15 +854,18 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
     unsafe = unsafe_path_reason(unit)
     if unsafe:  # process_unit holds these first; never let one reach the concat list
         raise RuntimeError(unsafe)
+    mp3 = fmt == "mp3"
+    # AB-MONO-REENC: what a re-encode writes, min(source, cap) per axis (ignored by a copy)
+    out_channels, out_rate = output_shape(plan.channels, plan.sample_rates, "mp3" if mp3 else "aac")
     joined = list(unit.files)
     if len(joined) > 1 and len(plan.codecs or ()) > 1:
         # the concat demuxer decodes every part with the first part's decoder: a FLAC after an MP3
         # is thrown away packet by packet with exit 0 (CORE-01). One codec skips all of this.
         log(f"  audio: mixed codecs {sorted(plan.codecs)} - decoding each file to PCM before joining")
         # CORE-01c: never start a decode the scratch disk cannot hold to the end
-        check_pcm_space(total_duration, work_dir)
+        check_pcm_space(total_duration, work_dir, out_channels, out_rate)
         _claim_parts(work_dir / "parts")
-        joined = _normalise_parts(joined, work_dir)
+        joined = _normalise_parts(joined, work_dir, out_channels, out_rate)
         copy_audio = False
     concat_file = work_dir / "concat.txt"
     with concat_file.open("w", encoding="utf-8") as handle:
@@ -798,7 +880,6 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
     log(f"  cover: {'ok' if has_cover else 'not found'}")
 
     temp_out = work_dir / f"output.{fmt}"
-    mp3 = fmt == "mp3"
     if mp3:
         copy_audio = False  # a remux keeps AAC samples; an mp3 is always an encode
     bitrate = 128
@@ -812,7 +893,8 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
         bitrate = choose_bitrate(source_kbps, eff_bitrate)
         if mp3:
             bitrate = mp3_bitrate(bitrate)
-        log(f"  audio: {'mp3' if mp3 else 'aac'} {bitrate}k (source {source_kbps:.0f}k, floor {eff_bitrate})")
+        log(f"  audio: {'mp3' if mp3 else 'aac'} {bitrate}k (source {source_kbps:.0f}k, "
+            f"floor {eff_bitrate}), {out_channels} ch / {out_rate} Hz")
     command = _nice_prefix() + build_command(
         fmt,
         concat_file,
@@ -823,6 +905,8 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
         copy_audio=copy_audio,
         bitrate=bitrate,
         tags=mp3_tags(tags, sequence) if mp3 else None,
+        channels=out_channels,
+        sample_rate=out_rate,
     )
 
     # Popen (not run) so the status page can abort mid-book and show a progress bar.

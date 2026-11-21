@@ -78,7 +78,8 @@ converts the books it is sure of; set Auto convert to `off` to review every matc
    configured floor (128 kbps by default) and a richer source keeps its own bitrate. A file that
    is already AAC in an MP4 container, at or below the configured channel count and sample rate
    (both are caps), is remuxed with `-c:a copy` - no re-encode at all, so a mono or 22050 Hz
-   book stays mono or 22050 Hz.
+   book stays mono or 22050 Hz. A book that is re-encoded is written at the lower of its own
+   channel count and rate and the caps: never upmixed, never resampled up.
 5. **File it.** In the Audiobookshelf layout: `Author/Title/Title.m4b` or
    `Author/Series/3 - Title/Title.m4b`, plus a `cover.jpg` and an Audiobookshelf-compatible
    `metadata.json`. See [Folder layout](docs/configuration.md#folder-layout).

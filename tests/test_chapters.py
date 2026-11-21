@@ -12,6 +12,8 @@ def fake_probe(durations: dict):
         class Info:
             duration = durations.get(path, 0.0)
             codec = ""
+            channels = ""  # probe.Probe always carries these (AB-MONO-REENC reads them)
+            sample_rate = ""
 
         return Info()
 
