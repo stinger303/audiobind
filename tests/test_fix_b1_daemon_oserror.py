@@ -10,6 +10,7 @@ import unittest
 from unittest import mock
 
 from audiobind import daemon, ingest
+from audiobind.control import CONTROL
 from audiobind.state import State, UnitState
 from audiobind.units import BookUnit
 
@@ -22,6 +23,12 @@ def library_unit(rel: str) -> BookUnit:
 
 class TestB1LibraryOSErrorIsOneFailedBook(unittest.TestCase):
     def setUp(self):
+        # CONTROL is a module-level singleton: an earlier test that leaves it paused or stopped makes
+        # scan_once skip every book, so this file fails on test ORDER rather than on its own code.
+        # Reset it here (the same pattern test_auth / test_csrf / test_account_web use).
+        CONTROL.resume()
+        CONTROL.clear_stop()
+        self.addCleanup(CONTROL.resume)
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         self.state = State(pathlib.Path(self.dir.name))
