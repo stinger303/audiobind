@@ -354,6 +354,10 @@ def _record_output(state, key: str, output: Path, old: Path | None = None) -> No
             wrote = data["output"].get("wrote")
             if old is not None and old.stem != output.stem and isinstance(wrote, list):
                 data["output"]["wrote"] = sorted({_renamed(name, old.stem, output) for name in wrote})
+                ids = data["output"].get("wrote_id")
+                if isinstance(ids, dict):  # CORE-04d: a rename keeps the size and mtime
+                    data["output"]["wrote_id"] = {_renamed(name, old.stem, output): ident
+                                                  for name, ident in ids.items()}
             detail = json.dumps(data)
     state.set_output(key, str(output), detail)
 

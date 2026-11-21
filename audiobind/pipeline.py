@@ -57,10 +57,11 @@ class Audit:
     #: Never read by the grade or the action
     hardcover: dict | None = None
     #: CORE-04a: the names (in the book's folder) the last publish placed, the backups it renamed
-    #: aside (original name -> backup name), and the merged list recorded as detail.output.wrote
+    #: aside (original name -> backup name), and the merged record ({name: [size, mtime_ns]},
+    #: CORE-04d) kept as detail.output.wrote / wrote_id
     placed: list = field(default_factory=list)
     moved_aside: dict = field(default_factory=dict)
-    wrote: list | None = None
+    wrote: dict | None = None
 
     @property
     def runtime_matches(self) -> bool:
@@ -528,18 +529,34 @@ def wrote_output(row) -> bool:
     return True
 
 
-def wrote_files(row) -> list[str] | None:
-    """CORE-04a: the files (names relative to the output's folder) Audiobind wrote there.
+def file_identity(path: Path) -> list[int] | None:
+    """CORE-04d: [size, mtime_ns] of ``path`` (a link itself, never followed); None when absent."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None
+    return [st.st_size, st.st_mtime_ns]
 
-    [] for a row whose output is not Audiobind's at all; None for a converted row whose list is
-    missing or unreadable - unknown provenance, which proves no more than ``legacy_owned`` allows
-    (CORE-04c).
+
+def _is_identity(value) -> bool:
+    return (isinstance(value, list) and len(value) == 2
+            and all(isinstance(v, int) and not isinstance(v, bool) for v in value))
+
+
+def wrote_files(row) -> dict[str, list[int]] | None:
+    """CORE-04a/04d: the files Audiobind wrote in the output's folder - {name relative to it:
+    [size, mtime_ns] when it was written}.
+
+    {} for a row whose output is not Audiobind's at all; None for a converted row whose record is
+    missing or unreadable (no ``wrote`` list, or one without the ``wrote_id`` identities) - unknown
+    provenance, which proves no more than ``legacy_owned`` allows (CORE-04c).
     """
     if not wrote_output(row):
-        return []
-    names = recorded_output(row).get("wrote")
-    if isinstance(names, list) and all(isinstance(name, str) for name in names):
-        return list(names)
+        return {}
+    output = recorded_output(row)
+    names, ids = output.get("wrote"), output.get("wrote_id")
+    if isinstance(names, list) and all(isinstance(name, str) for name in names) and isinstance(ids, dict):
+        return {name: ids[name] for name in names if _is_identity(ids.get(name))}
     return None
 
 
@@ -561,6 +578,8 @@ COMPANIONS = ("cover.jpg", "metadata.json")
 UNATTRIBUTED = ("Audiobind has no record of the files it wrote for this book, so this file "
                 "could not be attributed to it")
 NOT_WRITTEN = "Audiobind did not write this file"
+#: why a recorded name was left: the file there is no longer the one Audiobind wrote (CORE-04d)
+CHANGED = "this file changed since Audiobind wrote it (its size or modification time differs)"
 
 
 def legacy_owned(present: list[str], output_name: str) -> set[str]:
@@ -573,22 +592,37 @@ def legacy_owned(present: list[str], output_name: str) -> set[str]:
     return owned
 
 
-def attribute(present: list[str], recorded: list[str] | None, output_name: str) -> tuple[list[str], dict]:
-    """(names Audiobind can prove it wrote, {name: why it was left}) over ``present``."""
+def attribute(folder: Path, present: list[str], recorded: dict | None,
+              output_name: str) -> tuple[list[str], dict]:
+    """(names Audiobind can prove it wrote, {name: why it was left}) over ``present`` in ``folder``.
+
+    A recorded name proves nothing on its own (CORE-04d): it is Audiobind's only while the file
+    there still has the size and mtime recorded when Audiobind wrote it."""
+    own, left = [], {}
     if recorded is None:
-        owned, why = legacy_owned(present, output_name), UNATTRIBUTED
-    else:
-        owned, why = set(recorded), NOT_WRITTEN
-    return [n for n in present if n in owned], {n: why for n in present if n not in owned}
+        owned = legacy_owned(present, output_name)
+    for name in present:
+        if recorded is None:
+            ours, why = name in owned, UNATTRIBUTED
+        elif name not in recorded:
+            ours, why = False, NOT_WRITTEN
+        else:
+            ours, why = file_identity(folder / name) == list(recorded[name]), CHANGED
+        if ours:
+            own.append(name)
+        else:
+            left[name] = why
+    return own, left
 
 
-def _owned_before(row) -> tuple[Path, set[str]] | None:
-    """(folder, names) Audiobind already owned in this row's output folder, before a publish."""
+def _owned_before(row) -> tuple[Path, dict[str, list[int]]] | None:
+    """(folder, {name: identity}) Audiobind provably owns in this row's output folder right now,
+    before a publish (CORE-04d: only names whose file is still the one it wrote)."""
     if row is None or not wrote_output(row):
         return None
     folder = Path(row.output).parent
-    names = wrote_files(row)
-    if names is None:
+    recorded = wrote_files(row)
+    if recorded is None:
         # unknown provenance (CORE-04c): only what legacy_owned can prove
         output_name = Path(row.output).name
         try:
@@ -597,22 +631,36 @@ def _owned_before(row) -> tuple[Path, set[str]] | None:
             in_root = True
         present = [output_name] if in_root else folder_files(folder)
         names = legacy_owned(present, output_name)
-    return folder, set(names)
+    else:
+        names = attribute(folder, [n for n in recorded if os.path.lexists(folder / n)], recorded, "")[0]
+    owned = {name: file_identity(folder / name) for name in names}
+    return folder, {name: ident for name, ident in owned.items() if ident is not None}
 
 
-def _merged_wrote(owned: tuple[Path, set[str]] | None, folder: Path, audit: Audit) -> list[str]:
-    """What the row records as written after a publish into ``folder``: what it placed, plus -
-    in the same folder - what Audiobind owned before and the backups of those files."""
-    names = set(audit.placed)
+def _merged_wrote(owned: tuple[Path, dict[str, list[int]]] | None, folder: Path,
+                  audit: Audit) -> dict[str, list[int]]:
+    """What the row records as written after a publish into ``folder`` - {name: [size, mtime_ns]}
+    as each file is now (CORE-04d): what it placed, plus - in the same folder - what Audiobind
+    owned before and the backups of those files, each only while it is still that same file."""
+    ids = {}
+    for name in audit.placed:
+        ident = file_identity(folder / name)
+        if ident is not None:
+            ids[name] = ident
     if owned is not None:
         try:
             same = owned[0].resolve() == folder.resolve()
         except (OSError, RuntimeError):
             same = False
         if same:
-            names |= owned[1]
-            names |= {backup for name, backup in audit.moved_aside.items() if name in owned[1]}
-    return sorted(names)
+            for name, before in owned[1].items():
+                if name not in ids and file_identity(folder / name) == before:
+                    ids[name] = before
+            for name, backup in audit.moved_aside.items():
+                # a backup is a rename (or a copy2) of the file it replaced: the same size and mtime
+                if name in owned[1] and file_identity(folder / backup) == owned[1][name]:
+                    ids[backup] = owned[1][name]
+    return ids
 
 
 def record(
@@ -695,8 +743,10 @@ def record(
         }
     )
     if result and audit.wrote is not None:
-        # CORE-04a: exactly which files in the folder Audiobind wrote - Delete removes only these
-        detail_data["output"]["wrote"] = audit.wrote
+        # CORE-04a: exactly which files in the folder Audiobind wrote - Delete removes only these,
+        # and (CORE-04d) only while each still has the size and mtime recorded here
+        detail_data["output"]["wrote"] = sorted(audit.wrote)
+        detail_data["output"]["wrote_id"] = {name: audit.wrote[name] for name in sorted(audit.wrote)}
     if audit.hardcover is not None:
         # only while Hardcover evidence is on: with it off the stored detail is byte-identical
         detail_data["hardcover"] = audit.hardcover

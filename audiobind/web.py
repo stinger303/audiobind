@@ -8113,7 +8113,7 @@ class Handler(BaseHTTPRequestHandler):
                         )
                         return
                     present = pipeline_mod.folder_files(out_trash)
-                    own, left = pipeline_mod.attribute(present, out_wrote, out_name)
+                    own, left = pipeline_mod.attribute(out_trash, present, out_wrote, out_name)
                     if not left:
                         moves = [out_trash]
                         output_removed = "removed"

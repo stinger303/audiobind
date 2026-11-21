@@ -189,8 +189,13 @@ class Core04aDeleteRemovesOnlyWhatAudiobindWroteTests(DeleteCase):
     """Delete goes by the recorded list: the folder only when every file in it is Audiobind's."""
 
     def record_wrote(self, names):
+        """What a publish records (CORE-04d: each name with the file's size and mtime)."""
         row = self.state.get(self.REL)
-        row.detail = json.dumps({"output": {"path": row.output, "wrote": names}})
+        ids = {}
+        for name in names:
+            st = os.lstat(self.out_book / name)
+            ids[name] = [st.st_size, st.st_mtime_ns]
+        row.detail = json.dumps({"output": {"path": row.output, "wrote": names, "wrote_id": ids}})
         self.state.save(row)
 
     def test_an_owner_m4b_survives_when_only_the_mp3_was_audiobinds(self):
