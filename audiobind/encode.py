@@ -97,6 +97,13 @@ class ChapterPlan:
         return sum(self.durations.values())
 
 
+class Unmeasured(RuntimeError):
+    """B2's refusal: a file's length is unknown, so no output could be verified and none was made.
+
+    Still a RuntimeError (every caller that handled the refusal before still does); its own type
+    lets the pipeline record it as held, not failed (C3)."""
+
+
 def unmeasured_reason(paths: list[str]) -> str:
     """B2: the failure note for a book with unmeasured files - names them, never "dropped"."""
     names = [os.path.basename(p)[:80] for p in paths[:3]]
@@ -892,7 +899,7 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
     total_duration = plan.total
     if total_duration is None:
         # B2: refused before ffmpeg runs - an output nobody can measure against is never published
-        raise RuntimeError(unmeasured_reason(plan.unmeasured))
+        raise Unmeasured(unmeasured_reason(plan.unmeasured))
     chapters, source = plan.chapters, plan.source
     log(f"  chapters: {len(chapters)} from {source}")
 

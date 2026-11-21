@@ -755,9 +755,11 @@ def record(
     note: str = "",
     result=None,
     reopen: bool = False,
+    unmeasured: bool = False,
 ) -> None:
     """Record one audit outcome. ``reopen`` marks a manual re-check that still ended
-    in a decision-needed state, so the web panel re-opens with the reason."""
+    in a decision-needed state, so the web panel re-opens with the reason. ``unmeasured`` marks
+    a book held by the B2 refusal (C3)."""
     custom = overrides_mod.normalise(audit.overrides)
     detail_data = (
         {
@@ -835,6 +837,10 @@ def record(
         # and (CORE-04d) only while each still has the size and mtime recorded here
         detail_data["output"]["wrote"] = sorted(audit.wrote)
         detail_data["output"]["wrote_id"] = {name: audit.wrote[name] for name in sorted(audit.wrote)}
+    if unmeasured:
+        # C3: held because B2 refused to verify an unmeasurable book - the next ordinary scan checks
+        # it again (prefetch.already_decided), so a replaced file is picked up on its own
+        detail_data["unmeasured"] = True
     if audit.hardcover is not None:
         # only while Hardcover evidence is on: with it off the stored detail is byte-identical
         detail_data["hardcover"] = audit.hardcover
@@ -889,6 +895,15 @@ def kept_conversion(state: State, unit: BookUnit) -> str:
         return prev.output if Path(prev.output).is_file() else ""
     except OSError:
         return ""
+
+
+#: C3: the line a book held by the B2 refusal leads its note with
+UNMEASURED_HELD = "Not converted: one file could not be measured, so the converted book could not be checked."
+
+
+def unmeasured_held_note(reason: str) -> str:
+    """C3: the held note for a book B2 refused - this line, then the refusal's own reason."""
+    return f"{UNMEASURED_HELD} {reason}"[:300]
 
 
 def process_unit(
@@ -964,6 +979,11 @@ def process_unit(
             log("  stopped by operator - partial file discarded, book will be retried")
             rec("interrupted", note="stopped by operator - retried next scan")
             CONTROL.pause()
+        except encode.Unmeasured as exc:
+            # C3: Audiobind declined to verify this book (B2) - nothing broke, so it is held, not
+            # failed, and the next ordinary scan checks it again
+            log(f"  held: {exc}")
+            rec("held", note=unmeasured_held_note(str(exc)), unmeasured=True)
         except Exception as exc:  # noqa: BLE001 - one book must not stop a scan
             log(f"  FAILED: {exc}")
             # B4: the row keeps the short note; the log keeps where it happened (never the DB)

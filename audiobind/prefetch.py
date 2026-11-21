@@ -17,6 +17,7 @@ Three rules this module exists to keep:
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from pathlib import Path
@@ -31,6 +32,16 @@ log = logging.getLogger("audiobind")
 DECIDED = ("converted", "held", "failed", "review")
 
 
+def refused_unmeasured(previous) -> bool:
+    """C3: the row was held by the B2 refusal (pipeline.record's ``unmeasured`` flag), not by a
+    decision the owner has to make. Read from the detail, never from the note text."""
+    try:
+        detail = json.loads(previous.detail or "{}")
+    except (TypeError, ValueError):
+        return False
+    return isinstance(detail, dict) and detail.get("unmeasured") is True
+
+
 def already_decided(previous) -> bool:
     """True when a normal (non-forced) scan has nothing new to do for this row.
 
@@ -38,6 +49,9 @@ def already_decided(previous) -> bool:
     against the catalog every scan only costs lookups. A dry-run "ready" row (no output)
     is not skipped: it must convert once dry run is switched off.
     """
+    if previous.status == "held" and refused_unmeasured(previous):
+        # C3: B2 declined to verify it - checked again, so a replaced file is picked up
+        return False
     if previous.status in DECIDED:
         return True
     if previous.status == "ready" and previous.output and not CONTROL.dry_run:
