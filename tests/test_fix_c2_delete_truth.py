@@ -28,8 +28,9 @@ except ImportError:
 
 def render_toast(case: unittest.TestCase, result: dict) -> str:
     node = shutil.which("node")
-    if not node:
-        case.skipTest("node not installed")
+    # hard requirement: a missing node fails the test instead of skipping the proof
+    case.assertIsNotNone(node, "node is required to render the delete toast")
+    assert node is not None  # narrows the type for static checkers; no-op at runtime
     source = function_source(web.SCRIPT, "abModalConfirm")
     with tempfile.TemporaryDirectory() as tmp:
         js = Path(tmp) / "modal.js"

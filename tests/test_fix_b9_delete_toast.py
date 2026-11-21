@@ -47,8 +47,10 @@ def function_source(script: str, name: str) -> str:
 class TestB9DeleteToastReadsSourceRemoved(unittest.TestCase):
     def setUp(self):
         self.node = shutil.which("node")
-        if not self.node:
-            self.skipTest("node not installed")
+        # node runs the page's own JavaScript against the real function source; it is a hard
+        # requirement of this test, not an optional extra, so a missing node must fail loudly
+        # rather than silently skipping the proof of the B9 fix.
+        self.assertIsNotNone(self.node, "node is required to run the delete-toast tests")
 
     def run_modal(self, result: dict) -> dict:
         source = function_source(web.SCRIPT, "abModalConfirm")
