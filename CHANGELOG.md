@@ -7,6 +7,50 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [Unreleased]
+
+**A complete "Set up downloading" guide, and a series name you can trust.** Plus the fixes an audit batch,
+a cross-model review and a matcher case produced: nothing changes a match decision.
+
+### Added
+- **The guide's last two steps** — step 3 *The address the tracker sees* (the address your requests leave
+  from, probed the way the watcher already probes it, with a **Check again** button and a plain sentence when
+  it doesn't match the address a session was made for) and step 4 *Your tracker* (the coordinates it needs,
+  with a **Test** button that makes exactly one search and says what came back). The end state summarises
+  what is set up and what happens next.
+- **Four adversarial matcher cases** pinning what the matcher does when a folder's ASIN names another work:
+  the name's book is picked at most LOW, the inverse inputs never reach HIGH and never write, the known gap
+  stays pinned, and an exact decoy subtitle never rescues a wrong candidate.
+
+### Changed
+- **One series name, everywhere.** The detail, the Match column, the series shelf and the re-filer all read
+  the same recorded value, taken from Audnex `seriesPrimary` — the source the file is tagged from — so the
+  panel can no longer describe a different series than the file carries (`7eb2bfb`). Overrides still win and
+  are applied on read, so clearing one hands the value straight back.
+
+### Fixed
+- **The panel explains an ASIN-hint conflict** instead of reporting a bare `tie`: "The ASIN in your folder
+  name, B000000000 (Dune), belongs to a different book than the suggested match (Dune Messiah)."
+- **An error about the output mount is no longer recorded as a source failure** (`25f2e7c`): the scan guard
+  decides from the paths the error carries, so a converted row is never flipped to failed by a disk hiccup
+  in the output tree — that case ends the pass, as it did before.
+- **The delete message tells the truth** (`4667b0c`): when Audiobind's own copy was removed and other files
+  were left beside it, it no longer says the converted copy stayed; a loose book is no longer called a folder.
+- **A book Audiobind cannot measure is held, not failed** (`ab8bf7a`): it comes back on the next scan once the
+  file is readable, instead of quietly dropping out of the lists.
+- **Advice matches the note**: a refusal reads "Couldn't measure a file", a killed encoder leads with server
+  memory, and only a genuinely unknown failure still says "Encoder error" (`401d918`).
+- **The end state's problem list reads as a sentence again** at every width — the fix links were being
+  squeezed into their own column (`d89267b`).
+- **Signalled encode, silent settings, crash-proof scans and a hit that lies about a deletion** — the batch
+  behind `0426d3e..4945ad7`, including traceback logging for a failed book, `/api/unit` matched as a path
+  segment rather than a prefix, and unreachable-file totals that are unknown rather than short.
+
+### Tests
+- 2,514 → **2,620**. New coverage for both wizard steps, the series-source resolution (12 cases), the four
+  adversarial matcher cases, the delete-answer contract, and the ASIN-hint sentence — plus two isolation fixes
+  for tests that leaked state into the run.
+
 ## [0.25.2] - 2026-11-21
 
 **The "Set up downloading" guide's first half, plus two fixes that matter more: the wrong series volume
