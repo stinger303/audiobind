@@ -33,6 +33,28 @@ def _ingest_source_gone(unit: BookUnit) -> bool:
         return True
 
 
+def source_side_error(unit: BookUnit, exc: OSError) -> bool:
+    """True only when ``exc`` names a path of this book's source: its folder (or loose file), or
+    anything inside it.
+
+    Decided from the paths the error carries, never from its message. An error with no path, or
+    one naming the output tree, the work dir or a binary, is not about the source: the caller must
+    not record it as a source failure, because that would rewrite the row's status on a guess.
+    """
+    roots = {os.path.normpath(unit.path), *(os.path.normpath(f) for f in unit.files)}
+    for name in (exc.filename, exc.filename2):
+        if name is None or isinstance(name, int):
+            continue
+        try:
+            path = os.path.normpath(os.fsdecode(name))
+        except (TypeError, ValueError):
+            continue
+        for root in roots:
+            if path == root or path.startswith(root.rstrip(os.sep) + os.sep):
+                return True
+    return False
+
+
 def _record_unreadable(state: State, unit: BookUnit, exc: OSError) -> None:
     """Record a library book whose files could not be read as failed, with the reason.
 
@@ -146,6 +168,12 @@ def scan_once(state: State, force: bool = False) -> dict:
                 try:
                     process_unit(state, unit, log=log.info)
                 except OSError as exc:
+                    if not source_side_error(unit, exc):
+                        # C1: not about this book's source (the output mount, the work dir, an
+                        # error with no path): end the pass as before B1 and rewrite no row
+                        log.exception("[%s] scan stopped - an error not about this book's source",
+                                      unit.state_key)
+                        raise
                     # B1: a library file deleted, replaced or unreadable between the scan and the read
                     # (a mount that dropped, say) fails this one book; the rest of the pass goes on
                     log.warning("[%s] FAILED - a source file could not be read: %s", unit.state_key, exc)

@@ -43,7 +43,8 @@ class TestB1LibraryOSErrorIsOneFailedBook(unittest.TestCase):
         def process(state, unit, log=print, **_kw):
             calls.append(unit.rel_path)
             if unit.rel_path == "A/Two":
-                raise OSError("disk went away")
+                # C1: it names a file of this book's source, so it is a source failure
+                raise OSError(5, "disk went away", "/library/A/Two/01.mp3")
             state.save(UnitState(path=unit.state_key, status="review"))
 
         with self.assertLogs("audiobind", level="WARNING") as logs:
