@@ -6,7 +6,9 @@ The pages are drawn in ``web.py`` (every page is). This module holds what has no
   uses, under keys that are NOT ``setting_<name>`` - so they are not settings, never appear on the
   Settings page and are not in ``SETTING_CHOICES``. No schema change;
 * the Host-header pre-fill for the download client's address;
-* the one retry the client test makes against this container's own loopback.
+* the one retry the client test makes against this container's own loopback;
+* step 3's address check: the watcher's own egress probe, stored where the watcher stores it;
+* step 4's Test: one search through the watcher's own tracker client, said in plain words.
 
 The wizard writes the very same settings keys the Watcher tab writes (``qbit_url`` ...), through the same
 save path. It owns no configuration of its own.
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import time
 from urllib.parse import urlsplit
 
 #: where the person is: 1..len(STEPS). Written when a step is shown, so a container restart in the middle
@@ -40,8 +43,8 @@ STEPS = (
     (3, "The address the tracker sees"),
     (4, "Your tracker"),
 )
-#: steps that have a page. The rest are listed, not clickable, and answer with "not built yet".
-BUILT = (1, 2)
+#: steps that have a page. A step without one is listed, not clickable, and answers with "not built yet".
+BUILT = (1, 2, 3)
 LAST_STEP = STEPS[-1][0]
 
 #: the download client's default WebUI port, for the pre-filled address
@@ -210,3 +213,57 @@ def test_client(state, extra_details=()) -> dict:
     if answer["ok"]:
         answer["details"] += list(extra_details)
     return answer
+
+
+# ---------------------------------------------------------------------------- step 3: the address
+def address_view(state) -> dict:
+    """What step 3 shows, from the last egress check on record (the watcher's ``watcher_egress``, written
+    by its guard before a cycle and by ``check_address``). Reads only: showing the page sends nothing.
+
+    ``{"ip", "at", "checked", "failed", "proxy", "expected", "verdict"}``: ``at`` is the check's time
+    (None: never checked) and ``checked`` the same as text; ``failed``: the last check found no address;
+    ``proxy``: requests go through the tracker proxy; ``expected``: the address the session was made for
+    (the "Only reach the tracker from one IP" setting, "" = not given); ``verdict``: match | mismatch |
+    home | unset | unknown."""
+    from . import egress, watcher
+    from .config import set_effective
+
+    set_effective(state)
+    rec = state.get_meta(watcher.META_EGRESS) or {}
+    rec = rec if isinstance(rec, dict) else {}
+    ip = str(rec.get("ip") or "")
+    try:
+        at = float(rec["at"]) if rec.get("at") is not None else None
+    except (TypeError, ValueError):
+        at = None
+    home = watcher._setting("tracker_home_ip")
+    expected = watcher._setting("tracker_expected_egress_ip")
+    if not ip:
+        verdict = "unknown"
+    elif home and egress.judge(home, ip)[0] == "blocked":
+        verdict = "home"
+    elif not expected:
+        verdict = "unset"
+    else:
+        verdict = "match" if egress.judge("", ip, expected)[0] == "ok" else "mismatch"
+    return {"ip": ip, "at": at, "checked": watcher._stamp(at) if at is not None else "",
+            "failed": at is not None and not ip, "proxy": bool(watcher._setting("tracker_proxy")),
+            "expected": expected, "verdict": verdict}
+
+
+def check_address(state) -> dict:
+    """Step 3's Check again: ONE ``egress.probe`` through the tracker proxy - the very probe and proxy
+    the watcher's guard uses - stored in ``watcher_egress`` in the shape the guard stores it; then
+    ``address_view``. The tracker is never contacted, and there is no new network path."""
+    from . import egress, watcher
+    from .config import set_effective
+
+    set_effective(state)
+    ip, why = "", ""
+    try:
+        ip = egress.probe(watcher._setting("tracker_proxy"))
+    except Exception as exc:  # noqa: BLE001 - whatever went wrong, the address is unknown
+        why = str(exc) or type(exc).__name__
+    reason = "" if ip else f"the egress IP could not be verified ({why})"
+    state.set_meta(watcher.META_EGRESS, {"ip": ip, "at": time.time(), "reason": reason})
+    return address_view(state)

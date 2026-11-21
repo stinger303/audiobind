@@ -676,8 +676,20 @@ check("wizard: Test answers in plain words and retries once on the loopback addr
 check("wizard: the password is never served (step 2, the test answer, the Watcher tab)",
       "VERIFY WIZ PASS" not in get(WIZ + "?step=2") + tested + get("/settings?tab=watcher"))
 step3 = get(WIZ + "?step=3")
-check("wizard: step 3 says it is not built yet and offers the way back",
-      "is not built yet" in step3 and f'href="{WIZ}?step=2"' in step3)
+check("wizard: step 3 is built: the address box, Check again, Back and Continue",
+      "Step 3 of 4" in step3 and "is not built yet" not in step3 and 'id="ab-wiz-addr"' in step3
+      and 'id="ab-wiz-recheck"' in step3 and f'href="{WIZ}?step=2"' in step3
+      and f'href="{WIZ}?step=4"' in step3)
+node_check("wizard step 3", step3, "wizard-3.js")
+from audiobind import egress  # noqa: E402 - stubbed: the page check never asks a real address lookup
+_real_egress_fetch = egress._fetch
+egress._fetch = lambda url, proxy, timeout: "198.51.100.7"
+status, _, rechecked = post_json("/api/setup/downloading", {"action": "address"})
+egress._fetch = _real_egress_fetch
+step3 = get(WIZ + "?step=3")
+check("wizard: Check again finds the address (stubbed lookup) and step 3 then shows it with the time",
+      status == 200 and json.loads(rechecked).get("ip") == "198.51.100.7"
+      and "198.51.100.7" in step3 and "Last checked:" in step3, f"{status} {rechecked}")
 status, _, _ = post_json("/api/settings", {"reset_keys": ["qbit_url", "qbit_user", "qbit_pass"]})
 status, _, _ = post_json("/api/setup/downloading", {"action": "mode", "mode": "library"})
 done_page = get(WIZ + "?step=1")

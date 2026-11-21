@@ -58,7 +58,7 @@ class TestPage(WizardCase):
 
     def test_a_step_that_is_not_built_says_so_and_offers_the_way_back(self):
         self.set_mode(wizard.MODE_TRACKER)
-        for step in (3, 4):
+        for step in (4,):
             with self.subTest(step=step):
                 _status, page = self.get(f"{wizard.PATH}?step={step}")
                 self.assertIn("is not built yet", page)

@@ -720,6 +720,9 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-wiz .ab-hintbox{margin-bottom:0}
 .ab-wiz .ab-acct-row{flex-wrap:wrap}
 .ab-wiz a.btn{text-decoration:none}
+.ab-wiz-ip{font-family:var(--ab-mono);overflow-wrap:anywhere;word-break:break-all}
+.ab-wiz-when{margin:4px 0 0;font-size:12px;color:var(--ab-text3)}
+.ab-wiz-addr{min-width:0;overflow-wrap:anywhere}
 .ab-disc-intro{font-size:12.5px;color:var(--ab-text3);line-height:1.5}
 .ab-disc-intro b{color:var(--ab-text2);font-weight:500}
 .ab-disc-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -5674,12 +5677,98 @@ def _wizard_step2(state, host: str) -> str:
     )
 
 
+def _wizard_address_box(view: dict) -> str:
+    """Step 3's finding: the address the tracker sees, when it was checked, and whether it is the one
+    the session was made for. ``view`` is ``wizard.address_view``. Drawn by the page and by Check
+    again's answer. ``data-auto`` asks the page to check once by itself when nothing was ever checked."""
+    ip_html = f'<code class="ab-wiz-ip">{_html(view["ip"])}</code>'
+    expected_html = f'<code class="ab-wiz-ip">{_html(view["expected"])}</code>'
+    lines = []
+    if view["at"] is None:
+        lines.append(_wizard_check(None, "Not checked yet. Audiobind is checking now; this can take a few "
+                                         "seconds."))
+    elif view["failed"]:
+        fix = ("Check that your tracker proxy is running." if view["proxy"] else
+               "Check this container's internet connection.")
+        lines.append(_wizard_check(False, (
+            "Audiobind could not find out its address: neither address lookup answered. "
+            f"{fix} You can still go on; this does not stop the setup.")))
+    else:
+        how = "through your tracker proxy" if view["proxy"] else "straight from this container, with no proxy"
+        lines.append(_wizard_check(True, f"Audiobind's requests to your tracker leave from {ip_html}, "
+                                         f"{how}."))
+    verdict = view["verdict"]
+    if verdict == "match":
+        lines.append(_wizard_check(True, "That is the address you said your tracker session was created for, "
+                                         "so the two match."))
+    elif verdict == "mismatch":
+        lines.append(_wizard_check(False, (
+            f"Your tracker session was created for {expected_html}, but your requests leave from {ip_html}. "
+            f"The session will be refused; create a new one from this address ({ip_html}) and paste it in "
+            "the next step. Until the two match, Audiobind does not contact your tracker.")))
+    elif verdict == "home":
+        lines.append(_wizard_check(False, (
+            "That is your home connection, so Audiobind will not contact your tracker from it. Send "
+            "Audiobind through your VPN (the tracker proxy) and check again.")))
+    elif verdict == "unset":
+        lines.append(_wizard_check(None, (
+            "You have not told Audiobind which address your tracker session was created for, so it cannot "
+            f"compare the two. Create your session from {ip_html}. To make Audiobind stop rather than use "
+            "any other address, enter it under Settings &rarr; Watcher &rarr; &ldquo;Only reach the tracker "
+            "from one IP&rdquo;.")))
+    elif view["expected"]:  # no address now, but the person did say which one the session is for
+        lines.append(_wizard_check(None, (
+            f"Your tracker session is for {expected_html}. Until Audiobind can see its own address, it does "
+            "not contact your tracker.")))
+    when = (f'<p class="ab-wiz-when" id="ab-wiz-addr-when">Last checked: {_html(view["checked"])}.</p>'
+            if view["checked"] else "")
+    auto = ' data-auto="1"' if view["at"] is None else ""
+    return (f'<div class="ab-hintbox ab-wiz-addr" id="ab-wiz-addr"{auto}>'
+            "<b>The address your tracker sees</b>"
+            f'<ul class="ab-wiz-checks">{"".join(lines)}</ul>{when}</div>')
+
+
+#: Check again's closing words, by verdict
+WIZARD_ADDRESS_VERDICTS = {"match": " It matches your session's address.",
+                           "mismatch": " It does not match your session's address.",
+                           "home": " That is your home connection."}
+
+
+def _wizard_address_message(view: dict) -> str:
+    """Check again's one line, beside the button."""
+    if view["failed"]:
+        return "Checked just now: the address could not be found."
+    closing = WIZARD_ADDRESS_VERDICTS.get(view["verdict"], "")
+    return f"Checked just now: your requests leave from {view['ip']}.{closing}"
+
+
+def _wizard_step3(state) -> str:
+    """Step 3: the address the tracker sees. Shows the last egress check on record (a page view sends
+    nothing); Check again runs the watcher's own probe once. Continue is never held back by it."""
+    return (
+        '<p class="ab-acct-who">Your tracker ties each session to the internet address it was created '
+        "from. If Audiobind's requests arrive from a different address, the session is refused. This step "
+        "shows the address your tracker sees and whether it is the one your session was made for.</p>"
+        + _wizard_address_box(wizard_mod.address_view(state))
+        + '<div class="ab-acct-row"><button class="btn" type="button" id="ab-wiz-recheck" '
+        'onclick="abWizardAddress()">Check again</button>'
+        '<span class="ab-fb" id="ab-wiz-recheck-fb" role="status"></span></div>'
+        '<p class="ab-setting-hint">Check again asks an address lookup service which address your requests '
+        "come from, the same way the watcher checks before it searches. It does not contact your tracker.</p>"
+        '<div class="ab-acct-row">'
+        f'<a class="btn" id="ab-wiz-back" href="{wizard_mod.PATH}?step=2">Back</a>'
+        f'<a class="btn ab-save" id="ab-wiz-continue" href="{wizard_mod.PATH}?step=4">Continue</a></div>'
+    )
+
+
 def _wizard_body(state, step: int, mode: str, host: str) -> str:
     """The content of one step. Steps without a page answer with the not-built notice."""
     if step == 1:
         return _wizard_step1(state, mode)
     if step == 2:
         return _wizard_step2(state, host)
+    if step == 3:
+        return _wizard_step3(state)
     return _wizard_not_built(step)
 
 
@@ -5789,6 +5878,27 @@ function abWizardClientContinue() {
   abWizSave(fb).then(saved => { if (saved) location.href = '/setup/downloading?step=3'; })
     .catch(() => { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach Audiobind'; });
 }
+// Step 3: Check again asks Audiobind to look up its address once; the answer redraws the finding.
+function abWizardAddress() {
+  const fb = document.getElementById('ab-wiz-recheck-fb');
+  const btn = document.getElementById('ab-wiz-recheck');
+  if (!fb || !btn) return;
+  fb.className = 'ab-fb'; fb.textContent = 'checking... this can take a few seconds';
+  btn.disabled = true;
+  abWizPost({action: 'address'}).then(res => {
+    const b = res.body;
+    const box = document.getElementById('ab-wiz-addr');
+    if (b.html && box) box.outerHTML = b.html;
+    const bad = !b.ok || b.verdict === 'mismatch' || b.verdict === 'home';
+    fb.className = 'ab-fb ' + (bad ? 'ab-bad' : 'ab-good');
+    fb.textContent = b.message || b.error || 'no answer';
+  }).catch(() => { fb.className = 'ab-fb ab-bad'; fb.textContent = 'could not reach Audiobind'; })
+    .finally(() => { btn.disabled = false; });
+}
+(function () {
+  const box = document.getElementById('ab-wiz-addr');
+  if (box && box.dataset.auto === '1') abWizardAddress();
+})();
 // After an answer the page reloads at the result: put keyboard and screen-reader focus on it.
 (function () {
   if (location.hash !== '#ab-wiz-outcome') return;
@@ -8893,7 +9003,9 @@ class Handler(BaseHTTPRequestHandler):
         "dismiss": the Library page's card is answered for good ("No, just my library").
         "mode": step 1's answer (library | files | tracker). Only "tracker" leads on to step 2; the other two
         also answer the card, so it does not ask a person who has already said what they want.
-        "test": step 2's Test on the saved values (200 ok, 502 not), in plain words; see wizard.test_client."""
+        "test": step 2's Test on the saved values (200 ok, 502 not), in plain words; see wizard.test_client.
+        "address": step 3's Check again - one egress probe, stored as the watcher stores it (200 found,
+        502 not), with the redrawn finding; see wizard.check_address."""
         payload = self._read_json()
         if payload is None:
             return
@@ -8920,6 +9032,13 @@ class Handler(BaseHTTPRequestHandler):
             extra = [f"Audiobind reads its ingest folder: {folder}." if folder else
                      "Audiobind has no ingest folder yet (step 1 shows how to set it).", ONE_FOLDER_THREE_NAMES]
             answer = wizard_mod.test_client(self.state, extra)
+            self._send(200 if answer["ok"] else 502, json.dumps(answer).encode(), "application/json")
+            return
+        if action == "address":
+            view = wizard_mod.check_address(self.state)
+            answer = {"ok": not view["failed"], "message": _wizard_address_message(view),
+                      "ip": view["ip"], "verdict": view["verdict"], "checked": view["checked"],
+                      "html": _wizard_address_box(view)}
             self._send(200 if answer["ok"] else 502, json.dumps(answer).encode(), "application/json")
             return
         self._send(400, b'{"error":"unknown action"}', "application/json")

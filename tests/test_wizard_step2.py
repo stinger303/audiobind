@@ -310,9 +310,10 @@ class TestThePlainLanguageTest(Step2Case):
 
 
 class TestContinue(Step2Case):
-    def test_continue_leads_to_the_step_that_is_not_built_and_says_so(self):
+    def test_continue_leads_to_step_three(self):
         page = self.get(wizard.PATH + "?step=3")[1]
-        self.assertIn("The address the tracker sees is not built yet", page)
+        self.assertIn("Step 3 of 4: The address the tracker sees", page)
+        self.assertNotIn("is not built yet", page)
         self.assertIn(f'href="{wizard.PATH}?step=2"', page, "Back goes to the download client")
         self.assertIn("abWizardClientContinue()", self.page2())
         self.assertIn("'/setup/downloading?step=3'", web.WIZARD_SCRIPT)
