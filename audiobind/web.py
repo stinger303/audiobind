@@ -6960,6 +6960,48 @@ def removal_unsafe(target: Path, root: Path, kind: str) -> str:
     return ""
 
 
+def move_aside(paths: list[Path]) -> tuple[dict[Path, Path], OSError | None]:
+    """WEBAPI-02b: rename each path to a hidden trash name in its own folder (one atomic rename
+    each - a link is moved, never followed). On the first failure the ones already moved are put
+    back, so either all of them moved ({path: trash}, None) or none did ({}, the error)."""
+    moved: dict[Path, Path] = {}
+    for path in paths:
+        trash = path.with_name(f".{path.name}.audiobind-delete-{os.getpid()}-{os.urandom(4).hex()}")
+        try:
+            os.rename(path, trash)
+        except OSError as exc:
+            put_back(moved)
+            return {}, exc
+        moved[path] = trash
+    return moved, None
+
+
+def put_back(moved: dict[Path, Path]) -> list[Path]:
+    """Rename what is left of each trashed path back to its own name - never over something that
+    appeared there since. Returns the trash paths that could not go back (logged)."""
+    left = []
+    for path, trash in moved.items():
+        if not os.path.lexists(trash):
+            continue  # removed completely
+        if not os.path.lexists(path):
+            try:
+                os.rename(trash, path)
+                continue
+            except OSError:
+                pass
+        left.append(trash)
+        logging.getLogger("audiobind").error("HARD DELETE: could not put %s back at %s", trash, path)
+    return left
+
+
+def remove_trashed(trash: Path) -> None:
+    """Remove one path move_aside renamed: a folder recursively, anything else (a link) unlinked."""
+    if not trash.is_symlink() and trash.is_dir():
+        shutil.rmtree(str(trash))
+    elif os.path.lexists(trash):
+        trash.unlink()
+
+
 def plan_target(p) -> tuple[Path, str]:
     """(absolute path with a resolved parent, kind) - the leaf itself is never followed."""
     raw = Path(p)
@@ -7941,19 +7983,40 @@ class Handler(BaseHTTPRequestHandler):
             if plan_output(unit_state) is None:
                 return
 
+            # HARD DELETE: the published output is removed permanently and the book is
+            # forgotten. The source folder is removed too when the library mount allows
+            # writes; on a read-only library (the documented, recommended setup) the
+            # source stays on disk and the book reappears on the next scan until the
+            # operator removes the folder from the share. The path guards above are the
+            # only thing between this call and the filesystem, so they must stay strict.
+            log = logging.getLogger("audiobind")
+            # WEBAPI-02b: the walk is slow on a big tree or a stalled share, so it runs before the
+            # encoder lock is taken (the claim and path checks under the lock still come after it)
+            before = files_under([str(t) for t in targets]) if targets else set()
+
             # WEBAPI-01: the checks at the top ran before the walk above, and a Convert anyway can
             # have queued this book since. Decided again under the encoder lock (no encode can
             # begin while it is held), never waited for: a conversion holding it gets a busy
-            # answer, and nothing has been changed yet. WEBAPI-02: the lock is then held until the
-            # row is gone, so a layout move (which takes it too) cannot move the published folder
-            # between the read below and its removal
+            # answer, and nothing has been changed yet. WEBAPI-02: a layout move takes the lock too,
+            # so it cannot move the published folder between the read below and the decision.
+            # WEBAPI-02b: only the decision and the renames that move the targets aside (fast, atomic,
+            # same folder) happen under it; the removal itself and the answer come after it is released
             if not CONVERT_LOCK.acquire(blocking=False):
                 self._send(409, DELETE_BUSY, "application/json")
                 return
+            source_trash: dict[Path, Path] = {}
+            output_trash: dict[Path, Path] = {}
+            source_removed = False
+            source_kept_reason = ""
+            output_removed = "absent"
+            output_kept_reason = ""
+            output_removed_files = None
             try:
                 claim = conversion_claim(rel)
                 if claim:
-                    self._send(409, json.dumps({"error": claim}).encode(), "application/json")
+                    log.info("HARD DELETE %s; stopped before removing anything: %s", rel, claim)
+                    self._send(409, json.dumps({"error": claim, "source_partial": False}).encode(),
+                               "application/json")
                     return
                 # WEBAPI-02: the row as it is now - a layout move may have re-pointed it during
                 # the walk - and it cannot change again while the lock is held
@@ -7966,27 +8029,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 not_ours, out_trash, out_shared, out_wrote = planned
 
-                # HARD DELETE: the published output is removed permanently and the book is
-                # forgotten. The source folder is removed too when the library mount allows
-                # writes; on a read-only library (the documented, recommended setup) the
-                # source stays on disk and the book reappears on the next scan until the
-                # operator removes the folder from the share. The path guards above are the
-                # only thing between this call and the filesystem, so they must stay strict.
-                log = logging.getLogger("audiobind")
-                source_removed = False
-                source_kept_reason = ""
                 if targets:
-                    before = files_under([str(t) for t in targets])
-                    # WEBAPI-01: once more right before the first removal - the last point at which
-                    # stopping leaves the book whole (stopping between targets would leave a partial
-                    # source for the queued action to convert)
-                    claim = conversion_claim(rel)
-                    if claim:
-                        log.info("HARD DELETE %s; stopped before removing anything: %s", rel, claim)
-                        self._send(409, json.dumps({"error": claim, "source_partial": False}).encode(),
-                                   "application/json")
-                        return
-                    error: OSError | None = None
                     changed = ""
                     for target in targets:
                         changed = removal_unsafe(target, Path(CONFIG.library_root).resolve(), kinds[target])
@@ -7995,17 +8038,6 @@ class Handler(BaseHTTPRequestHandler):
                         if changed:
                             changed = f"{target.name}: {changed}"
                             break
-                        try:
-                            if target.is_symlink():
-                                target.unlink()  # a link is removed, never followed
-                            elif target.is_dir():
-                                shutil.rmtree(str(target))
-                            elif target.exists():
-                                target.unlink()
-                        except OSError as exc:
-                            error = exc
-                            break
-                    remaining = {f for f in before if os.path.lexists(f)}
                     if changed:
                         log.error("HARD DELETE %s; stopped, the path changed on disk: %s", rel, changed)
                         self._send(
@@ -8013,35 +8045,17 @@ class Handler(BaseHTTPRequestHandler):
                             json.dumps(
                                 {
                                     "error": "the book's folder changed on disk while it was being deleted "
-                                    f"({changed}). Stopped - nothing more was removed and the book was kept. "
+                                    f"({changed}). Stopped - nothing was removed and the book was kept. "
                                     "Scan again, then retry.",
-                                    "source_partial": remaining != before,
+                                    "source_partial": False,
                                 }
                             ).encode(),
                             "application/json",
                         )
                         return
+                    source_trash, error = move_aside(targets)
                     if error is None:
-                        source_removed = True
-                        log.info("HARD DELETE %s; source removed: %s", rel, ", ".join(map(str, targets)))
-                    elif remaining and remaining != before:
-                        # some files are already gone: never call that "kept", and keep the row
-                        # (and the published output) so the operator can see and finish the job
-                        log.error("HARD DELETE %s; source PARTIALLY removed: %s", rel, error)
-                        self._send(
-                            500,
-                            json.dumps(
-                                {
-                                    "error": f"the source was only partly deleted ({len(before) - len(remaining)} "
-                                    f"of {len(before)} files removed) before a file system error "
-                                    f"({_os_error_code(error)}; details in the Audiobind log). "
-                                    "Nothing else was touched - fix the permissions and delete again.",
-                                    "source_partial": True,
-                                }
-                            ).encode(),
-                            "application/json",
-                        )
-                        return
+                        pass
                     elif error.errno == errno.EROFS or "Read-only" in str(error):
                         source_kept_reason = "your source library is mounted read-only"
                         log.info("HARD DELETE %s; source kept: %s", rel, error)
@@ -8049,17 +8063,12 @@ class Handler(BaseHTTPRequestHandler):
                         source_kept_reason = "Audiobind doesn't have permission to delete the source folder"
                         log.info("HARD DELETE %s; source kept: %s", rel, error)
                     else:
-                        log.error("HARD DELETE %s; source removal failed: %s", rel, error)
-                        self._send(
-                            500,
-                            json.dumps(
-                                {
-                                    "error": f"source removal failed ({_os_error_code(error)}) - "
-                                    "details are in the Audiobind log"
-                                }
-                            ).encode(),
-                            "application/json",
-                        )
+                        log.error("HARD DELETE %s; source could not be moved aside: %s", rel, error)
+                        self._send(500, json.dumps({
+                            "error": f"source removal failed ({_os_error_code(error)}) - nothing was removed; "
+                            "details are in the Audiobind log",
+                            "source_removed": False,
+                        }).encode(), "application/json")
                         return
                 elif ingest_row:
                     source_kept_reason = "the files are a torrent that is still seeding in qBittorrent"
@@ -8072,9 +8081,6 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     log.info("HARD DELETE %s; source folder not found at %s", rel, src_path)
 
-                output_removed = "absent"
-                output_kept_reason = ""
-                output_removed_files = None
                 if not_ours:
                     output_removed = "kept"
                     output_kept_reason = OUTPUT_NOT_OURS
@@ -8088,6 +8094,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not changed and Path(CONFIG.output_root).resolve() != out_root:
                         changed = "the output folder was re-pointed"
                     if changed:
+                        put_back(source_trash)  # nothing is removed yet: the source comes back whole
                         log.error("HARD DELETE %s; output not removed, the path changed on disk: %s", rel, changed)
                         self._send(
                             409,
@@ -8095,76 +8102,146 @@ class Handler(BaseHTTPRequestHandler):
                                 {
                                     "error": f"the published folder changed on disk ({changed}). Its removal "
                                     "was stopped and the book was kept. Scan again, then retry.",
-                                    "source_removed": source_removed,
+                                    "source_removed": False,
                                 }
                             ).encode(),
                             "application/json",
                         )
                         return
-                    try:
-                        present = pipeline_mod.folder_files(out_trash)
-                        own = present if out_wrote is None else [n for n in present if n in set(out_wrote)]
-                        if len(own) == len(present):
-                            shutil.rmtree(str(out_trash))
-                            output_removed = "removed"
-                            log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
-                        else:
-                            # CORE-04a: the folder also holds files Audiobind never wrote (the owner's
-                            # own M4B beside an MP3 Audiobind added): only Audiobind's files go
-                            for name in own:
-                                (out_trash / name).unlink()  # a link is removed, never followed
-                            output_removed = "kept"
-                            output_kept_reason = (
-                                f"the folder also holds {len(present) - len(own)} file(s) Audiobind did not "
-                                f"write - only the {len(own)} it wrote were removed"
-                            )
-                            output_removed_files = own
-                            log.info("HARD DELETE %s; output %s: removed only %s", rel, output_kept_reason,
-                                     ", ".join(own) or "nothing")
-                    except OSError as exc:
-                        # the book is NOT forgotten: the row stays so the operator can see the
-                        # converted copy is still there, fix the cause and delete again
-                        log.error("HARD DELETE %s; could not remove output %s: %s", rel, out_trash, exc)
-                        self._send(
-                            500,
-                            json.dumps(
-                                {
-                                    "ok": False,
-                                    "error": f"the converted copy could not be removed ({_os_error_code(exc)}; "
-                                    "details are in the Audiobind log). The book was kept - fix the "
-                                    "permissions and delete again."
-                                    + (" The source folder was already removed." if source_removed else ""),
-                                    "output": "failed",
-                                    "source_removed": source_removed,
-                                }
-                            ).encode(),
-                            "application/json",
+                    present = pipeline_mod.folder_files(out_trash)
+                    own = present if out_wrote is None else [n for n in present if n in set(out_wrote)]
+                    if len(own) == len(present):
+                        moves = [out_trash]
+                        output_removed = "removed"
+                    else:
+                        # CORE-04a: the folder also holds files Audiobind never wrote (the owner's own
+                        # M4B beside an MP3 Audiobind added): only Audiobind's files go
+                        moves = [out_trash / name for name in own]
+                        output_removed = "kept"
+                        output_kept_reason = (
+                            f"the folder also holds {len(present) - len(own)} file(s) Audiobind did not "
+                            f"write - only the {len(own)} it wrote were removed"
                         )
+                        output_removed_files = own
+                    output_trash, error = move_aside(moves)
+                    if error is not None:
+                        put_back(source_trash)
+                        log.error("HARD DELETE %s; could not move the output aside %s: %s", rel, out_trash, error)
+                        self._send(500, json.dumps({
+                            "ok": False,
+                            "error": f"the converted copy could not be removed ({_os_error_code(error)}; "
+                            "details are in the Audiobind log) - nothing was removed and the book was kept. "
+                            "Fix the permissions and delete again.",
+                            "output": "failed",
+                            "source_removed": False,
+                        }).encode(), "application/json")
                         return
                 else:
                     log.info("HARD DELETE %s; output -> none", rel)
-
-                # Remove from state
-                self.state.delete(rel)
-                result = {
-                    "ok": True,
-                    "deleted": rel,
-                    "source_removed": source_removed,
-                    "source_kept": bool(source_kept_reason),
-                    "source_kept_reason": source_kept_reason,
-                    "output": output_removed,
-                    "output_kept_reason": output_kept_reason,
-                }
-                if output_removed_files is not None:
-                    result["output_removed_files"] = output_removed_files
-                if ingest_row:
-                    # the torrent folder is still in INGEST_DIR: without this the next scan converts it again
-                    self.state.dismiss(rel)
-                    result["dismissed"] = True
-                    log.info("HARD DELETE %s; removed from Audiobind, the torrent keeps seeding", rel)
-                self._send(200, json.dumps(result).encode(), "application/json")
             finally:
                 CONVERT_LOCK.release()
+
+            # WEBAPI-02b: the slow part, with the encoder free. Each target already sits under a trash
+            # name beside its own; a removal that fails puts what is left back under its name
+            if source_trash:
+                trashed_before = set()
+                for f in before:
+                    for target, trash in source_trash.items():
+                        if f == str(target) or f.startswith(str(target) + os.sep):
+                            trashed_before.add(str(trash) + f[len(str(target)):])
+                            break
+                error = None
+                for trash in source_trash.values():
+                    try:
+                        remove_trashed(trash)
+                    except OSError as exc:
+                        error = exc
+                        break
+                if error is None:
+                    source_removed = True
+                    log.info("HARD DELETE %s; source removed: %s", rel, ", ".join(map(str, source_trash)))
+                else:
+                    remaining = {f for f in trashed_before if os.path.lexists(f)}
+                    put_back(source_trash)
+                    failure = None
+                    if remaining and remaining != trashed_before:
+                        # some files are already gone: never call that "kept", and keep the row
+                        # (and the published output) so the operator can see and finish the job
+                        log.error("HARD DELETE %s; source PARTIALLY removed: %s", rel, error)
+                        failure = (500, {
+                            "error": f"the source was only partly deleted ({len(trashed_before) - len(remaining)} "
+                            f"of {len(trashed_before)} files removed) before a file system error "
+                            f"({_os_error_code(error)}; details in the Audiobind log). "
+                            "Nothing else was touched - fix the permissions and delete again.",
+                            "source_partial": True,
+                        })
+                    elif error.errno == errno.EROFS or "Read-only" in str(error):
+                        source_kept_reason = "your source library is mounted read-only"
+                        log.info("HARD DELETE %s; source kept: %s", rel, error)
+                    elif error.errno in (errno.EACCES, errno.EPERM):
+                        source_kept_reason = "Audiobind doesn't have permission to delete the source folder"
+                        log.info("HARD DELETE %s; source kept: %s", rel, error)
+                    else:
+                        log.error("HARD DELETE %s; source removal failed: %s", rel, error)
+                        failure = (500, {
+                            "error": f"source removal failed ({_os_error_code(error)}) - "
+                            "details are in the Audiobind log"
+                        })
+                    if failure is not None:
+                        put_back(output_trash)
+                        self._send(failure[0], json.dumps(failure[1]).encode(), "application/json")
+                        return
+
+            if output_trash:
+                try:
+                    for trash in output_trash.values():
+                        remove_trashed(trash)
+                    if output_removed_files is None:
+                        log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
+                    else:
+                        log.info("HARD DELETE %s; output %s: removed only %s", rel, output_kept_reason,
+                                 ", ".join(output_removed_files) or "nothing")
+                except OSError as exc:
+                    # the book is NOT forgotten: the row stays so the operator can see the
+                    # converted copy is still there, fix the cause and delete again
+                    put_back(output_trash)
+                    log.error("HARD DELETE %s; could not remove output %s: %s", rel, out_trash, exc)
+                    self._send(
+                        500,
+                        json.dumps(
+                            {
+                                "ok": False,
+                                "error": f"the converted copy could not be removed ({_os_error_code(exc)}; "
+                                "details are in the Audiobind log). The book was kept - fix the "
+                                "permissions and delete again."
+                                + (" The source folder was already removed." if source_removed else ""),
+                                "output": "failed",
+                                "source_removed": source_removed,
+                            }
+                        ).encode(),
+                        "application/json",
+                    )
+                    return
+
+            # Remove from state
+            self.state.delete(rel)
+            result = {
+                "ok": True,
+                "deleted": rel,
+                "source_removed": source_removed,
+                "source_kept": bool(source_kept_reason),
+                "source_kept_reason": source_kept_reason,
+                "output": output_removed,
+                "output_kept_reason": output_kept_reason,
+            }
+            if output_removed_files is not None:
+                result["output_removed_files"] = output_removed_files
+            if ingest_row:
+                # the torrent folder is still in INGEST_DIR: without this the next scan converts it again
+                self.state.dismiss(rel)
+                result["dismissed"] = True
+                log.info("HARD DELETE %s; removed from Audiobind, the torrent keeps seeding", rel)
+            self._send(200, json.dumps(result).encode(), "application/json")
             return
 
         if action not in ("retry", "force", "recheck", "set_asin"):

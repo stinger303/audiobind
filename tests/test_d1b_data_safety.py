@@ -3,12 +3,14 @@
 The theme: never remove or overwrite a file this process did not create.
 """
 
+import errno
 import json
 import os
 import pathlib
 import unittest
+from unittest import mock
 
-from audiobind import abs_layout, pipeline
+from audiobind import abs_layout, pipeline, web
 
 try:
     from test_d1_data_safety import DeleteCase, PublishCase
@@ -227,6 +229,73 @@ class Core04aDeleteRemovesOnlyWhatAudiobindWroteTests(DeleteCase):
         self.assertEqual(status, 200, body)
         self.assertEqual(body["output"], "removed")
         self.assertFalse(self.out_book.exists())
+
+
+# --------------------------------------------------------------------------- WEBAPI-02b
+class WebApi02bSlowRemovalOutsideTheLockTests(DeleteCase):
+    """Delete decides under CONVERT_LOCK and moves its targets aside there (a rename); the slow
+    removal and the HTTP answer happen after the lock is released."""
+
+    def leftovers(self):
+        """Anything still sitting beside the source or output folders (a trash name left behind)."""
+        return sorted(p.name for p in [*self.src.parent.iterdir(), *self.out_book.parent.iterdir()]
+                      if p.name not in ("Book",))
+
+    def test_the_lock_is_free_during_the_removal_and_when_the_answer_is_sent(self):
+        real_rename, real_rmtree, real_send = web.os.rename, web.shutil.rmtree, web.Handler._send
+        renamed_locked, free_while_removing, sent_locked = [], [], []
+
+        def rename(src, dst, *args, **kw):
+            if pathlib.Path(src) in (self.src, self.out_book):
+                renamed_locked.append(pipeline.CONVERT_LOCK.locked())
+            return real_rename(src, dst, *args, **kw)
+
+        def slow_rmtree(path, *args, **kw):
+            got = pipeline.CONVERT_LOCK.acquire(blocking=False)  # an encode could start right now
+            if got:
+                pipeline.CONVERT_LOCK.release()
+            free_while_removing.append(got)
+            return real_rmtree(path, *args, **kw)
+
+        def send(handler, *args, **kw):
+            sent_locked.append(pipeline.CONVERT_LOCK.locked())
+            return real_send(handler, *args, **kw)
+
+        with (
+            mock.patch.object(web.os, "rename", side_effect=rename),
+            mock.patch.object(web.shutil, "rmtree", side_effect=slow_rmtree),
+            mock.patch.object(web.Handler, "_send", new=send),
+        ):
+            status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertEqual((body["source_removed"], body["output"]), (True, "removed"))
+        self.assertEqual(renamed_locked, [True, True], "the targets were not moved aside under the lock")
+        self.assertEqual(free_while_removing, [True, True], "the slow removal ran with the encoder lock held")
+        self.assertEqual(sent_locked, [False], "the answer was sent with the encoder lock held")
+        self.assertFalse(self.src.exists())
+        self.assertFalse(self.out_book.exists())
+        self.assertEqual(self.leftovers(), [])
+        self.assertIsNone(self.state.get(self.REL))
+
+    def test_a_failed_rename_leaves_everything_in_place_and_says_so(self):
+        real_rename = web.os.rename
+
+        def rename(src, dst, *args, **kw):
+            if pathlib.Path(src) == self.out_book:
+                raise OSError(errno.EACCES, "Permission denied")
+            return real_rename(src, dst, *args, **kw)
+
+        with mock.patch.object(web.os, "rename", side_effect=rename):
+            status, body = self.delete()
+        self.assertEqual(status, 500, body)
+        self.assertIn("nothing was removed", body["error"])
+        self.assertIn("EACCES", body["error"])
+        self.assertFalse(body["source_removed"])
+        self.assertTrue((self.src / "01.mp3").exists(), "the source was moved aside and not put back")
+        self.assertTrue((self.out_book / "Book.m4b").exists())
+        self.assertEqual(self.leftovers(), [])
+        self.assertIsNotNone(self.state.get(self.REL))
+        self.assertFalse(pipeline.CONVERT_LOCK.locked())
 
 
 if __name__ == "__main__":

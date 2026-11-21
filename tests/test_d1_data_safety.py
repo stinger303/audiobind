@@ -382,19 +382,22 @@ class WebApi02DeleteVersusLayoutMoveTests(DeleteCase):
             self.assertTrue((self.moved / "Book.m4b").exists())
             self.assertIsNotNone(self.state.get(self.REL))
 
-    def test_the_output_removal_holds_the_encoder_lock(self):
+    def test_the_output_is_moved_aside_under_the_encoder_lock(self):
+        # WEBAPI-02b: the published folder leaves its name (a rename) while the lock is held; the
+        # slow removal of the renamed folder runs after it is released
         held = []
-        real_rmtree = web.shutil.rmtree
+        real_rename = web.os.rename
 
-        def rmtree(path, *args, **kw):
-            if pathlib.Path(path) == self.out_book:
+        def rename(src, dst, *args, **kw):
+            if pathlib.Path(src) == self.out_book:
                 held.append(pipeline.CONVERT_LOCK.locked())
-            return real_rmtree(path, *args, **kw)
+            return real_rename(src, dst, *args, **kw)
 
-        with mock.patch.object(web.shutil, "rmtree", side_effect=rmtree):
+        with mock.patch.object(web.os, "rename", side_effect=rename):
             status, body = self.delete()
         self.assertEqual(status, 200, body)
-        self.assertEqual(held, [True], "a layout move could run while the output was being removed")
+        self.assertEqual(held, [True], "a layout move could run while the output was being moved aside")
+        self.assertFalse(self.out_book.exists())
         self.assertFalse(pipeline.CONVERT_LOCK.locked())
 
 
