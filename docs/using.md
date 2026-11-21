@@ -40,6 +40,12 @@ missing. **Copy Audible link** copies the book's Audible page address. Series li
 fetched in the background, at most once a day per series. `/api/series` returns the same
 data as JSON.
 
+A book is shelved under the series its converted file is tagged with: the one Audnex lists for
+it, or yours if you set a series in the book's panel. The panel and the Match column show the
+same name, so they never disagree with the file. When Audnex lists no series for a book, the
+series from the Audible search is shown instead, and the panel says so. The file is then
+tagged without a series unless you set one.
+
 Each card shows "owned X of Y" and notes that the total comes from the Audible catalog, with
 when it was checked. Audiobind never estimates a total. If Audible has no listing, or the
 catalog couldn't be reached, the card shows **total unknown** and the reason. In the missing

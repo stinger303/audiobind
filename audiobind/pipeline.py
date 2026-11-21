@@ -65,6 +65,9 @@ class Audit:
     placed: list = field(default_factory=list)
     moved_aside: dict = field(default_factory=dict)
     wrote: dict | None = None
+    #: Q-B12: the Audnex record convert_unit fetched for this match (before the overrides), so the
+    #: recorded series is the one the tags were written from; None when it never asked
+    audnex: dict | None = None
 
     @property
     def runtime_matches(self) -> bool:
@@ -370,6 +373,7 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
         raise ValueError("cannot convert without a catalog match")
 
     book = catalog.book(match.asin)
+    audit.audnex = book
     # the operator's corrections are written into the catalog payload before anything reads it,
     # so tags, metadata.json and the filing layout all agree with what the panel shows
     book = overrides_mod.apply(book, audit.overrides)
@@ -747,6 +751,52 @@ def _merged_wrote(owned: tuple[Path, dict[str, list[int]]] | None, folder: Path,
     return ids
 
 
+def _recorded_series(state: State, audit: Audit) -> dict:
+    """Q-B12: detail.match's series, sequence and series_source - the catalogue side only.
+
+    Audnex ``seriesPrimary`` is what the tag writer uses, so it is recorded whenever the record is
+    at hand without a request: the one convert_unit fetched, else the catalog cache, else what an
+    earlier record of this same ASIN carried (so a re-check never flips the shelf back). Only when
+    none of those has a series is the Audible search value kept, marked ``"catalog"``, with
+    ``audnex_checked`` saying whether Audnex was asked and lists none. The overrides are not baked
+    in here: they can change after this record, and overrides.series_of applies them on read.
+    """
+    product = audit.match.product
+    asin = audit.match.asin
+    found = audit.audnex if audit.audnex is not None else catalog.cached_book(asin)
+    primary = (found or {}).get("seriesPrimary") or {}
+    if isinstance(primary, dict) and str(primary.get("name") or "").strip():
+        return {
+            "series": str(primary["name"]).strip(),
+            "sequence": str(primary.get("position") or "").strip(),
+            "series_source": overrides_mod.SERIES_AUDNEX,
+        }
+    if found is None and asin:
+        prev = state.get(audit.unit.state_key)
+        try:
+            before = (json.loads(prev.detail or "{}").get("match") or {}) if prev is not None else {}
+        except (ValueError, TypeError, AttributeError):
+            before = {}
+        if (
+            isinstance(before, dict)
+            and before.get("asin") == asin
+            and before.get("series_source") == overrides_mod.SERIES_AUDNEX
+            and before.get("series")
+        ):
+            return {
+                "series": str(before["series"]),
+                "sequence": str(before.get("sequence") or ""),
+                "series_source": overrides_mod.SERIES_AUDNEX,
+            }
+    return {
+        "series": product.series if product else "",
+        "sequence": product.sequence if product else "",
+        "series_source": overrides_mod.SERIES_CATALOG,
+        # True: Audnex was asked and lists no series, so the file carries none unless overridden
+        "audnex_checked": bool(isinstance(found, dict) and found.get("asin")),
+    }
+
+
 def record(
     state: State,
     audit: Audit,
@@ -806,9 +856,9 @@ def record(
                 "query_author": audit.match.query_author,
                 # "folder" or "embedded": which names the search above was run with
                 "name_source": audit.name_source,
-                # what the catalog says this book's series is, for the series shelf
-                "series": audit.match.product.series if audit.match.product else "",
-                "sequence": audit.match.product.sequence if audit.match.product else "",
+                # Q-B12: the series the file is tagged with (Audnex seriesPrimary), or the Audible
+                # search value marked as a fallback - read through overrides.series_of by every view
+                **_recorded_series(state, audit),
             },
             "overrides": overrides_mod.normalise(audit.overrides),
             "source": {

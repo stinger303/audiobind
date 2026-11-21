@@ -363,6 +363,9 @@ class TestEvidenceOnly(HardcoverCase):
             def save(self, unit):
                 saved.append(unit)
 
+            def get(self, path):  # Q-B12: record() reads the previous row's series; there is none
+                return None
+
         unit = mock.Mock(parts=[1], n_files=1, state_key="Author/Book", title_guess="Book", author_guess="A")
         audit = pipeline.Audit(unit=unit, match=matching.Match(product=product(), confidence="HIGH"))
         pipeline.record(FakeState(), audit, "review")

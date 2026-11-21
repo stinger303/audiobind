@@ -88,6 +88,34 @@ def apply(book: dict, data: dict) -> dict:
     return merged
 
 
+#: Q-B12 detail.match["series_source"]: where the series a book is shown and filed under came from
+SERIES_AUDNEX = "audnex"  # Audnex seriesPrimary - what the tag writer uses
+SERIES_CATALOG = "catalog"  # the Audible search value: Audnex gave none (or was never asked)
+SERIES_OVERRIDE = "override"  # the operator's series or series index
+
+
+def series_of(match: dict, data: dict) -> tuple[str, str, str]:
+    """(series, sequence, source) for a recorded ``detail.match`` with the overrides on top.
+
+    The one place the panel, the Match column and the series shelf get a book's series from. It
+    puts the recorded catalogue value through ``apply`` - the step convert_unit puts Audnex
+    ``seriesPrimary`` through before the tags are written - so none of them can say something the
+    file does not. A row recorded before Q-B12 has no ``series_source``: its value is Audible's.
+    """
+    match = match if isinstance(match, dict) else {}
+    data = normalise(data or {})
+    name = str(match.get("series") or "").strip()
+    position = str(match.get("sequence") or "").strip()
+    source = str(match.get("series_source") or SERIES_CATALOG)
+    merged = apply({"seriesPrimary": {"name": name, "position": position}} if name else {}, data)
+    primary = merged.get("seriesPrimary") or {}
+    if not primary.get("name"):
+        return "", "", ""
+    if data.get("series") or data.get("series_index"):
+        source = SERIES_OVERRIDE
+    return str(primary["name"]).strip(), str(primary.get("position") or "").strip(), source
+
+
 def describe(data: dict) -> dict:
     """Flatten overrides for display: every field as the string the operator typed."""
     data = normalise(data or {})

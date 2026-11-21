@@ -262,9 +262,17 @@ def _q(value: str) -> str:
     return urllib.parse.quote(str(value or ""), safe="")
 
 
+def _book_url(asin: str) -> str:
+    return f"{AUDNEX}/books/{_q(asin)}?region={_q(effective_val('region'))}"
+
+
 def book(asin: str) -> dict:
-    eff_region = effective_val("region")
-    return _get_json(f"{AUDNEX}/books/{_q(asin)}?region={_q(eff_region)}") or {}
+    return _get_json(_book_url(asin)) or {}
+
+
+def cached_book(asin: str) -> dict | None:
+    """The Audnex record ``book`` already fetched for this ASIN, or None: never a request."""
+    return cache_get(_book_url(asin)) if asin else None
 
 
 def chapters(asin: str) -> list[dict]:

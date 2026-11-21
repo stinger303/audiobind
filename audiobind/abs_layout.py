@@ -94,8 +94,8 @@ def target_for(row) -> Path:
     if "series" in meta:
         series, sequence = meta["series"], meta["sequence"]
     else:
-        series = custom.get("series") or str(match.get("series") or "")
-        sequence = str(custom.get("series_index") or match.get("sequence") or "")
+        # Q-B12: the same resolution the panel and the series shelf use
+        series, sequence, _source = overrides_mod.series_of(match, custom)
     title = meta.get("title") or custom.get("title") or row.title or str(match.get("title") or "")
     ext = Path(row.output).suffix.lstrip(".").lower() or "m4b"
     return library.m4b_path(series, authors, title, sequence, ext=ext)

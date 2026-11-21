@@ -2773,14 +2773,25 @@ CONFIDENCE_WORDS = {
 
 
 def series_label(detail: dict, overrides: dict) -> str:
-    """"Jack Reacher #14" - the operator's series wins over the catalog's. Plain text."""
-    match = (detail or {}).get("match") or {}
-    overrides = overrides or {}
-    name = str(overrides.get("series") or match.get("series") or "").strip()
+    """"Jack Reacher #14" - the series the file is tagged with (Q-B12: overrides.series_of, the
+    recorded Audnex value with the operator's series on top). Plain text."""
+    name, seq, _source = overrides_mod.series_of((detail or {}).get("match"), overrides or {})
     if not name:
         return ""
-    seq = str(overrides.get("series_index") or match.get("sequence") or "").strip()
     return f"{name} #{seq}" if seq else name
+
+
+def series_source_note(detail: dict, overrides: dict) -> str:
+    """Q-B12: one plain sentence when the series shown is not the one the file will carry from
+    Audnex - the Audible fallback. "" otherwise (Audnex, the operator's own, or no series)."""
+    match = (detail or {}).get("match") or {}
+    name, _seq, source = overrides_mod.series_of(match, overrides or {})
+    if not name or source != overrides_mod.SERIES_CATALOG or "series_source" not in match:
+        return ""
+    if match.get("audnex_checked"):
+        return (f"The series ({name}) comes from the Audible search. Audnex lists no series for this "
+                "book, so the converted file won't carry one unless you set one above.")
+    return f"The series ({name}) comes from the Audible search; Audnex hasn't been checked for this book yet."
 
 
 def match_cell(unit, detail: dict, overrides: dict, asin_override: str = "") -> tuple[str, str]:
@@ -6467,6 +6478,13 @@ def render(state, status: str = "", query: str = "") -> str:
 
         custom = overrides_mod.describe(overrides_by_path.get(unit.path, {}))
         locked = locks.get(unit.path, set())
+        # Q-B12: the boxes' placeholders are the recorded series the file is tagged with when
+        # nothing is typed, and a fallback to the Audible search value says so
+        base_series, base_seq, _src = overrides_mod.series_of(match_data, {})
+        series_note = series_source_note(data, overrides_by_path.get(unit.path, {}))
+        series_note_html = (
+            f'<p class="ab-hint ab-series-note">{_html(series_note)}</p>' if series_note else ""
+        )
 
         def field(key, label_str, catalog_value, width_hint=""):
             placeholder = _attr(catalog_value or "catalog value")
@@ -6496,9 +6514,11 @@ def render(state, status: str = "", query: str = "") -> str:
                 "; ".join(match_data.get("authors") or ([unit.author] if unit.author else [])),
             )
             + field("narrator", "narrator(s)", "; ".join(match_data.get("narrators") or []))
-            + field("series", "series", "")
-            + field("series_index", "series index", "")
-            + '</div><div class="ab-editbar">'
+            + field("series", "series", base_series)
+            + field("series_index", "series index", base_seq)
+            + "</div>"
+            + series_note_html
+            + '<div class="ab-editbar">'
             '<button class="ab-save" data-enter onclick="abSaveMeta(this)">Save metadata</button>'
             '<span class="ab-fb" role="status"></span></div></div>'
         )

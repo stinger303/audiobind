@@ -33,6 +33,7 @@ from collections import Counter
 from pathlib import Path
 
 from . import catalog
+from . import overrides as overrides_mod
 from .config import CONFIG
 from .state import INGEST_KEY_PREFIX, SOURCE_INGEST, key_source
 from .units import split_author_title
@@ -122,12 +123,14 @@ def _from_folder(rel_path: str, author: str, title: str) -> tuple[str, str]:
 
 def unit_series(row: dict) -> tuple[str, str]:
     """(series name, sequence) for one state row; ('', '') when nothing says it is in one."""
-    overrides = _loads(row.get("overrides"))
-    if overrides.get("series"):  # the detail blob is only parsed when nothing above it answers
-        return str(overrides["series"]), str(overrides.get("series_index") or "")
-    match = _loads(row.get("detail")).get("match") or {}
-    if match.get("series"):
-        return str(match["series"]), str(overrides.get("series_index") or match.get("sequence") or "")
+    overrides = overrides_mod.normalise(_loads(row.get("overrides")))
+    if overrides.get("series") and overrides.get("series_index"):
+        # the detail blob is only parsed when nothing above it answers
+        return overrides["series"], overrides["series_index"]
+    # Q-B12: the value the panel shows and the file is tagged with, overrides on top
+    name, sequence, _source = overrides_mod.series_of(_loads(row.get("detail")).get("match"), overrides)
+    if name:
+        return name, sequence
     series, sequence = _from_output(row.get("output") or "")
     if series:
         return series, sequence
