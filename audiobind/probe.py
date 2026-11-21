@@ -30,6 +30,20 @@ class Probe:
 PROTOCOL_WHITELIST = ["-protocol_whitelist", "file,pipe"]
 
 
+def _audio_duration(streams: list) -> float:
+    """The first audio stream's own length, or 0 when ffprobe gave none (then the container's counts).
+
+    CORE-01d: the audio, not the container. An MP4 whose video runs past its audio is the audio's
+    length long, and that is what the output (its mapped audio stream) is measured against."""
+    for stream in streams:
+        if isinstance(stream, dict) and stream.get("codec_type") == "audio":
+            try:
+                return max(0.0, float(stream.get("duration") or 0))
+            except (TypeError, ValueError):  # "N/A"
+                return 0.0
+    return 0.0
+
+
 def probe(path: str | Path, timeout: int = 60, raise_on_timeout: bool = False) -> Probe:
     """The file's duration, codec and layout; an empty ``Probe()`` (duration 0) when ffprobe fails.
 
@@ -43,7 +57,7 @@ def probe(path: str | Path, timeout: int = 60, raise_on_timeout: bool = False) -
                 "-v",
                 "error",
                 "-show_entries",
-                "format=duration,bit_rate:stream=codec_name,sample_rate,channels",
+                "format=duration,bit_rate:stream=codec_name,codec_type,duration,sample_rate,channels",
                 "-of",
                 "json",
                 str(path),
@@ -54,9 +68,10 @@ def probe(path: str | Path, timeout: int = 60, raise_on_timeout: bool = False) -
         )
         data = json.loads(result.stdout or "{}")
         fmt = data.get("format", {})
-        stream = (data.get("streams") or [{}])[0]
+        streams = data.get("streams") or [{}]
+        stream = streams[0]
         return Probe(
-            duration=float(fmt.get("duration") or 0),
+            duration=_audio_duration(streams) or float(fmt.get("duration") or 0),
             codec=stream.get("codec_name") or "",
             kbps=int(fmt.get("bit_rate") or 0) // 1000,
             sample_rate=str(stream.get("sample_rate") or ""),

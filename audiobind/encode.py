@@ -720,9 +720,11 @@ def _normalise_parts(files: list[str], work_dir: Path) -> list[str]:
     return out
 
 
-#: what an output may differ from the summed probed sources by: container rounding is a few tens of
-#: milliseconds plus a frame or so per joined file; 0.2% keeps the allowance long books always had
-DURATION_SLACK = 2.0
+#: what an output's audio may differ from the sources' summed audio by: rounding is a few tens of
+#: milliseconds plus a frame or so per joined file; 0.2% keeps the allowance long books always had.
+#: CORE-01d: the 10 s floor (it was 30 s, then 2 s) leaves room for what ffprobe estimates rather
+#: than reads on a short book, while 15 s missing from 140 s still fails
+DURATION_SLACK = 10.0
 DURATION_SLACK_PER_FILE = 0.05
 DURATION_SLACK_RATIO = 0.002
 
@@ -888,7 +890,8 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
         duration = float(audio[0].get("duration") or 0) or duration
     except (TypeError, ValueError):
         pass
-    # total_duration is the sum of the probed sources; a merge of the same audio matches it to
+    # total_duration is the sum of the sources' audio streams (CORE-01d: like with like, never a
+    # container a video track makes longer); a merge of the same audio matches it to
     # within container rounding, so seconds missing from a short book fail too (CORE-01)
     if abs(duration - total_duration) > duration_slack(total_duration, len(unit.files)):
         hint = ""
