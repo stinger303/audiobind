@@ -7,10 +7,11 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
-## [0.25.2-dev1] - 2026-11-20
+## [0.25.2] - 2026-11-21
 
-**Unreleased test build.** The "Set up downloading" guide, first half: a real page that asks how your
-books arrive and sets up the download client, with the folder checks in plain language.
+**The "Set up downloading" guide's first half, plus two fixes that matter more: the wrong series volume
+can no longer convert itself, and the audio settings finally do what they say.** Five commits:
+`8b18bb6`, `8876188`, `d35880c`, `ba2da53`, `b44700c`.
 
 ### Added
 - **`/setup/downloading`** — a five-step guide (`How books arrive · Download client · The address the
@@ -27,14 +28,34 @@ books arrive and sets up the download client, with the folder checks in plain la
   address your browser used to reach Audiobind, and the Test button reports what it actually found in
   plain language, including which address answered when it has to retry the shared-network one.
 
+### Changed
+- **`AUDIO_CHANNELS` and `SAMPLE_RATE` are caps, not targets** (`d35880c`). A book already at or below
+  the cap keeps its lossless copy — mono stays mono, 22050 Hz stays 22050 Hz. Only a source above a cap is
+  re-encoded, to downmix or resample down, so a book is never upmixed or resampled up on the way through.
+
 ### Fixed
+- **A catalog hit from another volume of the series can no longer convert itself** (`8b18bb6`). When the
+  folder names its position ("Book 15") and the best match is a different volume, that candidate is vetoed,
+  ranked below every other, and held at LOW confidence for you to decide.
+- **`AUDIO_CHANNELS` and `SAMPLE_RATE` were silently ignored for a single AAC `.m4b`/`.m4a`** (`8876188`).
+  The fast path copied the audio stream, and `-ac`/`-ar` do nothing beside a stream copy, so a stereo book
+  with `AUDIO_CHANNELS=1` stayed stereo and a 48 kHz book stayed 48 kHz, exit 0, no warning. The choice now
+  reads the shape ffprobe reported, and the book's notes say why it was re-encoded instead of copied.
+- **A re-encode no longer upmixes or raises a rate** (`ba2da53`). It writes `min(source, cap)` on each axis:
+  a mono 48 kHz book comes out mono at 44100, not stereo. Applies to the m4b and mp3 paths, multi-file
+  merges and the mixed-codec join.
 - The ingest status is computed once and reused by the wizard, the Library page and Settings, so the three
   cannot disagree about whether ingest is on.
 
+### Docs
+- **`AGENTS.md` and its `CLAUDE.md` shim** (`b44700c`) — the working contract (commands, definition of done,
+  hard stops) now lives in the repo instead of inside each dispatch brief, so every harness a build runs
+  under reads the same rules.
+
 ### Tests
-- 2,199 → **2,271** (72 new), including every step-1 branch, a hostile Host header in the
-  URL pre-fill, Back keeping the arrival choice, progress surviving a reload, and the guide being
-  unreachable when signed out.
+- 2,199 → **2,514** (315 new), including every step-1 branch, a hostile Host header in the URL pre-fill,
+  Back keeping the arrival choice, progress surviving a reload, the guide being unreachable when signed out,
+  and real audit → encode → ffprobe runs for both the copy and the re-encode shapes.
 
 ## [0.25.1] - 2026-11-20
 
