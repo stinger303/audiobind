@@ -58,11 +58,11 @@ class Match:
     #: cast, audio drama - see adaptation_label) and nothing the folder said asks for one: the
     #: phrase naming it ("a Dramatized Adaptation"). grade() never says HIGH for it
     unasked_adaptation: str = ""
-    #: set when the folder and the chosen product disagree about an edition marker read from their
-    #: original words, brackets included (box set, abridged, summary - see markers.py): the note
-    #: naming it. Every other candidate disagreed too, so this is the best of a bad pool. grade()
-    #: holds it at LOW
     edition_conflict: str = ""
+    #: set when the chosen product contradicts something the folder states explicitly (another
+    #: series position: "catalog hit is Book 1 of its series and your folder says Book 2"): every
+    #: other candidate was vetoed too, so this is the best of a bad pool. grade() holds it at LOW
+    veto: str = ""
 
     @property
     def asin(self) -> str:
@@ -228,6 +228,79 @@ def title_variants(title: str) -> list[str]:
         if v and v not in out:
             out.append(v)
     return out
+
+
+_NUMBER_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+    "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
+}
+_ROMAN = {"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10,
+          "xi": 11, "xii": 12}
+_POSITION_NUMBER = r"\d{1,3}(?:\.\d+)?|" + "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True)) \
+    + "|" + "|".join(sorted(_ROMAN, key=len, reverse=True))
+#: an explicit series position: "Book 2", "Book Two", "Vol. II", "Volume 3", "Tome 1". A range
+#: ("Book 1-3", "Books 1 to 3": a box set) is never one position; "#1" and "No. 1" are not read
+#: ("#1 New York Times bestseller", "Private: No. 1 Suspect")
+_POSITION_RE = re.compile(
+    r"(?<![a-z0-9])(?:book|bk|volume|vol|tome)\.?\s*(?P<n>" + _POSITION_NUMBER + r")(?![a-z0-9]|\.\d)"
+    r"(?!\s*(?:-|–|—|to|through|thru|&|and)\s*(?:\d|" + "|".join(_NUMBER_WORDS) + r")\b)",
+    re.IGNORECASE,
+)
+#: a bare number ending a title ("Chronicles of the Northern Kingdom 2"): only weak evidence of a
+#: position - it counts in a conflict only when the other side states a position explicitly
+_TRAILING_NUMBER_RE = re.compile(r"(?<=[A-Za-z])[\s,]+(?P<n>\d{1,3}(?:\.\d+)?)\s*$")
+
+
+def _position(token: str) -> str:
+    token = token.lower()
+    if token in _NUMBER_WORDS:
+        return str(_NUMBER_WORDS[token])
+    if token in _ROMAN:
+        return str(_ROMAN[token])
+    value = float(token)
+    return str(int(value)) if value == int(value) else f"{value:g}"
+
+
+def series_positions(*texts: str) -> tuple[set[str], set[str]]:
+    """(explicit, weak) series positions named in ``texts``: "Book 2" is explicit, a bare trailing
+    number ("Kingdom 2") weak. Positions are canonical ("03", "Three", "III" -> "3")."""
+    strong: set[str] = set()
+    weak: set[str] = set()
+    for text in texts:
+        text = text or ""
+        strong.update(_position(m.group("n")) for m in _POSITION_RE.finditer(text))
+        trailing = _TRAILING_NUMBER_RE.search(strip_brackets(text).strip(" -_.,;:"))
+        if trailing:
+            weak.add(_position(trailing.group("n")))
+    return strong, weak
+
+
+def position_conflict(wanted: tuple[str, ...], product: Product) -> str:
+    """The veto text when ``product`` is another volume than the one ``wanted`` (the folder's own
+    words) names, else "".
+
+    The product's positions come from its title, subtitle and catalog sequence (explicit). A
+    conflict needs an explicit position on at least one side, a position on both, and no position
+    in common: a folder that names no position never vetoes anything, and a number that is part of a
+    title ("Fahrenheit 451") is only weak evidence."""
+    q_strong, q_weak = series_positions(*wanted)
+    c_strong, c_weak = series_positions(product.title, product.subtitle)
+    sequence = (product.sequence or "").strip()
+    if re.fullmatch(r"\d{1,3}(?:\.\d+)?", sequence):
+        c_strong.add(_position(sequence))
+    elif sequence:
+        c_strong.update(series_positions(sequence)[0])
+    if not (q_strong or c_strong):
+        return ""
+    q, c = q_strong | q_weak, c_strong | c_weak
+    if not q or not c or q & c:
+        return ""
+
+    def books(nums: set[str]) -> str:
+        return " / ".join(f"Book {n}" for n in sorted(nums, key=float))
+
+    return f"catalog hit is {books(c)} of its series and your folder says {books(q)}"
 
 
 def title_score(wanted: str, product: Product) -> float:
@@ -534,6 +607,9 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
         if entry["knockoff"]:
             found, asked = found - {markers.DERIVATIVE}, asked - {markers.DERIVATIVE}
         entry["edition_conflict"] = markers.edition_mismatch(asked, found)
+        # another volume than the one the folder names explicitly: ranked below every candidate
+        # that is not vetoed, never corroborated into first place, and graded LOW if it still wins
+        entry["veto"] = position_conflict(wanted, entry["product"])
     _rank_productions(scored.values())
     ranked = sorted(scored.values(), key=_rank_key, reverse=True)
     best, margin = _pick_and_margin(ranked)
@@ -569,6 +645,7 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
         title_window_coverage=round(coverage, 3),
         unasked_adaptation=unasked_adaptation(best["product"], wanted),
         edition_conflict=best.get("edition_conflict", ""),
+        veto=best.get("veto", ""),
     )
     match.confidence = grade(match)
     # keep the runners-up (other editions of the same work, near misses) so the
@@ -747,12 +824,12 @@ def _rank_productions(entries) -> None:
 
 
 def _rank_key(entry: dict) -> tuple:
-    """A candidate of another edition (``edition_conflict``) below every other; then rank score
-    (see _rank_productions); equal scores go to the production the folder asked for, then the
-    closer raw title, then the closer runtime."""
+    """A candidate of another edition (``edition_conflict``) or another series volume (``veto``)
+    below every other; then rank score (see _rank_productions); equal scores go to the production
+    the folder asked for, then the closer raw title, then the closer runtime."""
     delta = entry.get("runtime_delta_pct")
     return (
-        not entry.get("edition_conflict"),
+        not (entry.get("edition_conflict") or entry.get("veto")),
         entry.get("rank_score", entry["score"]),
         not entry.get("unwanted_production", False),
         entry.get("whole_sim", 0.0),
@@ -793,7 +870,8 @@ def _pick_and_margin(ranked: list[dict]) -> tuple[dict, float]:
             for entry in [best, *close]:
                 entry["corroborated"] = corroborated(entry["product"])
             if not best["corroborated"]:
-                backed = [r for r in close if r["corroborated"] and not r.get("edition_conflict")]
+                backed = [r for r in close
+                          if r["corroborated"] and not (r.get("edition_conflict") or r.get("veto"))]
                 if backed:
                     best = backed[0]  # highest-scoring corroborated contender
                     rivals = rivals_of(best)
@@ -810,10 +888,10 @@ def grade(match: Match) -> str:
     """HIGH needs title *and* author corroborated plus a clear win over other works."""
     if not match.product:
         return "NONE"
-    if match.knockoff or match.edition_conflict:
-        # the best hit is a summary / review / zero-runtime stub, or another edition than the
-        # folder's (box set, abridgment): a person decides. LOW, not MEDIUM, so no auto-convert
-        # tier (not even "medium") converts it unseen
+    if match.knockoff or match.edition_conflict or match.veto:
+        # the best hit is a summary / review / zero-runtime stub, another edition than the folder's
+        # (box set, abridgment), or it contradicts what the folder states (another volume): a person
+        # decides. LOW, not MEDIUM, so no auto-convert tier (not even "medium") converts it unseen
         return "LOW"
     # a foreign-language hit must never auto-convert at HIGH confidence: it still has to clear
     # the normal title / author / margin gates, and is then capped at MEDIUM. The scorer's rule,
