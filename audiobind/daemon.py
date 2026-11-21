@@ -203,6 +203,9 @@ def run() -> None:
     """Loop forever, honouring SCAN_INTERVAL_MIN."""
     state = State(CONFIG.state_dir)
     CONFIG.ensure_dirs()
+    # WEBAPI-02c: a Delete interrupted between its renames and the removal is undone first, so the
+    # first scan finds every book where its row says it is
+    web.recover_deletes(web.delete_journal(state))
     restore_controls(state)
     log.info(
         "audiobind daemon: %s -> %s every %d min",

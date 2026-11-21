@@ -6960,25 +6960,136 @@ def removal_unsafe(target: Path, root: Path, kind: str) -> str:
     return ""
 
 
-def move_aside(paths: list[Path]) -> tuple[dict[Path, Path], OSError | None]:
+#: WEBAPI-02c: the file in the state directory where Delete records where each target went
+#: (source path -> trash name) before the first rename, so a crash mid-delete can be undone
+DELETE_JOURNAL = "delete-intent.json"
+_JOURNAL_LOCK = threading.Lock()
+
+
+def delete_journal(state) -> Path | None:
+    """The delete journal beside ``state``'s database (None for a state without one)."""
+    path = getattr(state, "path", None)
+    return Path(path).parent / DELETE_JOURNAL if path else None
+
+
+def _journal_entries(journal: Path) -> list[dict]:
+    """The journal's entries ([] when there is none). ValueError when it cannot be understood."""
+    try:
+        data = json.loads(journal.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    entries = data.get("entries") if isinstance(data, dict) else None
+    if not isinstance(entries, list) or not all(
+        isinstance(e, dict) and isinstance(e.get("path"), str) and isinstance(e.get("trash"), str) for e in entries
+    ):
+        raise ValueError(f"{journal} is not a delete journal")
+    return entries
+
+
+def _journal_write(journal: Path, entries: list[dict]) -> None:
+    """Replace the journal atomically and durably (an empty one is removed)."""
+    if not entries:
+        try:
+            journal.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    tmp = journal.with_name(f".{journal.name}.{os.getpid()}.tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"entries": entries}, fh)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, journal)
+    try:
+        fd = os.open(journal.parent, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+def settle_journal(journal: Path | None, moved: dict[Path, Path]) -> None:
+    """Drop the journal entries of ``moved`` whose trash is gone (removed, or put back). An entry
+    whose trash is still there stays for the startup recovery. Never raises (logged)."""
+    if journal is None or not moved:
+        return
+    done = {(str(path), str(trash)) for path, trash in moved.items() if not os.path.lexists(trash)}
+    try:
+        with _JOURNAL_LOCK:
+            entries = _journal_entries(journal)
+            kept = [e for e in entries if (e["path"], e["trash"]) not in done]
+            if len(kept) != len(entries):
+                _journal_write(journal, kept)
+    except (OSError, ValueError) as exc:
+        logging.getLogger("audiobind").error("HARD DELETE: could not update %s: %s", journal, exc)
+
+
+def recover_deletes(journal: Path) -> list[Path]:
+    """WEBAPI-02c, at startup: put back every path a Delete moved aside and never finished (the
+    process died between the rename and the removal), then clear the journal. Each path put back
+    is logged; one that cannot go back (something new is at its name) stays listed and is logged
+    again on the next start. Running it twice changes nothing. Returns the paths put back."""
+    log = logging.getLogger("audiobind")
+    with _JOURNAL_LOCK:
+        try:
+            entries = _journal_entries(journal)
+        except (OSError, ValueError) as exc:
+            log.error("HARD DELETE recovery: %s could not be read (%s) - check it by hand", journal, exc)
+            return []
+        restored, kept = [], []
+        for entry in entries:
+            path, trash = Path(entry["path"]), Path(entry["trash"])
+            if not os.path.lexists(trash):
+                log.info("HARD DELETE recovery: %s was already removed completely - nothing to put back", path)
+            elif put_back({path: trash}):
+                kept.append(entry)  # put_back logged why
+            else:
+                restored.append(path)
+                log.warning("HARD DELETE recovery: an interrupted delete was undone - put %s back from %s",
+                            path, trash)
+        try:
+            _journal_write(journal, kept)
+        except OSError as exc:
+            log.error("HARD DELETE recovery: could not update %s: %s", journal, exc)
+    return restored
+
+
+def move_aside(paths: list[Path], journal: Path | None = None) -> tuple[dict[Path, Path], OSError | None]:
     """WEBAPI-02b: rename each path to a hidden trash name in its own folder (one atomic rename
     each - a link is moved, never followed). On the first failure the ones already moved are put
-    back, so either all of them moved ({path: trash}, None) or none did ({}, the error)."""
+    back, so either all of them moved ({path: trash}, None) or none did ({}, the error).
+
+    WEBAPI-02c: with a ``journal``, every path -> trash pair is written there (durably) before the
+    first rename; a journal that cannot be written stops the delete before anything moved."""
+    planned = {path: path.with_name(f".{path.name}.audiobind-delete-{os.getpid()}-{os.urandom(4).hex()}")
+               for path in paths}
+    if journal is not None and planned:
+        try:
+            with _JOURNAL_LOCK:
+                entries = _journal_entries(journal)
+                entries += [{"path": str(path), "trash": str(trash)} for path, trash in planned.items()]
+                _journal_write(journal, entries)
+        except (OSError, ValueError) as exc:
+            logging.getLogger("audiobind").error("HARD DELETE: could not record the intent in %s: %s", journal, exc)
+            return {}, OSError(errno.EIO, f"the delete journal {journal} could not be written: {exc}")
     moved: dict[Path, Path] = {}
-    for path in paths:
-        trash = path.with_name(f".{path.name}.audiobind-delete-{os.getpid()}-{os.urandom(4).hex()}")
+    for path, trash in planned.items():
         try:
             os.rename(path, trash)
         except OSError as exc:
             put_back(moved)
+            settle_journal(journal, planned)
             return {}, exc
         moved[path] = trash
     return moved, None
 
 
-def put_back(moved: dict[Path, Path]) -> list[Path]:
+def put_back(moved: dict[Path, Path], journal: Path | None = None) -> list[Path]:
     """Rename what is left of each trashed path back to its own name - never over something that
-    appeared there since. Returns the trash paths that could not go back (logged)."""
+    appeared there since. Returns the trash paths that could not go back (logged). With a
+    ``journal``, the entries of the ones that went back (or were already gone) are dropped."""
     left = []
     for path, trash in moved.items():
         if not os.path.lexists(trash):
@@ -6991,6 +7102,7 @@ def put_back(moved: dict[Path, Path]) -> list[Path]:
                 pass
         left.append(trash)
         logging.getLogger("audiobind").error("HARD DELETE: could not put %s back at %s", trash, path)
+    settle_journal(journal, moved)
     return left
 
 
@@ -7993,6 +8105,7 @@ class Handler(BaseHTTPRequestHandler):
             # operator removes the folder from the share. The path guards above are the
             # only thing between this call and the filesystem, so they must stay strict.
             log = logging.getLogger("audiobind")
+            journal = delete_journal(self.state)  # WEBAPI-02c: where each move aside is recorded first
             # WEBAPI-02b: the walk is slow on a big tree or a stalled share, so it runs before the
             # encoder lock is taken (the claim and path checks under the lock still come after it)
             before = files_under([str(t) for t in targets]) if targets else set()
@@ -8057,7 +8170,7 @@ class Handler(BaseHTTPRequestHandler):
                             "application/json",
                         )
                         return
-                    source_trash, error = move_aside(targets)
+                    source_trash, error = move_aside(targets, journal)
                     if error is None:
                         pass
                     elif error.errno == errno.EROFS or "Read-only" in str(error):
@@ -8098,7 +8211,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not changed and Path(CONFIG.output_root).resolve() != out_root:
                         changed = "the output folder was re-pointed"
                     if changed:
-                        put_back(source_trash)  # nothing is removed yet: the source comes back whole
+                        put_back(source_trash, journal)  # nothing is removed yet: the source comes back whole
                         log.error("HARD DELETE %s; output not removed, the path changed on disk: %s", rel, changed)
                         self._send(
                             409,
@@ -8131,9 +8244,9 @@ class Handler(BaseHTTPRequestHandler):
                         )
                         output_removed_files = own
                         output_left = left
-                    output_trash, error = move_aside(moves)
+                    output_trash, error = move_aside(moves, journal)
                     if error is not None:
-                        put_back(source_trash)
+                        put_back(source_trash, journal)
                         log.error("HARD DELETE %s; could not move the output aside %s: %s", rel, out_trash, error)
                         self._send(500, json.dumps({
                             "ok": False,
@@ -8167,10 +8280,11 @@ class Handler(BaseHTTPRequestHandler):
                         break
                 if error is None:
                     source_removed = True
+                    settle_journal(journal, source_trash)
                     log.info("HARD DELETE %s; source removed: %s", rel, ", ".join(map(str, source_trash)))
                 else:
                     remaining = {f for f in trashed_before if os.path.lexists(f)}
-                    put_back(source_trash)
+                    put_back(source_trash, journal)
                     failure = None
                     if remaining and remaining != trashed_before:
                         # some files are already gone: never call that "kept", and keep the row
@@ -8196,7 +8310,7 @@ class Handler(BaseHTTPRequestHandler):
                             "details are in the Audiobind log"
                         })
                     if failure is not None:
-                        put_back(output_trash)
+                        put_back(output_trash, journal)
                         self._send(failure[0], json.dumps(failure[1]).encode(), "application/json")
                         return
 
@@ -8204,6 +8318,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     for trash in output_trash.values():
                         remove_trashed(trash)
+                    settle_journal(journal, output_trash)
                     if output_removed_files is None:
                         log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
                     else:
@@ -8213,7 +8328,7 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError as exc:
                     # the book is NOT forgotten: the row stays so the operator can see the
                     # converted copy is still there, fix the cause and delete again
-                    put_back(output_trash)
+                    put_back(output_trash, journal)
                     log.error("HARD DELETE %s; could not remove output %s: %s", rel, out_trash, exc)
                     self._send(
                         500,

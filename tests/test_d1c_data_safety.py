@@ -5,7 +5,11 @@ The theme: a file is Audiobind's to remove only when Audiobind can prove it wrot
 
 import json
 import os
+import pathlib
 import unittest
+from unittest import mock
+
+from audiobind import daemon, web
 
 try:
     from test_d1_data_safety import DeleteCase, PublishCase
@@ -146,6 +150,71 @@ class Core04dTheRecordFollowsThePublishTests(PublishCase):
         self.assertEqual(sorted(ids), wrote(self.state.get(KEY)))
         for name, ident in ids.items():
             self.assertEqual(ident, identity(folder / name), name)
+
+
+# --------------------------------------------------------------------------- WEBAPI-02c
+class WebApi02cDeleteIntentIsDurableTests(DeleteCase):
+    """Delete writes where each target went before the first rename; a crash leaves that record,
+    and startup puts every listed path back."""
+
+    def journal(self) -> pathlib.Path:
+        return pathlib.Path(self.state.path).parent / "delete-intent.json"  # web.DELETE_JOURNAL
+
+    def test_a_crash_after_the_rename_is_put_back_at_startup(self):
+        # what a crash right after move_aside leaves: the folder under its hidden name, the row
+        # still pointing at it, and the intent on disk
+        trash = self.out_book.with_name(".Book.audiobind-delete-1-deadbeef")
+        self.out_book.rename(trash)
+        self.journal().write_text(json.dumps({"entries": [{"path": str(self.out_book), "trash": str(trash)}]}))
+        with self.assertLogs("audiobind", level="INFO") as logs:
+            web.recover_deletes(self.journal())
+        self.assertEqual((self.out_book / "Book.m4b").read_bytes(), b"m4b", "the folder was not put back")
+        self.assertFalse(trash.exists())
+        self.assertFalse(self.journal().exists(), "the intent was not cleared")
+        self.assertTrue(any(str(self.out_book) in line for line in logs.output), logs.output)
+        # idempotent: a second startup finds nothing to do and changes nothing
+        web.recover_deletes(self.journal())
+        self.assertEqual(listing(self.out_book), ["Book.m4b"])
+        self.assertFalse(self.journal().exists())
+
+    def test_a_normal_delete_records_the_intent_before_removing_and_leaves_none_behind(self):
+        seen = []
+        real = web.remove_trashed
+
+        def remove(trash):
+            seen.append(json.loads(self.journal().read_text()) if self.journal().exists() else None)
+            return real(trash)
+
+        with mock.patch.object(web, "remove_trashed", side_effect=remove):
+            status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertTrue(seen and all(seen), f"no intent on disk while the trash was removed: {seen}")
+        recorded = {entry["path"] for entry in seen[0]["entries"]}
+        self.assertEqual(recorded, {str(self.src), str(self.out_book)})
+        self.assertFalse(self.journal().exists(), "a finished delete left its intent behind")
+
+
+class WebApi02cStartupRunsTheRecoveryTests(unittest.TestCase):
+    def test_the_daemon_recovers_interrupted_deletes_before_anything_else_reads_the_state(self):
+        calls = []
+
+        class Stop(Exception):
+            pass
+
+        state = mock.Mock(path=pathlib.Path("/state/audiobind.db"))
+        with (
+            mock.patch.object(daemon, "State", return_value=state),
+            mock.patch.object(daemon.CONFIG, "ensure_dirs"),
+            mock.patch.object(daemon.web, "recover_deletes", side_effect=lambda j: calls.append(("recover", j))),
+            mock.patch.object(daemon, "restore_controls", side_effect=lambda s: (calls.append(("restore",)), _raise(Stop()))),
+        ):
+            with self.assertRaises(Stop):
+                daemon.run()
+        self.assertEqual(calls, [("recover", pathlib.Path("/state") / web.DELETE_JOURNAL), ("restore",)])
+
+
+def _raise(exc):
+    raise exc
 
 
 if __name__ == "__main__":
