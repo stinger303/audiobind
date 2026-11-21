@@ -10,6 +10,7 @@ import os
 import shutil
 import threading
 import time
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -965,6 +966,8 @@ def process_unit(
             CONTROL.pause()
         except Exception as exc:  # noqa: BLE001 - one book must not stop a scan
             log(f"  FAILED: {exc}")
+            # B4: the row keeps the short note; the log keeps where it happened (never the DB)
+            log(traceback.format_exc().rstrip())
             rec("failed", note=str(exc)[:300])
 
     def nothing_written() -> None:
