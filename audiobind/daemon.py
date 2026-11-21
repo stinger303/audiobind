@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import time
@@ -13,7 +14,7 @@ from .config import CONFIG, deprecated_env_lines, effective_val, rejected_env_li
 from .control import CONTROL
 from .pipeline import process_unit
 from .prefetch import PREFETCH, already_decided, next_eligible
-from .state import SOURCE_INGEST, State
+from .state import SOURCE_INGEST, State, UnitState
 from .units import BookUnit, discover_units, is_single_file
 
 log = logging.getLogger("audiobind")
@@ -30,6 +31,22 @@ def _ingest_source_gone(unit: BookUnit) -> bool:
         return not os.path.isdir(unit.path) or not all(os.path.isfile(f) for f in unit.files)
     except OSError:
         return True
+
+
+def _record_unreadable(state: State, unit: BookUnit, exc: OSError) -> None:
+    """Record a library book whose files could not be read as failed, with the reason.
+
+    Whatever its row already knew (title, published output, match evidence) is kept: only the
+    status and note change, so a converted book whose source went away still lists its output.
+    """
+    note = f"a source file could not be read: {exc}"[:300]
+    previous = state.get(unit.state_key)
+    if previous is not None:
+        row = dataclasses.replace(previous, status="failed", note=note)
+    else:
+        row = UnitState(path=unit.state_key, status="failed", title=unit.title_guess,
+                        author=unit.author_guess, files=unit.n_files, note=note)
+    state.save(row)
 
 
 def prune_dismissals(state: State) -> int:
@@ -126,7 +143,13 @@ def scan_once(state: State, force: bool = False) -> dict:
                     CONTROL.scan_tick(index + 1)
                     continue
             else:
-                process_unit(state, unit, log=log.info)
+                try:
+                    process_unit(state, unit, log=log.info)
+                except OSError as exc:
+                    # B1: a library file deleted, replaced or unreadable between the scan and the read
+                    # (a mount that dropped, say) fails this one book; the rest of the pass goes on
+                    log.warning("[%s] FAILED - a source file could not be read: %s", unit.state_key, exc)
+                    _record_unreadable(state, unit, exc)
             CONTROL.scan_tick(index + 1)
             current = state.get(unit.state_key)
             status = current.status if current else ""
