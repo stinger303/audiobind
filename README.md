@@ -96,7 +96,10 @@ is the one destructive path — it permanently removes the source folder *and* t
 published output, after you confirm in a dialog (one **Delete permanently** button; there is
 no typed confirmation, so read the dialog). It only removes an output folder Audiobind itself
 converted: a book marked *already published* points at a folder that was there before, and
-Delete forgets the book but leaves that folder alone. If you mount the library
+Delete forgets the book but leaves that folder alone. Inside a converted book's folder it
+removes only the files Audiobind can prove it wrote; anything else (your own files, or extras
+beside a book converted by an older release that kept no record) is left, and the answer names
+it. If you mount the library
 read-only instead, Delete adapts: it removes the published output and forgets the
 book, keeps the source folder untouched, and tells you so (the folder will
 reappear on the next scan unless you remove it from the share).

@@ -7952,9 +7952,11 @@ class Handler(BaseHTTPRequestHandler):
             out_root = Path(CONFIG.output_root).resolve()
 
             def plan_output(row, again=False):
-                """(not_ours, out_trash, out_shared) for ``row``; None once a refusal was sent.
-                ``again``: the re-read under the lock - a path that passed the first time changed."""
+                """(not_ours, out_trash, out_shared, wrote, output name) for ``row``; None once a
+                refusal was sent. ``again``: the re-read under the lock - a path that passed the
+                first time changed."""
                 out_trash = None
+                out_name = ""
                 # only a folder Audiobind wrote is ever removed: a "ready" (already published) row
                 # points at a book that was there before, and must not take it with it
                 not_ours = bool(row.output) and not audiobind_wrote_output(row)
@@ -7972,13 +7974,14 @@ class Handler(BaseHTTPRequestHandler):
                             self._send(400, b'{"error":"output path escapes output root"}', "application/json")
                         return None
                     out_parent = out_path.parent
+                    out_name = out_path.name
                     if out_parent != out_root:
                         out_trash = out_parent
                 # never take a published book that another row also points at
                 out_shared = output_sharers(self.state, rel, out_trash) if out_trash is not None else 0
-                # CORE-04a: the files in that folder Audiobind wrote (None: a row from before the list,
-                # whose whole folder is Audiobind's as it always was)
-                return not_ours, out_trash, out_shared, pipeline_mod.wrote_files(row)
+                # CORE-04a: the files in that folder Audiobind wrote (CORE-04c - None: unknown
+                # provenance, which proves only the row's own output; see pipeline.attribute)
+                return not_ours, out_trash, out_shared, pipeline_mod.wrote_files(row), out_name
 
             if plan_output(unit_state) is None:
                 return
@@ -8011,6 +8014,7 @@ class Handler(BaseHTTPRequestHandler):
             output_removed = "absent"
             output_kept_reason = ""
             output_removed_files = None
+            output_left = {}
             try:
                 claim = conversion_claim(rel)
                 if claim:
@@ -8027,7 +8031,7 @@ class Handler(BaseHTTPRequestHandler):
                 planned = plan_output(unit_state, again=True)
                 if planned is None:
                     return
-                not_ours, out_trash, out_shared, out_wrote = planned
+                not_ours, out_trash, out_shared, out_wrote, out_name = planned
 
                 if targets:
                     changed = ""
@@ -8109,20 +8113,24 @@ class Handler(BaseHTTPRequestHandler):
                         )
                         return
                     present = pipeline_mod.folder_files(out_trash)
-                    own = present if out_wrote is None else [n for n in present if n in set(out_wrote)]
-                    if len(own) == len(present):
+                    own, left = pipeline_mod.attribute(present, out_wrote, out_name)
+                    if not left:
                         moves = [out_trash]
                         output_removed = "removed"
                     else:
                         # CORE-04a: the folder also holds files Audiobind never wrote (the owner's own
-                        # M4B beside an MP3 Audiobind added): only Audiobind's files go
+                        # M4B beside an MP3 Audiobind added) or cannot prove it wrote (CORE-04c):
+                        # only Audiobind's files go, and each one left is named with the reason
                         moves = [out_trash / name for name in own]
                         output_removed = "kept"
+                        names = sorted(left)
+                        shown = ", ".join(names[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else "")
                         output_kept_reason = (
-                            f"the folder also holds {len(present) - len(own)} file(s) Audiobind did not "
-                            f"write - only the {len(own)} it wrote were removed"
+                            f"the folder also holds {len(left)} file(s) Audiobind did not write or could "
+                            f"not prove it wrote ({shown}) - only the {len(own)} it wrote were removed"
                         )
                         output_removed_files = own
+                        output_left = left
                     output_trash, error = move_aside(moves)
                     if error is not None:
                         put_back(source_trash)
@@ -8199,8 +8207,9 @@ class Handler(BaseHTTPRequestHandler):
                     if output_removed_files is None:
                         log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
                     else:
-                        log.info("HARD DELETE %s; output %s: removed only %s", rel, output_kept_reason,
-                                 ", ".join(output_removed_files) or "nothing")
+                        log.info("HARD DELETE %s; output %s: removed only %s; left %s", rel, output_kept_reason,
+                                 ", ".join(output_removed_files) or "nothing",
+                                 "; ".join(f"{name} ({why})" for name, why in output_left.items()))
                 except OSError as exc:
                     # the book is NOT forgotten: the row stays so the operator can see the
                     # converted copy is still there, fix the cause and delete again
@@ -8236,6 +8245,7 @@ class Handler(BaseHTTPRequestHandler):
             }
             if output_removed_files is not None:
                 result["output_removed_files"] = output_removed_files
+                result["output_left"] = output_left  # CORE-04c: {name: why it was not removed}
             if ingest_row:
                 # the torrent folder is still in INGEST_DIR: without this the next scan converts it again
                 self.state.dismiss(rel)

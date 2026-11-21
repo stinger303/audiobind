@@ -531,8 +531,9 @@ def wrote_output(row) -> bool:
 def wrote_files(row) -> list[str] | None:
     """CORE-04a: the files (names relative to the output's folder) Audiobind wrote there.
 
-    [] for a row whose output is not Audiobind's at all; None for a converted row recorded
-    before the list existed - Delete then treats the whole folder as Audiobind's, as it always has.
+    [] for a row whose output is not Audiobind's at all; None for a converted row whose list is
+    missing or unreadable - unknown provenance, which proves no more than ``legacy_owned`` allows
+    (CORE-04c).
     """
     if not wrote_output(row):
         return []
@@ -554,6 +555,33 @@ def folder_files(folder: Path) -> list[str]:
     return sorted(found)
 
 
+#: the companions a publish writes beside the audio
+COMPANIONS = ("cover.jpg", "metadata.json")
+#: why a file in a folder with unknown provenance was left (CORE-04c)
+UNATTRIBUTED = ("Audiobind has no record of the files it wrote for this book, so this file "
+                "could not be attributed to it")
+NOT_WRITTEN = "Audiobind did not write this file"
+
+
+def legacy_owned(present: list[str], output_name: str) -> set[str]:
+    """CORE-04c: what a converted row without a usable list proves Audiobind wrote, of the
+    ``present`` names in its folder: its recorded output file, and cover.jpg / metadata.json
+    only when the folder holds nothing else - unknown provenance is not ownership."""
+    owned = {output_name} & set(present)
+    if set(present) <= {output_name, *COMPANIONS}:
+        owned |= set(COMPANIONS) & set(present)
+    return owned
+
+
+def attribute(present: list[str], recorded: list[str] | None, output_name: str) -> tuple[list[str], dict]:
+    """(names Audiobind can prove it wrote, {name: why it was left}) over ``present``."""
+    if recorded is None:
+        owned, why = legacy_owned(present, output_name), UNATTRIBUTED
+    else:
+        owned, why = set(recorded), NOT_WRITTEN
+    return [n for n in present if n in owned], {n: why for n in present if n not in owned}
+
+
 def _owned_before(row) -> tuple[Path, set[str]] | None:
     """(folder, names) Audiobind already owned in this row's output folder, before a publish."""
     if row is None or not wrote_output(row):
@@ -561,12 +589,14 @@ def _owned_before(row) -> tuple[Path, set[str]] | None:
     folder = Path(row.output).parent
     names = wrote_files(row)
     if names is None:
-        # a row from before the list: the whole folder was Audiobind's, as Delete treated it
+        # unknown provenance (CORE-04c): only what legacy_owned can prove
+        output_name = Path(row.output).name
         try:
             in_root = folder.resolve() == Path(CONFIG.output_root).resolve()
         except (OSError, RuntimeError):
             in_root = True
-        names = [Path(row.output).name] if in_root else folder_files(folder)
+        present = [output_name] if in_root else folder_files(folder)
+        names = legacy_owned(present, output_name)
     return folder, set(names)
 
 
