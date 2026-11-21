@@ -87,10 +87,11 @@ class DurationCheckTests(EncodeHarness):
                 result = self.run_encode(total=600 * 60.0, output=output)
                 self.assertEqual(result.duration, output)
 
-    def test_short_book_keeps_the_thirty_second_floor(self):
-        self.run_encode(total=600.0, output=575.0)
+    def test_short_book_no_longer_has_a_thirty_second_floor(self):
+        # CORE-01: 25 s missing from a 10-minute book used to pass; rounding still does
+        self.run_encode(total=600.0, output=599.0)
         with self.assertRaises(RuntimeError):
-            self.run_encode(total=600.0, output=565.0)
+            self.run_encode(total=600.0, output=575.0)
 
 
 # ---------------------------------------------------------------- 3. stderr cannot block ffmpeg

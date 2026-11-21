@@ -73,6 +73,9 @@ class ChapterPlan:
     chapters: list[dict]
     source: str
     durations: dict[str, float]
+    #: the audio codecs across the source files; None when nobody probed them (CORE-01: more
+    #: than one means the parts cannot go through the concat demuxer as they are)
+    codecs: set[str] | None = None
 
     @property
     def total(self) -> float:
@@ -82,10 +85,19 @@ class ChapterPlan:
 def _durations(unit: BookUnit, durations: dict[str, float] | None) -> dict[str, float]:
     if durations is not None:
         return durations
+    return _probe_sources(unit)[0]
+
+
+def _probe_sources(unit: BookUnit) -> tuple[dict[str, float], set[str]]:
+    """Every source file's duration, and the set of audio codecs among them."""
     result: dict[str, float] = {}
+    codecs: set[str] = set()
     for path in unit.files:
         try:
-            result[path] = probe(path, raise_on_timeout=True).duration
+            info = probe(path, raise_on_timeout=True)
+            result[path] = info.duration
+            if info.codec:
+                codecs.add(info.codec)
         except ProbeTimeout as exc:
             # not "no duration": a 0.0 here would drop the whole book's source chapters (and skew the
             # total the chapter distribution is scaled against) while the book converted anyway
@@ -94,19 +106,21 @@ def _durations(unit: BookUnit, durations: dict[str, float] | None) -> dict[str, 
                 "the book is not converted so it cannot lose chapters - check that the disk is healthy "
                 "and retry"
             ) from exc
-    return result
+    return result, codecs
 
 
-def plan_chapters(unit: BookUnit, asin: str, durations: dict[str, float] | None = None) -> ChapterPlan:
+def plan_chapters(
+    unit: BookUnit, asin: str, durations: dict[str, float] | None = None, codecs: set[str] | None = None
+) -> ChapterPlan:
     """Build the chapter plan for ``encode()``, probing each source file at most once.
 
-    Pass ``durations`` when the files were already probed (the audit does), and nothing
-    is probed again.
+    Pass ``durations`` (and ``codecs``) when the files were already probed (the audit does), and
+    nothing is probed again.
     """
     if durations is None or set(durations) != set(unit.files):
-        durations = _durations(unit, None)
+        durations, codecs = _probe_sources(unit)
     chapters, source = build_chapters(catalog.chapters(asin), sum(durations.values()), unit, durations)
-    return ChapterPlan(chapters=chapters, source=source, durations=durations)
+    return ChapterPlan(chapters=chapters, source=source, durations=durations, codecs=codecs)
 
 
 def _empty(start: float, end: float) -> bool:
@@ -509,6 +523,114 @@ def _stderr_tail(path: Path) -> str:
         return ""
 
 
+#: a decoder that rejects this many packets is not reading the audio, whatever the exit code: a
+#: FLAC fed to the MP3 decoder after a concat boundary logs one rejected packet per frame (CORE-01).
+#: A handful is a damaged frame or two in an otherwise good rip and still passes
+DECODE_ERROR_STORM = 25
+#: ffmpeg 6+ "Error submitting packet to decoder", older builds "Error while decoding stream #0:0"
+_DECODE_ERROR_RE = re.compile(r"error (?:submitting packet to decoder|while decoding stream)", re.I)
+_REPEATED_RE = re.compile(r"last message repeated (\d+) times", re.I)
+
+
+def decode_errors(stderr: str) -> int:
+    """How many packets ffmpeg's decoders rejected, per its stderr (collapsed repeats included)."""
+    count, last_was_error = 0, False
+    for line in stderr.splitlines():
+        repeated = _REPEATED_RE.search(line)
+        if repeated:
+            if last_was_error:
+                count += int(repeated.group(1))
+            continue
+        last_was_error = bool(_DECODE_ERROR_RE.search(line))
+        count += last_was_error
+    return count
+
+
+def _check_decode(stderr: str, what: str) -> None:
+    rejected = decode_errors(stderr)
+    if rejected >= DECODE_ERROR_STORM:
+        first = next((line.strip() for line in stderr.splitlines() if _DECODE_ERROR_RE.search(line)), "")
+        raise RuntimeError(
+            f"ffmpeg could not decode {rejected} packets of {what} - audio would be missing | ffmpeg: {first[:160]}"
+        )
+
+
+def normalise_command(source, dest) -> list:
+    """ffmpeg argv decoding one part of a mixed-codec book to the uniform lossless intermediate.
+
+    Every part comes out as 16-bit PCM WAV at the final encode's rate and layout, so the concat
+    demuxer sees one stream it can join: it has a single decoder for all parts (CORE-01). Not FLAC:
+    the demuxer applies the first file's STREAMINFO to every part and rejects the second one's
+    frames just the same. ``-rf64 auto`` lifts the 4 GB RIFF cap (about 6.7 hours of one file).
+    """
+    return [
+        FFMPEG,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-nostats",
+        *PROTOCOL_WHITELIST,
+        "-i",
+        str(source),
+        "-map",
+        "0:a:0",
+        "-map_metadata",
+        "-1",
+        "-map_chapters",
+        "-1",
+        "-c:a",
+        "pcm_s16le",
+        "-ac",
+        str(CONFIG.audio_channels),
+        "-ar",
+        str(CONFIG.sample_rate),
+        "-rf64",
+        "auto",
+        "-f",
+        "wav",
+        str(dest),
+    ]
+
+
+def _normalise_parts(files: list[str], work_dir: Path) -> list[str]:
+    """Decode each source to ``work_dir/parts/NNNN.wav``; the paths, in concat order."""
+    parts_dir = work_dir / "parts"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    out = []
+    for n, source in enumerate(files, 1):
+        dest = parts_dir / f"{n:04d}.wav"
+        stderr_path = parts_dir / f"{n:04d}.log"
+        with stderr_path.open("wb") as stderr_file:
+            proc = subprocess.Popen(
+                _nice_prefix() + normalise_command(source, dest), stdout=subprocess.DEVNULL, stderr=stderr_file
+            )
+        CONTROL.attach_process(proc)
+        try:
+            proc.wait()
+        finally:
+            CONTROL.detach_process()
+        if CONTROL.stop_requested:
+            raise Stopped("stopped by operator")
+        tail = _stderr_tail(stderr_path)
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg could not decode {os.path.basename(source)}: {tail[-800:]}")
+        _check_decode(tail, os.path.basename(source))
+        out.append(str(dest))
+    return out
+
+
+#: what an output may differ from the summed probed sources by: container rounding is a few tens of
+#: milliseconds plus a frame or so per joined file; 0.2% keeps the allowance long books always had
+DURATION_SLACK = 2.0
+DURATION_SLACK_PER_FILE = 0.05
+DURATION_SLACK_RATIO = 0.002
+
+
+def duration_slack(total: float, n_files: int) -> float:
+    return max(DURATION_SLACK + DURATION_SLACK_PER_FILE * n_files, total * DURATION_SLACK_RATIO)
+
+
 def encode(
     unit: BookUnit,
     match,
@@ -541,9 +663,16 @@ def encode(
     unsafe = unsafe_path_reason(unit)
     if unsafe:  # process_unit holds these first; never let one reach the concat list
         raise RuntimeError(unsafe)
+    joined = list(unit.files)
+    if len(joined) > 1 and len(plan.codecs or ()) > 1:
+        # the concat demuxer decodes every part with the first part's decoder: a FLAC after an MP3
+        # is thrown away packet by packet with exit 0 (CORE-01). One codec skips all of this.
+        log(f"  audio: mixed codecs {sorted(plan.codecs)} - decoding each file to PCM before joining")
+        joined = _normalise_parts(joined, work_dir)
+        copy_audio = False
     concat_file = work_dir / "concat.txt"
     with concat_file.open("w", encoding="utf-8") as handle:
-        for path in unit.files:
+        for path in joined:
             handle.write("file '" + str(path).replace("'", "'\\''") + "'\n")
 
     metadata_file = work_dir / "meta.txt"
@@ -618,12 +747,16 @@ def encode(
     finally:
         CONTROL.detach_process()
         CONTROL.clear_progress()
+        if joined != unit.files:  # the PCM parts (about 635 MB an hour) are spent once joined
+            shutil.rmtree(work_dir / "parts", ignore_errors=True)
 
     errors = [_stderr_tail(stderr_path)]
     if CONTROL.stop_requested:
         raise Stopped("stopped by operator")
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed: {(errors[0] if errors else '')[-800:]}")
+    # exit 0 is not proof: a decoder that rejected a whole file's packets still exits cleanly
+    _check_decode(errors[0], "the sources")
 
     if mp3:
         # ffmpeg drops chapters for mp3, so they are written into its ID3 tag here
@@ -633,11 +766,18 @@ def encode(
     chapter_count = len(probe_chapters(temp_out))
     streams = probe_streams(temp_out)
     want_codec = "mp3" if mp3 else "aac"
-    if not any(s.get("codec_name") == want_codec for s in streams):
+    audio = [s for s in streams if s.get("codec_name") == want_codec]
+    if not audio:
         raise RuntimeError(f"output has no {want_codec.upper()} audio stream")
-    # a merge of the same audio matches the summed sources to within container rounding;
-    # 30 s or 0.2% (72 s on ten hours) still catches one dropped file in a long book
-    if abs(duration - total_duration) > max(30, total_duration * 0.002):
+    try:
+        # the audio itself, not the container: a chapter track can carry the container to the
+        # planned length while the audio stops short (CORE-01)
+        duration = float(audio[0].get("duration") or 0) or duration
+    except (TypeError, ValueError):
+        pass
+    # total_duration is the sum of the probed sources; a merge of the same audio matches it to
+    # within container rounding, so seconds missing from a short book fail too (CORE-01)
+    if abs(duration - total_duration) > duration_slack(total_duration, len(unit.files)):
         hint = ""
         for line in (errors[0] if errors else "").splitlines():
             low = line.lower()

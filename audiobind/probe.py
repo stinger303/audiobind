@@ -164,7 +164,7 @@ def probe_streams(path: str | Path, timeout: int = LIST_PROBE_TIMEOUT, raise_on_
                 "-v",
                 "error",
                 "-show_entries",
-                "stream=index,codec_type,codec_name,channels,bit_rate:stream_disposition=attached_pic",
+                "stream=index,codec_type,codec_name,channels,bit_rate,duration:stream_disposition=attached_pic",
                 "-of",
                 "json",
                 str(path),

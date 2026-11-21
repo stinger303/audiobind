@@ -340,7 +340,8 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
         CONTROL.set_heartbeat(heartbeat)
         try:
             # one chapter plan (one ffprobe per file) shared by the encoder and metadata.json
-            plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None)
+            plan = encode.plan_chapters(unit, match.asin, durations=audit.durations or None,
+                                        codecs=set(audit.codecs) if audit.durations else None)
             results = {}
             for fmt in todo:
                 log(f"  encoding {fmt.upper()}")
