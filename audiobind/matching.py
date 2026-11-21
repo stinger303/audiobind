@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import catalog
+from . import catalog, markers
 from .catalog import Product
 from .units import BookUnit
 from .util import norm, sim, title_sim
@@ -58,6 +58,11 @@ class Match:
     #: cast, audio drama - see adaptation_label) and nothing the folder said asks for one: the
     #: phrase naming it ("a Dramatized Adaptation"). grade() never says HIGH for it
     unasked_adaptation: str = ""
+    #: set when the folder and the chosen product disagree about an edition marker read from their
+    #: original words, brackets included (box set, abridged, summary - see markers.py): the note
+    #: naming it. Every other candidate disagreed too, so this is the best of a bad pool. grade()
+    #: holds it at LOW
+    edition_conflict: str = ""
 
     @property
     def asin(self) -> str:
@@ -509,6 +514,8 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
     # (for an ingest retry, title_guess is the embedded-tag title)
     wanted = (unit.name, unit.title_guess, unit.alt_title_guess, title)
     asks_adaptation = bool(adaptation_label(*wanted))
+    # read before any bracket removal: "(Abridged)", "[Synopsis]", "(Box Set)" never reach a score
+    wanted_markers = markers.edition_markers(*wanted)
     for entry in scored.values():
         entry["knockoff"] = is_knockoff(entry["product"], products)
         entry["corroborated"] = None  # None = never asked Audnex
@@ -517,6 +524,16 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
         entry["unwanted_production"] = (
             bool(adaptation_label(entry["product"].title, entry["product"].subtitle)) != asks_adaptation
         )
+        # another edition than the folder's (a box set, an abridgment, a summary, or the plain book
+        # for a folder that names one): ranked below every candidate that agrees, never
+        # corroborated into first place, and graded LOW if it still wins
+        # A knockoff's summary marker is the knockoff gate's (is_knockoff reads the raw strings
+        # too, and holds it at LOW); only the other markers are compared for it
+        found = markers.edition_markers(entry["product"].title, entry["product"].subtitle)
+        asked = wanted_markers
+        if entry["knockoff"]:
+            found, asked = found - {markers.DERIVATIVE}, asked - {markers.DERIVATIVE}
+        entry["edition_conflict"] = markers.edition_mismatch(asked, found)
     _rank_productions(scored.values())
     ranked = sorted(scored.values(), key=_rank_key, reverse=True)
     best, margin = _pick_and_margin(ranked)
@@ -551,6 +568,7 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
         corroborated=best["corroborated"],
         title_window_coverage=round(coverage, 3),
         unasked_adaptation=unasked_adaptation(best["product"], wanted),
+        edition_conflict=best.get("edition_conflict", ""),
     )
     match.confidence = grade(match)
     # keep the runners-up (other editions of the same work, near misses) so the
@@ -729,10 +747,12 @@ def _rank_productions(entries) -> None:
 
 
 def _rank_key(entry: dict) -> tuple:
-    """Rank score first (see _rank_productions); equal scores go to the production the folder
-    asked for, then the closer raw title, then the closer runtime."""
+    """A candidate of another edition (``edition_conflict``) below every other; then rank score
+    (see _rank_productions); equal scores go to the production the folder asked for, then the
+    closer raw title, then the closer runtime."""
     delta = entry.get("runtime_delta_pct")
     return (
+        not entry.get("edition_conflict"),
         entry.get("rank_score", entry["score"]),
         not entry.get("unwanted_production", False),
         entry.get("whole_sim", 0.0),
@@ -773,7 +793,7 @@ def _pick_and_margin(ranked: list[dict]) -> tuple[dict, float]:
             for entry in [best, *close]:
                 entry["corroborated"] = corroborated(entry["product"])
             if not best["corroborated"]:
-                backed = [r for r in close if r["corroborated"]]
+                backed = [r for r in close if r["corroborated"] and not r.get("edition_conflict")]
                 if backed:
                     best = backed[0]  # highest-scoring corroborated contender
                     rivals = rivals_of(best)
@@ -781,16 +801,19 @@ def _pick_and_margin(ranked: list[dict]) -> tuple[dict, float]:
                 # checked and unbacked rivals step aside; unchecked (farther) ones still count
                 rivals = [r for r in rivals if r["corroborated"] is not False]
     top_rival = max((r["score"] for r in rivals), default=0.0)
-    return best, round(best["score"] - top_rival, 3)
+    # a pick ranked first for something other than its score (it agrees with the folder's edition
+    # markers, a higher-scoring rival does not) is not ahead of that rival: margin 0, never negative
+    return best, round(max(best["score"] - top_rival, 0.0), 3)
 
 
 def grade(match: Match) -> str:
     """HIGH needs title *and* author corroborated plus a clear win over other works."""
     if not match.product:
         return "NONE"
-    if match.knockoff:
-        # the best hit is a summary / review / zero-runtime stub: a person decides. LOW, not
-        # MEDIUM, so no auto-convert tier (not even "medium") converts it unseen
+    if match.knockoff or match.edition_conflict:
+        # the best hit is a summary / review / zero-runtime stub, or another edition than the
+        # folder's (box set, abridgment): a person decides. LOW, not MEDIUM, so no auto-convert
+        # tier (not even "medium") converts it unseen
         return "LOW"
     # a foreign-language hit must never auto-convert at HIGH confidence: it still has to clear
     # the normal title / author / margin gates, and is then capped at MEDIUM. The scorer's rule,

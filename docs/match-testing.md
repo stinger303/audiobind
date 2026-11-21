@@ -64,7 +64,9 @@ record the candidate pool and the ranking. Every catalog read goes to the frozen
   `known_defects.csv`; every listed defect must still reproduce, so a fix forces the list to change.
 * **E – explanation.** The grade must agree with the reasons the panel shows: a HIGH with any
   limiting reason, a MEDIUM/LOW with none, a NONE that had candidates but no rejection note, a
-  knockoff above LOW, or a foreign/adaptation hit at HIGH is a violation. The reasons mirror
+  knockoff above LOW, or a foreign/adaptation hit at HIGH is a violation. An `edition` reason (the
+  folder and the pick disagree on a box set / abridged / summary marker read from the original
+  strings, brackets included) always means LOW. The reasons mirror
   `grade()`; a test checks the mirror against `grade()` on an 8,000-point grid.
 * **F – decision.** What the pipeline would do with each row. See "What `would_convert_wrong` means".
 

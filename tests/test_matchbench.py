@@ -562,12 +562,12 @@ class TestGradeMirror(unittest.TestCase):
                     for coverage in (0.5, 1.0):
                         for language in ("english", "german"):
                             for known in (True, False):
-                                for knockoff in (False, True):
+                                for knockoff, edition in ((False, ""), (True, ""), (False, "an abridged edition")):
                                     for adaptation in ("", "a Dramatized Adaptation"):
                                         yield Match(product=product, title_sim=title, author_sim=author,
                                                     margin=margin, title_window_coverage=coverage,
                                                     language=language, author_known=known, knockoff=knockoff,
-                                                    unasked_adaptation=adaptation)
+                                                    unasked_adaptation=adaptation, edition_conflict=edition)
 
     def test_limiting_reasons_and_grade_with_agree_with_grade(self):
         """Stage E's reasons and mutate's grade mirror both reproduce grade() on a grid of evidence."""

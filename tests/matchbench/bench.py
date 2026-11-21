@@ -807,7 +807,7 @@ def grade_with(match: matching.Match, gates: dict) -> str:
     """grade() with its literal gates taken from ``gates`` (the mirror ``mutate`` moves)."""
     if not match.product:
         return "NONE"
-    if match.knockoff:
+    if match.knockoff or match.edition_conflict:
         return "LOW"
     foreign = matching.language_penalized(match.language)  # blank is not English (F1)
     title, author = match.title_sim, match.author_sim
@@ -835,6 +835,8 @@ def limiting_reasons(match: matching.Match) -> list[str]:
     reasons = []
     if match.knockoff:
         reasons.append("knockoff")
+    if match.edition_conflict:
+        reasons.append("edition")
     if matching.language_penalized(match.language):
         reasons.append("foreign")
     if match.unasked_adaptation:
