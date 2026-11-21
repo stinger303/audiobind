@@ -30,6 +30,9 @@ stops another website you visit from pressing these buttons for you. Scripts tha
 neither header, like the `curl` lines above, keep working. They still need the Bearer
 password (see [Signing in](install.md#signing-in)). Keep the port on your LAN all the same.
 
+When an ASIN in your ingest folder name belongs to a different book from the suggested match,
+the book’s detail panel names both titles.
+
 ### Series
 
 The **Series** tab (`/series`) lists every series you have a book of that Audible lists with two or more books, whether you own one or all of them.

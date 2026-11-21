@@ -223,6 +223,12 @@ def explain(
             f"under it - so nothing was matched. {why}"
         )
         what = what + " The ASIN you set stays saved until you replace it with a live one."
+    conflict = match.get("asin_hint_conflict") or {}
+    if conflict.get("asin") and conflict.get("title") and match.get("title"):
+        why += (
+            f' The ASIN in your folder name, {conflict["asin"]} ({conflict["title"]}), '
+            f'belongs to a different book than the suggested match ({match["title"]}).'
+        )
     return why, what
 
 

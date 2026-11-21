@@ -797,6 +797,26 @@ def _recorded_series(state: State, audit: Audit) -> dict:
     }
 
 
+def _recorded_hint_conflict(audit: Audit) -> dict:
+    """Keep the catalog evidence already fetched for the hint, without another request."""
+    asin = audit.unit.asin_hint
+    pick = audit.match.product
+    if not asin or not pick or asin == pick.asin:
+        return {}
+    book = catalog.cached_book(asin)
+    if not isinstance(book, dict) or book.get("asin") != asin:
+        return {}
+    title = book.get("title")
+    authors = book.get("authors")
+    if not isinstance(title, str) or not title.strip() or not isinstance(authors, list) or not authors:
+        return {}
+    lead = authors[0].get("name") if isinstance(authors[0], dict) else None
+    if not isinstance(lead, str) or not lead.strip() or not pick.authors or not pick.authors[0].strip():
+        return {}
+    hint = catalog.Product(asin=asin, title=title, authors=[lead])
+    return {} if matching._same_work(hint, pick) else {"asin": asin, "title": title}
+
+
 def record(
     state: State,
     audit: Audit,
@@ -829,6 +849,7 @@ def record(
                 "image": audit.match.product.image if audit.match.product else "",
                 # a user-pinned ASIN that had no catalog data; nothing was matched
                 "asin_pin_failed": audit.match.asin_pin_failed,
+                "asin_hint_conflict": _recorded_hint_conflict(audit),
                 # that pin, once it was dead too many checks in a row and stopped blocking a search
                 "asin_pin_abandoned": audit.match.pin_abandoned,
                 # the evidence behind the pick, shown in the "why this match" panel
