@@ -2,9 +2,9 @@
 
 group_key() strips every digit, so ``Author/Dune 1`` and ``Author/Dune 2`` used to key to "dune"
 and become one unit: two books concatenated into one file. Now siblings are merged only when each
-carries a real part marker (disc/part/cd/vol + number), their names agree once that marker is
-removed (other digits kept), and their sizes - the runtime proxy discovery has - do not say each
-one is a whole book.
+carries a real part marker (disc/part/cd + number; "Vol 2" is a book's own number), their names
+agree once that marker is removed (other digits kept), their ordinals differ, and their sizes - the
+runtime proxy discovery has - are comparable (CORE-05b; it was a 921.6 MB bar).
 """
 
 import os
@@ -117,16 +117,71 @@ class GenuinePartsTests(GroupingCase):
 
 class RuntimeCompatibilityTests(GroupingCase):
     def test_volumes_that_are_each_a_whole_book_are_separate(self):
-        whole = units.WHOLE_BOOK_BYTES
-        self.touch("Saga", "Saga Vol 1", "01.m4b", size=whole + 50 * MB)
-        self.touch("Saga", "Saga Vol 2", "01.m4b", size=whole + 10 * MB)
+        self.touch("Saga", "Saga Vol 1", "01.m4b", size=970 * MB)
+        self.touch("Saga", "Saga Vol 2", "01.m4b", size=930 * MB)
         self.assertEqual(self.rels(), [("Saga/Saga Vol 1", 1), ("Saga/Saga Vol 2", 1)])
 
-    def test_one_long_part_beside_ordinary_ones_keeps_the_set(self):
-        whole = units.WHOLE_BOOK_BYTES
-        self.touch("Saga", "Saga Vol 1", "01.m4b", size=whole + 50 * MB)
-        self.touch("Saga", "Saga Vol 2", "01.m4b", size=200 * MB)
+    def test_a_long_part_then_a_short_last_part_keeps_the_set(self):
+        self.touch("Saga", "Saga Part 1", "01.m4b", size=970 * MB)
+        self.touch("Saga", "Saga Part 2", "01.m4b", size=200 * MB)
         self.assertEqual(self.rels(), [("Saga", 2)])
+
+
+class CompatibilityNotSizeTests(GroupingCase):
+    """CORE-05b: the bar was "every member under 921.6 MB" - a size coin-flip on both sides."""
+
+    def test_a_genuine_two_part_book_of_1_gb_parts_is_one_unit(self):
+        """About seven hours a part at 320 kbps: a fourteen-hour book, not two books."""
+        self.touch("Author", "Book", "Part 1", "01.mp3", size=1000 * MB)
+        self.touch("Author", "Book", "Part 2", "01.mp3", size=1000 * MB)
+        self.assertEqual(self.rels(), [("Author/Book", 2)])
+
+    def test_two_volumes_of_ordinary_size_are_two_books(self):
+        """Saga Vol 1 and Vol 2: five hours each at 128 kbps, identical runtimes, two books."""
+        self.touch("Author", "Saga Vol 1", "01.m4b", size=288 * MB)
+        self.touch("Author", "Saga Vol 2", "01.m4b", size=288 * MB)
+        self.assertEqual(self.rels(), [("Author/Saga Vol 1", 1), ("Author/Saga Vol 2", 1)])
+
+    def test_volumes_each_in_parts_stay_apart(self):
+        for vol in (1, 2):
+            for part in (1, 2):
+                self.touch("Author", f"Saga Vol {vol} Part {part}", "01.mp3", size=288 * MB)
+        self.assertEqual(self.rels(), [("Author#saga vol 1", 2), ("Author#saga vol 2", 2)])
+
+    def test_disc_1_and_disc_01_are_not_successive_parts(self):
+        """The same ordinal twice is two copies of disc one, never discs one and two."""
+        self.touch("Author", "Title Disc 1", "01.mp3", size=288 * MB)
+        self.touch("Author", "Title Disc 01", "01.mp3", size=288 * MB)
+        found = discover_units(self.root, [])
+        self.assertFalse([u for u in found if len(u.parts) > 1], [(u.rel_path, len(u.parts)) for u in found])
+        self.assertEqual(self.rels(found), [("Author/Title Disc 01", 1), ("Author/Title Disc 1", 1)])
+
+    def test_a_repeated_ordinal_in_a_longer_set_is_not_guessed_at(self):
+        for name in ("Disc 1", "Disc 2", "Disc 02"):
+            self.touch("Novel", name, "01.mp3", size=70 * MB)
+        self.assertEqual(self.rels(), [("Novel/Disc 02", 1), ("Novel/Disc 1", 1), ("Novel/Disc 2", 1)])
+
+    def test_a_title_beside_its_numbered_sequel_is_two_books(self):
+        self.touch("Author", "Book", "01.mp3", size=300 * MB)
+        self.touch("Author", "Book 2", "01.mp3", size=300 * MB)
+        self.assertEqual(self.rels(), [("Author/Book", 1), ("Author/Book 2", 1)])
+
+    def test_parts_of_one_book_have_comparable_lengths(self):
+        """A 100 MB "part 1" beside a 700 MB "part 2" is not one book split in two."""
+        self.touch("Author", "Foo Part 1", "01.mp3", size=100 * MB)
+        self.touch("Author", "Foo Part 2", "01.mp3", size=700 * MB)
+        self.assertEqual(self.rels(), [("Author/Foo Part 1", 1), ("Author/Foo Part 2", 1)])
+
+    def test_a_middle_disc_far_off_the_others_breaks_the_set(self):
+        self.touch("Novel", "Disc 1", "01.mp3", size=700 * MB)
+        self.touch("Novel", "Disc 2", "01.mp3", size=100 * MB)
+        self.touch("Novel", "Disc 3", "01.mp3", size=700 * MB)
+        self.assertEqual(self.rels(), [("Novel/Disc 1", 1), ("Novel/Disc 2", 1), ("Novel/Disc 3", 1)])
+
+    def test_a_marked_set_of_any_total_size_groups(self):
+        for disc in range(1, 21):
+            self.touch("Epic", f"CD{disc}", "01.mp3", size=(70 if disc < 20 else 30) * MB)
+        self.assertEqual(self.rels(), [("Epic", 20)])
 
 
 if __name__ == "__main__":
