@@ -690,11 +690,11 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-wiz-outcome:focus{outline:2px solid var(--ab-accent-bright);outline-offset:4px;border-radius:6px}
 .ab-wiz-outcome:empty{display:none}
 .ab-wiz-checks{list-style:none;margin:8px 0 4px;padding:0;display:flex;flex-direction:column;gap:5px}
-.ab-wiz-checks li{display:flex;gap:8px;align-items:flex-start;overflow-wrap:anywhere}
+.ab-wiz-checks li{display:block;position:relative;padding-left:22px;overflow-wrap:anywhere}
 .ab-wiz-checks li.ab-good .ab-wiz-glyph{color:#5fd38d}
 .ab-wiz-checks li.ab-bad .ab-wiz-glyph{color:#f2686b}
 .ab-wiz-checks li.ab-warn .ab-wiz-glyph{color:#e3b341}
-.ab-wiz-glyph{flex:none;width:14px;text-align:center}
+.ab-wiz-glyph{position:absolute;left:0;top:0;width:14px;text-align:center}
 .ab-wiz-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .ab-wiz-fix{margin:6px 0 2px}
 .ab-wiz-fix b{color:var(--ab-text)}
