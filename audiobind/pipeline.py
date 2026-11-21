@@ -177,9 +177,9 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
     audit.action = choose_action(unit, audit.confidence, audit.runtime_matches, audit.codecs,
                                  channels=audit.channels, sample_rates=audit.sample_rates)
     if audit.action == "convert" and _single_aac_mp4(unit, audit.codecs):
-        # AB-MONO: say why an AAC book that could have been copied is re-encoded instead
+        # AB-MONO-CAP: say why an AAC book that could have been copied is re-encoded instead
         audit.notes.append(
-            f"audio is {_shape_text(audit.channels, audit.sample_rates)}, configured "
+            f"audio is {_shape_text(audit.channels, audit.sample_rates)}, not within the configured caps "
             f"{CONFIG.audio_channels} ch / {CONFIG.sample_rate} Hz - re-encoded, not copied"
         )
     # evidence only: asked after the grade and the action are final, and nothing above reads it.
@@ -238,12 +238,26 @@ def _single_aac_mp4(unit: BookUnit, codecs: set[str]) -> bool:
     )
 
 
-def _shape_matches(channels: set[str], sample_rates: set[str]) -> bool:
-    """AB-MONO: the probed audio is exactly the configured AUDIO_CHANNELS / SAMPLE_RATE.
+def _within_cap(figures: set[str], cap: int) -> bool:
+    """Every probed figure is a whole number at or below ``cap``. An empty set (ffprobe gave no
+    figure) or an unreadable one is *not* within the cap: deliberately conservative, an unprobed
+    shape is re-encoded rather than copied on trust."""
+    if not figures:
+        return False
+    try:
+        return all(0 < int(figure) <= cap for figure in figures)
+    except ValueError:
+        return False
 
-    ffmpeg ignores ``-ac``/``-ar`` beside ``-c:a copy`` (exit 0, no warning), so a copy keeps the
-    source's shape whatever is configured. An empty set (ffprobe gave no figure) is not a match."""
-    return channels == {str(CONFIG.audio_channels)} and sample_rates == {str(CONFIG.sample_rate)}
+
+def _shape_within_caps(channels: set[str], sample_rates: set[str]) -> bool:
+    """AB-MONO-CAP: the probed audio is at or below AUDIO_CHANNELS and at or below SAMPLE_RATE.
+
+    Both settings are caps, not targets. ffmpeg ignores ``-ac``/``-ar`` beside ``-c:a copy`` (exit 0,
+    no warning), so a copy keeps the source's shape whatever is configured - which is right while
+    the source is within both caps (a mono book is never upmixed, a 22050 Hz book never has its rate
+    raised) and wrong only when it exceeds one, which is what a re-encode is for."""
+    return _within_cap(channels, CONFIG.audio_channels) and _within_cap(sample_rates, CONFIG.sample_rate)
 
 
 def _shape_text(channels: set[str], sample_rates: set[str]) -> str:
@@ -263,8 +277,10 @@ def choose_action(
 
     A single AAC file that is already an MP4 container is remuxed, not re-encoded: chapters, tags
     and cover are rewritten while every audio sample is copied untouched - but only when its probed
-    ``channels`` and ``sample_rates`` already are the configured AUDIO_CHANNELS / SAMPLE_RATE. A copy
-    cannot change either (AB-MONO), so any other shape is re-encoded to the configured one.
+    ``channels`` are at or below AUDIO_CHANNELS and its ``sample_rates`` at or below SAMPLE_RATE
+    (AB-MONO-CAP: the settings are caps). A copy cannot change either, so a source above a cap is
+    re-encoded; a source within both is copied and keeps its own shape. An unprobed figure counts
+    as above the cap.
 
     ``channels``/``sample_rates`` left at None means the caller has no probe and the shape is not
     checked: only the offline match bench (no audio in its corpus) calls it that way. audit_unit
@@ -272,7 +288,7 @@ def choose_action(
     """
     already_mp4 = _single_aac_mp4(unit, codecs)
     if already_mp4 and channels is not None and sample_rates is not None:
-        already_mp4 = _shape_matches(channels, sample_rates)
+        already_mp4 = _shape_within_caps(channels, sample_rates)
     if confidence not in ("HIGH", "MEDIUM"):
         return "review"
     if not runtime_matches:

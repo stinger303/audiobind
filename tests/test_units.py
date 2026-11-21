@@ -111,7 +111,7 @@ class TestActionChoice(unittest.TestCase):
     def test_single_m4b_is_remuxed_not_re_encoded(self):
         from audiobind.pipeline import choose_action
 
-        # AB-MONO: the copy is only right when the probed shape already is the configured one
+        # AB-MONO-CAP: the copy is only right when the probed shape is within the configured caps
         with mock.patch.object(CONFIG, "audio_channels", 2), mock.patch.object(CONFIG, "sample_rate", 44100):
             self.assertEqual(choose_action(self._unit([["/a.m4b"]]), "HIGH", True, {"aac"},
                                            channels={"2"}, sample_rates={"44100"}), "remux")
@@ -123,7 +123,7 @@ class TestActionChoice(unittest.TestCase):
             self.assertEqual(choose_action(self._unit([["/a.m4a"]]), "HIGH", True, {"aac"},
                                            channels={"2"}, sample_rates={"44100"}), "remux")
 
-    def test_m4b_in_another_shape_than_configured_is_re_encoded(self):
+    def test_m4b_above_the_configured_channel_cap_is_re_encoded(self):
         from audiobind.pipeline import choose_action
 
         with mock.patch.object(CONFIG, "audio_channels", 1), mock.patch.object(CONFIG, "sample_rate", 44100):

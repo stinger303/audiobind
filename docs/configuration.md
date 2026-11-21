@@ -14,8 +14,8 @@
 | `SCAN_INTERVAL_MIN` | `30` | Poll interval |
 | `OUTPUT_FORMAT` | `M4B` | `M4B`, `MP3` or `M4B + MP3`: what each book is published as (also in Settings). See [Output format](#output-format) |
 | `AUDIO_BITRATE` | `128k` | Minimum AAC bitrate. A source that is already richer keeps its own bitrate (256k mp3 stays 256k); everything is capped at 320k |
-| `AUDIO_CHANNELS` | `2` | 1 = mono, 2 = stereo; every output gets this channel count (a mono source is made stereo at `2`). Mono halves the file size. An AAC `.m4b`/`.m4a` is only copied without re-encoding when it already has this channel count and `SAMPLE_RATE`; otherwise it is re-encoded and the book's notes say why |
-| `SAMPLE_RATE` | `44100` | Output sample rate; see `AUDIO_CHANNELS` for when an AAC source is copied rather than re-encoded |
+| `AUDIO_CHANNELS` | `2` | 1 = mono, 2 = stereo. A cap for an AAC `.m4b`/`.m4a`: one with this many channels or fewer is copied without re-encoding and keeps its own layout (a mono book stays mono at `2`); one with more is re-encoded and downmixed, and the book's notes say why. A book that is re-encoded for any reason (mp3, a multi-file merge, a rate above `SAMPLE_RATE`) is written with exactly this channel count. Mono halves the file size |
+| `SAMPLE_RATE` | `44100` | Output sample rate, a cap in the same way: an AAC `.m4b`/`.m4a` at or below it is copied and keeps its own rate (a 22050 Hz book stays 22050 Hz); one above it is re-encoded and resampled down. A book that is re-encoded for any reason is written at exactly this rate. An AAC source whose channel count or rate ffprobe does not report is re-encoded, not copied |
 | `JOBS` | `1` | Books converted in parallel |
 | `NICE` | `10` | ffmpeg CPU priority |
 | `MANUAL_WORKERS` | `2` | Manual actions (Retry, Convert anyway, Use this ASIN, Re-check) allowed at once; more get "another action is already running" |

@@ -139,7 +139,7 @@ class TestSingleFilePipeline(PipelineCase):
         with (
             mock.patch.object(catalog, "search", return_value=[PHM]),
             mock.patch.object(catalog, "chapters", return_value=[]),
-            # AB-MONO: a remux needs the probed shape to be the configured one (defaults: 2 ch / 44100 Hz)
+            # AB-MONO-CAP: a remux needs the probed shape within the configured caps (2 ch / 44100 Hz)
             mock.patch.object(CONFIG, "audio_channels", 2),
             mock.patch.object(CONFIG, "sample_rate", 44100),
             mock.patch.object(pipeline, "probe",

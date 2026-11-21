@@ -76,8 +76,9 @@ converts the books it is sure of; set Auto convert to `off` to review every matc
 4. **Merge and convert.** One `ffmpeg` pass: concat demuxer, AAC, Audnex chapter marks scaled
    onto the real timeline, embedded cover, full tag set. The bitrate never drops below the
    configured floor (128 kbps by default) and a richer source keeps its own bitrate. A file that
-   is already AAC in an MP4 container, in the configured channel count and sample rate, is
-   remuxed with `-c:a copy` - no re-encode at all.
+   is already AAC in an MP4 container, at or below the configured channel count and sample rate
+   (both are caps), is remuxed with `-c:a copy` - no re-encode at all, so a mono or 22050 Hz
+   book stays mono or 22050 Hz.
 5. **File it.** In the Audiobookshelf layout: `Author/Title/Title.m4b` or
    `Author/Series/3 - Title/Title.m4b`, plus a `cover.jpg` and an Audiobookshelf-compatible
    `metadata.json`. See [Folder layout](docs/configuration.md#folder-layout).
