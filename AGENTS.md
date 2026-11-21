@@ -27,8 +27,12 @@ A task is done only when **all** of these are true, and the report carries the e
 1. Full suite run for real: the actual test count and `OK`. "Tests pass" is not evidence.
 2. `docs/verify-page.py` ends with `FAILURES: none`.
 3. `python3 -m tests.matchbench` exits 0 whenever matching, tiering or unit-selection changed.
-4. One commit per fix, the finding ID in the message, tree otherwise clean.
-5. `CHANGELOG.md` entry and a version bump in **both** files when releasing.
+4. `ruff check .` reports zero `invalid-syntax` findings, and the only `E501` line-too-long findings
+   are the pre-existing baseline. The baseline before f310 was 1132 E501, 29 I001, 20 F401, 8 B905,
+   5 invalid-syntax, and 4 F541. The five syntax findings are historical and the gate is zero.
+   Cosmetic drift is tracked, not fixed, so a bug fix can land without reformatting 1,100 lines.
+5. One commit per fix, the finding ID in the message, tree otherwise clean.
+6. `CHANGELOG.md` entry and a version bump in **both** files when releasing.
 
 Report **which** target, cases and checks ran, the result, and the report path. A self-report is not
 proof — paste counts and command output.
