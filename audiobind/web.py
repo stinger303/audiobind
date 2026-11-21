@@ -1141,6 +1141,15 @@ function abModalConfirm() {
                 (result.source_kept_reason || 'your library is read-only') +
                 ') - it will reappear on the next scan unless you remove it from the share.' +
                 (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : ''));
+      } else if (result.source_removed) {
+        if (result.output === 'kept') {
+          abToast('Deleted the source folder. The converted copy stays in your output library (' +
+                  result.output_kept_reason + ').');
+        } else if (result.output === 'removed') {
+          abToast('Deleted the source folder and the converted copy in your output library.');
+        } else {
+          abToast('Deleted the source folder. There was no converted copy in your output library to remove.');
+        }
       } else if (result.output === 'kept') {
         abToast('Deleted. Output kept: ' + result.output_kept_reason + '.');
       }
