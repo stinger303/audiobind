@@ -69,6 +69,7 @@ from .config import (
 from .control import CONTROL
 from .covers import resolve as resolve_cover
 from .covers import valid_asin
+from . import pipeline as pipeline_mod
 from .pipeline import CONVERT_LOCK, process_unit
 from .state import LOCKABLE_FIELDS, SOURCE_INGEST, WISHLIST_REQUEUEABLE, key_source
 from .units import files_under, find_unit, foreign_audio, owned_paths
@@ -6977,26 +6978,9 @@ OUTPUT_NOT_OURS = "that folder was not created by Audiobind"
 
 
 def audiobind_wrote_output(unit_state) -> bool:
-    """True only for a row whose ``output`` is a book Audiobind itself encoded and published.
-
-    A "ready" row (already published) records a file that was there before the scan, so it is
-    never Audiobind's to remove. A converted row whose detail names a different output path
-    (the row was edited, or moved by hand) does not prove ownership of ``output`` either.
-    """
-    if unit_state.status != "converted" or not unit_state.output:
-        return False
-    try:
-        detail = json.loads(unit_state.detail or "{}")
-    except (TypeError, ValueError):
-        detail = {}
-    recorded = detail.get("output") if isinstance(detail, dict) else None
-    path = recorded.get("path") if isinstance(recorded, dict) else None
-    if path:
-        try:
-            return Path(str(path)).resolve() == Path(unit_state.output).resolve()
-        except (OSError, RuntimeError):
-            return False
-    return True
+    """True only for a row whose ``output`` is a book Audiobind itself encoded and published
+    (pipeline.wrote_output; which files in its folder are Audiobind's is pipeline.wrote_files)."""
+    return pipeline_mod.wrote_output(unit_state)
 
 
 def output_sharers(state, rel: str, folder: Path) -> int:
@@ -7950,7 +7934,9 @@ class Handler(BaseHTTPRequestHandler):
                         out_trash = out_parent
                 # never take a published book that another row also points at
                 out_shared = output_sharers(self.state, rel, out_trash) if out_trash is not None else 0
-                return not_ours, out_trash, out_shared
+                # CORE-04a: the files in that folder Audiobind wrote (None: a row from before the list,
+                # whose whole folder is Audiobind's as it always was)
+                return not_ours, out_trash, out_shared, pipeline_mod.wrote_files(row)
 
             if plan_output(unit_state) is None:
                 return
@@ -7978,7 +7964,7 @@ class Handler(BaseHTTPRequestHandler):
                 planned = plan_output(unit_state, again=True)
                 if planned is None:
                     return
-                not_ours, out_trash, out_shared = planned
+                not_ours, out_trash, out_shared, out_wrote = planned
 
                 # HARD DELETE: the published output is removed permanently and the book is
                 # forgotten. The source folder is removed too when the library mount allows
@@ -8088,6 +8074,7 @@ class Handler(BaseHTTPRequestHandler):
 
                 output_removed = "absent"
                 output_kept_reason = ""
+                output_removed_files = None
                 if not_ours:
                     output_removed = "kept"
                     output_kept_reason = OUTPUT_NOT_OURS
@@ -8115,9 +8102,25 @@ class Handler(BaseHTTPRequestHandler):
                         )
                         return
                     try:
-                        shutil.rmtree(str(out_trash))
-                        output_removed = "removed"
-                        log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
+                        present = pipeline_mod.folder_files(out_trash)
+                        own = present if out_wrote is None else [n for n in present if n in set(out_wrote)]
+                        if len(own) == len(present):
+                            shutil.rmtree(str(out_trash))
+                            output_removed = "removed"
+                            log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
+                        else:
+                            # CORE-04a: the folder also holds files Audiobind never wrote (the owner's
+                            # own M4B beside an MP3 Audiobind added): only Audiobind's files go
+                            for name in own:
+                                (out_trash / name).unlink()  # a link is removed, never followed
+                            output_removed = "kept"
+                            output_kept_reason = (
+                                f"the folder also holds {len(present) - len(own)} file(s) Audiobind did not "
+                                f"write - only the {len(own)} it wrote were removed"
+                            )
+                            output_removed_files = own
+                            log.info("HARD DELETE %s; output %s: removed only %s", rel, output_kept_reason,
+                                     ", ".join(own) or "nothing")
                     except OSError as exc:
                         # the book is NOT forgotten: the row stays so the operator can see the
                         # converted copy is still there, fix the cause and delete again
@@ -8152,6 +8155,8 @@ class Handler(BaseHTTPRequestHandler):
                     "output": output_removed,
                     "output_kept_reason": output_kept_reason,
                 }
+                if output_removed_files is not None:
+                    result["output_removed_files"] = output_removed_files
                 if ingest_row:
                     # the torrent folder is still in INGEST_DIR: without this the next scan converts it again
                     self.state.dismiss(rel)

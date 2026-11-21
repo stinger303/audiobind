@@ -3,11 +3,12 @@
 The theme: never remove or overwrite a file this process did not create.
 """
 
+import json
 import os
 import pathlib
 import unittest
 
-from audiobind import pipeline
+from audiobind import abs_layout, pipeline
 
 try:
     from test_d1_data_safety import DeleteCase, PublishCase
@@ -124,6 +125,108 @@ class Core04bEveryDestinationIsContainedTests(PublishCase):
         self.run_process(KEY, "second", manual=True)
         self.assertEqual(self.listing(out_root), before, "files were published into the output root itself")
         self.assert_refused(real)
+
+
+# --------------------------------------------------------------------------- CORE-04a
+def wrote(row) -> list:
+    return json.loads(row.detail)["output"]["wrote"]
+
+
+class Core04aTheRowRecordsTheFilesItWroteTests(PublishCase):
+    """A converted row names the exact files Audiobind wrote into the book's folder."""
+
+    NAMES = ["Project Hail Mary.m4b", "Project Hail Mary.mp3", "cover.jpg", "metadata.json"]
+
+    def add_mp3(self):
+        self.output_format = "M4B + MP3"
+        self.run_process(KEY, "second", manual=True)
+        row = self.state.get(KEY)
+        self.assertEqual(row.status, "converted")
+        return row
+
+    def test_an_owner_m4b_given_an_mp3_records_only_what_audiobind_wrote(self):
+        m4b = published_m4b()
+        m4b.parent.mkdir(parents=True)
+        m4b.write_bytes(b"owner-m4b")  # the owner's own file: an M4B-mode scan records it ready
+        self.output_format = "M4B"
+        self.run_process(KEY, "first")
+        self.assertEqual(self.state.get(KEY).status, "ready")
+        row = self.add_mp3()
+        self.assertEqual(wrote(row), ["Project Hail Mary.mp3", "cover.jpg", "metadata.json"])
+        self.assertEqual(m4b.read_bytes(), b"owner-m4b")
+
+    def test_a_fully_written_book_records_every_file(self):
+        self.output_format = "M4B + MP3"
+        self.run_process(KEY, "first")
+        self.assertEqual(wrote(self.state.get(KEY)), self.NAMES)
+
+    def test_adding_a_format_to_audiobinds_own_book_keeps_what_it_wrote_before(self):
+        self.output_format = "M4B"
+        self.run_process(KEY, "first")
+        row = self.add_mp3()
+        # the old cover and metadata were kept as backups (CORE-03b): they were Audiobind's, so
+        # the backups are too
+        folder = published_m4b().parent
+        backups = [p.name for p in [*folder.glob("cover.jpg.bak-*"), *folder.glob("metadata.json.bak-*")]]
+        self.assertEqual(len(backups), 2)
+        self.assertEqual(wrote(row), sorted([*self.NAMES, *backups]))
+
+    def test_a_row_from_before_the_list_keeps_its_whole_folder(self):
+        self.output_format = "M4B"
+        self.run_process(KEY, "first")
+        row = self.state.get(KEY)
+        detail = json.loads(row.detail)
+        del detail["output"]["wrote"]  # recorded by a release without the list
+        row.detail = json.dumps(detail)
+        self.state.save(row)
+        row = self.add_mp3()
+        self.assertIn("Project Hail Mary.m4b", wrote(row))
+
+
+class Core04aDeleteRemovesOnlyWhatAudiobindWroteTests(DeleteCase):
+    """Delete goes by the recorded list: the folder only when every file in it is Audiobind's."""
+
+    def record_wrote(self, names):
+        row = self.state.get(self.REL)
+        row.detail = json.dumps({"output": {"path": row.output, "wrote": names}})
+        self.state.save(row)
+
+    def test_an_owner_m4b_survives_when_only_the_mp3_was_audiobinds(self):
+        for name in ("Book.mp3", "cover.jpg", "metadata.json"):
+            (self.out_book / name).write_bytes(b"ours")
+        self.record_wrote(["Book.mp3", "cover.jpg", "metadata.json"])
+        status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertEqual((self.out_book / "Book.m4b").read_bytes(), b"m4b", "the owner's M4B was deleted")
+        self.assertEqual(sorted(p.name for p in self.out_book.iterdir()), ["Book.m4b"])
+        self.assertEqual(body["output"], "kept")
+        self.assertIn("did not write", body["output_kept_reason"])
+        self.assertEqual(body["output_removed_files"], ["Book.mp3", "cover.jpg", "metadata.json"])
+        self.assertIsNone(self.state.get(self.REL))
+
+    def test_a_layout_rename_carries_the_list_to_the_new_names(self):
+        (self.out_book / "Book.mp3").write_bytes(b"ours")
+        self.record_wrote(["Book.m4b", "Book.mp3"])
+        moved = self.out / "Author" / "Series" / "1 - Book"
+        moved.parent.mkdir(parents=True)
+        self.out_book.rename(moved)
+        for name in ("Book.m4b", "Book.mp3"):  # what abs_layout._rename_files does
+            (moved / name).rename(moved / name.replace("Book", "1 - Book"))
+        abs_layout._record_output(self.state, self.REL, moved / "1 - Book.m4b",
+                                  old=self.out_book / "Book.m4b")
+        row = self.state.get(self.REL)
+        self.assertEqual(wrote(row), ["1 - Book.m4b", "1 - Book.mp3"])
+        status, body = self.delete()
+        self.assertEqual((status, body["output"]), (200, "removed"), body)
+        self.assertFalse(moved.exists())
+
+    def test_a_book_audiobind_wrote_entirely_is_still_removed_with_its_folder(self):
+        (self.out_book / "cover.jpg").write_bytes(b"ours")
+        self.record_wrote(["Book.m4b", "cover.jpg"])
+        status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["output"], "removed")
+        self.assertFalse(self.out_book.exists())
 
 
 if __name__ == "__main__":

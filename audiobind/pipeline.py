@@ -56,6 +56,11 @@ class Audit:
     #: Hardcover's second opinion (hardcover.evidence_for) for the detail panel; None while it is off.
     #: Never read by the grade or the action
     hardcover: dict | None = None
+    #: CORE-04a: the names (in the book's folder) the last publish placed, the backups it renamed
+    #: aside (original name -> backup name), and the merged list recorded as detail.output.wrote
+    placed: list = field(default_factory=list)
+    moved_aside: dict = field(default_factory=dict)
+    wrote: list | None = None
 
     @property
     def runtime_matches(self) -> bool:
@@ -357,9 +362,11 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
             duration = results.get(formats[0], results[todo[0]]).duration
             # CORE-03: metadata.json is written inside the publish, so a failed sidecar rolls
             # back the audio and cover with it, and the previous metadata comes back too
-            _publish_all(todo, results, paths, log=log,
-                         sidecar=lambda: _write_sidecar(out_path, book, match, plan.chapters,
-                                                        duration, log=log))
+            placed, backups = _publish_all(todo, results, paths, log=log,
+                                           sidecar=lambda: _write_sidecar(out_path, book, match, plan.chapters,
+                                                                          duration, log=log))
+            audit.placed = [path.name for path in placed]
+            audit.moved_aside = {path.name: backup.name for path, backup in backups.items()}
             for fmt in todo:
                 res = results[fmt]
                 log(f"  published {paths[fmt]} ({res.size / 1e6:.0f} MB, {res.chapters} chapters)")
@@ -376,18 +383,20 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
             CONTROL.end_unit()
 
 
-def _write_sidecar(out_path: Path, book: dict, match, chapters: list[dict], duration: float, log=print) -> None:
+def _write_sidecar(out_path: Path, book: dict, match, chapters: list[dict], duration: float, log=print) -> bool:
     """SEC-03: metadata.json beside the published book - only inside OUTPUT_ROOT and never
-    through a symlink. A refused sidecar is logged and skipped; the conversion stands."""
+    through a symlink. A refused sidecar is logged and skipped; the conversion stands.
+    True when it was written (CORE-04a: it is then one of the files Audiobind wrote)."""
     sidecar = out_path.parent / "metadata.json"
     root = Path(CONFIG.output_root).resolve()
     if root not in sidecar.parent.resolve().parents:
         log(f"  metadata.json skipped: {sidecar.parent} is outside the output root")
-        return
+        return False
     if sidecar.is_symlink():
         log(f"  metadata.json skipped: {sidecar} is a symlink")
-        return
+        return False
     encode.write_abs_metadata(sidecar, book, match, chapters, duration)
+    return True
 
 
 def _backup_path(path: Path, stamp: str) -> Path:
@@ -400,7 +409,8 @@ def _backup_path(path: Path, stamp: str) -> Path:
     return candidate
 
 
-def _publish_all(formats: list[str], results: dict, paths: dict, log=print, sidecar=None) -> None:
+def _publish_all(formats: list[str], results: dict, paths: dict, log=print,
+                 sidecar=None) -> tuple[list[Path], dict[Path, Path]]:
     """Publish every verified format, the m4b (archival copy) first - all of them or none.
 
     If a later format fails to publish (a cross-filesystem copy that runs out of space), the
@@ -420,6 +430,10 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print, side
     ``.bak-<timestamp>`` (a copy, not a rename - the writer may decline to write it), and a failed
     publish - the sidecar write included - puts it back with the audio and cover. The copy is kept
     beside a replaced edition's backups and removed when no audio was replaced.
+
+    Returns (every path this call placed, in order - audio, cover.jpg, a metadata.json the
+    sidecar wrote; the backups kept, original -> backup) for the row's record of what Audiobind
+    wrote (CORE-04a).
     """
     folder = paths[formats[0]].parent
     new_dirs = []
@@ -456,8 +470,8 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print, side
             # it is in place - a path whose placement failed (or that another writer made after
             # the snapshot above) is never on the list, so the rollback never unlinks it.
             encode.publish_result(results[fmt], paths[fmt], placed=placed)
-        if sidecar is not None:
-            sidecar()
+        if sidecar is not None and sidecar():
+            placed.append(meta)  # CORE-04a: written by this publish (the last step - nothing to undo)
     except BaseException:
         for path in dict.fromkeys(placed):
             if path not in preexisting:
@@ -482,6 +496,93 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print, side
             backups.pop(meta).unlink()
     for path, backup in backups.items():
         log(f"  replaced {path.name}; the previous file is kept at {backup}")
+    return list(dict.fromkeys(placed)), backups
+
+
+def recorded_output(row) -> dict:
+    """The ``output`` block of a row's detail JSON ({} when there is none)."""
+    try:
+        detail = json.loads(row.detail or "{}")
+    except (TypeError, ValueError):
+        return {}
+    output = detail.get("output") if isinstance(detail, dict) else None
+    return output if isinstance(output, dict) else {}
+
+
+def wrote_output(row) -> bool:
+    """True only for a row whose ``output`` is a book Audiobind itself encoded and published.
+
+    A "ready" row (already published) records a file that was there before the scan, so it is
+    never Audiobind's to remove. A converted row whose detail names a different output path
+    (the row was edited, or moved by hand) does not prove ownership of ``output`` either.
+    Which files in that folder are Audiobind's is ``wrote_files``.
+    """
+    if row.status != "converted" or not row.output:
+        return False
+    path = recorded_output(row).get("path")
+    if path:
+        try:
+            return Path(str(path)).resolve() == Path(row.output).resolve()
+        except (OSError, RuntimeError):
+            return False
+    return True
+
+
+def wrote_files(row) -> list[str] | None:
+    """CORE-04a: the files (names relative to the output's folder) Audiobind wrote there.
+
+    [] for a row whose output is not Audiobind's at all; None for a converted row recorded
+    before the list existed - Delete then treats the whole folder as Audiobind's, as it always has.
+    """
+    if not wrote_output(row):
+        return []
+    names = recorded_output(row).get("wrote")
+    if isinstance(names, list) and all(isinstance(name, str) for name in names):
+        return list(names)
+    return None
+
+
+def folder_files(folder: Path) -> list[str]:
+    """Every file (and link - never followed) under ``folder``, as sorted '/'-separated names
+    relative to it."""
+    found = []
+    for dirpath, dirnames, filenames in os.walk(folder):
+        here = Path(dirpath)
+        links = [d for d in dirnames if (here / d).is_symlink()]
+        for name in [*filenames, *links]:
+            found.append((here / name).relative_to(folder).as_posix())
+    return sorted(found)
+
+
+def _owned_before(row) -> tuple[Path, set[str]] | None:
+    """(folder, names) Audiobind already owned in this row's output folder, before a publish."""
+    if row is None or not wrote_output(row):
+        return None
+    folder = Path(row.output).parent
+    names = wrote_files(row)
+    if names is None:
+        # a row from before the list: the whole folder was Audiobind's, as Delete treated it
+        try:
+            in_root = folder.resolve() == Path(CONFIG.output_root).resolve()
+        except (OSError, RuntimeError):
+            in_root = True
+        names = [Path(row.output).name] if in_root else folder_files(folder)
+    return folder, set(names)
+
+
+def _merged_wrote(owned: tuple[Path, set[str]] | None, folder: Path, audit: Audit) -> list[str]:
+    """What the row records as written after a publish into ``folder``: what it placed, plus -
+    in the same folder - what Audiobind owned before and the backups of those files."""
+    names = set(audit.placed)
+    if owned is not None:
+        try:
+            same = owned[0].resolve() == folder.resolve()
+        except (OSError, RuntimeError):
+            same = False
+        if same:
+            names |= owned[1]
+            names |= {backup for name, backup in audit.moved_aside.items() if name in owned[1]}
+    return sorted(names)
 
 
 def record(
@@ -563,6 +664,9 @@ def record(
             ),
         }
     )
+    if result and audit.wrote is not None:
+        # CORE-04a: exactly which files in the folder Audiobind wrote - Delete removes only these
+        detail_data["output"]["wrote"] = audit.wrote
     if audit.hardcover is not None:
         # only while Hardcover evidence is on: with it off the stored detail is byte-identical
         detail_data["hardcover"] = audit.hardcover
@@ -680,11 +784,13 @@ def process_unit(
                 rec("ready", output=kept, note="already published - the output file exists")
             return
         try:
+            owned = _owned_before(state.get(unit.state_key))  # read before the publish changes the folder
             result = convert_unit(audit, log=log, cancelled=dismissed, heartbeat=state.heartbeat,
                                   reencode=reencode, at=Path(kept) if kept else None)
             if result is None:  # dry run, already published, or removed while it waited
                 nothing_written()
             else:
+                audit.wrote = _merged_wrote(owned, Path(result.path).parent, audit)
                 rec("converted", output=str(result.path), result=result)
         except Stopped:
             log("  stopped by operator - partial file discarded, book will be retried")

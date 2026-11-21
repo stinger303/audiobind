@@ -325,7 +325,7 @@ def apply(state) -> dict:
             failed.append({"from": str(move.src), "to": str(move.dst), "state_key": move.state_key,
                            "error": exc.strerror or str(exc)})
         if current != src:
-            _record_output(state, move.state_key, current)
+            _record_output(state, move.state_key, current, old=src)
         if current == move.dst:
             log.info("Audiobookshelf layout: %s -> %s", move.src, move.dst)
             moved.append(move.public())
@@ -338,13 +338,33 @@ def apply(state) -> dict:
     }
 
 
-def _record_output(state, key: str, output: Path) -> None:
-    """Point the row (and the output path kept in its detail) at the file's new place."""
+def _record_output(state, key: str, output: Path, old: Path | None = None) -> None:
+    """Point the row (and the output path kept in its detail) at the file's new place.
+
+    ``old`` is where the main file was: when the move renamed the book's files to a new stem, the
+    names in the detail's ``wrote`` list (CORE-04a) follow them - each one that is now on disk
+    under its new name, so a half-done rename is recorded as it is.
+    """
     row = state.get(key)
     detail = None
     if row is not None:
         data = _loads(row.detail)
         if isinstance(data.get("output"), dict) and data["output"].get("path"):
             data["output"]["path"] = str(output)
+            wrote = data["output"].get("wrote")
+            if old is not None and old.stem != output.stem and isinstance(wrote, list):
+                data["output"]["wrote"] = sorted({_renamed(name, old.stem, output) for name in wrote})
             detail = json.dumps(data)
     state.set_output(key, str(output), detail)
+
+
+def _renamed(name, old_stem: str, output: Path):
+    """``name`` (from a row's wrote list) as _rename_files left it beside ``output``."""
+    if not isinstance(name, str) or "/" in name:
+        return name
+    path = Path(name)
+    if path.stem != old_stem or path.suffix.lower() not in AUDIO_EXT:
+        return name
+    new = output.stem + path.suffix
+    folder = output.parent
+    return new if os.path.lexists(folder / new) and not os.path.lexists(folder / name) else name
