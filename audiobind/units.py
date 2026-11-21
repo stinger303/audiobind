@@ -170,22 +170,91 @@ def _bucket_name(member_name: str) -> str:
     return stripped or member_name
 
 
+#: a part marker with its number: "Disc 2", "CD1", "Part 03", "Pt. 4", "Vol 2", "...UnabridgedPart1"
+_MARKER_RE = re.compile(r"(part|pt|disc|disk|cd|vol|volume)\s*\.?\s*(\d+)", re.I)
+
+
+def _part_marker(name: str) -> re.Match | None:
+    """The last real part marker in a folder (or loose file) name, or None.
+
+    A marker starts a word ("Disc 1", "Book-CD2") or a CamelCase run ("StoneColdPart1"); inside a
+    word it is not one ("Transcript 2", "Concept 3").
+    """
+    found = None
+    for match in _MARKER_RE.finditer(name):
+        before = name[match.start() - 1] if match.start() else ""
+        if not before.isalpha() or (before.islower() and name[match.start()].isupper()):
+            found = match
+    return found
+
+
+def _part_base(name: str, marker: re.Match) -> str:
+    """The name without its part marker, every other digit kept: "Foo 2 Part 1" -> "foo 2"."""
+    return norm(NOISE_RE.sub(" ", name[: marker.start()] + " " + name[marker.end():]))
+
+
+#: runtime proxy for "each of these is a whole book": the size of COLLECTION_PART_HOURS (the bar at
+#: which parts stop being parts, see looks_like_collection) at 128 kbps. Discovery does not probe;
+#: one book's parts are encoded alike, so their sizes track their runtimes. A CD rip, an MP3-CD
+#: disc (700 MB) or an Audible part download stays far below it.
+WHOLE_BOOK_BYTES = int(16 * 3600 * 128_000 / 8)
+
+
+def _leaf_bytes(leaf: dict) -> int:
+    total = 0
+    for path in leaf["files"]:
+        try:
+            total += os.path.getsize(path)
+        except OSError:
+            continue
+    return total
+
+
+def _runtimes_compatible(members: list[dict]) -> bool:
+    """False when every member alone is a whole book's length: volumes, not parts of one book."""
+    return len(members) < 2 or not all(_leaf_bytes(m) >= WHOLE_BOOK_BYTES for m in members)
+
+
 def group(leaves: list[dict]) -> list[BookUnit]:
-    """Bucket sibling part directories into single book units."""
-    buckets: dict[tuple[str, str], list[dict]] = {}
+    """Bucket sibling part directories into single book units.
+
+    CORE-05: siblings share a unit only on positive multi-part evidence - each carries a part
+    marker (disc/part/cd/vol + number), their names are identical once that marker is removed (any
+    other digit is content: "Dune 1" and "Dune 2" are two books), and their sizes do not say each
+    is a whole book. Anything else is a unit of its own. The unit's key is still group_key(), so a
+    genuine part set keeps the rel_path (state key) it always had.
+    """
+    buckets: dict[tuple[str, str, str], list[dict]] = {}
     for leaf in leaves:
         key = group_key(leaf["name"]) or ("g:" + norm(os.path.basename(leaf["parent"])))
-        buckets.setdefault((leaf["parent"], key), []).append(leaf)
+        marker = _part_marker(leaf["name"])
+        evidence = "base:" + _part_base(leaf["name"], marker) if marker else "alone:" + leaf["path"]
+        buckets.setdefault((leaf["parent"], key, evidence), []).append(leaf)
+    for bucket_id in list(buckets):
+        members = buckets[bucket_id]
+        if not _runtimes_compatible(members):
+            del buckets[bucket_id]
+            for member in members:
+                buckets[(bucket_id[0], bucket_id[1], "alone:" + member["path"])] = [member]
 
     # a parent is shared when it holds more than one bucket, or holds audio of its own
     # (it is then a leaf itself, and would get the very same path as the bucket)
     per_parent: dict[str, int] = {}
-    for parent, _key in buckets:
+    for parent, _key, _evidence in buckets:
         per_parent[parent] = per_parent.get(parent, 0) + 1
     leaf_paths = {leaf["path"] for leaf in leaves if not leaf.get("loose")}
+    # "Foo 1 Part 1/2" and "Foo 2 Part 1/2" share group_key "foo": key each on its own base then,
+    # never on which of them happened to be listed first
+    sets_per_key: dict[tuple[str, str], int] = {}
+    for (parent, key, _evidence), members in buckets.items():
+        if len(members) > 1:
+            sets_per_key[(parent, key)] = sets_per_key.get((parent, key), 0) + 1
 
     units: list[BookUnit] = []
-    for (parent, key), members in buckets.items():
+    for (parent, key, evidence), members in buckets.items():
+        base = evidence[len("base:"):] if evidence.startswith("base:") else ""
+        if base and len(members) > 1 and sets_per_key.get((parent, key), 0) > 1:
+            key = base
         members.sort(key=lambda m: natkey(os.path.basename(m["path"])))
         single = len(members) == 1
         shared = not single and (
