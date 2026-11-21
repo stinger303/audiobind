@@ -577,10 +577,11 @@ check("watcher: the session and QBIT_PASS are never served",
 print("watcher connection settings:")
 watch_block = on_settings[on_settings.index('<section class="ab-acct ab-watch" id="watcher"'):]
 watch_block = watch_block[:watch_block.index("</section>")]
+filled_buttons = watch_block.count('class="ab-save"')
 check("watcher: Where it looks / How often it looks / Test the connection, no filled button in the panel",
       all(t in on_settings for t in ("Where it looks", "How often it looks", "Test the connection"))
       and all(f'data-setting="{k}"' in watch_block for k in config.WATCHER_SETTING_KEYS)
-      and watch_block.count('class="ab-save"') == 0, f"{watch_block.count('class=\"ab-save\"')} filled buttons in the panel")
+      and filled_buttons == 0, f"{filled_buttons} filled buttons in the panel")
 check("watcher: the secrets are empty password boxes that say a value is set",
       watch_block.count('type="password" class="ab-in" value="" data-initial="" placeholder="set - leave blank to keep it"') == 2
       and watch_block.count("data-clear") == 2,
