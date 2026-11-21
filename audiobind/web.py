@@ -8977,7 +8977,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/account":
             self._handle_account()
             return
-        if self.path.startswith("/api/unit"):
+        # B10: the path segment, never a bare prefix - /api/units is another route's name
+        if path == "/api/unit" or path.startswith("/api/unit/"):
             self._handle_unit()
             return
         if self.path.startswith("/api/settings"):
