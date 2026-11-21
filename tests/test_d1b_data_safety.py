@@ -206,8 +206,10 @@ class Core04aDeleteRemovesOnlyWhatAudiobindWroteTests(DeleteCase):
         self.assertEqual(status, 200, body)
         self.assertEqual((self.out_book / "Book.m4b").read_bytes(), b"m4b", "the owner's M4B was deleted")
         self.assertEqual(sorted(p.name for p in self.out_book.iterdir()), ["Book.m4b"])
-        self.assertEqual(body["output"], "kept")
-        self.assertIn("did not write", body["output_kept_reason"])
+        # C2: Audiobind's own MP3 was removed - the answer says so, and names the M4B left beside it
+        self.assertEqual(body["output"], "removed")
+        self.assertIn("did not write", body["output_other_files_left"])
+        self.assertIn("Book.m4b", body["output_other_files_left"])
         self.assertEqual(body["output_removed_files"], ["Book.mp3", "cover.jpg", "metadata.json"])
         self.assertIsNone(self.state.get(self.REL))
 

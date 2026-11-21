@@ -36,10 +36,11 @@ class Core04cUnknownProvenanceIsNotOwnershipTests(DeleteCase):
         status, body = self.delete()  # DeleteCase's row has no detail: no "wrote" list at all
         self.assertEqual(status, 200, body)
         self.assertEqual(listing(self.out_book), ["cover.jpg", "notes.txt"], "an owner file was deleted")
-        self.assertEqual(body["output"], "kept")
+        # C2: the M4B Audiobind wrote was removed; the owner's files left are said separately
+        self.assertEqual(body["output"], "removed")
         self.assertEqual(body["output_removed_files"], ["Book.m4b"])
         self.assertEqual(sorted(body["output_left"]), ["cover.jpg", "notes.txt"])
-        self.assertIn("could not", body["output_kept_reason"])
+        self.assertIn("could not", body["output_other_files_left"])
         self.assertIsNone(self.state.get(self.REL))
 
     def test_unreadable_detail_is_unknown_too(self):

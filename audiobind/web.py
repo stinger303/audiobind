@@ -1133,25 +1133,35 @@ function abModalConfirm() {
         btn.textContent = label;
         return;
       }
+      // C2: a loose single-file book is a file, never a folder; files Audiobind did not write that
+      // were left beside its removed conversion are said separately from the conversion itself
+      const what = result.source_kind === 'file' ? 'file' : 'folder';
+      const others = result.output_other_files_left
+        ? ' Other files in that output folder were left alone: ' + result.output_other_files_left + '.' : '';
       if (result.dismissed) {
         abToast('Removed from Audiobind. The torrent is still seeding in qBittorrent.' +
-                (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : ''));
+                (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : '') +
+                others);
       } else if (result.source_kept) {
-        abToast('Deleted from Audiobind and your output library. The source folder stays (' +
+        abToast('Deleted from Audiobind and your output library. The source ' + what + ' stays (' +
                 (result.source_kept_reason || 'your library is read-only') +
                 ') - it will reappear on the next scan unless you remove it from the share.' +
-                (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : ''));
+                (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : '') +
+                others);
       } else if (result.source_removed) {
         if (result.output === 'kept') {
-          abToast('Deleted the source folder. The converted copy stays in your output library (' +
+          abToast('Deleted the source ' + what + '. The converted copy stays in your output library (' +
                   result.output_kept_reason + ').');
         } else if (result.output === 'removed') {
-          abToast('Deleted the source folder and the converted copy in your output library.');
+          abToast('Deleted the source ' + what + ' and the converted copy in your output library.' + others);
         } else {
-          abToast('Deleted the source folder. There was no converted copy in your output library to remove.');
+          abToast('Deleted the source ' + what +
+                  '. There was no converted copy in your output library to remove.');
         }
       } else if (result.output === 'kept') {
         abToast('Deleted. Output kept: ' + result.output_kept_reason + '.');
+      } else if (others) {
+        abToast('Deleted the converted copy from your output library.' + others);
       }
       setTimeout(() => location.reload(), 500);
     })
@@ -8126,6 +8136,12 @@ class Handler(BaseHTTPRequestHandler):
             # so it cannot move the published folder between the read below and the decision.
             # WEBAPI-02b: only the decision and the renames that move the targets aside (fast, atomic,
             # same folder) happen under it; the removal itself and the answer come after it is released
+            # C2: what the source is, so neither the reasons below nor the page call a loose file a folder
+            source_kind = "folder"
+            if targets and not any(kinds[t] == "dir" or (kinds[t] == "link" and t.is_dir()) for t in targets):
+                source_kind = "file"
+            elif not targets and src_path is not None and src_path.is_file():
+                source_kind = "file"
             if not CONVERT_LOCK.acquire(blocking=False):
                 self._send(409, DELETE_BUSY, "application/json")
                 return
@@ -8137,6 +8153,8 @@ class Handler(BaseHTTPRequestHandler):
             output_kept_reason = ""
             output_removed_files = None
             output_left = {}
+            # C2: Audiobind's own files went, others in that folder were left (a short reason)
+            output_other_files_left = ""
             try:
                 claim = conversion_claim(rel)
                 if claim:
@@ -8186,7 +8204,8 @@ class Handler(BaseHTTPRequestHandler):
                         source_kept_reason = "your source library is mounted read-only"
                         log.info("HARD DELETE %s; source kept: %s", rel, error)
                     elif error.errno in (errno.EACCES, errno.EPERM):
-                        source_kept_reason = "Audiobind doesn't have permission to delete the source folder"
+                        source_kept_reason = (
+                            f"Audiobind doesn't have permission to delete the source {source_kind}")
                         log.info("HARD DELETE %s; source kept: %s", rel, error)
                     else:
                         log.error("HARD DELETE %s; source could not be moved aside: %s", rel, error)
@@ -8244,13 +8263,17 @@ class Handler(BaseHTTPRequestHandler):
                         # M4B beside an MP3 Audiobind added) or cannot prove it wrote (CORE-04c):
                         # only Audiobind's files go, and each one left is named with the reason
                         moves = [out_trash / name for name in own]
-                        output_removed = "kept"
                         names = sorted(left)
                         shown = ", ".join(names[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else "")
-                        output_kept_reason = (
-                            f"the folder also holds {len(left)} file(s) Audiobind did not write or could "
-                            f"not prove it wrote ({shown}) - only the {len(own)} it wrote were removed"
-                        )
+                        others = (f"{len(left)} file(s) Audiobind did not write or could not prove "
+                                  f"it wrote ({shown})")
+                        if own:
+                            # C2: our conversion WAS removed - "kept" would tell the owner it is still there
+                            output_removed = "removed"
+                            output_other_files_left = others
+                        else:
+                            output_removed = "kept"
+                            output_kept_reason = f"the folder holds only {others}"
                         output_removed_files = own
                         output_left = left
                     output_trash, error = move_aside(moves, journal)
@@ -8310,7 +8333,8 @@ class Handler(BaseHTTPRequestHandler):
                         source_kept_reason = "your source library is mounted read-only"
                         log.info("HARD DELETE %s; source kept: %s", rel, error)
                     elif error.errno in (errno.EACCES, errno.EPERM):
-                        source_kept_reason = "Audiobind doesn't have permission to delete the source folder"
+                        source_kept_reason = (
+                            f"Audiobind doesn't have permission to delete the source {source_kind}")
                         log.info("HARD DELETE %s; source kept: %s", rel, error)
                     else:
                         log.error("HARD DELETE %s; source removal failed: %s", rel, error)
@@ -8331,7 +8355,8 @@ class Handler(BaseHTTPRequestHandler):
                     if output_removed_files is None:
                         log.info("HARD DELETE %s; output removed: %s", rel, out_trash)
                     else:
-                        log.info("HARD DELETE %s; output %s: removed only %s; left %s", rel, output_kept_reason,
+                        log.info("HARD DELETE %s; output %s: removed only %s; left %s", rel,
+                                 output_other_files_left or output_kept_reason,
                                  ", ".join(output_removed_files) or "nothing",
                                  "; ".join(f"{name} ({why})" for name, why in output_left.items()))
                 except OSError as exc:
@@ -8347,7 +8372,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "error": f"the converted copy could not be removed ({_os_error_code(exc)}; "
                                 "details are in the Audiobind log). The book was kept - fix the "
                                 "permissions and delete again."
-                                + (" The source folder was already removed." if source_removed else ""),
+                                + (f" The source {source_kind} was already removed."
+                                   if source_removed else ""),
                                 "output": "failed",
                                 "source_removed": source_removed,
                             }
@@ -8362,11 +8388,14 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True,
                 "deleted": rel,
                 "source_removed": source_removed,
+                "source_kind": source_kind,
                 "source_kept": bool(source_kept_reason),
                 "source_kept_reason": source_kept_reason,
                 "output": output_removed,
                 "output_kept_reason": output_kept_reason,
             }
+            if output_other_files_left:
+                result["output_other_files_left"] = output_other_files_left
             if output_removed_files is not None:
                 result["output_removed_files"] = output_removed_files
                 result["output_left"] = output_left  # CORE-04c: {name: why it was not removed}
