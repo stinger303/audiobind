@@ -84,5 +84,47 @@ class Core03bCoverBackedUpWhenOnlyAFormatIsAddedTests(PublishCase):
         self.assertEqual(backup.read_bytes(), b"owner-cover")
 
 
+# --------------------------------------------------------------------------- CORE-04b
+class Core04bEveryDestinationIsContainedTests(PublishCase):
+    """A saved anchor is checked file by file: its siblings, cover and metadata must all land in a
+    book folder inside the output root, or nothing is written."""
+
+    def anchored_at(self, anchor: pathlib.Path) -> pathlib.Path:
+        """A converted M4B-only book whose row points at ``anchor``, a symlink to the real M4B."""
+        self.output_format = "M4B"
+        self.run_process(KEY, "first")
+        real = pathlib.Path(self.state.get(KEY).output)
+        anchor.parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(real, anchor)
+        row = self.state.get(KEY)
+        row.output = str(anchor)
+        self.state.save(row)
+        self.output_format = "M4B + MP3"  # the MP3 is missing beside the anchor
+        return real
+
+    def assert_refused(self, real: pathlib.Path):
+        row = self.state.get(KEY)
+        self.assertEqual(row.status, "failed", "the conversion was not refused")
+        self.assertIn("outside", row.note)
+        self.assertEqual(self.listing(real.parent), [real.name, "cover.jpg", "metadata.json"])
+
+    def test_an_anchor_link_from_outside_the_root_writes_nothing_beside_it(self):
+        outside = self.root / "outside"
+        anchor = outside / "Project Hail Mary.m4b"
+        real = self.anchored_at(anchor)
+        self.run_process(KEY, "second", manual=True)
+        self.assertEqual(self.listing(outside), [anchor.name], "files were published outside the output root")
+        self.assert_refused(real)
+
+    def test_an_anchor_link_directly_in_the_root_does_not_publish_into_the_root(self):
+        out_root = pathlib.Path(pipeline.CONFIG.output_root)
+        anchor = out_root / "Project Hail Mary.m4b"
+        real = self.anchored_at(anchor)
+        before = self.listing(out_root)
+        self.run_process(KEY, "second", manual=True)
+        self.assertEqual(self.listing(out_root), before, "files were published into the output root itself")
+        self.assert_refused(real)
+
+
 if __name__ == "__main__":
     unittest.main()

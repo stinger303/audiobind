@@ -246,6 +246,22 @@ def missing_beside(primary: Path) -> list[str]:
     return _missing_formats(formats, {fmt: primary.with_suffix(f".{fmt}") for fmt in formats}, False)
 
 
+def _refuse_uncontained(destinations: list[Path]) -> None:
+    """CORE-04b: every file a conversion would write must land in a book folder inside OUTPUT_ROOT.
+
+    Each destination is judged where the write really goes - its folder resolved, the name itself
+    not followed (a placement renames over a link, it never writes through one) - so a saved anchor
+    that is a link into the root cannot carry its siblings outside it. A book is never filed in the
+    root itself either: the layout always puts it at least one folder down.
+    """
+    root = Path(CONFIG.output_root).resolve()
+    for path in destinations:
+        folder = path.parent.resolve()
+        if folder == root or root not in folder.parents:
+            raise ValueError(f"refused: {path.name} would be written outside a book folder in the output "
+                             f"root ({path.parent}) - nothing was written")
+
+
 def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reencode: bool = False,
                  at: Path | None = None):
     """Encode, verify and file one book. Returns the EncodeResult (or None in a dry run).
@@ -280,10 +296,10 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
     if at is None:
         paths = {fmt: library.m4b_path(series, authors, title, sequence, ext=fmt) for fmt in formats}
     else:
-        root = Path(CONFIG.output_root).resolve()
-        if root not in at.resolve().parents:
-            raise ValueError(f"output path escapes the output root: {at}")
         paths = {fmt: at.with_suffix(f".{fmt}") for fmt in formats}
+        # CORE-04b: m4b_path checks each path it builds; a saved anchor's siblings are checked
+        # here, every one, before anything is encoded, backed up or placed
+        _refuse_uncontained([*paths.values(), at.parent / "cover.jpg", at.parent / "metadata.json"])
     out_path = paths[formats[0]]
     audit.out_path = str(out_path)
     todo = _missing_formats(formats, paths, reencode)
