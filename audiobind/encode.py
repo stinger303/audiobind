@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import tempfile
@@ -790,6 +791,24 @@ def reclaim_stale_parts(root: Path | None = None) -> list[Path]:
     return removed
 
 
+def killed_by_signal(returncode: int | None) -> str:
+    """B3: "" for an ordinary exit; for an ffmpeg ended by a signal, "was killed by SIGKILL ..."."""
+    if returncode is None or returncode >= 0:
+        return ""
+    try:
+        name = signal.Signals(-returncode).name
+    except ValueError:
+        name = f"signal {-returncode}"
+    hint = " (usually the system running out of memory)" if name == "SIGKILL" else ""
+    return f"was killed by {name}{hint}"
+
+
+def _signalled(killed: str, doing: str) -> str:
+    """The failure note for a signalled ffmpeg: what happened, and that the book may be fine."""
+    return (f"ffmpeg {killed} while {doing}, so nothing was converted. The source files may be fine - "
+            "check the server's free memory, then press Retry now")[:300]
+
+
 def _normalise_parts(files: list[str], work_dir: Path, channels: int | None = None,
                      sample_rate: int | None = None) -> list[str]:
     """Decode each source to ``work_dir/parts/NNNN.wav``; the paths, in concat order.
@@ -812,6 +831,9 @@ def _normalise_parts(files: list[str], work_dir: Path, channels: int | None = No
         if CONTROL.stop_requested:
             raise Stopped("stopped by operator")
         tail = _stderr_tail(stderr_path)
+        killed = killed_by_signal(proc.returncode)
+        if killed:
+            raise RuntimeError(_signalled(killed, f"decoding {os.path.basename(source)[:100]}"))
         if proc.returncode != 0:
             raise RuntimeError(f"ffmpeg could not decode {os.path.basename(source)}: {tail[-800:]}")
         _check_decode(tail, os.path.basename(source))
@@ -975,6 +997,9 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
     errors = [_stderr_tail(stderr_path)]
     if CONTROL.stop_requested:
         raise Stopped("stopped by operator")
+    killed = killed_by_signal(proc.returncode)
+    if killed:
+        raise RuntimeError(_signalled(killed, "encoding"))
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed: {(errors[0] if errors else '')[-800:]}")
     # exit 0 is not proof: a decoder that rejected a whole file's packets still exits cleanly
