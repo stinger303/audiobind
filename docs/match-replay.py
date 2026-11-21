@@ -208,7 +208,10 @@ def replay(corpus_path: Path = CORPUS, cache_path: Path = CACHE) -> Replay:
 
         def fake_probe(path, timeout: int = 60, raise_on_timeout: bool = False) -> Probe:
             codec = "aac" if Path(path).suffix.lower() in (".m4b", ".m4a") else "mp3"
-            return Probe(duration=durations.get(str(path), 0.0), codec=codec, channels="2")
+            # the corpus records no audio shape: every file is taken as the default configured one
+            # (2 ch / 44100 Hz), so a single .m4b stays the remux case (AB-MONO reads both figures)
+            return Probe(duration=durations.get(str(path), 0.0), codec=codec, channels="2",
+                         sample_rate="44100")
 
         tags = {"now": ("", "")}
         stack.enter_context(mock.patch.object(pipeline, "probe", fake_probe))

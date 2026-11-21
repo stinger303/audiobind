@@ -1,7 +1,9 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 
+from audiobind.config import CONFIG
 from audiobind.units import author_like, discover_units, group_key, split_author_title
 
 
@@ -109,12 +111,24 @@ class TestActionChoice(unittest.TestCase):
     def test_single_m4b_is_remuxed_not_re_encoded(self):
         from audiobind.pipeline import choose_action
 
-        self.assertEqual(choose_action(self._unit([["/a.m4b"]]), "HIGH", True, {"aac"}), "remux")
+        # AB-MONO: the copy is only right when the probed shape already is the configured one
+        with mock.patch.object(CONFIG, "audio_channels", 2), mock.patch.object(CONFIG, "sample_rate", 44100):
+            self.assertEqual(choose_action(self._unit([["/a.m4b"]]), "HIGH", True, {"aac"},
+                                           channels={"2"}, sample_rates={"44100"}), "remux")
 
     def test_m4a_with_aac_is_also_remuxed(self):
         from audiobind.pipeline import choose_action
 
-        self.assertEqual(choose_action(self._unit([["/a.m4a"]]), "HIGH", True, {"aac"}), "remux")
+        with mock.patch.object(CONFIG, "audio_channels", 2), mock.patch.object(CONFIG, "sample_rate", 44100):
+            self.assertEqual(choose_action(self._unit([["/a.m4a"]]), "HIGH", True, {"aac"},
+                                           channels={"2"}, sample_rates={"44100"}), "remux")
+
+    def test_m4b_in_another_shape_than_configured_is_re_encoded(self):
+        from audiobind.pipeline import choose_action
+
+        with mock.patch.object(CONFIG, "audio_channels", 1), mock.patch.object(CONFIG, "sample_rate", 44100):
+            self.assertEqual(choose_action(self._unit([["/a.m4b"]]), "HIGH", True, {"aac"},
+                                           channels={"2"}, sample_rates={"44100"}), "convert")
 
     def test_m4b_that_is_not_aac_is_re_encoded(self):
         from audiobind.pipeline import choose_action

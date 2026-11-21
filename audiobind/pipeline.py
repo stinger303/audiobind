@@ -36,6 +36,8 @@ class Audit:
     hours: float = 0.0
     codecs: set[str] = field(default_factory=set)
     channels: set[str] = field(default_factory=set)
+    #: AB-MONO: each file's probed sample rate (Hz, as ffprobe gives it), read by choose_action
+    sample_rates: set[str] = field(default_factory=set)
     unreadable: int = 0
     match: matching.Match = field(default_factory=matching.Match)
     confidence: str = "NONE"
@@ -94,6 +96,8 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
             audit.codecs.add(info.codec)
         if info.channels:
             audit.channels.add(str(info.channels))
+        if info.sample_rate:
+            audit.sample_rates.add(str(info.sample_rate))
         if not info.ok:
             audit.unreadable += 1
     # a total with an unmeasured file in it is not the book's length: unknown (0), the same as when
@@ -170,7 +174,14 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
     elif unit.multi_part and audit.match.product:
         audit.notes.append("parts verified complete")
 
-    audit.action = choose_action(unit, audit.confidence, audit.runtime_matches, audit.codecs)
+    audit.action = choose_action(unit, audit.confidence, audit.runtime_matches, audit.codecs,
+                                 channels=audit.channels, sample_rates=audit.sample_rates)
+    if audit.action == "convert" and _single_aac_mp4(unit, audit.codecs):
+        # AB-MONO: say why an AAC book that could have been copied is re-encoded instead
+        audit.notes.append(
+            f"audio is {_shape_text(audit.channels, audit.sample_rates)}, configured "
+            f"{CONFIG.audio_channels} ch / {CONFIG.sample_rate} Hz - re-encoded, not copied"
+        )
     # evidence only: asked after the grade and the action are final, and nothing above reads it.
     # None (no request, no cache file) unless HARDCOVER_EVIDENCE is on and a token is set
     audit.hardcover = hardcover.evidence_for(audit.match.product)
@@ -220,15 +231,48 @@ def _match_embedded(unit: BookUnit, local_hours: float) -> matching.Match | None
     return retry if retry.confidence != "NONE" else None
 
 
-def choose_action(unit: BookUnit, confidence: str, runtime_matches: bool, codecs: set[str]) -> str:
+def _single_aac_mp4(unit: BookUnit, codecs: set[str]) -> bool:
+    """One AAC file already in an MP4 container: the only source a remux (``-c:a copy``) can take."""
+    return (
+        len(unit.files) == 1 and Path(unit.files[0]).suffix.lower() in (".m4b", ".m4a") and codecs == {"aac"}
+    )
+
+
+def _shape_matches(channels: set[str], sample_rates: set[str]) -> bool:
+    """AB-MONO: the probed audio is exactly the configured AUDIO_CHANNELS / SAMPLE_RATE.
+
+    ffmpeg ignores ``-ac``/``-ar`` beside ``-c:a copy`` (exit 0, no warning), so a copy keeps the
+    source's shape whatever is configured. An empty set (ffprobe gave no figure) is not a match."""
+    return channels == {str(CONFIG.audio_channels)} and sample_rates == {str(CONFIG.sample_rate)}
+
+
+def _shape_text(channels: set[str], sample_rates: set[str]) -> str:
+    return f"{'/'.join(sorted(channels)) or '?'} ch / {'/'.join(sorted(sample_rates)) or '?'} Hz"
+
+
+def choose_action(
+    unit: BookUnit,
+    confidence: str,
+    runtime_matches: bool,
+    codecs: set[str],
+    *,
+    channels: set[str] | None = None,
+    sample_rates: set[str] | None = None,
+) -> str:
     """What to do with this unit. Pure function so the rules can be tested directly.
 
     A single AAC file that is already an MP4 container is remuxed, not re-encoded: chapters, tags
-    and cover are rewritten while every audio sample is copied untouched.
+    and cover are rewritten while every audio sample is copied untouched - but only when its probed
+    ``channels`` and ``sample_rates`` already are the configured AUDIO_CHANNELS / SAMPLE_RATE. A copy
+    cannot change either (AB-MONO), so any other shape is re-encoded to the configured one.
+
+    ``channels``/``sample_rates`` left at None means the caller has no probe and the shape is not
+    checked: only the offline match bench (no audio in its corpus) calls it that way. audit_unit
+    always passes both.
     """
-    already_mp4 = (
-        len(unit.files) == 1 and Path(unit.files[0]).suffix.lower() in (".m4b", ".m4a") and codecs == {"aac"}
-    )
+    already_mp4 = _single_aac_mp4(unit, codecs)
+    if already_mp4 and channels is not None and sample_rates is not None:
+        already_mp4 = _shape_matches(channels, sample_rates)
     if confidence not in ("HIGH", "MEDIUM"):
         return "review"
     if not runtime_matches:

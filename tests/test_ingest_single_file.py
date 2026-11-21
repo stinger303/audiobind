@@ -139,7 +139,11 @@ class TestSingleFilePipeline(PipelineCase):
         with (
             mock.patch.object(catalog, "search", return_value=[PHM]),
             mock.patch.object(catalog, "chapters", return_value=[]),
-            mock.patch.object(pipeline, "probe", return_value=Probe(duration=7200.0, codec="aac", channels="2")),
+            # AB-MONO: a remux needs the probed shape to be the configured one (defaults: 2 ch / 44100 Hz)
+            mock.patch.object(CONFIG, "audio_channels", 2),
+            mock.patch.object(CONFIG, "sample_rate", 44100),
+            mock.patch.object(pipeline, "probe",
+                              return_value=Probe(duration=7200.0, codec="aac", channels="2", sample_rate="44100")),
         ):
             unit = ingest.find_any_unit(SINGLE_KEY)
             audit = pipeline.audit_unit(unit)
