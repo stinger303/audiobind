@@ -85,7 +85,7 @@ class TestIngestRows(IngestWebCase):
         self.assertIn(">Remove from library</button>", ingest_row)
         self.assertNotIn(">Remove from library</button>", library_row)
         self.assertNotIn("data-source", library_row)
-        self.assertIn("This removes the book from Audiobind", library_row)
+        self.assertIn("This permanently ", library_row)
 
     def test_search_for_ingest_narrows_to_ingest_rows(self):
         body = re.search(r'<tbody id="ab-body">(.*?)</tbody>', web.render(self.state, query="ingest"), re.S)
@@ -177,7 +177,7 @@ class TestPageScript(unittest.TestCase):
         self.assertIn("'Remove from Audiobind?'", body)
         self.assertRegex(body, r"textContent =\s*summary")
         self.assertIn("'Remove from library'", body)
-        self.assertIn("'Delete permanently'", body)  # a library row puts the usual label back
+        self.assertIn("'DELETE PERMANENTLY'", body)  # a library row puts the usual label back
 
     def test_ingest_success_toast(self):
         start = web.SCRIPT.index("function abModalConfirm")

@@ -1105,7 +1105,7 @@ function abOpenDeleteModal(trigger, summary) {
     summary || 'File removal could not be checked. Cancel and open the book details.';
   const confirmBtn = document.getElementById('ab-modal-confirm');
   confirmBtn.disabled = !summary;
-  confirmBtn.textContent = ingest ? 'Remove from library' : 'Delete permanently';
+  confirmBtn.textContent = ingest ? 'Remove from library' : 'DELETE PERMANENTLY';
   document.getElementById('ab-modal').hidden = false;
   document.getElementById('ab-modal-cancel').focus();
 }
@@ -1832,7 +1832,7 @@ PAGE = """<!doctype html>
     <h3 id="ab-modal-title"></h3>
     <p id="ab-modal-warning"></p>
     <div class="ab-modal-actions">
-      <button class="btn danger" id="ab-modal-confirm" onclick="abModalConfirm()">Delete permanently</button>
+      <button class="btn danger" id="ab-modal-confirm" onclick="abModalConfirm()">DELETE PERMANENTLY</button>
       <button class="btn" id="ab-modal-cancel" onclick="abModalCancel()">Cancel</button>
     </div>
   </div>
@@ -7470,8 +7470,16 @@ def _delete_confirmation(unit, ingest_row: bool, output_counts: Counter) -> str:
         output = _delete_output_confirmation(unit, output_counts)
     except (OSError, RuntimeError):
         output = "Output files stay unless Audiobind can verify they are safe to delete."
-    return (f"This removes the book from Audiobind if the checks pass. {source} {output} "
-            "This cannot be undone.")
+    # The warning states the permanence first: what this actually destroys, then what survives.
+    name = (unit.title or unit.path).strip()
+    removes_files = source.startswith("Audiobind will delete") or output.startswith("Only unchanged")
+    if removes_files:
+        lead = f"This permanently deletes {name}: your files go with it."
+        tail = "This cannot be undone."
+    else:
+        lead = f"This permanently removes {name} from Audiobind."
+        tail = "Your files stay on disk, so the next scan finds the book again."
+    return f"{lead} {source} {output} {tail}"
 
 
 def conversion_claim(rel: str) -> str:
