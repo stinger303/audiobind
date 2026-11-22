@@ -234,26 +234,28 @@ class TestCorroboration(unittest.TestCase):
         self.assertEqual(match.confidence, "MEDIUM")
         self.assertFalse(match.corroborated)
 
-    def test_corroborated_best_keeps_its_margin(self):
+    def test_a_rival_with_no_record_still_counts_against_a_corroborated_best(self):
+        # MATCHING-04: no Audnex record is "unknown", not "does not exist" - it widens no margin
         exact, near = moneyball_pair()
         records = {"B0EXACT": audnex("B0EXACT", MONEYBALL, LEWIS, 600)}
         match, _book = run(unit(MONEYBALL, LEWIS), [exact, near], records)
         self.assertEqual(match.asin, "B0EXACT")
         self.assertTrue(match.corroborated)
-        self.assertEqual(match.margin, 1.0)
-        self.assertEqual(match.confidence, "HIGH")
+        self.assertLess(match.margin, 0.05)
+        self.assertEqual(match.confidence, "MEDIUM")
         alt = match.alternates[0]
         self.assertEqual(alt["asin"], "B0NEAR")
-        self.assertFalse(alt["corroborated"])
+        self.assertIsNone(alt["corroborated"])
 
-    def test_corroborated_runner_up_outranks_an_uncorroborated_best(self):
+    def test_a_corroborated_runner_up_never_displaces_a_best_with_no_record(self):
+        # MATCHING-04: a record proves the runner-up exists, not that it is the book asked for
         exact, near = moneyball_pair()
         records = {"B0NEAR": audnex("B0NEAR", "Money Ball", LEWIS, 600)}
         match, _book = run(unit(MONEYBALL, LEWIS), [exact, near], records)
-        self.assertEqual(match.asin, "B0NEAR")
-        self.assertTrue(match.corroborated)
-        self.assertEqual(match.confidence, "HIGH")
-        self.assertEqual([a["asin"] for a in match.alternates], ["B0EXACT"])
+        self.assertEqual(match.asin, "B0EXACT")
+        self.assertIsNone(match.corroborated)
+        self.assertEqual(match.confidence, "MEDIUM")
+        self.assertEqual([a["asin"] for a in match.alternates], ["B0NEAR"])
 
     def test_both_corroborated_stays_ambiguous(self):
         exact, near = moneyball_pair()

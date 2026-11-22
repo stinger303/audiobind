@@ -44,8 +44,9 @@ class Match:
     #: the chosen product is a summary / review / study guide / zero-runtime catalog stub
     #: (see is_knockoff); grading never lets it past LOW
     knockoff: bool = False
-    #: Audnex agreed with the chosen product (True), disagreed or had no record (False), or
-    #: was never asked because nothing competed for the margin (None)
+    #: Audnex agreed with the chosen product (True), has a record that disagrees (False), or gave
+    #: no evidence either way (None): never asked because nothing competed for the margin, no
+    #: record, or the lookup failed
     corroborated: bool | None = None
     #: set when the best candidate's title did not resemble the wanted one (below TITLE_FLOOR):
     #: nothing is matched then, and this is the note that names what was rejected and why
@@ -467,20 +468,22 @@ CORROBORATION_MAX_RIVALS = 3
 CORROBORATION_RUNTIME_TOLERANCE = 0.05
 
 
-def corroborated(product: Product) -> bool:
-    """Does Audnex (the second catalog source) agree with this candidate?
+def corroborated(product: Product) -> bool | None:
+    """Does Audnex (the second catalog source) agree with this candidate? Three answers:
 
-    True only when Audnex has a record for the ASIN whose title and author match the candidate
-    and whose runtime is consistent with it. A missing record is False here - callers must only
-    use this to break a contest between candidates, never to demote a lone match (some ASINs
-    legitimately have no Audnex record in a region).
+    True when Audnex has a record for the ASIN whose title and author match the candidate and
+    whose runtime is consistent with it; False when it has a record that disagrees (evidence);
+    None when it could not say - the lookup failed or there is no record (some ASINs legitimately
+    have none in a region). "Could not check" is never "does not exist": None never removes a
+    rival and never widens a margin. Callers only use this to break a contest between
+    candidates, never to demote a lone match.
     """
     try:
         record = catalog.book(product.asin)
-    except Exception:  # a lookup failure is "no record", never a crash in matching
-        return False
+    except Exception:  # a lookup failure is "unknown", never a crash in matching
+        return None
     if not isinstance(record, dict) or not record.get("asin"):
-        return False
+        return None
     if sim(product.title, str(record.get("title") or "")) < 0.85:
         return False
     names = [str(a.get("name") or "") for a in (record.get("authors") or []) if isinstance(a, dict)]
@@ -864,9 +867,11 @@ def _pick_and_margin(ranked: list[dict]) -> tuple[dict, float]:
     margin is the best score itself - decisive.
 
     When rivals sit within CORROBORATION_WINDOW of the best, the best and those rivals are
-    checked against Audnex: a corroborated candidate outranks an uncorroborated one, and an
-    uncorroborated rival never eats a corroborated best's margin. With no close rival nothing
-    is looked up, so a missing Audnex record can never demote a lone match.
+    checked against Audnex. Only evidence moves anything: a best that Audnex contradicts
+    (False) gives way to a corroborated contender, and a rival Audnex contradicts never eats a
+    corroborated best's margin. An unknown answer (None: no record, lookup failed) displaces no
+    leader, removes no rival and widens no margin. With no close rival nothing is looked up, so a
+    missing Audnex record can never demote a lone match.
     """
     best = ranked[0]
 
@@ -884,14 +889,17 @@ def _pick_and_margin(ranked: list[dict]) -> tuple[dict, float]:
         if close:
             for entry in [best, *close]:
                 entry["corroborated"] = corroborated(entry["product"])
-            if not best["corroborated"]:
+            if best["corroborated"] is False:
+                # Audnex contradicts the leader; a corroborated contender takes its place. An
+                # unknown leader stays: proving a rival exists says nothing about the query
                 backed = [r for r in close
                           if r["corroborated"] and not (r.get("edition_conflict") or r.get("veto"))]
                 if backed:
                     best = backed[0]  # highest-scoring corroborated contender
                     rivals = rivals_of(best)
             if best["corroborated"]:
-                # checked and unbacked rivals step aside; unchecked (farther) ones still count
+                # rivals Audnex contradicts step aside; unknown and unchecked (farther) ones still
+                # count - only evidence removes a rival
                 rivals = [r for r in rivals if r["corroborated"] is not False]
     top_rival = max((r["score"] for r in rivals), default=0.0)
     # a pick ranked first for something other than its score (it agrees with the folder's edition

@@ -156,5 +156,80 @@ class TestMatching06TrackerGate(unittest.TestCase):
             case.tearDown()
 
 
+def record(asin, title, minutes=600, language="english", authors=(AUTHOR,)):
+    """An Audnex record for ``asin`` (language=None leaves the field out)."""
+    rec = {"asin": asin, "title": title, "authors": [{"name": a} for a in authors], "runtimeLengthMin": minutes}
+    if language is not None:
+        rec["language"] = language
+    return rec
+
+
+#: the exact book and a near-titled other work: their scores sit 0.008 apart, inside the corroboration
+#: window, and nothing in either title names a series position (MATCHING-01's veto cannot help)
+EXACT = product("B0EXACT001", KINGDOM)
+NEAR = product("B0NEARX001", f"{KINGDOM}s")
+
+
+class TestMatching04UnknownIsNotFalse(unittest.TestCase):
+    """Audnex has three answers - agrees, disagrees, could not say - and only evidence moves a pick
+    or a margin. "I could not check" never reads as "this does not exist"."""
+
+    def test_a_record_for_a_near_rival_never_displaces_an_exact_leader_with_no_record(self):
+        m = run(f"{AUTHOR} - {KINGDOM}", [NEAR, EXACT], audnex={NEAR.asin: record(NEAR.asin, NEAR.title)})
+        self.assertEqual(m.asin, EXACT.asin, vars(m))
+        self.assertNotEqual(m.confidence, "HIGH")
+        self.assertEqual(m.margin, 0.008)
+        self.assertIsNone(m.corroborated)
+
+    def test_an_unknown_rival_never_widens_a_corroborated_leaders_margin(self):
+        m = run(f"{AUTHOR} - {KINGDOM}", [NEAR, EXACT], audnex={EXACT.asin: record(EXACT.asin, EXACT.title)})
+        self.assertEqual((m.asin, m.corroborated, m.margin), (EXACT.asin, True, 0.008))
+        self.assertEqual(m.confidence, "MEDIUM")
+        near = next(a for a in m.alternates if a["asin"] == NEAR.asin)
+        self.assertIsNone(near["corroborated"])
+
+    def test_the_audit_case_book_two_keeps_its_pick(self):
+        b1, b2 = product("B0SYNK0001", f"{KINGDOM} Book 1"), product("B0SYNK0002", f"{KINGDOM} Book 2")
+        m = run(f"{AUTHOR} - {KINGDOM} Book 2", [b1, b2], audnex={b1.asin: record(b1.asin, b1.title, minutes=0)})
+        self.assertEqual((m.asin, m.confidence, m.margin), (b2.asin, "MEDIUM", 0.014))
+
+    def test_three_states(self):
+        from unittest import mock
+
+        from audiobind import catalog
+
+        def answer(rec=None, exc=None):
+            def book(_asin):
+                if exc:
+                    raise exc
+                return rec
+            return book
+
+        cases = [
+            (answer(exc=OSError("timeout")), None),                      # lookup failed
+            (answer({}), None),                                          # no record
+            (answer({"title": KINGDOM}), None),                          # a record with no ASIN
+            (answer(record(EXACT.asin, "Another Book Entirely")), False),  # disagrees on the title
+            (answer(record(EXACT.asin, KINGDOM, authors=("Someone Else",))), False),
+            (answer(record(EXACT.asin, KINGDOM, minutes=900)), False),   # runtime 50% off
+            (answer(record(EXACT.asin, KINGDOM, minutes=0)), True),      # no runtime: not compared
+            (answer(record(EXACT.asin, KINGDOM)), True),
+        ]
+        for book, want in cases:
+            with mock.patch.object(catalog, "book", book):
+                self.assertIs(matching.corroborated(EXACT), want)
+
+    def test_evidence_still_removes_a_rival(self):
+        # the rival HAS a record and it disagrees: that is evidence, so it steps aside
+        m = run(f"{AUTHOR} - {KINGDOM}", [NEAR, EXACT],
+                audnex={EXACT.asin: record(EXACT.asin, EXACT.title), NEAR.asin: record(NEAR.asin, "Unrelated")})
+        self.assertEqual((m.asin, m.corroborated, m.margin, m.confidence), (EXACT.asin, True, 1.0, "HIGH"))
+
+    def test_a_leader_audnex_contradicts_gives_way_to_a_corroborated_contender(self):
+        m = run(f"{AUTHOR} - {KINGDOM}", [NEAR, EXACT],
+                audnex={EXACT.asin: record(EXACT.asin, "Unrelated"), NEAR.asin: record(NEAR.asin, NEAR.title)})
+        self.assertEqual((m.asin, m.corroborated), (NEAR.asin, True))
+
+
 if __name__ == "__main__":
     unittest.main()
