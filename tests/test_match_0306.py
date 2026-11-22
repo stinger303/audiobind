@@ -73,5 +73,88 @@ class TestMatching03AdaptationBothWays(unittest.TestCase):
         self.assertEqual(status, "review")
 
 
+ROW = {"title": KINGDOM, "authors": [AUTHOR], "series": "Realm", "sequence": "2"}
+
+
+def torrent(tid, name, author=AUTHOR):
+    from audiobind.tracker import Torrent
+    return Torrent(tid=str(tid), name=name, authors=[author], numfiles=1, filetype="m4b", raw={})
+
+
+class TestMatching06TrackerGate(unittest.TestCase):
+    """The tracker pick is the acquisition gate: a summary, another volume or a box set of the
+    wanted title is rejected outright - with a reason - whatever its bracket-stripped title scores."""
+
+    def pick(self, row, *names):
+        from audiobind import tracker
+        return tracker.select_candidate(row, [torrent(i + 1, n) for i, n in enumerate(names)])
+
+    def test_the_audits_three_variants_are_each_rejected(self):
+        for name, reason in ((f"{KINGDOM} [Summary]", "summary"), (f"{KINGDOM} (Book 1)", "Book 1"),
+                             (f"{KINGDOM} (Box Set)", "box set")):
+            pick, why = self.pick(ROW, name)
+            self.assertIsNone(pick, name)
+            self.assertIn("rejected", why)
+            self.assertIn(reason, why)
+
+    def test_all_three_together_are_rejected_and_counted(self):
+        pick, why = self.pick(ROW, f"{KINGDOM} [Summary]", f"{KINGDOM} (Book 1)", f"{KINGDOM} (Box Set)")
+        self.assertIsNone(pick)
+        self.assertIn("(+2 more)", why)
+
+    def test_the_right_book_beside_them_is_picked(self):
+        pick, _why = self.pick(ROW, f"{KINGDOM} [Summary]", f"{KINGDOM} (Book 1)", f"{KINGDOM} (Book 2)",
+                               f"{KINGDOM} (Box Set)")
+        self.assertEqual(pick.name, f"{KINGDOM} (Book 2)")
+
+    def test_markers_that_are_not_another_product_still_pass(self):
+        for name in (KINGDOM, f"{KINGDOM} (Unabridged)", f"{KINGDOM} [Book 2]", f"{KINGDOM} (Narrated by X)"):
+            self.assertIsNotNone(self.pick(ROW, name)[0], name)
+
+    def test_other_derivative_and_adaptation_markers(self):
+        for name in (f"{KINGDOM} (Abridged)", f"{KINGDOM} [Synopsis]", f"{KINGDOM} (Study Guide)",
+                     f"{KINGDOM} (Full Cast)", f"{KINGDOM} [GraphicAudio]", f"{KINGDOM} (Books 1-3)"):
+            pick, why = self.pick(ROW, name)
+            self.assertIsNone(pick, name)
+            self.assertIn("rejected", why)
+
+    def test_a_row_that_names_the_marker_takes_it(self):
+        row = dict(ROW, title=f"{KINGDOM} (Full Cast)")
+        self.assertIsNotNone(self.pick(row, f"{KINGDOM} (Full Cast)")[0])
+        pick, why = self.pick(row, KINGDOM)
+        self.assertIsNone(pick)
+        self.assertIn("the wishlist title is a full-cast production", why)
+
+    def test_a_number_that_is_part_of_the_title_is_not_a_position(self):
+        row = {"title": "Fahrenheit 451", "authors": [AUTHOR], "sequence": "1"}
+        self.assertIsNotNone(self.pick(row, "Fahrenheit 451")[0])
+        self.assertIsNotNone(self.pick({"title": KINGDOM, "authors": [AUTHOR]}, f"{KINGDOM} (Book 1)")[0],
+                             "a row with no position vetoes nothing")
+
+    def test_the_watcher_downloads_nothing_and_the_note_says_why(self):
+        from tests.test_watcher import FakeQbit, WatcherCase, answer, entry
+
+        class Case(WatcherCase):
+            def runTest(self):
+                pass
+
+        case = Case()
+        case.setUp()
+        try:
+            case.want(asin="B0KINGDOM2", title=KINGDOM, authors=(AUTHOR,), series="Realm", sequence="2")
+            # only the search is answered: a download request would raise "unexpected tracker request"
+            case.fake_tracker(answer(entry(1, f"{KINGDOM} [Summary]", author=AUTHOR),
+                                     entry(2, f"{KINGDOM} (Book 1)", author=AUTHOR),
+                                     entry(3, f"{KINGDOM} (Box Set)", author=AUTHOR)))
+            case.cycle()
+            row = case.row("B0KINGDOM2")
+            self.assertEqual(len(case.transport.calls), 1, "searched only - no download request")
+            self.assertFalse(any(q.added for q in FakeQbit.instances))
+            self.assertEqual(row["status"], "wanted")
+            self.assertIn("rejected", row["note"])
+        finally:
+            case.tearDown()
+
+
 if __name__ == "__main__":
     unittest.main()

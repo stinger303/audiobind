@@ -27,7 +27,8 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
-from . import __version__
+from . import __version__, markers
+from .matching import adaptation_label, series_positions
 from .util import clean, norm, sim
 
 #: Search answers name the same concept differently from site to site, so every field is read
@@ -418,6 +419,48 @@ def author_ok(wanted: list[str], found: list[str]) -> bool:
     return any(sim(w, f) >= AUTHOR_MATCH for w in wanted for f in found)
 
 
+def _sequence_positions(sequence: str) -> set[str]:
+    """The row's catalog sequence as canonical positions ("02", "Book 2" -> {"2"}; a range -> none)."""
+    sequence = (sequence or "").strip()
+    if sequence[:1].isdigit():
+        sequence = f"Book {sequence}"
+    return series_positions(sequence)[0] if sequence else set()
+
+
+def wrong_product(row: dict, name: str) -> str:
+    """Why a result whose title cleared TITLE_MATCH is still another product than the row wants,
+    else "". title_score drops bracketed groups, so "[Summary]", "(Book 1)" or "(Box Set)" never
+    weigh on it: they are read here from the result's ORIGINAL name, with the vocabulary matching
+    uses (markers.edition_markers, matching.adaptation_label, matching.series_positions).
+
+    - an edition marker (box set, abridged, summary/synopsis/study guide) or an adaptation marker
+      (full cast, GraphicAudio, ...) on one side and not the other: another edition;
+    - a series position that contradicts the row's (its sequence, or one its title states): another
+      volume. Same rule as matching.position_conflict - one side explicit, no position in common.
+    """
+    titles = [str(row.get("title") or ""), str(row.get("search_title") or "")]
+    wanted, found = markers.edition_markers(*titles), markers.edition_markers(name)
+    for marker in (markers.SCOPE, markers.ABRIDGED, markers.DERIVATIVE):
+        if marker in found and marker not in wanted:
+            return f"it is {markers.LABELS[marker]} and the wishlist title is not"
+        if marker in wanted and marker not in found:
+            return f"the wishlist title is {markers.LABELS[marker]} and it is not"
+    has, asks = adaptation_label(name), adaptation_label(*titles)
+    if has and not asks:
+        return f"it is {has} and the wishlist title is not"
+    if asks and not has:
+        return f"the wishlist title is {asks} and it is not"
+    q_strong, q_weak = series_positions(*titles)
+    q_strong |= _sequence_positions(str(row.get("sequence") or ""))
+    c_strong, c_weak = series_positions(name)
+    q, c = q_strong | q_weak, c_strong | c_weak
+    if (q_strong or c_strong) and q and c and not q & c:
+        def books(nums: set[str]) -> str:
+            return " / ".join(f"Book {n}" for n in sorted(nums, key=float))
+        return f"it is {books(c)} and the wishlist wants {books(q)}"
+    return ""
+
+
 def series_exact(row: dict, torrent: Torrent) -> bool:
     name, seq = str(row.get("series") or ""), norm(str(row.get("sequence") or ""))
     if not name or not seq:
@@ -429,7 +472,9 @@ def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False, can_
     """(the torrent to fetch, why) or (None, why not) for one wishlist row.
 
     A candidate must be an audio torrent you have not snatched, whose title scores at least
-    TITLE_MATCH and - when the row names authors - credits one of them. Among those: files
+    TITLE_MATCH and - when the row names authors - credits one of them, and that is not another
+    product (``wrong_product``: a summary, box set, abridgment or adaptation the row does not name,
+    or another series volume - rejected outright, with the reason). Among those: files
     present first, then the exact series/sequence, then the closer title, then one that is
     already freeleech (no credit needed), then an m4b/m4a source over mp3 (only between candidates
     the rules above leave tied), then the tracker's relevance order. Nothing below the
@@ -444,11 +489,17 @@ def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False, can_
     best_miss = (0.0, "")
     skipped_snatched = 0
     skipped_vip = 0
+    rejected: list[str] = []
     for index, torrent in enumerate(torrents):
         score = title_score(title, torrent.name)
         if score < TITLE_MATCH or not author_ok(authors, torrent.authors) or not torrent.is_audio:
             if best_miss[0] < score < TITLE_MATCH:
                 best_miss = (score, torrent.name)
+            continue
+        wrong = wrong_product(row, torrent.name)
+        if wrong:
+            # a confident title score on another product is a wrong book, never a near miss
+            rejected.append(f"#{torrent.tid} {torrent.name!r} rejected: {wrong}")
             continue
         if torrent.snatched:
             skipped_snatched += 1
@@ -464,6 +515,9 @@ def select_candidate(row: dict, torrents: list[Torrent], vip: bool = False, can_
             return None, f"only match(es) need a membership tier this account does not have ({skipped_vip}) - skipped"
         if skipped_snatched:
             return None, f"only match(es) already snatched ({skipped_snatched}) - skipped"
+        if rejected:
+            more = f" (+{len(rejected) - 1} more)" if len(rejected) > 1 else ""
+            return None, f"{rejected[0]}{more}"
         if best_miss[1]:
             return None, f"closest was {best_miss[1]!r} ({best_miss[0]:.2f}, needs {TITLE_MATCH:.2f})"
         return None, "no result with a matching title, author and audio files"

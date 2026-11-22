@@ -157,7 +157,10 @@ cycle with no restart):
 3. No good match (title similarity 0.90+, an author match, audio files, not already snatched):
    the book stays **wanted** with a "not found on the tracker (checked ...)" note and is searched
    again later; after 3 misses in a row it becomes **not found** until you press **Retry**. A poor
-   match is never forced.
+   match is never forced. A result whose title matches but which is another product is
+   **rejected** outright, and the note names it and why: a summary / synopsis / study guide, a box
+   set, an abridgment or an adaptation (full cast, GraphicAudio) the wishlist title does not name -
+   or the reverse - or another volume (`(Book 1)` for a book that is number 2 in its series).
 4. A match: the torrent is downloaded through the download endpoint and handed to
    qBittorrent (category `QBIT_CATEGORY`, default `audiobooks`, whose save path is your ingest folder). It is
    downloaded **without** a freeleech credit when it is already free, freeleech for your account
