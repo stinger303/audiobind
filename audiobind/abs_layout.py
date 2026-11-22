@@ -190,6 +190,10 @@ def plan(state) -> dict:
             skip(row, "the new path would leave OUTPUT_ROOT")
             continue
         src_dir, dst_dir = resolved.parent, dst.parent.resolve()
+        if (pipeline.publication_folder_quarantined(state, src_dir)
+                or pipeline.publication_folder_quarantined(state, dst_dir)):
+            skip(row, "the output folder has a quarantined publication")
+            continue
         dst = dst_dir / dst.name
         if not _inside(dst_dir, root):
             # m4b_path checked the path as built; resolving it can still leave the root when a

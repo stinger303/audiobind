@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS publications (
     plan    TEXT NOT NULL,
     outcome TEXT
 );
+CREATE TABLE IF NOT EXISTS quarantined_publications (
+    attempt INTEGER PRIMARY KEY,
+    unit TEXT NOT NULL UNIQUE,
+    plan TEXT NOT NULL,
+    outcome TEXT,
+    reason TEXT NOT NULL,
+    previous_note TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at  REAL,
@@ -448,6 +456,50 @@ class State:
             ).fetchall()
         return [(row["attempt"], json.loads(row["plan"]),
                  UnitState(**json.loads(row["outcome"])) if row["outcome"] else None) for row in rows]
+
+    def quarantine_publication(self, attempt: int, reason: str) -> str:
+        with self._durable_publication():
+            intent = self.connection.execute(
+                "SELECT * FROM publications WHERE attempt = ?", (attempt,)
+            ).fetchone()
+            unit = intent["unit"]
+            row = self.get(unit)
+            note = row.note if row else ""
+            self.connection.execute(
+                "INSERT INTO quarantined_publications VALUES (?, ?, ?, ?, ?, ?)",
+                (attempt, unit, intent["plan"], intent["outcome"], reason, note),
+            )
+            if row is None:
+                self._save_locked(UnitState(path=unit, status="review"))
+            self.connection.execute("UPDATE units SET note = ? WHERE path = ?", (reason, unit))
+            self.connection.execute("DELETE FROM publications WHERE attempt = ?", (attempt,))
+            return unit
+
+    def publication_quarantine(self, unit: str) -> str:
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT reason FROM quarantined_publications WHERE unit = ?", (unit,)
+            ).fetchone()
+        return row["reason"] if row else ""
+
+    def quarantined_publication_folders(self) -> list[Path]:
+        with self._lock:
+            rows = self.connection.execute("SELECT plan FROM quarantined_publications").fetchall()
+        return [Path(json.loads(row["plan"])["stage"]).parent for row in rows]
+
+    def dismiss_publication_quarantine(self, unit: str) -> bool:
+        with self._durable_publication():
+            row = self.connection.execute(
+                "SELECT reason, previous_note FROM quarantined_publications WHERE unit = ?", (unit,)
+            ).fetchone()
+            if row is None:
+                return False
+            self.connection.execute(
+                "UPDATE units SET note = ? WHERE path = ? AND note = ?",
+                (row["previous_note"], unit, row["reason"]),
+            )
+            self.connection.execute("DELETE FROM quarantined_publications WHERE unit = ?", (unit,))
+            return True
 
     def finish_publication(self, attempt: int, outcome: UnitState | None) -> None:
         """Commit the row and retire the intent in the same durable SQLite transaction."""

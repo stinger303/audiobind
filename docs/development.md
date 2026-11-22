@@ -35,7 +35,9 @@ Any change that can move a match must pass the match-test programme: see
   the converted row before any destination is renamed. Startup checks every pending attempt
   before discovery. A complete set is recorded and the intent is retired in one SQLite transaction.
   An incomplete set is rolled back using the original files and the attempt is retired after restore.
-  Successful replacements keep their backups beside the book.
+  A missing backup is detected before rollback changes any files. If recovery cannot finish,
+  the intent is quarantined with a reason and the scan continues. Successful replacements keep
+  their backups beside the book.
 
 * **Media writers share claims in the state directory.** Each book has a kernel file lock,
   and encodes also claim the destination folder so two keys that resolve to the same folder

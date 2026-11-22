@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import errno
 import json
+import logging
 import os
 import shutil
 import stat
@@ -496,6 +497,11 @@ def _convert_unit(audit, log, cancelled, heartbeat, reencode, at, state):
     with state.output_writer(out_path.parent), CONVERT_LOCK:
         with state.publication_lock():
             _recover_publications(state)
+            if state.publication_quarantine(unit.state_key):
+                return None
+            if publication_folder_quarantined(state, out_path.parent):
+                audit.output_collision = "The output folder has a quarantined publication."
+                return None
             existing = {str(path): _publication_identity(path) for path in paths.values()}
             audit.output_collision = _output_collision(state, audit, paths.values(), existing)
         if audit.output_collision:
@@ -548,6 +554,11 @@ def _convert_unit(audit, log, cancelled, heartbeat, reencode, at, state):
                 return None
             with state.publication_lock():
                 _recover_publications(state)
+                if state.publication_quarantine(unit.state_key):
+                    return None
+                if publication_folder_quarantined(state, out_path.parent):
+                    audit.output_collision = "The output folder has a quarantined publication."
+                    return None
                 return _publish_recorded(state, audit, todo, results, paths, book,
                                          plan.chapters, duration, log)
         finally:
@@ -585,7 +596,7 @@ def _backup_path(path: Path, stamp: str) -> Path:
 
 
 class PublicationRecoveryError(RuntimeError):
-    """The pending attempt must be reconciled before a scan can continue."""
+    """The interrupted publication cannot be recovered safely."""
 
 
 def _publication_identity(path: Path) -> list[int] | None:
@@ -608,23 +619,32 @@ def _settle_publication(state: State, attempt: int, plan: dict, outcome: UnitSta
     before, expected, backups = plan["before"], plan["expected"], plan["backups"]
     stage = Path(plan["stage"])
     _refuse_uncontained([stage, *(Path(p) for p in before), *(Path(p) for p in backups.values())])
+    if stage.is_symlink() or (stage.exists() and not stage.is_dir()):
+        raise PublicationRecoveryError(f"Cannot recover {stage} because the staging folder was replaced")
     complete = outcome is not None and all(
         _publication_identity(Path(path)) == identity for path, identity in expected.items()
     )
     if outcome is not None and not complete:
+        restore = []
         for name in plan["writes"]:
             path = Path(name)
             backup = Path(backups[name]) if name in backups else None
             current = _publication_identity(path)
             if backup is not None and _publication_identity(backup) == before[name]:
-                if current is not None and current not in (before[name], expected[name]):
-                    # Preserve an external replacement before restoring the previous book.
-                    os.rename(path, _backup_path(path, f"conflict-{attempt}"))
-                os.replace(backup, path)
+                restore.append((path, backup, current))
             elif before[name] is None and current == expected[name]:
-                path.unlink()
+                restore.append((path, None, current))
             elif before[name] is not None and current != before[name]:
                 raise PublicationRecoveryError(f"Cannot restore {path}: its publication backup is missing")
+        for path, backup, current in restore:
+            if backup is None:
+                path.unlink()
+                continue
+            name = str(path)
+            if current is not None and current not in (before[name], expected[name]):
+                # Preserve an external replacement before restoring the previous book.
+                os.rename(path, _backup_path(path, f"conflict-{attempt}"))
+            os.replace(backup, path)
         previous = state.get(outcome.path)
         if (previous and previous.status == "converted" and previous.output in before
                 and _publication_identity(Path(previous.output)) != before[previous.output]):
@@ -654,18 +674,26 @@ def _settle_publication(state: State, attempt: int, plan: dict, outcome: UnitSta
 
 def _recover_publications(state: State, current: int | None = None) -> bool:
     completed = False
-    try:
-        for attempt, plan, outcome in state.pending_publications():
+    for attempt, plan, outcome in state.pending_publications():
+        try:
             if _settle_publication(state, attempt, plan, outcome) and attempt == current:
                 completed = True
-    except Exception as exc:
-        raise PublicationRecoveryError(f"Cannot reconcile pending publication: {exc}") from exc
+        except (PublicationRecoveryError, OSError, ValueError) as exc:
+            reason = f"Interrupted publication quarantined. {exc}. Review the files before dismissing it."
+            unit = state.quarantine_publication(attempt, reason)
+            logging.getLogger("audiobind").warning("Publication %s for %s: %s", attempt, unit, reason)
     return completed
 
 
 def recover_publications(state: State) -> None:
     with state.publication_lock():
         _recover_publications(state)
+
+
+def publication_folder_quarantined(state: State, folder: Path) -> bool:
+    folder = folder.resolve()
+    return any(folder.is_relative_to(held) or held.is_relative_to(folder)
+               for held in state.quarantined_publication_folders())
 
 
 def _publish_recorded(state: State, audit: Audit, formats: list[str], results: dict, paths: dict,
@@ -1225,6 +1253,8 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
         return state.is_dismissed(unit.state_key)
 
     def rec(status: str, **kw) -> None:
+        if state.publication_quarantine(unit.state_key):
+            return
         if dismissed():
             # deleted while this re-check ran: writing the row would bring the book back
             log("  removed from Audiobind while being checked - nothing recorded")
@@ -1293,6 +1323,8 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
     if dismissed():
         log("  removed from Audiobind - skipped")
         return Audit(unit=unit, action="dismissed")
+    if state.publication_quarantine(unit.state_key):
+        return Audit(unit=unit, action="quarantined")
     started = time.time()
     unsafe = unsafe_path_reason(unit)
     if unsafe:

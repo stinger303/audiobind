@@ -164,3 +164,11 @@ A delete that detects a late arrival during staging restores the staged files an
 If Audiobind cannot verify the published files of an older row, it lists the exact paths for a separate
 confirmation. Declining that confirmation keeps those files. Removing an ingest row keeps its torrent
 seeding and dismisses the row so scans skip it.
+
+## Dismissing a publication quarantine
+
+An interrupted publication that Audiobind cannot recover adds a note to the book. You can
+release it using the authenticated `POST /api/unit` action `dismiss_publication_quarantine`
+with the book's `path` and `"confirm": true`. First inspect the published files, backups and
+staged files. Dismissing the quarantine leaves them all on disk and allows book operations
+to resume, subject to the usual file ownership checks.

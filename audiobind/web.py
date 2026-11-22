@@ -8605,6 +8605,22 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if action == "dismiss_publication_quarantine":
+            message = "Dismissing the quarantine leaves published files, backups and staged files on disk."
+            if payload.get("confirm") is not True:
+                self._send(409, json.dumps({"error": message, "confirmation_required": True}).encode(),
+                           "application/json")
+                return
+            try:
+                with self.state.unit_writer(rel), self.state.publication_lock(blocking=False):
+                    released = self.state.dismiss_publication_quarantine(rel)
+            except WriterBusy as exc:
+                self._send(409, json.dumps({"error": str(exc)}).encode(), "application/json")
+                return
+            result = {"ok": True, "message": message} if released else {"error": "No publication quarantine."}
+            self._send(200 if released else 404, json.dumps(result).encode(), "application/json")
+            return
+
         if action == "delete":
             # an ingest row's files are a torrent that is still seeding under a read-only mount:
             # only Audiobind's converted copy goes, the source block below never runs for it, and
@@ -8714,6 +8730,10 @@ class Handler(BaseHTTPRequestHandler):
             output_other_files_left = ""
             with self.state.publication_lock(blocking=False):
                 pipeline_mod._recover_publications(self.state)
+                reason = self.state.publication_quarantine(rel)
+                if reason:
+                    self._send(409, json.dumps({"error": reason}).encode(), "application/json")
+                    return
                 claim = conversion_claim(rel)
                 if claim:
                     log.info("HARD DELETE %s; stopped before removing anything: %s", rel, claim)
@@ -8730,6 +8750,10 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 not_ours, out_trash, out_shared, out_wrote, out_name = planned
                 if out_trash is not None:
+                    if pipeline_mod.publication_folder_quarantined(self.state, out_trash):
+                        self._send(409, b'{"error":"This output folder has a quarantined publication."}',
+                                   "application/json")
+                        return
                     output_claim.enter_context(self.state.output_writer(out_trash))
 
                 if not ingest_row and (
