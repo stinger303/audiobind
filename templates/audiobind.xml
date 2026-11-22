@@ -26,6 +26,9 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.25.4
+* A book whose parts are uneven now groups again: the last part is allowed to be the biggest, and the size check is a sanity bound rather than a tight tolerance, so a set of 20/30/59/83 MB stays one book instead of becoming four rows that ask the catalogue for "Part 2".
+* The setup guide has a way in after you are set up: Settings -> Watcher now carries a "View the setup guide" link. Before, the Library card was dismissed for good and the Watcher button only appeared while the watcher was unconfigured.
 ### 0.25.3
 * The "Set up downloading" guide is complete: after how books arrive and the download client, it checks the address your tracker will see and collects your tracker's own settings, with a Test button that proves them before you finish.
 * One series name, everywhere: the book panel, the Match column, the series shelf and the Audiobookshelf move now all use the same value, taken from the same place the file is tagged from.
