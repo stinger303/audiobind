@@ -7382,6 +7382,55 @@ SOURCE_UNCHECKED = (b'{"error":"There is no saved list of the source files. '
 SOURCE_OUTSIDE = b'{"error":"source path escapes library root"}'
 
 
+def current_source_ownership(unit_state, lib_root: Path) -> dict:
+    """Ownership for a row whose audit predates the recorded-inventory change.
+
+    The owner asked for the files, so a row with nothing recorded authorises **what its folder
+    holds now**: the inventory is taken immediately before staging, and the delete dialog names the
+    folder, so the confirmation is about real files rather than a remembered list.
+    """
+    try:
+        raw = lib_root / unit_state.path.split("#", 1)[0]
+        target = pipeline_mod.source_target(lib_root, raw)
+        if not os.path.lexists(target):
+            return {}
+        entries = pipeline_mod.source_entries(lib_root, [target])
+    except (OSError, ValueError, RuntimeError):
+        return {}
+    if not entries:
+        return {}
+    rel = target.relative_to(lib_root).as_posix()
+    try:
+        from .units import discover_units
+
+        others = discover_units(lib_root, CONFIG.ignore_globs)
+    except (OSError, RuntimeError, ValueError):
+        return {"blocked": "Audiobind cannot check what else is inside that folder"}
+    # The path must BE a book folder, not a folder that happens to contain books: an author or
+    # series folder holding several of them has no unit of its own and must never be removed whole.
+    if not any(other.rel_path == unit_state.path for other in others):
+        return {"blocked": "that folder holds more than one book"}
+    return {"targets": [rel], "entries": entries, "current": True}
+
+
+def source_inventory_summary(lib_root: Path, rel: str) -> dict:
+    """(files, bytes, other_audio) for the folder a delete would take, or {} when unreadable."""
+    ownership = current_source_ownership(type("R", (), {"path": rel})(), lib_root)
+    if not ownership:
+        return {}
+    files = size = 0
+    audio = set()
+    for name, identity in ownership["entries"].items():
+        if identity is None:
+            continue
+        files += 1
+        size += identity[0] if isinstance(identity, list) else identity["id"][3]
+        if Path(name).suffix.lower() in pipeline_mod.AUDIO_EXT:
+            audio.add(Path(name).name)
+    return {"files": files, "mb": size / 1_000_000, "audio": audio,
+            "folder": ownership["targets"][0]}
+
+
 def source_ownership_for(row) -> dict:
     try:
         ownership = json.loads(row.detail).get("source", {}).get("ownership", {})
@@ -7416,10 +7465,17 @@ def _delete_source_confirmation(unit) -> str:
     if ownership.get("blocked"):
         return f"{label} {stays}. Re-check the book before deleting."
     if not targets:
-        if source.exists():
-            return (f"{label} {stays} until Audiobind can verify it belongs to this book."
-                    " Re-check the book first.")
-        return "There is no source to remove."
+        if not source.exists():
+            return "There is no source to remove."
+        if current_source_ownership(unit, root).get("blocked"):
+            return "That folder also holds other books, so Audiobind will not delete it. Remove them one at a time."
+        summary = source_inventory_summary(root, unit.path)
+        if not summary:
+            return "Audiobind cannot read the source folder, so nothing can be removed."
+        size = f"{summary['mb']:.0f} MB" if summary["mb"] >= 1 else "under 1 MB"
+        noun = "file" if summary["files"] == 1 else "files"
+        return (f"Audiobind will delete everything in {summary['folder']}: "
+                f"{summary['files']} {noun}, {size}.")
     for raw in targets:
         try:
             target, target_kind = plan_target(pipeline_mod.source_target(root, raw))
@@ -8659,6 +8715,15 @@ class Handler(BaseHTTPRequestHandler):
                         "error": ownership["blocked"] + ". Re-check the book before deleting.",
                     }).encode(), "application/json")
                     return
+                if not ownership.get("targets"):
+                    # a row audited before the inventory was recorded: the owner is deleting what
+                    # the dialog just showed them, so take the folder's current contents as the target
+                    current = current_source_ownership(unit_state, lib_root)
+                    if current.get("blocked"):
+                        self._send(409, json.dumps({"error": current["blocked"]}).encode(),
+                                   "application/json")
+                        return
+                    ownership = current
                 for name in ownership.get("targets", []):
                     raw = lib_root / name
                     try:
@@ -8764,12 +8829,27 @@ class Handler(BaseHTTPRequestHandler):
                         return
                     output_claim.enter_context(self.state.output_writer(out_trash))
 
-                if not ingest_row and (
-                    ownership != source_ownership_for(unit_state)
-                    or (not ownership and src_path.exists())
-                ):
-                    self._send(409, SOURCE_CHANGED if ownership else SOURCE_UNCHECKED, "application/json")
-                    return
+                if not ingest_row:
+                    recorded = source_ownership_for(unit_state)
+                    if recorded.get("targets"):
+                        if ownership != recorded:
+                            self._send(409, SOURCE_CHANGED, "application/json")
+                            return
+                    else:
+                        # nothing recorded: re-take the inventory under the lock, so a file that
+                        # arrived between the dialog and the confirm is part of what gets verified
+                        fresh = current_source_ownership(unit_state, lib_root)
+                        if not fresh:
+                            if src_path is not None and src_path.exists():
+                                self._send(409, SOURCE_UNCHECKED, "application/json")
+                                return
+                            ownership = {}  # nothing on disk: the output is all that can go
+                        else:
+                            if fresh.get("blocked"):
+                                self._send(409, json.dumps({"error": fresh["blocked"]}).encode(),
+                                           "application/json")
+                                return
+                            ownership = fresh
 
                 legacy_entries = {}
                 if out_wrote is None and out_trash is not None and not out_shared and out_trash.exists():

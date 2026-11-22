@@ -119,6 +119,24 @@ class DeleteRegressionTests(LiveServerCase):
         self.assertTrue(source.exists())
         self.assertIsNotNone(self.state.get("Author/Book"))
 
+    def test_p0_11_a_legacy_row_deletes_its_folder_from_disk(self):
+        # a row audited before ownership was recorded: the dialog names the folder's contents,
+        # and confirming deletes them — the owner asked for the files, not just the row
+        folder = self.lib / "Author" / "Book"
+        (folder / "disc").mkdir(parents=True)
+        (folder / "01.mp3").write_bytes(b"one")
+        (folder / "disc" / "02.mp3").write_bytes(b"two")
+        (folder / "cover.jpg").write_bytes(b"art")
+        self.state.save(UnitState(path="Author/Book", status="review"))
+
+        page = web.render(self.state)
+        self.assertIn("will delete everything in Author/Book: 3 files", page)
+
+        status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertFalse(folder.exists(), "the source folder survived the delete")
+        self.assertIsNone(self.state.get("Author/Book"))
+
     def test_p0_03_legacy_confirmation_lists_exact_files_and_can_be_declined(self):
         output = self.out / "Book" / "Book.m4b"
         output.parent.mkdir()

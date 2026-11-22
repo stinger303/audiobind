@@ -46,13 +46,15 @@ class Core04cUnknownProvenanceIsNotOwnershipTests(DeleteCase):
         self.assertEqual(listing(self.out_book), ["Book.m4b", "cover.jpg", "notes.txt"])
         self.assertIsNotNone(self.state.get(self.REL))
 
-    def test_unreadable_detail_requires_a_source_recheck(self):
+    def test_unreadable_detail_deletes_the_source_and_asks_about_the_output(self):
         row = self.state.get(self.REL)
         row.detail = "{not json"
         self.state.save(row)
         status, body = self.delete()
+        # nothing is recorded, so the source the dialog named is deleted; the output it cannot
+        # attribute still needs its own confirmation, and is left alone until it gets one
         self.assertEqual(status, 409, body)
-        self.assertIn("re-check", body["error"])
+        self.assertIn("legacy_output_paths", body)
         self.assertEqual(listing(self.out_book), ["Book.m4b"])
 
     def test_legacy_candidates_are_removed_only_after_separate_confirmation(self):

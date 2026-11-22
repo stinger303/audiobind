@@ -47,6 +47,11 @@ survives a crash, and one run can no longer stomp another.
 - **Delete tells you what it actually did.** The confirmation describes the plan for that book, and the
   result reports the row, the source and the output independently instead of claiming a removal that did
   not happen. `a7c39ec`
+- **Delete takes the files, not just the row.** A book audited before the inventory was recorded used to
+  refuse and ask for a re-check; it now deletes the folder you were shown. The dialog names it and counts
+  what goes ("everything in Author/Book: 3 files, 420 MB"), so the confirmation is about the real contents
+  rather than a remembered list. Files that arrive mid-delete are still left alone, and a folder the app
+  cannot read or cannot reach is still refused.
 - **The status line stopped conflating "alive" with "scanned".** The header shows the service check-in and
   the last finished scan separately, so a paused daemon no longer looks freshly scanned. `a995878`
 
