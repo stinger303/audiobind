@@ -7,6 +7,49 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [Unreleased]
+
+**Nothing destructive happens on trust.** Fourteen defects found by a two-pass audit and closed, two of
+them able to remove a book you did not delete. Delete now proves what it is about to touch, publication
+survives a crash, and one run can no longer stomp another.
+
+### Fixed
+
+- **Delete believes the row, not the disk, so a replaced book is safe.** A folder whose contents changed
+  after it was audited used to hand Delete the *new* files while the old row still described the old book.
+  Delete now checks the recorded source list and file identities first and refuses with "re-check the book"
+  instead of removing something it cannot prove. `9e850d5` `b8b936e`
+- **A file that arrives during a delete is no longer swept up.** The purge used to be a recursive remove of
+  the staged folder; it now removes only the entries it verified, and prunes empty folders. `69e2281`
+- **Output Delete cannot prove is kept, not deleted.** Rows from before the ownership record no longer
+  claim any file that happens to share the name; the app lists the exact paths and asks separately. `86446bb`
+- **A delete holds its claim from start to finish.** The claim used to be released before the row was
+  removed, so an ingest book could be picked up again mid-purge; removal and dismissal now commit together. `9a9b844`
+- **An interrupted publication recovers instead of stranding files.** The intent, the backup paths and the
+  expected identities are written before anything moves, and startup finishes a complete publication or
+  restores the previous one. An attempt that cannot be reconciled is quarantined with a plain reason and a
+  dismiss action, instead of stopping every future scan. `6c1486c` `8294202`
+- **An existing file is only reused when it proves it belongs to this book and edition.** A different
+  edition, or someone else's file at the same path, now goes to Review with a readable reason. A sidecar
+  another tool rewrote is refreshed rather than treated as a stranger. `c595857` `c7b14fb`
+- **One writer at a time, across processes.** The converter, the CLI, manual actions, Delete and layout
+  moves now share a per-book claim (a kernel-held file lock), each attempt gets its own scratch, and the
+  claim is held until the state is committed. `e61d636`
+- **Layout moves are journaled before they happen and can be undone.** Cross-filesystem copies stage at
+  the destination, and a restart finishes or reverses an interrupted move. Apply is bound to the preview
+  you saw: if the plan changed, it refuses and asks for a fresh preview instead of moving unseen books. `8beaedc` `a549155`
+- **The tracker proxy can no longer be bypassed by the environment.** A configured proxy is used on every
+  tracker, probe and updater request, a proxy failure raises instead of going direct, and one settings
+  snapshot is honoured for the whole cycle so the route cannot change between the check and the request. `208f585` `d851e6a`
+- **Updater recovery traffic is contained and reported honestly.** A pinned address that drifts can no
+  longer produce a credentialed read on an unverified route, and the watcher no longer logs "no request was
+  sent" when one was. `a86f272`
+- **Delete tells you what it actually did.** The confirmation describes the plan for that book, and the
+  result reports the row, the source and the output independently instead of claiming a removal that did
+  not happen. `a7c39ec`
+- **The status line stopped conflating "alive" with "scanned".** The header shows the service check-in and
+  the last finished scan separately, so a paused daemon no longer looks freshly scanned. `a995878`
+
 ## [0.25.5] - 2026-11-21
 
 **The wrong-book paths close.** Four defects that could let a different book, edition or volume win the
