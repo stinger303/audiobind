@@ -222,12 +222,14 @@ class WebApi02cStartupRunsTheRecoveryTests(unittest.TestCase):
             mock.patch.object(daemon.web, "recover_deletes", side_effect=lambda j: calls.append(("recover", j))),
             mock.patch.object(daemon, "recover_publications",
                               side_effect=lambda s: calls.append(("publish",))),
+            mock.patch.object(daemon.abs_layout, "_recover_locked",
+                              side_effect=lambda s: calls.append(("layout",))),
             mock.patch.object(daemon, "restore_controls", side_effect=lambda s: (calls.append(("restore",)), _raise(Stop()))),
         ):
             with self.assertRaises(Stop):
                 daemon.run()
         self.assertEqual(calls, [
-            ("recover", pathlib.Path("/state") / web.DELETE_JOURNAL), ("publish",), ("restore",)
+            ("recover", pathlib.Path("/state") / web.DELETE_JOURNAL), ("publish",), ("layout",), ("restore",)
         ])
 
 

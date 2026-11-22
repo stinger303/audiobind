@@ -40,7 +40,7 @@ class LayoutCase(unittest.TestCase):
         self.cfg.mkdir()
         self.saved = (CONFIG.output_root, CONFIG.state_dir)
         CONFIG.output_root, CONFIG.state_dir = self.out, self.cfg
-        self.state = State(base / "state")
+        self.state = State(self.cfg)
 
     def tearDown(self):
         CONFIG.output_root, CONFIG.state_dir = self.saved
@@ -67,6 +67,7 @@ class TestPlan(LayoutCase):
     def test_dry_run_writes_nothing(self):
         self.book("a", "Author/Saga/03 - Book/Book.m4b", ["Author"], "Book", "Saga", "3", extra=("cover.jpg",))
         before, row_before = tree(self.out), self.state.get("a")
+        state_files = sorted(self.cfg.iterdir())
         result = abs_layout.plan(self.state)
         self.assertEqual([m.public() for m in result["moves"]], [{
             "from": str(self.out / "Author/Saga/03 - Book/Book.m4b"),
@@ -75,7 +76,7 @@ class TestPlan(LayoutCase):
         self.assertEqual(tree(self.out), before)
         self.assertEqual(self.state.get("a"), row_before)
         self.assertEqual(self.journals(), [])
-        self.assertEqual(list(self.cfg.iterdir()), [])
+        self.assertEqual(sorted(self.cfg.iterdir()), state_files)
 
     def test_already_correct_rows_are_no_ops(self):
         self.book("a", "Author/Saga/3 - Book/Book.m4b", ["Author"], "Book", "Saga", "3")
@@ -220,9 +221,55 @@ class TestApply(LayoutCase):
         self.assertEqual(self.state.get("a").output, str(self.out / "Author/Saga/01 - First/First.m4b"))
         self.assertEqual(self.state.get("b").output, str(self.out.resolve() / "Author/Saga/2 - Second/Second.m4b"))
         entries = json.loads(self.journals()[0].read_text())["moves"]
-        self.assertEqual([e["state_key"] for e in entries], ["b"])
+        self.assertEqual([(e["state_key"], e["status"]) for e in entries],
+                         [("a", "rolled_back"), ("b", "committed")])
 
-    def test_cross_device_move_falls_back_to_shutil(self):
+    def test_crash_after_folder_rename_leaves_intent_for_startup(self):
+        src = self.book("a", "Author/Saga/03 - Book/Old.m4b", ["Author"], "Book", "Saga", "3",
+                        extra=("Old.mp3",))
+        [move] = abs_layout.plan(self.state)["moves"]
+        real = os.rename
+
+        def crash_after_rename(source, target):
+            real(source, target)
+            if pathlib.Path(source) == src.parent:
+                raise SystemExit("simulated crash")
+
+        with mock.patch.object(abs_layout.os, "rename", side_effect=crash_after_rename):
+            with self.assertRaises(SystemExit):
+                abs_layout.apply(self.state)
+
+        [entry] = json.loads(next(self.cfg.glob("*.json.open")).read_text())["moves"]
+        self.assertEqual(entry["status"], "open")
+        self.assertEqual(entry["state_key"], "a")
+        abs_layout.recover(self.state)
+        self.assertEqual(self.state.get("a").output, str(src))
+        self.assertTrue(src.exists())
+        self.assertTrue(src.with_suffix(".mp3").exists())
+        self.assertFalse(move.dst.parent.exists())
+
+    def test_recovery_finishes_a_move_interrupted_before_the_state_commit(self):
+        src = self.book("a", "Author/Saga/03 - Book/Old.m4b", ["Author"], "Book", "Saga", "3",
+                        extra=("Old.mp3",))
+        [move] = abs_layout.plan(self.state)["moves"]
+        with mock.patch.object(abs_layout, "_record_output", side_effect=SystemExit):
+            with self.assertRaises(SystemExit):
+                abs_layout.apply(self.state)
+
+        self.assertEqual(self.state.get("a").output, str(src))
+        self.assertTrue(move.dst.exists())
+        original_db = self.state.path.parent
+        self.state.close()
+        self.state = State(original_db)
+        abs_layout.recover(self.state)
+        abs_layout.recover(self.state)
+        self.assertEqual(self.state.get("a").output, str(move.dst))
+        self.assertTrue(move.dst.with_suffix(".mp3").exists())
+        self.assertFalse(src.exists())
+        [entry] = json.loads(self.journals()[0].read_text())["moves"]
+        self.assertEqual(entry["status"], "committed")
+
+    def test_cross_device_move_promotes_a_complete_staged_copy(self):
         self.book("a", "Author/Saga/03 - Book/Book.m4b", ["Author"], "Book", "Saga", "3")
         real = os.rename
 
@@ -231,10 +278,27 @@ class TestApply(LayoutCase):
                 raise OSError(18, "Invalid cross-device link")
             return real(src, dst)
 
-        with mock.patch("audiobind.abs_layout.os.rename", side_effect=exdev):
+        replace = os.replace
+        dst = self.out / "Author/Saga/3 - Book"
+        promotions = []
+
+        def promote(src, target):
+            if target == dst:
+                self.assertFalse(dst.exists())
+                self.assertEqual(pathlib.Path(src).parent, dst.parent)
+                self.assertEqual((pathlib.Path(src) / "Book.m4b").read_bytes(), b"audio")
+                promotions.append(target)
+            return replace(src, target)
+
+        with (
+            mock.patch.object(abs_layout.os, "rename", side_effect=exdev),
+            mock.patch.object(abs_layout.os, "replace", side_effect=promote),
+        ):
             result = abs_layout.apply(self.state)
+        self.assertEqual(promotions, [dst])
         self.assertEqual(len(result["moved"]), 1)
-        self.assertTrue((self.out / "Author/Saga/3 - Book/Book.m4b").exists())
+        self.assertTrue((dst / "Book.m4b").exists())
+        self.assertFalse((dst.parent / "03 - Book").exists())
 
 
 class TestDev15Hardening(LayoutCase):
@@ -264,7 +328,7 @@ class TestDev15Hardening(LayoutCase):
         abs_layout.apply(self.state)
         self.assertTrue(src.exists())
 
-    def test_journal_keeps_renames_made_before_a_failure(self):
+    def test_journal_records_renames_and_restores_names_after_a_failure(self):
         self.book("a", "Author/Book/old name.m4b", ["Author"], "Book", extra=("old name.mp3",))
         real = os.rename
 
@@ -278,8 +342,13 @@ class TestDev15Hardening(LayoutCase):
         self.assertEqual([f["state_key"] for f in result["failed"]], ["a"])
         [entry] = json.loads(self.journals()[0].read_text())["moves"]
         folder = (self.out / "Author/Book").resolve()
-        self.assertEqual(entry["files"], [{"from": str(folder / "old name.mp3"), "to": str(folder / "Book.mp3")}])
-        self.assertTrue((folder / "Book.mp3").exists())
+        self.assertEqual(entry["status"], "rolled_back")
+        self.assertEqual([(p["from"], p["to"]) for p in entry["files"]], [
+            (str(folder / "old name.mp3"), str(folder / "Book.mp3")),
+            (str(folder / "old name.m4b"), str(folder / "Book.m4b")),
+        ])
+        self.assertTrue((folder / "old name.mp3").exists())
+        self.assertFalse((folder / "Book.mp3").exists())
 
     def test_target_comes_from_metadata_json(self):
         src = self.book("a", "Old/Old Title/Old Title.m4b", ["Wrong Author"], "Old Title", "Wrong Saga", "9")

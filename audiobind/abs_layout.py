@@ -16,7 +16,9 @@ import logging
 import os
 import re
 import shutil
+import stat
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,7 +26,6 @@ from types import SimpleNamespace
 from . import library, pipeline
 from . import overrides as overrides_mod
 from .config import CONFIG
-from .control import CONTROL
 from .units import AUDIO_EXT, foreign_audio
 from .util import loads_dict as _loads
 
@@ -193,7 +194,7 @@ def plan(state) -> dict:
                 skip(row, "another book in Audiobind is filed in this folder")
                 continue
             # only the file name changes: rename the book's files in place
-            clash = [p for p in _siblings(resolved) if (dst_dir / (dst.stem + p.suffix)).exists()]
+            clash = [p for p in _siblings(resolved) if os.path.lexists(dst_dir / (dst.stem + p.suffix))]
             if clash:
                 skip(row, f"{dst_dir / (dst.stem + clash[0].suffix)} already exists")
                 continue
@@ -221,132 +222,261 @@ def plan(state) -> dict:
     return {"moves": moves, "skipped": skipped, "unchanged": unchanged}
 
 
-def _move_dir(src: Path, dst: Path) -> None:
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    if os.path.lexists(dst):  # checked again right before the move: never overwrite
-        raise FileExistsError(errno.EEXIST, "target already exists", str(dst))
-    try:
-        os.rename(src, dst)
-    except OSError as exc:
-        if exc.errno != errno.EXDEV:
-            raise
-        shutil.move(str(src), str(dst))
-
-
-def _rename_files(folder: Path, old: Path, new_stem: str, on_rename=None) -> list[tuple[str, str]]:
-    """Rename the book's files inside ``folder`` from ``old``'s stem to ``new_stem``.
-
-    ``on_rename(src, dst)`` is called after EACH rename, so the undo journal holds every file
-    that moved even when a later rename fails.
-    """
-    # every clash is checked before anything is renamed, and the main file goes last, so a
-    # failure part-way leaves the row's recorded file where it was
-    pairs = [(p, folder / (new_stem + p.suffix)) for p in reversed(_siblings(folder / old.name))]
-    pairs = [(a, b) for a, b in pairs if a != b]
-    for _path, target in pairs:
-        if os.path.lexists(target):
-            raise FileExistsError(errno.EEXIST, "target already exists", str(target))
-    done: list[tuple[str, str]] = []
-    for path, target in pairs:
-        os.rename(path, target)
-        done.append((str(path), str(target)))
-        if on_rename is not None:
-            on_rename(str(path), str(target))
-    return done
-
-
 def _prune_empty(start: Path, root: Path) -> None:
     """Remove folders the move left empty, up to (never including) OUTPUT_ROOT."""
     current = start
     while current != root and _inside(current, root):
         try:
-            current.rmdir()  # only succeeds on an empty folder
+            current.rmdir()
         except OSError:
             return
         current = current.parent
 
 
-def journal_path() -> Path:
+def journal_path(directory: Path) -> Path:
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    path = Path(CONFIG.state_dir) / f"abs-layout-{stamp}.json"
+    path = directory / f"abs-layout-{stamp}.json"
     n = 1
     while path.exists():
         n += 1
-        path = Path(CONFIG.state_dir) / f"abs-layout-{stamp}-{n}.json"
+        path = directory / f"abs-layout-{stamp}-{n}.json"
     return path
 
 
 def _write_journal(path: Path, entries: list[dict]) -> None:
-    body = {"version": 1, "output_root": str(CONFIG.output_root), "moves": entries}
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(body, indent=2), encoding="utf-8")
+    body = {"version": 2, "output_root": str(Path(CONFIG.output_root).resolve()), "moves": entries}
+    tmp = path.with_suffix(".tmp")
+    with tmp.open("w", encoding="utf-8") as handle:
+        json.dump(body, handle, indent=2)
+        handle.flush()
+        os.fsync(handle.fileno())
     os.replace(tmp, path)
+    pipeline._sync_directory(path.parent)
+
+
+def _close_journal(path: Path) -> Path:
+    journal = journal_path(path.parent)
+    os.replace(path, journal)
+    pipeline._sync_directory(path.parent)
+    return journal
+
+
+def _directory_id(path: Path) -> list[int] | None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    return [info.st_dev, info.st_ino] if stat.S_ISDIR(info.st_mode) else None
+
+
+def _intent(move: Move) -> dict:
+    src, dst = move.src.resolve(), move.dst
+    folder = dst.parent
+    files = [
+        {"from": str(folder / path.name), "to": str(folder / (dst.stem + path.suffix)),
+         "identity": pipeline.file_identity(path)}
+        for path in reversed(_siblings(src)) if path.stem != dst.stem
+    ]
+    identity = pipeline.file_identity(src)
+    if identity is None:
+        raise FileNotFoundError(f"Layout source disappeared: {src}")
+    entry = {
+        "state_key": move.state_key, "kind": "folder" if move.folder else "file",
+        "status": "open", "at": time.time(),
+        "from": str(src.parent if move.folder else src), "to": str(folder if move.folder else dst),
+        "source_output": str(src), "target_output": str(dst),
+        "identity": identity, "files": files,
+    }
+    if move.folder:
+        entry["folder_id"] = _directory_id(src.parent)
+        entry["stage"] = str(folder.with_name(f".audiobind-layout-{uuid.uuid4().hex}"))
+    return entry
+
+
+def _rename(source: Path, target: Path) -> None:
+    if os.path.lexists(target):
+        raise FileExistsError(errno.EEXIST, "target already exists", str(target))
+    os.rename(source, target)
+
+
+def _rename_files(entry: dict, folder: Path) -> None:
+    for pair in entry["files"]:
+        source = folder / Path(pair["from"]).name
+        target = folder / Path(pair["to"]).name
+        if pipeline.file_identity(source) != pair["identity"]:
+            raise OSError(f"Layout source changed: {source}")
+        _rename(source, target)
+
+
+def _copy_sync(source, dest):
+    shutil.copy2(source, dest)
+    with open(dest, "rb") as handle:
+        os.fsync(handle.fileno())
+
+
+def _move_dir(entry: dict, journal: Path, entries: list[dict]) -> None:
+    src, dst, stage = (Path(entry[name]) for name in ("from", "to", "stage"))
+    root = Path(CONFIG.output_root).resolve()
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    for parent in dst.parents:
+        pipeline._sync_directory(parent)
+        if parent == root:
+            break
+    try:
+        _rename(src, dst)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        shutil.copytree(src, stage, symlinks=True, copy_function=_copy_sync)
+        _rename_files(entry, stage)
+        for folder, _, _ in os.walk(stage, topdown=False):
+            pipeline._sync_directory(Path(folder))
+        entry["copy_id"] = _directory_id(stage)
+        _write_journal(journal, entries)
+        if os.path.lexists(dst):
+            raise FileExistsError(errno.EEXIST, "target already exists", str(dst))
+        os.replace(stage, dst)
+    else:
+        _rename_files(entry, dst)
+
+
+def _check_entry_paths(entry: dict, root: Path) -> None:
+    names = [entry[key] for key in ("from", "to", "source_output", "target_output")]
+    if "stage" in entry:
+        names.append(entry["stage"])
+    for pair in entry["files"]:
+        names.extend((pair["from"], pair["to"]))
+    for name in names:
+        path = Path(name)
+        if not _inside(path, root) or path.parent.resolve() != path.parent or path.is_symlink():
+            raise OSError(f"Unsafe layout journal path: {path}")
+
+
+def _rollback_files(entry: dict) -> None:
+    for pair in reversed(entry["files"]):
+        source, target = Path(pair["from"]), Path(pair["to"])
+        if pipeline.file_identity(source) == pair["identity"]:
+            continue
+        if not os.path.lexists(source) and pipeline.file_identity(target) == pair["identity"]:
+            _rename(target, source)
+        else:
+            raise OSError(f"Cannot restore layout file {source}; check {target}")
+
+
+def _settle(state, entry: dict, root: Path) -> bool:
+    """Finish a complete move or restore the original names. Safe to repeat after interruption."""
+    _check_entry_paths(entry, root)
+    src, dst = (Path(entry[name]) for name in ("source_output", "target_output"))
+    folder_move = entry["kind"] == "folder"
+    target_id = _directory_id(dst.parent) if folder_move else None
+    copied = target_id is not None and target_id == entry.get("copy_id")
+    moved = target_id is not None and target_id == entry.get("folder_id")
+    complete = (not folder_move or copied or moved) and (
+        pipeline.file_identity(dst) == entry["identity"]
+        and all(pipeline.file_identity(Path(pair["to"])) == pair["identity"]
+                and not os.path.lexists(pair["from"]) for pair in entry["files"])
+    )
+    if complete:
+        pipeline._sync_directory(dst.parent)
+        if folder_move:
+            pipeline._sync_directory(dst.parent.parent)
+            if os.path.lexists(src.parent):
+                if not copied or _directory_id(src.parent) != entry["folder_id"]:
+                    raise OSError(f"Layout source was replaced: {src.parent}")
+                shutil.rmtree(src.parent)
+            if src.parent.parent.is_dir():
+                pipeline._sync_directory(src.parent.parent)
+        _record_output(state, entry["state_key"], dst, old=src)
+    else:
+        if copied:
+            raise OSError(f"Published layout copy changed: {dst.parent}")
+        if not folder_move or moved:
+            _rollback_files(entry)
+            pipeline._sync_directory(dst.parent)
+        if moved:
+            _rename(dst.parent, src.parent)
+            pipeline._sync_directory(dst.parent.parent)
+            pipeline._sync_directory(src.parent.parent)
+        if pipeline.file_identity(src) != entry["identity"]:
+            raise OSError(f"Cannot restore layout source: {src}")
+
+    if folder_move:
+        stage = Path(entry["stage"])
+        if stage.is_dir():
+            shutil.rmtree(stage)
+            pipeline._sync_directory(stage.parent)
+    entry["status"] = "committed" if complete else "rolled_back"
+    return complete
+
+
+def _recover_locked(state) -> None:
+    root = Path(CONFIG.output_root).resolve()
+    journal = state.layout_intent
+    try:
+        body = json.loads(journal.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return
+    except ValueError as exc:
+        raise OSError(f"Cannot read the layout journal: {journal}") from exc
+    if body["version"] != 2 or Path(body["output_root"]) != root:
+        raise OSError(f"Layout journal does not match this output root: {journal}")
+    for entry in body["moves"]:
+        if entry["status"] == "open":
+            _settle(state, entry, root)
+            _write_journal(journal, body["moves"])
+        if entry["status"] == "committed" and entry["kind"] == "folder":
+            _prune_empty(Path(entry["from"]).parent, root)
+    _close_journal(journal)
+
+def recover(state) -> None:
+    """Settle interrupted layout moves before discovery or another media write."""
+    if state.layout_intent.exists():
+        with state.layout_writer():
+            _recover_locked(state)
 
 
 def apply(state) -> dict:
     """Make the planned moves under the exclusive layout claim."""
-    with state.layout_writer(), state.publication_lock():
-        pipeline._recover_publications(state)
+    with state.layout_writer():
+        pipeline.recover_publications(state)
+        _recover_locked(state)
         return _apply(state)
 
 
 def _apply(state) -> dict:
     result = plan(state)
     root = Path(CONFIG.output_root).resolve()
-    journal = journal_path()
+    active = state.layout_intent
     entries: list[dict] = []
     moved: list[dict] = []
     failed: list[dict] = []
-    if result["moves"]:
-        _write_journal(journal, entries)  # written first: an empty journal proves the run started
     for move in result["moves"]:
-        if CONTROL.deleting(move.state_key):
-            result["skipped"].append({
-                "from": str(move.src), "reason": "book is being deleted", "state_key": move.state_key,
-            })
-            continue
-        src = move.src.resolve()
-        current = src  # where the book's main file is right now, recorded even after a half-done move
-
-        def journal_rename(entry: dict):
-            def note(a: str, b: str) -> None:
-                entry.setdefault("files", []).append({"from": a, "to": b})
-                _write_journal(journal, entries)
-
-            return note
-
+        entry = _intent(move)
+        _check_entry_paths(entry, root)
+        entries.append(entry)
+        _write_journal(active, entries)
+        error = None
         try:
             if move.folder:
-                old_dir, new_dir = src.parent, move.dst.parent
-                _move_dir(old_dir, new_dir)
-                current = new_dir / src.name
-                entry = {"state_key": move.state_key, "kind": "folder", "from": str(old_dir), "to": str(new_dir),
-                         "at": time.time()}
-                entries.append(entry)
-                _write_journal(journal, entries)
-                _prune_empty(old_dir.parent, root)
-                if src.name != move.dst.name:
-                    _rename_files(new_dir, src, move.dst.stem, on_rename=journal_rename(entry))
+                _move_dir(entry, active, entries)
             else:
-                entry = {"state_key": move.state_key, "kind": "file", "at": time.time(), "files": []}
-                entries.append(entry)
-                _rename_files(src.parent, src, move.dst.stem, on_rename=journal_rename(entry))
-            current = move.dst
+                _rename_files(entry, move.dst.parent)
         except OSError as exc:
-            log.warning("Audiobookshelf layout: could not move %s: %s", move.src, exc)
-            failed.append({"from": str(move.src), "to": str(move.dst), "state_key": move.state_key,
-                           "error": exc.strerror or str(exc)})
-        if current != src:
-            _record_output(state, move.state_key, current, old=src)
-        if current == move.dst:
+            error = exc
+        complete = _settle(state, entry, root)
+        _write_journal(active, entries)
+        if complete:
+            if move.folder:
+                _prune_empty(Path(entry["from"]).parent, root)
             log.info("Audiobookshelf layout: %s -> %s", move.src, move.dst)
             moved.append(move.public())
+        else:
+            log.warning("Audiobookshelf layout: could not move %s: %s", move.src, error)
+            message = (error.strerror or str(error)) if error else "incomplete move"
+            failed.append({**move.public(), "error": message})
     return {
-        "moved": moved,
-        "failed": failed,
-        "skipped": result["skipped"],
-        "unchanged": result["unchanged"],
-        "journal": str(journal) if result["moves"] else "",
+        "moved": moved, "failed": failed, "skipped": result["skipped"],
+        "unchanged": result["unchanged"], "journal": str(_close_journal(active)) if entries else "",
     }
 
 
@@ -371,7 +501,8 @@ def _record_output(state, key: str, output: Path, old: Path | None = None) -> No
                     data["output"]["wrote_id"] = {_renamed(name, old.stem, output): ident
                                                   for name, ident in ids.items()}
             detail = json.dumps(data)
-    state.set_output(key, str(output), detail)
+    if not state.set_output(key, str(output), detail):
+        raise OSError(f"Cannot record layout move for missing unit {key}")
 
 
 def _renamed(name, old_stem: str, output: Path):

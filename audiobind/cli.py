@@ -11,11 +11,11 @@ import logging.handlers
 import sys
 from pathlib import Path
 
-from . import __version__, daemon
+from . import __version__, abs_layout, daemon
 from . import auth as auth_mod
 from .config import CONFIG, effective_val, set_effective
 from .pipeline import audit_unit, process_unit
-from .state import State
+from .state import State, WriterBusy
 from .units import discover_units
 
 
@@ -131,6 +131,11 @@ def cmd_scan(args) -> int:
 
 def cmd_convert(args) -> int:
     state = State(CONFIG.state_dir)
+    try:
+        abs_layout.recover(state)
+    except WriterBusy as exc:
+        print(exc)
+        return 1
     units = discover_units(CONFIG.library_root, CONFIG.ignore_globs)
     unit = _find(units, args.unit)
     print(f"unit: {unit.rel_path}  ({len(unit.parts)} parts, {unit.n_files} files)")

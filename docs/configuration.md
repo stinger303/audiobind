@@ -148,9 +148,12 @@ the metadata stored with the book's row. A book is skipped, never overwritten, w
 already exists, the new path would leave `OUTPUT_ROOT` (a symlinked folder is resolved first), its
 published file is missing or outside `OUTPUT_ROOT`, another Audiobind book is filed in the same
 folder (for a file rename too), or the folder also holds audio that belongs to other books. Folders left empty by a move are removed. A failure on one book is
-reported and the run carries on. Every move is recorded in `STATE_DIR/abs-layout-<UTC time>.json`
-(`from`/`to` for each folder and renamed file) so it can be undone by hand. The action is refused
-while a book is being encoded, and a scan never runs it.
+reported and the run carries on after restoring that book's original paths. The journal records
+the intended folder and file moves before touching media. On restart, Audiobind records completed
+moves and restores incomplete moves. Cross-filesystem moves finish their copy in a temporary
+destination folder before making it visible at the final path. The finished journal is saved as
+`STATE_DIR/abs-layout-<UTC time>.json` with each move's status and paths for manual undo.
+The action needs exclusive access to media writes. A scan only reconciles interrupted moves.
 
 Scripted equivalent (`dry_run` defaults to true; the real run needs `"confirm": true`):
 

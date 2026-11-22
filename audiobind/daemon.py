@@ -7,14 +7,14 @@ import logging
 import os
 import time
 
-from . import ingest, web
+from . import abs_layout, ingest, web
 from . import series as series_mod
 from . import watcher as watcher_mod
 from .config import CONFIG, deprecated_env_lines, effective_val, rejected_env_lines, set_effective
 from .control import CONTROL
 from .pipeline import process_unit, recover_publications
 from .prefetch import PREFETCH, already_decided, next_eligible
-from .state import SOURCE_INGEST, State, UnitState
+from .state import SOURCE_INGEST, State, UnitState, WriterBusy
 from .units import BookUnit, discover_units, is_single_file
 
 log = logging.getLogger("audiobind")
@@ -120,6 +120,10 @@ def scan_once(state: State, force: bool = False) -> dict:
     """One pass over the library (and the ingest folder, when INGEST_DIR is set).
 
     Already-decided units are skipped unless forced."""
+    try:
+        abs_layout.recover(state)
+    except WriterBusy as exc:
+        log.info("layout recovery deferred: %s", exc)
     recover_publications(state)
     set_effective(state)
     run_id = state.start_run()
@@ -265,6 +269,7 @@ def run() -> None:
     with state.layout_writer(blocking=True):
         web.recover_deletes(web.delete_journal(state))
         recover_publications(state)
+        abs_layout._recover_locked(state)
     restore_controls(state)
     log.info(
         "audiobind daemon: %s -> %s every %d min",

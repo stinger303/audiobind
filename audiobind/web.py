@@ -9469,9 +9469,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(409, b'{"error":"another run is working on this book or changing the library layout"}',
                        "application/json")
             return
-        except OSError as exc:
+        except (OSError, pipeline_mod.PublicationRecoveryError) as exc:
             logging.getLogger("audiobind").error("Audiobookshelf layout: run stopped: %s", exc)
-            self._send(500, json.dumps({"error": f"could not start: {exc.strerror or exc}"}).encode(),
+            self._send(500, json.dumps({"error": f"layout stopped: {exc}"}).encode(),
                        "application/json")
             return
         body = {

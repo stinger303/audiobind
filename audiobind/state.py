@@ -241,8 +241,8 @@ WRITER_BUSY = "another run is working on this book"
 
 
 class WriterBusy(Exception):
-    def __init__(self):
-        super().__init__(WRITER_BUSY)
+    def __init__(self, message: str = WRITER_BUSY):
+        super().__init__(message)
 
 
 @contextmanager
@@ -382,6 +382,10 @@ class State:
         self.connection.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('field_locks_v1', 'true')")
 
     # ---------------------------------------------------------------- units
+    @property
+    def layout_intent(self) -> Path:
+        return self.path.parent / "abs-layout-active.json.open"
+
     def layout_writer(self, *, blocking: bool = False):
         return file_claim(self.path.parent / "media-layout.lock", blocking=blocking)
 
@@ -396,6 +400,8 @@ class State:
             file_claim(self.path.parent / "media-layout.lock", shared=True),
             file_claim(self.path.parent / f"media-unit-{digest}.lock"),
         ):
+            if self.layout_intent.exists():
+                raise WriterBusy("an interrupted library layout move needs recovery")
             previous = getattr(self._writer, "unit", None)
             self._writer.unit = key
             try:
@@ -513,14 +519,13 @@ class State:
     def set_output(self, path: str, output: str, detail: str | None = None) -> bool:
         """Point a row at its moved output file (and optionally its rewritten detail JSON) without
         touching anything else - not updated_at, not the locks. Returns True when a row changed."""
-        with self._lock:
+        with self._durable_publication():
             if detail is None:
                 cursor = self.connection.execute("UPDATE units SET output = ? WHERE path = ?", (output, path))
             else:
                 cursor = self.connection.execute(
                     "UPDATE units SET output = ?, detail = ? WHERE path = ?", (output, detail, path)
                 )
-            self.connection.commit()
             return cursor.rowcount > 0
 
     #: every UnitState column except the three text blobs (detail, alternates; overrides is not a field)
