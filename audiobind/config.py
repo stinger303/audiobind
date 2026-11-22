@@ -836,19 +836,28 @@ def _without_login(key: str, value):
 def set_effective(state) -> None:
     """Refresh all effective overrides from the State DB."""
     stored = state.get_meta_many([f"setting_{key}" for key in SETTING_KEYS])  # one query, not one per key
-    for key in SETTING_KEYS:
-        db = stored.get(f"setting_{key}")
-        if db is not None:
-            _EFFECTIVE[key] = _without_login(key, db)
-        else:
-            _EFFECTIVE.pop(key, None)
+    global _EFFECTIVE
+    _EFFECTIVE = {
+        key: _without_login(key, stored[f"setting_{key}"])
+        for key in SETTING_KEYS if stored.get(f"setting_{key}") is not None
+    }
+
+
+def effective_values(names):
+    """Read several settings from the same published override map."""
+    overrides = _EFFECTIVE
+    return {name: _effective_value(name, overrides) for name in names}
 
 
 def effective_val(name: str):
     """Return the DB override for *name* (the Config attribute), else the env default."""
+    return _effective_value(name, _EFFECTIVE)
+
+
+def _effective_value(name: str, overrides: dict):
     setting_key = _config_to_setting(name)
-    if setting_key and setting_key in _EFFECTIVE:
-        raw = _EFFECTIVE[setting_key]
+    if setting_key and setting_key in overrides:
+        raw = overrides[setting_key]
         if setting_key == "runtime_delta":
             return raw / 100.0  # percentage -> float tolerance
         if setting_key == "vip":

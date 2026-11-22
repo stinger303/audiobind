@@ -80,8 +80,8 @@ class Step4Case(Step3Case):
         """POST step 4's Test with the tracker's network replaced by ``fake`` (and no spacing wait)."""
         real = watcher.make_tracker
 
-        def factory():
-            client = real()
+        def factory(route):
+            client = real(route)
             client.transport = fake
             client.limiter = tracker.RateLimiter(spacing=0.0)
             return client
@@ -224,8 +224,8 @@ class TestTheTest(Step4Case):
         real = watcher.make_tracker
         waits = []
 
-        def factory():
-            client = real()
+        def factory(route):
+            client = real(route)
             client.transport = fake
             client.limiter.wait = lambda: waits.append(True)
             return client

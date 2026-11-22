@@ -25,11 +25,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 
-from . import tracker_route
-
-from . import __version__, markers
+from . import __version__, markers, tracker_route
 from .matching import adaptation_label, series_positions
 from .util import clean, norm, sim
 
@@ -606,6 +605,13 @@ class TrackerBackoff(TrackerError):
     """Refused locally: the tracker is in backoff, so no request was sent."""
 
 
+class TrackerRouteChanged(TrackerError):
+    """The settings changed after the route was checked."""
+
+
+route_check = ContextVar("tracker_route_check", default=None)
+
+
 def authorized_url(url: str, endpoints: Endpoints) -> bool:
     """True only for the two endpoints configured for automation: the search URL (exactly, or with
     a query string when the search method is GET) and the download URL with its id parameter."""
@@ -737,6 +743,13 @@ class TrackerClient:
             if remaining > 0:
                 raise TrackerBackoff(f"tracker backoff - next request allowed in {int(remaining) + 1}s")
             self.limiter.wait()
+            check = route_check.get()
+            if check is not None:
+                try:
+                    check()
+                except TrackerRouteChanged:
+                    self.limiter.done()
+                    raise
             self.requests += 1
             try:
                 status, headers, body = self.transport(method, url, data, self._headers(extra), self.TIMEOUT)

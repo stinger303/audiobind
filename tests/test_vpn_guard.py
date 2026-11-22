@@ -357,6 +357,32 @@ class GuardCase(WatcherCase):
 
 
 class TestGuardInTheWatcher(GuardCase):
+    def test_route_change_during_probe_aborts_before_search(self):
+        self.fake_tracker(answer(entry(1, "Project Hail Mary")))
+
+        def probe(proxy):
+            self.assertEqual(proxy, "http://vpn:8888")
+            CONFIG.tracker_proxy = "http://different-vpn:8888"
+            return VPN
+
+        with mock.patch.object(egress, "probe", probe):
+            summary = self.cycle()
+        self.assertEqual(self.transport.calls, [])
+        self.assertIn("routing settings changed", summary["error"])
+
+    def test_route_change_while_waiting_for_rate_limiter_aborts_before_search(self):
+        client = self.fake_tracker(NOTHING)
+
+        def change_route():
+            CONFIG.tracker_proxy = "http://different-vpn:8888"
+
+        with mock.patch.object(egress, "probe", return_value=VPN), \
+                mock.patch.object(client.limiter, "wait", side_effect=change_route):
+            summary = self.cycle()
+        self.assertEqual(self.transport.calls, [])
+        self.assertEqual(summary["searched"], 0)
+        self.assertEqual(summary["egress_guard"], "changed")
+
     def test_blocked_refuses_with_zero_tracker_calls(self):
         summary, probes = self.run_cycle(HOME, answer(entry(1, "Project Hail Mary")))
         self.assertEqual(self.transport.calls, [], "not one tracker request")

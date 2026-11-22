@@ -363,16 +363,22 @@ def test_tracker(state, query: str = "") -> dict:
                 "message": f"Fill in these first: {', '.join(missing)}. Nothing was sent to your tracker."}
     # the guard is consulted only when armed: unarmed it answers "off" without a probe, but it also clears the
     # watcher_egress record, which would wipe the address step 3 just found
+    route = watcher.capture_route()
     verdict, observed = "off", ""
-    if watcher._setting("tracker_home_ip") or watcher._setting("tracker_expected_egress_ip"):
-        verdict, _reason, observed = watcher.WATCHER._egress_guard(state)
+    if route.settings["tracker_home_ip"] or route.settings["tracker_expected_egress_ip"]:
+        verdict, reason, observed = watcher.WATCHER._egress_guard(state, route)
+        if verdict == "changed":
+            return {"ok": False, "sent": False, "message": reason}
     if verdict in ("blocked", "unknown"):
         return {"ok": False, "sent": False, "message": _guard_refusal(state, verdict, observed)}
     title = watcher.clean_test_query(query)
-    client = watcher.WATCHER.client()
+    client = watcher.WATCHER.client(route)
     before = client.requests
     try:
-        found = client.search(title)
+        with route.checked():
+            found = client.search(title)
+    except tracker.TrackerRouteChanged as exc:
+        return {"ok": False, "sent": False, "message": str(exc)}
     except tracker.TrackerBackoff:
         wait = client.backoff.remaining()
         return {"ok": False, "sent": False, "message": (
@@ -382,7 +388,7 @@ def test_tracker(state, query: str = "") -> dict:
         sent = client.requests > before
         status = int(getattr(exc, "status", 0) or 0)
         return {"ok": False, "sent": sent, "message": _tracker_failure(
-            status, sent, bool(watcher._setting("tracker_proxy")), client.backoff.remaining())}
+            status, sent, bool(route.settings["tracker_proxy"]), client.backoff.remaining())}
     except Exception:  # noqa: BLE001 - anything else is "no usable answer"
         return {"ok": False, "sent": client.requests > before,
                 "message": "Audiobind could not reach your tracker. Try again in a minute."}

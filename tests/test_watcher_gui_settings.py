@@ -414,7 +414,7 @@ class TestLiveEffect(WatcherSettingsCase):
     def test_a_saved_tracker_setting_builds_a_new_client_keeping_pacing_and_backoff(self):
         built = []
 
-        def make():
+        def make(route):
             built.append(FakeTracker())
             return built[-1]
 

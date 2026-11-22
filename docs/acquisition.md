@@ -321,6 +321,9 @@ There are two checks, and you can use either or both:
 
 The allowlist is the stronger one: the denylist only catches the one address you listed, while the allowlist also catches a VPN that reconnected on a different exit address, a proxy that changed, or any other surprise. A tracker session is often tied to one IP, so pinning the address turns a silent session break into a loud refusal. The allowlist can be set as the environment variable or in **Settings > Watcher** ("Only reach the tracker from one IP"); the setting takes effect on the next cycle, with no restart, and leaving it empty skips the check.
 
+Each cycle and tracker test uses the same saved route for the address check and tracker requests.
+If the routing settings change during the check, start a new cycle or test to verify the new route.
+
 Both are optional. With neither set, Audiobind makes no lookup at all. If both are set, a home-IP match is reported with the home reason first; any other address that is not the expected one is reported as "the tracker would see X, but this installation only allows Y".
 
 To arm the denylist, set `TRACKER_HOME_IP` to your home connection's public IP address (what your ISP gave you;

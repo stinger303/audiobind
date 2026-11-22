@@ -32,6 +32,11 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from uuid import uuid4
 
 from . import egress, ipupdate, qbit, tracker
 from .clients.base import ClientError, DownloadClient
@@ -40,6 +45,7 @@ from .config import (
     DOWNLOAD_CLIENTS,
     WATCHER_REQUIRED,
     effective_val,
+    effective_values,
     set_effective,
     watch_interval_min,
     watch_max_incomplete,
@@ -138,14 +144,21 @@ def qbit_url() -> str:
 
 
 # the network, behind two factories tests replace
-def make_tracker() -> tracker.TrackerClient:
+def make_tracker(route: TrackerRoute | None = None) -> tracker.TrackerClient:
+    settings = (route or capture_route()).settings
     endpoints = tracker.Endpoints.build(
-        _setting("tracker_url"), _setting("tracker_search_path"), _setting("tracker_download_path"),
-        search_method=_setting("tracker_search_method"), download_param=_setting("tracker_download_param"),
-        freeleech_param=_setting("tracker_freeleech_param"), search_category=_setting("tracker_search_category"),
-        search_body=_setting("tracker_search_body"), search_encoding=_setting("tracker_search_encoding"))
-    return tracker.TrackerClient(_setting("tracker_session"), endpoints, _setting("tracker_cookie_name"),
-                                 proxy=_setting("tracker_proxy"), user_agent=_setting("tracker_user_agent"))
+        settings["tracker_url"],
+        settings["tracker_search_path"],
+        settings["tracker_download_path"],
+        search_method=settings["tracker_search_method"],
+        download_param=settings["tracker_download_param"],
+        freeleech_param=settings["tracker_freeleech_param"],
+        search_category=settings["tracker_search_category"],
+        search_body=settings["tracker_search_body"],
+        search_encoding=settings["tracker_search_encoding"],
+    )
+    return tracker.TrackerClient(settings["tracker_session"], endpoints, settings["tracker_cookie_name"],
+                                 proxy=settings["tracker_proxy"], user_agent=settings["tracker_user_agent"])
 
 
 def make_ip_transport():
@@ -222,11 +235,41 @@ TRACKER_CLIENT_SETTINGS = (
 )
 
 
-def _client_settings_digest() -> str:
-    """A digest of the tracker client's settings (so the session is not kept a second time in clear)."""
+ROUTE_SETTINGS = (*TRACKER_CLIENT_SETTINGS, "tracker_home_ip", "tracker_expected_egress_ip")
+
+
+def _route_settings():
+    return {name: str(value or "") for name, value in effective_values(ROUTE_SETTINGS).items()}
+
+
+@dataclass(frozen=True)
+class TrackerRoute:
+    settings: Mapping[str, str] = field(repr=False)
+    id: str
+
+    def check(self):
+        if self.settings != _route_settings():
+            raise tracker.TrackerRouteChanged("tracker routing settings changed during the check; try again")
+
+    @contextmanager
+    def checked(self):
+        self.check()
+        token = tracker.route_check.set(self.check)
+        try:
+            yield
+        finally:
+            tracker.route_check.reset(token)
+
+
+def capture_route() -> TrackerRoute:
+    return TrackerRoute(MappingProxyType(_route_settings()), uuid4().hex)
+
+
+def _client_settings_digest(route: TrackerRoute) -> str:
+    """Identify the client settings without retaining a second cleartext session."""
     import hashlib
 
-    joined = "\x1f".join(_setting(name) for name in TRACKER_CLIENT_SETTINGS)
+    joined = repr(tuple(route.settings[name] for name in TRACKER_CLIENT_SETTINGS))
     return hashlib.sha256(joined.encode("utf-8", "replace")).hexdigest()
 
 
@@ -385,12 +428,14 @@ def probe_tracker(state, query: str = "") -> tuple[bool, str]:
     missing = missing_settings()
     if missing:
         return False, f"not set yet: {', '.join(missing)}"
-    verdict, reason, _observed = WATCHER._egress_guard(state)
-    if verdict in ("blocked", "unknown"):
+    route = capture_route()
+    verdict, reason, _observed = WATCHER._egress_guard(state, route)
+    if verdict in ("blocked", "unknown", "changed"):
         return False, reason
     title = clean_test_query(query)
     try:
-        found = WATCHER.client().search(title)
+        with route.checked():
+            found = WATCHER.client(route).search(title)
     except tracker.TrackerError as exc:
         return False, str(exc)
     except Exception as exc:  # noqa: BLE001
@@ -631,6 +676,7 @@ class Watcher:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._worker: threading.Thread | None = None
+        self._client_lock = threading.Lock()
         self._client: tracker.TrackerClient | None = None
         # the client client() built itself, and a digest of the settings it was built from: a saved
         # change to any of them builds a fresh client on next use (a client handed in from outside,
@@ -686,24 +732,26 @@ class Watcher:
                 thread.join(timeout)
         self._thread = None
 
-    def client(self) -> tracker.TrackerClient:
+    def client(self, route: TrackerRoute | None = None) -> tracker.TrackerClient:
         """One client for every cycle: one rate limiter and one backoff, whoever triggers.
 
         The client holds the tracker settings it was built with, so a value saved on the Settings
         page (a new session, URL, cookie name...) builds a fresh one on next use. The rate limiter and
         the backoff carry over: changing a setting never buys an extra request or ends a backoff.
         """
-        digest = _client_settings_digest()
-        if self._client is None:
-            self._client = self._built = make_tracker()
-            self._built_from = digest
-        elif self._client is self._built and digest != self._built_from:
-            fresh = make_tracker()
-            fresh.limiter, fresh.backoff = self._client.limiter, self._client.backoff
-            self._client = self._built = fresh
-            self._built_from = digest
-            log.info("wishlist watcher: tracker settings changed - using them from this request on")
-        return self._client
+        route = route or capture_route()
+        digest = _client_settings_digest(route)
+        with self._client_lock:
+            if self._client is None:
+                self._client = self._built = make_tracker(route)
+                self._built_from = digest
+            elif self._client is self._built and digest != self._built_from:
+                fresh = make_tracker(route)
+                fresh.limiter, fresh.backoff = self._client.limiter, self._client.backoff
+                self._client = self._built = fresh
+                self._built_from = digest
+                log.info("wishlist watcher: tracker settings changed - using them from this request on")
+            return self._client
 
     def settings_changed(self, state) -> bool:
         """Called after the Settings page saves. In the daemon, a save that completes the watcher's
@@ -776,6 +824,7 @@ class Watcher:
             return {"skipped": reason}
         if self.paused(state):
             return {"skipped": "paused"}
+        route = capture_route()
         started = time.time()
         summary = {"at": started, "trigger": trigger, "watcher_dry_run": CONTROL.watcher_dry_run, "searched": 0, "sent": 0,
                    "would_send": 0, "not_found": 0, "skipped_budget": 0, "errors": 0, "resolved": 0, "error": ""}
@@ -790,10 +839,12 @@ class Watcher:
             summary["downloaded"] = self._mark_downloaded(state)
         except Exception:  # noqa: BLE001 - a progress check must never end the cycle
             log.exception("wishlist watcher: download progress check failed")
-        verdict, reason, observed = self._egress_guard(state)
+        verdict, reason, observed = self._egress_guard(state, route)
         summary["egress_guard"] = verdict
         if observed:
             summary["egress_ip"] = observed
+        if verdict == "changed":
+            return self._refuse(state, summary, reason, trigger)
         if ip_updater_mode() != "off" and verdict != "off":
             # after the guard, never instead of it: the verdict above stands whatever this says
             try:
@@ -802,7 +853,7 @@ class Watcher:
                 log.exception("allowed-IP updater: drift check failed")
         if verdict in ("blocked", "unknown"):
             return self._refuse(state, summary, reason, trigger)
-        client = self.client()
+        client = self.client(route)
         holder: dict = {}
         budget = self._budget(state, holder)
         try:
@@ -816,7 +867,13 @@ class Watcher:
                     if self._stop.is_set() or self.paused():
                         break
                     try:
-                        outcome = self._one(state, client, row, summary["watcher_dry_run"], holder, budget)
+                        with route.checked():
+                            outcome = self._one(
+                                state, client, row, summary["watcher_dry_run"], holder, budget)
+                    except tracker.TrackerRouteChanged as exc:
+                        summary["egress_guard"] = "changed"
+                        summary["error"] = str(exc)
+                        break
                     except tracker.TrackerError as exc:
                         summary["error"] = str(exc)
                         break
@@ -932,25 +989,37 @@ class Watcher:
                 log.info("wishlist watcher: %s (%s) finished downloading", row["asin"], row["title"])
         return moved
 
-    def _egress_guard(self, state) -> tuple[str, str, str]:
+    def _egress_guard(self, state, route: TrackerRoute | None = None) -> tuple[str, str, str]:
         """(verdict, reason, observed ip), before any tracker request. Not armed = no probe at all."""
-        home = _setting("tracker_home_ip")
-        expected = _setting("tracker_expected_egress_ip")
+        route = route or capture_route()
+        home = route.settings["tracker_home_ip"]
+        expected = route.settings["tracker_expected_egress_ip"]
+        proxy = route.settings["tracker_proxy"]
+        try:
+            route.check()
+        except tracker.TrackerRouteChanged as exc:
+            return "changed", str(exc), ""
         if not home and not expected:
             state.set_meta(META_EGRESS, {})
+            log.info("tracker route %s: %s, IP guard off", route.id, "proxy" if proxy else "direct")
             return "off", egress.judge("", "")[1], ""
         observed, why = "", ""
         try:
-            observed = egress.probe(_setting("tracker_proxy"))
+            observed = egress.probe(proxy)
         except Exception as exc:  # noqa: BLE001 - whatever went wrong, the tracker stays untouched
             why = str(exc) or type(exc).__name__
+        try:
+            route.check()
+        except tracker.TrackerRouteChanged as exc:
+            return "changed", str(exc), observed
         verdict, reason = egress.judge(home, observed, expected)
         if verdict == "unknown":
             reason = f"the egress IP could not be verified ({why}) - the watcher will not contact the tracker until it can"
         elif verdict == "blocked":
             reason += " - the watcher will not contact the tracker from here. Update the allowed address in Settings, or start the VPN container / fix TRACKER_PROXY"
         else:
-            log.info("tracker egress: %s", observed)
+            log.info("tracker egress: %s (route %s approved via %s, home %s, pinned %s)",
+                     observed, route.id, "proxy" if proxy else "direct", home or "unset", expected or "unset")
         state.set_meta(META_EGRESS, {"ip": observed, "at": time.time(), "reason": reason if verdict == "unknown" else ""})
         return verdict, reason, observed
 
@@ -1017,7 +1086,11 @@ class Watcher:
         asin, title = row["asin"], row["title"]
         author = row["authors"][0] if row.get("authors") else ""
         holder["searched"] = True
-        torrents = client.search(row.get("search_title") or title, author)  # a TrackerError ends the cycle; the row is untouched
+        try:
+            torrents = client.search(row.get("search_title") or title, author)
+        except tracker.TrackerRouteChanged:
+            holder["searched"] = False
+            raise
         pick, why = tracker.select_candidate(row, torrents, vip=bool(_setting("tracker_vip")), can_spend=client.can_spend)
         when = _stamp()
         if pick is None:
@@ -1056,6 +1129,8 @@ class Watcher:
         log.info("wishlist watcher: %s (%s) - downloading %s", asin, title, decision)
         try:
             torrent = client.download(pick.tid, use_credit)
+        except tracker.TrackerRouteChanged:
+            raise
         except tracker.TrackerError as exc:
             state.wishlist_set_status(
                 asin, WISHLIST_ERROR, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
