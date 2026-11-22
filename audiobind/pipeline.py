@@ -145,6 +145,11 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
             f"catalog hit is {audit.match.unasked_adaptation} and your folder does not say so - "
             "not graded HIGH"
         )
+    if audit.match.product and audit.match.missing_adaptation:
+        audit.notes.append(
+            f"your folder says {audit.match.missing_adaptation} and the catalog hit is not one - "
+            "not graded HIGH"
+        )
     if audit.match.product and audit.match.edition_conflict:
         audit.notes.append(f"{audit.match.edition_conflict} - graded LOW, not converted automatically")
     if audit.match.product and audit.match.veto:
@@ -869,6 +874,9 @@ def record(
                 # "a Dramatized Adaptation" etc. when the pick is an adaptation the folder never
                 # asked for (capped at MEDIUM); "" otherwise
                 "unasked_adaptation": audit.match.unasked_adaptation,
+                # the adaptation the folder asked for when the pick is a plain edition (capped at
+                # MEDIUM too); "" otherwise
+                "missing_adaptation": audit.match.missing_adaptation,
                 "edition_conflict": audit.match.edition_conflict,
                 # what the pick contradicts in the folder's own words (another series volume);
                 # graded LOW. "" otherwise

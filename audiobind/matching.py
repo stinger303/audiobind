@@ -58,6 +58,10 @@ class Match:
     #: cast, audio drama - see adaptation_label) and nothing the folder said asks for one: the
     #: phrase naming it ("a Dramatized Adaptation"). grade() never says HIGH for it
     unasked_adaptation: str = ""
+    #: the other direction: the folder names an adaptation ("(Full Cast)") and the chosen product
+    #: carries no adaptation marker - the phrase the folder asked for ("a full-cast production").
+    #: grade() never says HIGH for it either
+    missing_adaptation: str = ""
     edition_conflict: str = ""
     #: set when the chosen product contradicts something the folder states explicitly (another
     #: series position: "catalog hit is Book 1 of its series and your folder says Book 2"): every
@@ -444,6 +448,16 @@ def unasked_adaptation(product: Product, wanted: tuple[str, ...]) -> str:
     return label
 
 
+def missing_adaptation(product: Product, wanted: tuple[str, ...]) -> str:
+    """``adaptation_label`` of ``wanted`` (the folder's own words) when the product's title /
+    subtitle carries no adaptation marker at all, else "": the folder asked for a production the
+    pick is not. The mirror of ``unasked_adaptation`` - any marker on the product counts."""
+    label = adaptation_label(*wanted)
+    if not label or adaptation_label(product.title, product.subtitle):
+        return ""
+    return label
+
+
 #: margins below this are what grade() acts on (0.05 HIGH, 0.10 title-only MEDIUM), so only
 #: rivals this close to the best are worth a second-source check
 CORROBORATION_WINDOW = 0.10
@@ -644,6 +658,7 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
         corroborated=best["corroborated"],
         title_window_coverage=round(coverage, 3),
         unasked_adaptation=unasked_adaptation(best["product"], wanted),
+        missing_adaptation=missing_adaptation(best["product"], wanted),
         edition_conflict=best.get("edition_conflict", ""),
         veto=best.get("veto", ""),
     )
@@ -903,8 +918,10 @@ def grade(match: Match) -> str:
     # plain folder) is the right book in a different production: capped at MEDIUM, like a foreign
     # hit. At the default AUTO_CONVERT=high a MEDIUM waits for the operator's click, so a silent
     # wrong conversion becomes a visible choice. Not LOW: title and author genuinely match, so it
-    # stays a useful suggestion. A folder that names the adaptation is not capped
-    adaptation = bool(match.unasked_adaptation)
+    # stays a useful suggestion. A folder that names the adaptation is not capped. The other
+    # direction costs the same: a folder that names an adaptation and a plain pick
+    # (missing_adaptation) is the right book in the wrong production too - MEDIUM at most
+    adaptation = bool(match.unasked_adaptation or match.missing_adaptation)
     if match.author_known:
         if (title >= 0.88 and author >= 0.85 and match.margin >= 0.05 and not window_only
                 and not foreign and not adaptation):

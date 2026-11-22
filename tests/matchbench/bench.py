@@ -812,7 +812,7 @@ def grade_with(match: matching.Match, gates: dict) -> str:
     foreign = matching.language_penalized(match.language)  # blank is not English (F1)
     title, author = match.title_sim, match.author_sim
     window_only = match.title_window_coverage < matching.MIN_HIGH_WINDOW_COVERAGE
-    adaptation = bool(match.unasked_adaptation)
+    adaptation = bool(match.unasked_adaptation or match.missing_adaptation)
     if match.author_known:
         if (title >= gates["high_title"] and author >= gates["high_author"] and match.margin >= gates["high_margin"]
                 and not window_only and not foreign and not adaptation):
@@ -841,7 +841,7 @@ def limiting_reasons(match: matching.Match) -> list[str]:
         reasons.append("veto")
     if matching.language_penalized(match.language):
         reasons.append("foreign")
-    if match.unasked_adaptation:
+    if match.unasked_adaptation or match.missing_adaptation:
         reasons.append("adaptation")
     if match.title_window_coverage < matching.MIN_HIGH_WINDOW_COVERAGE:
         reasons.append("window-only")
