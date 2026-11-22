@@ -183,8 +183,8 @@ class OrphanReclaimTests(MixedCase):
         os.utime(parts, (old, old))
         return parts
 
-    def test_a_stranded_parts_directory_is_reclaimed_on_the_next_conversion(self):
-        """(c) a hard-killed run's PCM, under another book's work directory, goes at the next start."""
+    def test_a_stranded_parts_directory_is_left_alone_on_the_next_conversion(self):
+        """The new owner cleans only the scratch directory for its own attempt."""
         legacy = self.stranded("deadbeef")  # no owner file: a run from before ownership locks
         unowned = self.stranded("feedface", owner=True)  # an owner file nobody holds: the run died
         audit = pipeline.Audit(unit=self.unit)
@@ -204,9 +204,9 @@ class OrphanReclaimTests(MixedCase):
             self.assertRaises(RuntimeError),
         ):
             pipeline.convert_unit(audit, state=state, log=lambda *_: None)
-        self.assertFalse(legacy.exists())
-        self.assertFalse(unowned.exists())
-        self.assertFalse(unowned.with_name("parts.owner").exists())
+        self.assertTrue(legacy.exists())
+        self.assertTrue(unowned.exists())
+        self.assertTrue(unowned.with_name("parts.owner").exists())
 
     def test_parts_a_running_conversion_holds_are_left_alone(self):
         held = self.stranded("c0ffee00", owner=True)
@@ -240,10 +240,10 @@ class OrphanReclaimTests(MixedCase):
     def test_a_missing_work_root_is_nothing_to_reclaim(self):
         self.assertEqual(encode.reclaim_stale_parts(self.root / "nowhere"), [])
 
-    def test_the_daemon_reclaims_at_startup(self):
+    def test_the_daemon_leaves_other_attempts_alone_at_startup(self):
         source = pathlib.Path(pipeline.__file__).with_name("daemon.py").read_text(encoding="utf-8")
         run_body = source.split("def run()", 1)[1]
-        self.assertIn("reclaim_stale_parts", run_body.split("web.serve", 1)[0])
+        self.assertNotIn("reclaim_stale_parts", run_body.split("web.serve", 1)[0])
 
 
 if __name__ == "__main__":

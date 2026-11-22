@@ -7,7 +7,7 @@ import logging
 import os
 import time
 
-from . import encode, ingest, web
+from . import ingest, web
 from . import series as series_mod
 from . import watcher as watcher_mod
 from .config import CONFIG, deprecated_env_lines, effective_val, rejected_env_lines, set_effective
@@ -262,11 +262,9 @@ def run() -> None:
     CONFIG.ensure_dirs()
     # WEBAPI-02c: a Delete interrupted between its renames and the removal is undone first, so the
     # first scan finds every book where its row says it is
-    web.recover_deletes(web.delete_journal(state))
-    recover_publications(state)
-    # CORE-01c: PCM parts a hard-killed conversion left on the scratch disk
-    for stale in encode.reclaim_stale_parts():
-        log.info("reclaimed stranded PCM parts: %s", stale)
+    with state.layout_writer(blocking=True):
+        web.recover_deletes(web.delete_journal(state))
+        recover_publications(state)
     restore_controls(state)
     log.info(
         "audiobind daemon: %s -> %s every %d min",

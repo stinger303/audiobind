@@ -215,7 +215,7 @@ class WebApi02cStartupRunsTheRecoveryTests(unittest.TestCase):
         class Stop(Exception):
             pass
 
-        state = mock.Mock(path=pathlib.Path("/state/audiobind.db"))
+        state = mock.MagicMock(path=pathlib.Path("/state/audiobind.db"))
         with (
             mock.patch.object(daemon, "State", return_value=state),
             mock.patch.object(daemon.CONFIG, "ensure_dirs"),

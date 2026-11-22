@@ -2,8 +2,7 @@
 
 1. An ingest unit whose folder name matched only at LOW is also re-checked against its embedded
    tags, and the tags' match replaces the folder's only when it is genuinely better.
-2. A book's work directory has the same name in every process, and is emptied before an encode,
-   so a crashed run's leftovers are found, removed and never mistaken for new output.
+2. Every attempt has a private work directory and cleans only its own scratch files.
 4. A published file recorded on a row is honoured whatever the row's status: a re-check that ends
    in review/held keeps the output path, and no re-check encodes a duplicate into a newer layout.
 5. (Every format still encodes before anything publishes - deliberate.) A later format that
@@ -151,34 +150,30 @@ class TestWorkDir(PipelineCase):
         ):
             return pipeline.convert_unit(audit, state=self.state, log=lambda *_: None)
 
-    def test_the_same_book_gets_the_same_directory_on_every_call(self):
+    def test_the_same_book_gets_a_private_directory_on_every_call(self):
         self.add_torrent()
         self.convert()
         for out in CONFIG.output_root.rglob("*.m4b"):
             out.unlink()  # so the second call encodes again instead of "already published"
         self.convert()
         first, second = (call["work_dir"].parent for call in self.encode_calls)
-        self.assertEqual(first, second)
-        self.assertEqual(first, pipeline.work_dir_for(ingest.find_any_unit(KEY)))
-        self.assertFalse(first.exists())  # and the finally still removes it
+        self.assertNotEqual(first, second)
+        self.assertFalse(first.exists())
+        self.assertFalse(second.exists())
 
-    def test_the_name_does_not_depend_on_the_process_hash_seed(self):
-        code = (
-            "import sys; from audiobind import pipeline; from audiobind.units import BookUnit;"
-            "u = BookUnit(path='', name='', parent='', parts=[], rel_path=sys.argv[1], source='ingest');"
-            "print(pipeline.work_dir_for(u).name)"
-        )
+    def test_independent_processes_get_unique_names(self):
+        code = "from audiobind import pipeline; print(pipeline.attempt_work_dir().name)"
         names = set()
         for seed in ("1", "2", "12345"):
             env = dict(os.environ, PYTHONHASHSEED=seed)
-            out = subprocess.run([sys.executable, "-c", code, "Some Book"], cwd=REPO, env=env,
+            out = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env,
                                  capture_output=True, text=True, check=True)
             names.add(out.stdout.strip())
-        self.assertEqual(len(names), 1, names)
+        self.assertEqual(len(names), 3, names)
 
-    def test_a_crashed_runs_leftovers_are_gone_before_the_new_encode(self):
+    def test_a_crashed_runs_leftovers_are_left_alone_by_the_new_encode(self):
         self.add_torrent()
-        work = pipeline.work_dir_for(ingest.find_any_unit(KEY))
+        work = pipeline.attempt_work_dir()
         stale = work / "m4b" / "output.m4b"
         stale.parent.mkdir(parents=True)
         stale.write_bytes(b"half an encode from before the crash")
@@ -192,8 +187,8 @@ class TestWorkDir(PipelineCase):
 
         self.fake_encode = encode_checking
         self.convert()
-        self.assertEqual(seen, {"stale_present": False, "work_dir_present": False})
-        self.assertFalse(work.exists())
+        self.assertEqual(seen, {"stale_present": True, "work_dir_present": True})
+        self.assertEqual(stale.read_bytes(), b"half an encode from before the crash")
 
 
 class TestPublishedFileIsHonoured(PipelineCase):

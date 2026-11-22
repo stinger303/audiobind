@@ -14,7 +14,7 @@ from unittest import mock
 from audiobind import catalog, encode, ingest, matching, pipeline, watcher, web
 from audiobind.control import CONTROL
 from audiobind.probe import Probe
-from audiobind.state import State, UnitState
+from audiobind.state import State, UnitState, WriterBusy
 
 try:
     from live import LiveServerCase, audited_row, published_row
@@ -347,14 +347,11 @@ class WebApi01DeleteVersusConversionTests(DeleteCase):
         finally:
             CONTROL.end_audit(self.REL)
 
-    def test_a_conversion_holding_the_encoder_makes_the_delete_wait(self):
-        self.assertTrue(pipeline.CONVERT_LOCK.acquire(blocking=False))
-        try:
+    def test_a_conversion_holding_the_book_claim_blocks_delete(self):
+        with self.state.unit_writer(self.REL):
             status, body = self.delete()
-        finally:
-            pipeline.CONVERT_LOCK.release()
         self.assert_untouched(status, body)
-        self.assertIn("try again", body["error"].lower())
+        self.assertIn("another run is working on this book", body["error"])
 
     def test_a_normal_delete_still_removes_source_output_and_row(self):
         status, body = self.delete()
@@ -363,8 +360,8 @@ class WebApi01DeleteVersusConversionTests(DeleteCase):
         self.assertFalse(self.src.exists())
         self.assertFalse(self.out_book.exists())
         self.assertIsNone(self.state.get(self.REL))
-        self.assertTrue(pipeline.CONVERT_LOCK.acquire(blocking=False))  # never left held
-        pipeline.CONVERT_LOCK.release()
+        with self.state.unit_writer(self.REL), self.state.publication_lock(blocking=False):
+            self.assertIsNone(self.state.get(self.REL))
 
 
 class WebApi02DeleteVersusLayoutMoveTests(DeleteCase):
@@ -394,7 +391,7 @@ class WebApi02DeleteVersusLayoutMoveTests(DeleteCase):
             self.assertTrue((self.moved / "Book.m4b").exists())
             self.assertIsNotNone(self.state.get(self.REL))
 
-    def test_the_output_is_moved_aside_under_the_encoder_lock(self):
+    def test_the_output_is_moved_aside_under_the_publication_lock(self):
         # WEBAPI-02b: the published folder leaves its name (a rename) while the lock is held; the
         # slow removal of the renamed folder runs after it is released
         held = []
@@ -402,7 +399,10 @@ class WebApi02DeleteVersusLayoutMoveTests(DeleteCase):
 
         def rename(src, dst, *args, **kw):
             if pathlib.Path(src) == self.out_book:
-                held.append(pipeline.CONVERT_LOCK.locked())
+                with self.assertRaises(WriterBusy):
+                    with self.state.publication_lock(blocking=False):
+                        pass
+                held.append(True)
             return real_rename(src, dst, *args, **kw)
 
         with mock.patch.object(web.os, "rename", side_effect=rename):
@@ -410,7 +410,8 @@ class WebApi02DeleteVersusLayoutMoveTests(DeleteCase):
         self.assertEqual(status, 200, body)
         self.assertEqual(held, [True], "a layout move could run while the output was being moved aside")
         self.assertFalse(self.out_book.exists())
-        self.assertFalse(pipeline.CONVERT_LOCK.locked())
+        with self.state.publication_lock(blocking=False):
+            pass
 
 
 # --------------------------------------------------------------------------- STATECFG-01

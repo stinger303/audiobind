@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
-from . import library
+from . import library, pipeline
 from . import overrides as overrides_mod
 from .config import CONFIG
 from .control import CONTROL
@@ -284,7 +284,13 @@ def _write_journal(path: Path, entries: list[dict]) -> None:
 
 
 def apply(state) -> dict:
-    """Make the planned moves. Carries on past a failure; every move lands in the journal."""
+    """Make the planned moves under the exclusive layout claim."""
+    with state.layout_writer(), state.publication_lock():
+        pipeline._recover_publications(state)
+        return _apply(state)
+
+
+def _apply(state) -> dict:
     result = plan(state)
     root = Path(CONFIG.output_root).resolve()
     journal = journal_path()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import sqlite3
 import threading
@@ -236,6 +237,26 @@ class Credentials:
     version: int = 0
 
 
+WRITER_BUSY = "another run is working on this book"
+
+
+class WriterBusy(Exception):
+    def __init__(self):
+        super().__init__(WRITER_BUSY)
+
+
+@contextmanager
+def file_claim(path: Path, *, shared: bool = False, blocking: bool = False):
+    """Lock a stable inode. The kernel releases the claim when the last descriptor closes."""
+    with path.open("a") as handle:
+        operation = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+        try:
+            fcntl.flock(handle, operation if blocking else operation | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise WriterBusy() from exc
+        yield
+
+
 class State:
     def __init__(self, directory: Path):
         directory.mkdir(parents=True, exist_ok=True)
@@ -243,6 +264,7 @@ class State:
         # autocommit + a lock: several threads share this connection, and SQLite cannot nest
         # transactions on one of them ("cannot start a transaction within a transaction")
         self._lock = threading.RLock()
+        self._writer = threading.local()
         self.connection = sqlite3.connect(
             self.path, check_same_thread=False, timeout=30, isolation_level=None
         )
@@ -360,12 +382,34 @@ class State:
         self.connection.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('field_locks_v1', 'true')")
 
     # ---------------------------------------------------------------- units
+    def layout_writer(self, *, blocking: bool = False):
+        return file_claim(self.path.parent / "media-layout.lock", blocking=blocking)
+
     @contextmanager
-    def publication_lock(self):
-        """Serialize publishers and recovery across processes sharing this manifest."""
-        with (self.path.parent / "publication.lock").open("a") as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
+    def unit_writer(self, key: str):
+        """Pair a shared layout claim with an exclusive book claim."""
+        if getattr(self._writer, "unit", None) == key:
             yield
+            return
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        with (
+            file_claim(self.path.parent / "media-layout.lock", shared=True),
+            file_claim(self.path.parent / f"media-unit-{digest}.lock"),
+        ):
+            previous = getattr(self._writer, "unit", None)
+            self._writer.unit = key
+            try:
+                yield
+            finally:
+                self._writer.unit = previous
+
+    def output_writer(self, folder: Path):
+        digest = hashlib.sha256(str(folder.resolve()).encode()).hexdigest()
+        return file_claim(self.path.parent / f"media-output-{digest}.lock")
+
+    def publication_lock(self, *, blocking: bool = True):
+        """Serialize publication journal settlement across processes sharing this manifest."""
+        return file_claim(self.path.parent / "publication.lock", blocking=blocking)
 
     @contextmanager
     def _durable_publication(self):

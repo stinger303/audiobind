@@ -342,7 +342,7 @@ class TestEndpoint(LiveServerCase):
         self.assertTrue((self.out / "Author/Saga/3 - Book/Book.m4b").exists())
 
     def test_refused_while_encoding(self):
-        with web.CONVERT_LOCK:
+        with self.state.unit_writer("a"):
             status, body = self.post({"dry_run": False, "confirm": True}, path="/api/library/abs-layout")
         self.assertEqual(status, 409)
         self.assertTrue(self.src.exists())

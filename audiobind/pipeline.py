@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import errno
-import hashlib
 import json
 import os
 import shutil
@@ -21,7 +20,7 @@ from . import overrides as overrides_mod
 from .config import CONFIG, effective_auto_tiers, effective_val
 from .control import CONTROL, Stopped
 from .probe import ProbeTimeout, probe
-from .state import SOURCE_INGEST, State, UnitState
+from .state import SOURCE_INGEST, WRITER_BUSY, State, UnitState, WriterBusy
 from .units import AUDIO_EXT, BookUnit, looks_like_collection, owned_paths, unsafe_path_reason
 from .util import loads_dict, norm
 
@@ -375,11 +374,9 @@ def choose_action(
     return "merge+convert" if unit.multi_part else "convert"
 
 
-def work_dir_for(unit: BookUnit) -> Path:
-    """The book's scratch directory under WORK_DIR: the same name for the same book in every
-    process. (``hash()`` of a str is salted per process, so a restart used to pick a new name and
-    strand the old directory where nothing would ever find or delete it.)"""
-    return CONFIG.work_dir / hashlib.sha1(unit.state_key.encode("utf-8")).hexdigest()[:8]
+def attempt_work_dir() -> Path:
+    """A private scratch path for one attempt, independent of the unit's previous runs."""
+    return CONFIG.work_dir / f"attempt-{uuid.uuid4().hex}"
 
 
 def missing_beside(primary: Path) -> list[str]:
@@ -419,6 +416,11 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
     even when the output already exists; the old files are renamed aside to ``.bak-<timestamp>``
     and the verified result takes their place through the publication journal.
     """
+    with state.unit_writer(audit.unit.state_key):
+        return _convert_unit(audit, log, cancelled, heartbeat, reencode, at, state)
+
+
+def _convert_unit(audit, log, cancelled, heartbeat, reencode, at, state):
     unit, match = audit.unit, audit.match
     if not match.product:
         raise ValueError("cannot convert without a catalog match")
@@ -444,10 +446,11 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
         _refuse_uncontained([*paths.values(), at.parent / "cover.jpg", at.parent / "metadata.json"])
     out_path = paths[formats[0]]
     audit.out_path = str(out_path)
-    with CONVERT_LOCK, state.publication_lock():
-        _recover_publications(state)
-        existing = {str(path): _publication_identity(path) for path in paths.values()}
-        audit.output_collision = _output_collision(state, audit, paths.values(), existing)
+    with state.output_writer(out_path.parent), CONVERT_LOCK:
+        with state.publication_lock():
+            _recover_publications(state)
+            existing = {str(path): _publication_identity(path) for path in paths.values()}
+            audit.output_collision = _output_collision(state, audit, paths.values(), existing)
         if audit.output_collision:
             return None
         if CONTROL.deleting(unit.state_key):
@@ -461,19 +464,14 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
             for fmt in todo:
                 log(f"  [dry-run] would write {paths[fmt]}")
             return None
-        work_dir = work_dir_for(unit)
+        work_dir = attempt_work_dir()
         if todo != formats:
             log(f"  {', '.join(f for f in formats if f not in todo).upper()} already published; "
                 f"adding {', '.join(todo).upper()}")
         if cancelled is not None and cancelled():
             log("  removed from Audiobind while waiting for the encoder - not converted")
             return None
-        # CORE-01c: PCM a hard-killed join left under any book's work directory (it can be tens of GB)
-        for stale in encode.reclaim_stale_parts():
-            log(f"  reclaimed stranded PCM parts: {stale}")
-        # a crashed or restarted run leaves its work directory behind under this same name:
-        # start clean, so none of its partial files can be taken for this encode's output
-        shutil.rmtree(work_dir, ignore_errors=True)
+        work_dir.mkdir(parents=True)
         CONTROL.begin_unit(unit.state_key, title)
         CONTROL.set_heartbeat(heartbeat)
         try:
@@ -501,8 +499,10 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
             duration = results.get(formats[0], results[todo[0]]).duration
             if cancelled is not None and cancelled():
                 return None
-            return _publish_recorded(state, audit, todo, results, paths, book,
-                                     plan.chapters, duration, log)
+            with state.publication_lock():
+                _recover_publications(state)
+                return _publish_recorded(state, audit, todo, results, paths, book,
+                                         plan.chapters, duration, log)
         finally:
             # a stopped encode leaves only the work directory, which is deleted here, so the
             # library never sees a partial file and the book is simply retried next scan
@@ -617,7 +617,7 @@ def _recover_publications(state: State, current: int | None = None) -> bool:
 
 
 def recover_publications(state: State) -> None:
-    with CONVERT_LOCK, state.publication_lock():
+    with state.publication_lock():
         _recover_publications(state)
 
 
@@ -1145,10 +1145,14 @@ def process_unit(
     reencode: bool = False,
 ) -> Audit:
     if not CONTROL.begin_audit(unit.state_key, manual=manual):
-        log("  another action has this book - skipped")
+        log(f"  {WRITER_BUSY} - skipped")
         return Audit(unit=unit, action="busy")
     try:
-        return _process_unit(state, unit, log, force, manual, reencode)
+        with state.unit_writer(unit.state_key):
+            return _process_unit(state, unit, log, force, manual, reencode)
+    except WriterBusy as exc:
+        log(f"  {exc} - skipped")
+        return Audit(unit=unit, action="busy")
     finally:
         CONTROL.end_audit(unit.state_key)
 
@@ -1210,7 +1214,7 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
             # failed, and the next ordinary scan checks it again
             log(f"  held: {exc}")
             rec("held", note=unmeasured_held_note(str(exc)), unmeasured=True)
-        except PublicationRecoveryError:
+        except (PublicationRecoveryError, WriterBusy):
             raise
         except Exception as exc:  # noqa: BLE001 - one book must not stop a scan
             log(f"  FAILED: {exc}")

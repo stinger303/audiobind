@@ -11,6 +11,7 @@ import unittest
 from unittest import mock
 
 from audiobind import abs_layout, pipeline, web
+from audiobind.state import WriterBusy
 
 try:
     from test_d1_data_safety import DeleteCase, PublishCase
@@ -243,7 +244,7 @@ class Core04aDeleteRemovesOnlyWhatAudiobindWroteTests(DeleteCase):
 
 # --------------------------------------------------------------------------- WEBAPI-02b
 class WebApi02bSlowRemovalOutsideTheLockTests(DeleteCase):
-    """Delete decides under CONVERT_LOCK and moves its targets aside there (a rename); the slow
+    """Delete decides under the publication lock and moves its targets aside there (a rename); the slow
     removal and the HTTP answer happen after the lock is released."""
 
     def leftovers(self):
@@ -255,20 +256,24 @@ class WebApi02bSlowRemovalOutsideTheLockTests(DeleteCase):
         real_rename, real_remove, real_send = web.os.rename, web.remove_trashed, web.Handler._send
         renamed_locked, free_while_removing, sent_locked = [], [], []
 
+        def publication_locked():
+            try:
+                with self.state.publication_lock(blocking=False):
+                    return False
+            except WriterBusy:
+                return True
+
         def rename(src, dst, *args, **kw):
             if pathlib.Path(src) in (self.src, self.out_book):
-                renamed_locked.append(pipeline.CONVERT_LOCK.locked())
+                renamed_locked.append(publication_locked())
             return real_rename(src, dst, *args, **kw)
 
         def slow_remove(path, *args, **kw):
-            got = pipeline.CONVERT_LOCK.acquire(blocking=False)  # an encode could start right now
-            if got:
-                pipeline.CONVERT_LOCK.release()
-            free_while_removing.append(got)
+            free_while_removing.append(not publication_locked())
             return real_remove(path, *args, **kw)
 
         def send(handler, *args, **kw):
-            sent_locked.append(pipeline.CONVERT_LOCK.locked())
+            sent_locked.append(publication_locked())
             return real_send(handler, *args, **kw)
 
         with (
@@ -305,7 +310,8 @@ class WebApi02bSlowRemovalOutsideTheLockTests(DeleteCase):
         self.assertTrue((self.out_book / "Book.m4b").exists())
         self.assertEqual(self.leftovers(), [])
         self.assertIsNotNone(self.state.get(self.REL))
-        self.assertFalse(pipeline.CONVERT_LOCK.locked())
+        with self.state.publication_lock(blocking=False):
+            pass
 
 
 if __name__ == "__main__":

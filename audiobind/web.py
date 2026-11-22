@@ -13,6 +13,7 @@ import socket
 import sys
 import threading
 import time
+from contextlib import ExitStack
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
@@ -70,8 +71,8 @@ from .control import CONTROL
 from .covers import resolve as resolve_cover
 from .covers import valid_asin
 from . import pipeline as pipeline_mod
-from .pipeline import CONVERT_LOCK, process_unit
-from .state import LOCKABLE_FIELDS, SOURCE_INGEST, WISHLIST_REQUEUEABLE, key_source
+from .pipeline import process_unit
+from .state import LOCKABLE_FIELDS, SOURCE_INGEST, WISHLIST_REQUEUEABLE, WriterBusy, file_claim, key_source
 from .util import loads_dict, redact_url
 
 _log = logging.getLogger("audiobind").info
@@ -7338,11 +7339,6 @@ def run_manual(state, unit, force: bool = False, slot=None, reencode: bool = Fal
             slot.release()
 
 
-#: a delete that finds the encoder lock taken: a conversion or a layout move is running
-DELETE_BUSY = (b'{"error":"a book is being converted or the library layout is being changed - '
-               b'nothing was deleted. Try again when it finishes."}')
-
-
 OUTPUT_CHANGED = (b'{"error":"The published folder changed on disk. '
                   b'Please re-check the book before deleting it."}')
 
@@ -7411,7 +7407,8 @@ def removal_unsafe(target: Path, root: Path, kind: str) -> str:
 #: WEBAPI-02c: the file in the state directory where Delete records where each target went
 #: (source path -> trash name) before the first rename, so a crash mid-delete can be undone
 DELETE_JOURNAL = "delete-intent.json"
-_JOURNAL_LOCK = threading.Lock()
+def _delete_journal_lock(journal: Path):
+    return file_claim(journal.with_suffix(".lock"), blocking=True)
 
 
 def delete_journal(state) -> Path | None:
@@ -7465,7 +7462,7 @@ def settle_journal(journal: Path | None, moved: dict[Path, Path]) -> None:
         return
     done = {(str(path), str(trash)) for path, trash in moved.items() if not os.path.lexists(trash)}
     try:
-        with _JOURNAL_LOCK:
+        with _delete_journal_lock(journal):
             entries = _journal_entries(journal)
             kept = [e for e in entries if (e["path"], e["trash"]) not in done]
             if len(kept) != len(entries):
@@ -7480,7 +7477,7 @@ def recover_deletes(journal: Path) -> list[Path]:
     is logged; one that cannot go back (something new is at its name) stays listed and is logged
     again on the next start. Running it twice changes nothing. Returns the paths put back."""
     log = logging.getLogger("audiobind")
-    with _JOURNAL_LOCK:
+    with _delete_journal_lock(journal):
         try:
             entries = _journal_entries(journal)
         except (OSError, ValueError) as exc:
@@ -7515,7 +7512,7 @@ def move_aside(paths: list[Path], journal: Path | None = None) -> tuple[dict[Pat
                for path in paths}
     if journal is not None and planned:
         try:
-            with _JOURNAL_LOCK:
+            with _delete_journal_lock(journal):
                 entries = _journal_entries(journal)
                 entries += [{"path": str(path), "trash": str(trash)} for path, trash in planned.items()]
                 _journal_write(journal, entries)
@@ -8433,11 +8430,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(409, json.dumps({"error": busy}).encode(), "application/json")
             return
         try:
-            self._handle_unit_action(rel, action, payload)
+            with self.state.unit_writer(rel), ExitStack() as output_claim:
+                self._handle_unit_action(rel, action, payload, output_claim=output_claim)
+        except WriterBusy as exc:
+            self._send(409, json.dumps({"error": str(exc)}).encode(), "application/json")
         finally:
             CONTROL.end_delete(rel)
 
-    def _handle_unit_action(self, rel: str, action: str, payload: dict) -> None:
+    def _handle_unit_action(self, rel: str, action: str, payload: dict, output_claim=None) -> None:
         if action == "set_meta":
             if self.state.get(rel) is None:
                 self._send(404, b'{"error":"no such unit"}', "application/json")
@@ -8575,17 +8575,14 @@ class Handler(BaseHTTPRequestHandler):
             log = logging.getLogger("audiobind")
             journal = delete_journal(self.state)  # WEBAPI-02c: where each move aside is recorded first
 
-            # The per-unit claim spans the purge and state write. The encoder lock protects
-            # revalidation and staging against conversions and layout moves.
+            # The book and output-folder claims span the purge and state write. The
+            # publication lock protects revalidation and staging against journal recovery.
             # C2: what the source is, so neither the reasons below nor the page call a loose file a folder
             source_kind = "folder"
             if targets and not any(kinds[t] == "dir" or (kinds[t] == "link" and t.is_dir()) for t in targets):
                 source_kind = "file"
             elif not targets and src_path is not None and src_path.is_file():
                 source_kind = "file"
-            if not CONVERT_LOCK.acquire(blocking=False):
-                self._send(409, DELETE_BUSY, "application/json")
-                return
             source_trash: dict[Path, Path] = {}
             output_trash: dict[Path, Path] = {}
             source_staged = {}
@@ -8598,14 +8595,15 @@ class Handler(BaseHTTPRequestHandler):
             output_left = {}
             # C2: Audiobind's own files went, others in that folder were left (a short reason)
             output_other_files_left = ""
-            try:
+            with self.state.publication_lock(blocking=False):
+                pipeline_mod._recover_publications(self.state)
                 claim = conversion_claim(rel)
                 if claim:
                     log.info("HARD DELETE %s; stopped before removing anything: %s", rel, claim)
                     self._send(409, json.dumps({"error": claim, "source_partial": False}).encode(),
                                "application/json")
                     return
-                # A layout move may have re-pointed the row before the encoder lock was acquired.
+                # Publication recovery may have re-pointed the row since the initial read.
                 unit_state = self.state.get(rel)
                 if unit_state is None:
                     self._send(404, b'{"error":"no such unit"}', "application/json")
@@ -8614,6 +8612,8 @@ class Handler(BaseHTTPRequestHandler):
                 if planned is None:
                     return
                 not_ours, out_trash, out_shared, out_wrote, out_name = planned
+                if out_trash is not None:
+                    output_claim.enter_context(self.state.output_writer(out_trash))
 
                 if not ingest_row and (
                     ownership != source_ownership_for(unit_state)
@@ -8800,8 +8800,6 @@ class Handler(BaseHTTPRequestHandler):
                         return
                 else:
                     log.info("HARD DELETE %s; output -> none", rel)
-            finally:
-                CONVERT_LOCK.release()
 
             # Each staged target sits under a hidden name beside its own. On failure, restore
             # what remains before releasing the per-unit claim.
@@ -8973,29 +8971,42 @@ class Handler(BaseHTTPRequestHandler):
         if not CONTROL.try_enqueue(rel):
             self._send(409, b'{"error":"this book is busy with another action"}', "application/json")
             return ""
+        started = threading.Event()
+        failure = []
+        started_action = "retry" if action == "set_asin" else action
+
+        def worker():
+            try:
+                with self.state.unit_writer(rel):
+                    if self.state.undismiss(rel):
+                        logging.getLogger("audiobind").info("%s: removal undone by a manual %s", rel, action)
+                    if action == "set_asin":
+                        self.state.set_asin_override(rel, asin)
+                        self.state.lock_fields(rel, {"asin"})
+                    logging.getLogger("audiobind").info("manual %s requested for %s", started_action, rel)
+                    started.set()
+                    force = action == "force"
+                    run_manual(self.state, unit, force=force, reencode=force, slot=slot)
+            except Exception as exc:
+                if started.is_set():
+                    raise
+                failure.append(exc)
+                CONTROL.dequeue(rel)
+                started.set()
+
         try:
-            if self.state.undismiss(rel):
-                # an explicit action on a removed ingest book is the operator bringing it back
-                logging.getLogger("audiobind").info("%s: removal undone by a manual %s", rel, action)
-            if action == "set_asin":
-                self.state.set_asin_override(rel, asin)
-                # setting the ASIN by hand is an edit like any other: it locks
-                self.state.lock_fields(rel, {"asin"})
-                action = "retry"
-            # "recheck" is the per-book Re-check all: the same manual re-audit Retry runs (a
-            # hand-set ASIN is honoured and never fallen back from, auto-convert rules apply)
-            logging.getLogger("audiobind").info("manual %s requested for %s", action, rel)
-            threading.Thread(
-                target=run_manual,
-                args=(self.state, unit),
-                kwargs={"force": action == "force", "reencode": action == "force", "slot": slot},
-                daemon=True,
-                name="manual-" + action,
-            ).start()
+            threading.Thread(target=worker, daemon=True, name="manual-" + started_action).start()
         except BaseException:
             CONTROL.dequeue(rel)
             raise
-        return action
+        started.wait()
+        if failure:
+            exc = failure[0]
+            if not isinstance(exc, WriterBusy):
+                raise exc
+            self._send(409, json.dumps({"error": str(exc)}).encode(), "application/json")
+            return ""
+        return started_action
 
     def _handle_settings(self) -> None:
         payload = self._read_json()
@@ -9452,20 +9463,17 @@ class Handler(BaseHTTPRequestHandler):
         if payload.get("confirm") is not True:
             self._send(400, b'{"error":"confirmation required"}', "application/json")
             return
-        # never while a book is being encoded: the encoder may be writing into these folders
-        if not CONVERT_LOCK.acquire(blocking=False):
-            self._send(409, b'{"error":"a book is being converted - try again when it finishes"}',
-                       "application/json")
-            return
         try:
             result = abs_layout.apply(self.state)
+        except WriterBusy:
+            self._send(409, b'{"error":"another run is working on this book or changing the library layout"}',
+                       "application/json")
+            return
         except OSError as exc:
             logging.getLogger("audiobind").error("Audiobookshelf layout: run stopped: %s", exc)
             self._send(500, json.dumps({"error": f"could not start: {exc.strerror or exc}"}).encode(),
                        "application/json")
             return
-        finally:
-            CONVERT_LOCK.release()
         body = {
             "ok": not result["failed"],
             "dry_run": False,
