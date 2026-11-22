@@ -4,7 +4,7 @@ group_key() strips every digit, so ``Author/Dune 1`` and ``Author/Dune 2`` used 
 and become one unit: two books concatenated into one file. Now siblings are merged only when each
 carries a real part marker (disc/part/cd + number; "Vol 2" is a book's own number), their names
 agree once that marker is removed (other digits kept), their ordinals differ, and their sizes - the
-runtime proxy discovery has - are comparable (CORE-05b; it was a 921.6 MB bar).
+runtime proxy discovery has - are comparable for the non-final parts (CORE-05b).
 """
 
 import os
@@ -166,11 +166,24 @@ class CompatibilityNotSizeTests(GroupingCase):
         self.touch("Author", "Book 2", "01.mp3", size=300 * MB)
         self.assertEqual(self.rels(), [("Author/Book", 1), ("Author/Book 2", 1)])
 
-    def test_parts_of_one_book_have_comparable_lengths(self):
-        """A 100 MB "part 1" beside a 700 MB "part 2" is not one book split in two."""
+    def test_a_final_part_can_be_much_larger(self):
         self.touch("Author", "Foo Part 1", "01.mp3", size=100 * MB)
         self.touch("Author", "Foo Part 2", "01.mp3", size=700 * MB)
-        self.assertEqual(self.rels(), [("Author/Foo Part 1", 1), ("Author/Foo Part 2", 1)])
+        self.assertEqual(self.rels(), [("Author", 2)])
+
+    def test_private_part_folders_with_a_larger_final_part_group(self):
+        book = "James Patterson - Private 01 - Private"
+        for part, size in enumerate((42, 36, 42, 80), 1):
+            self.touch(book, f"Part {part}", "01.mp3", size=size * MB)
+        (unit,) = discover_units(self.root, [])
+        self.assertEqual(unit.rel_path, book)
+        self.assertEqual(len(unit.files), 4)
+
+    def test_private_london_duration_ratios_split_when_sizes_are_proportional(self):
+        book = "James Patterson - Private 02 - Private London"
+        for part, size in enumerate((70, 104, 210, 293), 1):
+            self.touch(book, f"Part {part}", "01.mp3", size=size * MB)
+        self.assertEqual(self.rels(), [(f"{book}/Part {part}", 1) for part in range(1, 5)])
 
     def test_a_middle_disc_far_off_the_others_breaks_the_set(self):
         self.touch("Novel", "Disc 1", "01.mp3", size=700 * MB)

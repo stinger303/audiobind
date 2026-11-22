@@ -2,6 +2,14 @@
 
 [← Back to the README](../README.md)
 
+## Multipart books
+
+Discovery can group siblings with matching names and distinct part numbers such as
+`Part 1` and `Part 2`. Each part except the final one must be within 25% of the median
+size of the non-final parts. The final part can be any size, so a short closing disc
+or a larger part containing extras can still belong to the same book. Volume numbers
+identify separate books.
+
 ## Controls in the web UI
 
 The status page is also the control panel:

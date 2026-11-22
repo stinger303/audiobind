@@ -197,9 +197,8 @@ def _part_base(name: str, marker: re.Match) -> str:
 
 
 #: CORE-05b: parts of one book run about as long as each other. Every part but the last must be
-#: within this share of the typical (median) part; the last may be shorter, never longer (a CD
-#: set's final disc). Discovery does not probe: one book's parts are encoded alike, so their sizes
-#: track their runtimes, and the test is the same at 60 MB a part or 1 GB.
+#: within this share of the median non-final part. The final part can be any size. Discovery
+#: compares file sizes as a proxy for runtime without probing audio.
 PART_LENGTH_TOLERANCE = 0.25
 
 
@@ -217,19 +216,19 @@ def _is_part_set(members: list[dict]) -> bool:
     """True when marked siblings can be the successive parts of one book (CORE-05b).
 
     Their ordinals must all differ ("Disc 1" and "Disc 01" are two copies of disc one, not discs
-    one and two), and their lengths must fit PART_LENGTH_TOLERANCE."""
+    one and two), and their non-final sizes must fit PART_LENGTH_TOLERANCE."""
     if len(members) < 2:
         return True
     ordered = sorted(members, key=lambda m: int(_part_marker(m["name"]).group(2)))
     ordinals = [int(_part_marker(m["name"]).group(2)) for m in ordered]
     if len(set(ordinals)) != len(ordinals):
         return False
-    sizes = [_leaf_bytes(m) for m in ordered]
-    typical = statistics.median(sizes[:-1])
+    sizes = [_leaf_bytes(m) for m in ordered[:-1]]
+    typical = statistics.median(sizes)
     if typical <= 0:
         return True  # nothing to compare: names alone decide, as for any unsized set
     low, high = typical * (1 - PART_LENGTH_TOLERANCE), typical * (1 + PART_LENGTH_TOLERANCE)
-    return all(low <= size <= high for size in sizes[:-1]) and sizes[-1] <= high
+    return all(low <= size <= high for size in sizes)
 
 
 def group(leaves: list[dict]) -> list[BookUnit]:
@@ -238,7 +237,7 @@ def group(leaves: list[dict]) -> list[BookUnit]:
     CORE-05: siblings share a unit only on positive multi-part evidence - each carries a part
     marker (disc/part/cd + number; a volume number is a book's own), their names are identical once
     that marker is removed (any other digit is content: "Dune 1" and "Dune 2" are two books), their
-    ordinals differ, and their lengths are comparable (_is_part_set). Anything else is a unit of
+    ordinals differ, and their non-final sizes are comparable (_is_part_set). Anything else is a unit of
     its own. The unit's key is still group_key(), so a
     genuine part set keeps the rel_path (state key) it always had.
     """
