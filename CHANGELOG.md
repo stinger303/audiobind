@@ -7,6 +7,19 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [Unreleased]
+
+**Two fixes found by walking the released build.**
+
+### Fixed
+- **A part set groups again when its last part is the biggest** (`454f7e6`). CORE-05b refused any set whose
+  final part was longer than the others; real sets carry the extras there (measured: 42 / 36 / 42 / **80** MB),
+  so those books split into one row per part, each querying the catalogue with the title "Part 2". Only the
+  non-final parts are compared now; a genuinely uneven set still splits.
+- **The setup guide is reachable after you are configured** (`d7315a9`): Settings → Watcher carries a
+  **View the setup guide** link whether or not the watcher is set up. Before, the Library card was dismissed
+  for good and the Watcher button only appeared while unconfigured, so the guide had no entry point at all.
+
 ## [0.25.3] - 2026-11-21
 
 **A complete "Set up downloading" guide, and a series name you can trust.** Plus the fixes an audit batch,
