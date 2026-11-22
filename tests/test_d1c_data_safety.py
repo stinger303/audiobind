@@ -89,9 +89,9 @@ class Core04cLegacyRowRepublishTests(PublishCase):
         self.output_format = "M4B + MP3"
         self.run_process(KEY, "second", manual=True)
         row = self.state.get(KEY)
-        self.assertEqual(row.status, "converted")
-        self.assertNotIn("notes.txt", wrote(row))
-        self.assertNotIn("Project Hail Mary.m4b", wrote(row))  # the old file has no recorded identity
+        self.assertEqual(row.status, "review")
+        self.assertEqual((folder / "notes.txt").read_bytes(), b"owner")
+        self.assertFalse(published_m4b().with_suffix(".mp3").exists())
 
 
 # --------------------------------------------------------------------------- CORE-04d
@@ -220,12 +220,15 @@ class WebApi02cStartupRunsTheRecoveryTests(unittest.TestCase):
             mock.patch.object(daemon, "State", return_value=state),
             mock.patch.object(daemon.CONFIG, "ensure_dirs"),
             mock.patch.object(daemon.web, "recover_deletes", side_effect=lambda j: calls.append(("recover", j))),
-            mock.patch.object(daemon, "recover_publications", side_effect=lambda s: calls.append(("publish",))),
+            mock.patch.object(daemon, "recover_publications",
+                              side_effect=lambda s: calls.append(("publish",))),
             mock.patch.object(daemon, "restore_controls", side_effect=lambda s: (calls.append(("restore",)), _raise(Stop()))),
         ):
             with self.assertRaises(Stop):
                 daemon.run()
-        self.assertEqual(calls, [("recover", pathlib.Path("/state") / web.DELETE_JOURNAL), ("publish",), ("restore",)])
+        self.assertEqual(calls, [
+            ("recover", pathlib.Path("/state") / web.DELETE_JOURNAL), ("publish",), ("restore",)
+        ])
 
 
 def _raise(exc):

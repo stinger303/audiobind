@@ -33,8 +33,8 @@ class Core02bRollbackRemovesOnlyWhatItCreatedTests(PublishCase):
         m4b.parent.mkdir(parents=True)
         target = m4b.parent / "moved-away.m4b"  # inside the output root, and no longer there
         os.symlink(target, m4b)
-        with self.assertRaises(OSError):
-            self.convert(KEY, "first", fail_place=lambda dest: dest == m4b)
+        self.run_process(KEY, "first")
+        self.assertEqual(self.state.get(KEY).status, "review")
         self.assertTrue(os.path.islink(m4b), "the pre-existing link was removed by the rollback")
         self.assertEqual(os.readlink(m4b), str(target))
         self.assertEqual(self.listing(m4b.parent), [m4b.name])  # no backup or new file left over
@@ -65,7 +65,6 @@ class Core03bCoverBackedUpWhenOnlyAFormatIsAddedTests(PublishCase):
         self.output_format = "M4B"
         m4b = self.convert(KEY, "first")
         cover = m4b.parent / "cover.jpg"
-        cover.write_bytes(b"owner-cover")
         self.output_format = "MP3"  # only the missing format is requested; the M4B is not replaced
         return m4b, cover
 
@@ -74,7 +73,8 @@ class Core03bCoverBackedUpWhenOnlyAFormatIsAddedTests(PublishCase):
         before = self.listing(m4b.parent)
         with self.assertRaises(OSError):
             self.convert(KEY, "second", fail_sidecar=True)
-        self.assertEqual(cover.read_bytes(), b"owner-cover", "the rollback left the new cover over the old art")
+        self.assertEqual(cover.read_bytes(), b"first-cover",
+                         "the rollback left the new cover over the old art")
         self.assertEqual(m4b.read_bytes(), b"first-m4b")
         self.assertEqual(self.listing(m4b.parent), before)  # the MP3 went, the backup came back
 
@@ -84,7 +84,7 @@ class Core03bCoverBackedUpWhenOnlyAFormatIsAddedTests(PublishCase):
         self.assertEqual(m4b.with_suffix(".mp3").read_bytes(), b"second-mp3")
         self.assertEqual(cover.read_bytes(), b"second-cover")
         (backup,) = sorted(m4b.parent.glob("cover.jpg.bak-*"))
-        self.assertEqual(backup.read_bytes(), b"owner-cover")
+        self.assertEqual(backup.read_bytes(), b"first-cover")
 
 
 # --------------------------------------------------------------------------- CORE-04b
@@ -146,15 +146,14 @@ class Core04aTheRowRecordsTheFilesItWroteTests(PublishCase):
         self.assertEqual(row.status, "converted")
         return row
 
-    def test_an_owner_m4b_given_an_mp3_records_only_what_audiobind_wrote(self):
+    def test_an_owner_m4b_prevents_publishing_an_unrelated_mp3(self):
         m4b = published_m4b()
         m4b.parent.mkdir(parents=True)
-        m4b.write_bytes(b"owner-m4b")  # the owner's own file: an M4B-mode scan records it ready
-        self.output_format = "M4B"
+        m4b.write_bytes(b"owner-m4b")
         self.run_process(KEY, "first")
-        self.assertEqual(self.state.get(KEY).status, "ready")
-        row = self.add_mp3()
-        self.assertEqual(wrote(row), ["Project Hail Mary.mp3", "cover.jpg", "metadata.json"])
+        row = self.state.get(KEY)
+        self.assertEqual(row.status, "review")
+        self.assertFalse(m4b.with_suffix(".mp3").exists())
         self.assertEqual(m4b.read_bytes(), b"owner-m4b")
 
     def test_a_fully_written_book_records_every_file(self):
@@ -181,8 +180,10 @@ class Core04aTheRowRecordsTheFilesItWroteTests(PublishCase):
         del detail["output"]["wrote"]  # recorded by a release without the list
         row.detail = json.dumps(detail)
         self.state.save(row)
-        row = self.add_mp3()
-        self.assertEqual(wrote(row), ["Project Hail Mary.mp3", "cover.jpg", "metadata.json"])
+        self.output_format = "M4B + MP3"
+        self.run_process(KEY, "second", manual=True)
+        self.assertEqual(self.state.get(KEY).status, "review")
+        self.assertFalse(published_m4b().with_suffix(".mp3").exists())
 
 
 class Core04aDeleteRemovesOnlyWhatAudiobindWroteTests(DeleteCase):

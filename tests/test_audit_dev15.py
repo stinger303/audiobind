@@ -119,8 +119,9 @@ class PipelineGuards(PipelineCase):
     def old_layout_row(self):
         old = self.out / "Andy Weir" / "Old Layout Folder" / "Project Hail Mary.m4b"
         touch(str(old), b"old m4b")
-        self.state.save(UnitState(path=KEY, status="converted", output=str(old), source="ingest",
-                                  title="Project Hail Mary", confidence="HIGH", asin=PHM.asin))
+        detail = json.dumps({"match": {"asin": PHM.asin}})
+        self.state.save(published_row(UnitState(path=KEY, status="converted", output=str(old),
+                                                confidence="HIGH", asin=PHM.asin, detail=detail)))
         return old
 
     @property
@@ -198,7 +199,8 @@ class PipelineGuards(PipelineCase):
         self.add_torrent()
         audit = pipeline.Audit(unit=self.unit(), match=matching.Match(product=PHM), action="convert")
         with self.patched():
-            result = pipeline.convert_unit(audit, log=lambda *_: None, cancelled=lambda: True)
+            result = pipeline.convert_unit(audit, state=self.state, log=lambda *_: None,
+                                           cancelled=lambda: True)
         self.assertIsNone(result)
         self.assertEqual(self.encode_calls, [])
 

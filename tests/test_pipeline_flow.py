@@ -10,6 +10,7 @@
    fails to *publish* takes the formats already placed by that call back out of the library.
 """
 
+import json
 import os
 import pathlib
 import subprocess
@@ -25,9 +26,11 @@ from audiobind.state import SOURCE_INGEST, UnitState
 from audiobind.units import BookUnit, Part
 
 try:
+    from live import published_row
     from test_ingest_discovery import touch
     from test_ingest_pipeline import KEY, PHM, PipelineCase
 except ImportError:
+    from tests.live import published_row
     from tests.test_ingest_discovery import touch
     from tests.test_ingest_pipeline import KEY, PHM, PipelineCase
 
@@ -146,7 +149,7 @@ class TestWorkDir(PipelineCase):
             mock.patch.object(encode, "plan_chapters", return_value=mock.Mock(chapters=[])),
             mock.patch.object(encode, "encode", side_effect=self.fake_encode),
         ):
-            return pipeline.convert_unit(audit, log=lambda *_: None)
+            return pipeline.convert_unit(audit, state=self.state, log=lambda *_: None)
 
     def test_the_same_book_gets_the_same_directory_on_every_call(self):
         self.add_torrent()
@@ -211,8 +214,9 @@ class TestPublishedFileIsHonoured(PipelineCase):
 
     def old_layout_row(self):
         old = self.old_file()
-        self.state.save(UnitState(path=KEY, status="converted", output=str(old), source="ingest",
-                                  title="Project Hail Mary", confidence="HIGH", asin=PHM.asin))
+        detail = json.dumps({"match": {"asin": PHM.asin}})
+        self.state.save(published_row(UnitState(path=KEY, status="converted", output=str(old),
+                                                confidence="HIGH", asin=PHM.asin, detail=detail)))
         return old
 
     def run_unit(self, search=None, **kw):
@@ -228,14 +232,14 @@ class TestPublishedFileIsHonoured(PipelineCase):
             pipeline.process_unit(self.state, self.unit(), log=lambda *_: None, **kw)
         return self.state.get(KEY)
 
-    def test_a_ready_row_published_under_an_older_layout_is_not_encoded_again(self):
+    def test_an_unverified_ready_row_under_an_older_layout_goes_to_review(self):
         self.add_torrent()
         old = self.old_file()
         self.state.save(UnitState(path=KEY, status="ready", output=str(old), source="ingest",
                                   confidence="HIGH", asin=PHM.asin))
         row = self.run_unit(manual=True)
         self.assertEqual(self.encode_calls, [])
-        self.assertEqual((row.status, row.output), ("ready", str(old)))
+        self.assertEqual((row.status, row.output), ("review", str(old)))
         self.assertEqual(list(self.out.rglob("*.m4b")), [old])  # no duplicate in the new layout
 
     def test_a_converted_book_rechecked_into_review_keeps_its_output(self):
@@ -302,7 +306,7 @@ class TestAllFormatsOrNone(PipelineCase):
             mock.patch.object(encode, "encode", side_effect=fake_encode),
             mock.patch.object(encode, "_place", side_effect=place),
         ):
-            return pipeline.convert_unit(audit, log=lambda *_: None)
+            return pipeline.convert_unit(audit, state=self.state, log=lambda *_: None)
 
     def library_files(self):
         return sorted(p.relative_to(CONFIG.output_root).as_posix()
@@ -326,16 +330,15 @@ class TestAllFormatsOrNone(PipelineCase):
         self.assertTrue(self.work_dirs)
         self.assertTrue(all(not w.exists() for w in self.work_dirs))  # the work dir is gone too
 
-    def test_files_that_were_already_there_are_never_removed(self):
+    def test_an_unowned_cover_and_notes_are_left_in_place(self):
         self.add_torrent()
-        # a cover and a file the owner already had in the book's folder (no m4b, so it encodes)
+        # A cover and notes the owner already had in the book's folder.
         folder = CONFIG.output_root / "Andy Weir" / "Project Hail Mary"
         folder.mkdir(parents=True)
         (folder / "cover.jpg").write_bytes(b"theirs")
         (folder / "notes.txt").write_bytes(b"theirs")
-        with self.assertRaises(OSError):
-            self.convert(fail_ext=".mp3")
-        # (publishing refreshes cover.jpg, as it always has; the rollback just never deletes it)
+        self.assertIsNone(self.convert())
+        self.assertEqual((folder / "cover.jpg").read_bytes(), b"theirs")
         self.assertEqual((folder / "notes.txt").read_bytes(), b"theirs")
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ["cover.jpg", "notes.txt"])
 

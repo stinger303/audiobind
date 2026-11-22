@@ -1,5 +1,6 @@
 """v0.14.4 encode fixes: chapter order, Audnex offsets, stderr join, one chapter plan."""
 
+import contextlib
 import os
 import pathlib
 import tempfile
@@ -9,6 +10,7 @@ from unittest import mock
 
 from audiobind import encode
 from audiobind.control import CONTROL
+from audiobind.state import State
 from audiobind.units import BookUnit, Part, audio_files
 
 
@@ -175,7 +177,9 @@ class TestEncodeRun(unittest.TestCase):
         audit = pipeline.Audit(unit=self.unit)
         audit.match = mock.Mock(asin="B000000001", product=mock.Mock(authors=["A"], title="T"))
         audit.durations = {"/src/a.mp3": 60.0}
+        state = State(pathlib.Path(self.dir.name) / "state")
         with (
+            contextlib.closing(state),
             mock.patch.object(pipeline.catalog, "book", return_value={"title": "T"}),
             mock.patch.object(pipeline.library, "m4b_path", return_value=self.work / "nope" / "T.m4b"),
             mock.patch.object(pipeline.CONFIG, "work_dir", self.work),
@@ -186,7 +190,7 @@ class TestEncodeRun(unittest.TestCase):
             mock.patch.object(encode, "encode", side_effect=RuntimeError("stop here")) as enc,
             self.assertRaises(RuntimeError),
         ):
-            pipeline.convert_unit(audit, log=lambda *_: None)
+            pipeline.convert_unit(audit, state=state, log=lambda *_: None)
         plan = enc.call_args.kwargs["plan"]
         self.assertEqual(plan.durations, {"/src/a.mp3": 60.0})
 

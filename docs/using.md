@@ -41,6 +41,12 @@ password (see [Signing in](install.md#signing-in)). Keep the port on your LAN al
 When an ASIN in your ingest folder name belongs to a different book from the suggested match,
 the book’s detail panel names both titles.
 
+Before adding a format or using Convert anyway, Audiobind checks the existing destination against
+the file identities recorded for this book and edition. An output collision sends the book to
+Review and leaves the existing files in place. This can happen with older records that lack file
+identities, when an existing format came from another edition, or when a companion file that
+would be replaced has changed. Inspect the named file and resolve the collision before retrying.
+
 ### Series
 
 The **Series** tab (`/series`) lists every series you have a book of that Audible lists with two or more books, whether you own one or all of them.

@@ -4,6 +4,7 @@ Each test asks one question: can this make a book disappear, duplicate, or be re
 when it is not?
 """
 
+import json
 import pathlib
 import tempfile
 import time
@@ -83,7 +84,7 @@ class PublishCase(PipelineCase):
         for p in patches:
             p.start()
         try:
-            pipeline.convert_unit(audit, log=lambda *_: None, reencode=reencode)
+            pipeline.convert_unit(audit, state=self.state, log=lambda *_: None, reencode=reencode)
         finally:
             for p in reversed(patches):
                 p.stop()
@@ -135,7 +136,7 @@ class Core02RollbackCoversPlacedAudioTests(PublishCase):
         mp3, cover = m4b.with_suffix(".mp3"), m4b.parent / "cover.jpg"
         before = self.listing(m4b.parent)
         with self.assertRaises(OSError):
-            self.convert("ingest:" + self.OTHER, "second", reencode=True, fail_place=self.cover_fails)
+            self.convert(KEY, "second", reencode=True, fail_place=self.cover_fails)
         self.assertEqual((m4b.read_bytes(), mp3.read_bytes(), cover.read_bytes()),
                          (b"first-m4b", b"first-mp3", b"first-cover"))
         self.assertEqual(self.listing(m4b.parent), before)
@@ -152,7 +153,6 @@ class Core03SidecarInsideThePublishTests(PublishCase):
     def first_edition(self):
         m4b = self.convert(KEY, "first")
         sidecar = m4b.parent / "metadata.json"
-        sidecar.write_text('{"title": "first"}', encoding="utf-8")
         sidecar.chmod(0o640)
         return m4b, sidecar
 
@@ -161,15 +161,16 @@ class Core03SidecarInsideThePublishTests(PublishCase):
         mp3, cover = m4b.with_suffix(".mp3"), m4b.parent / "cover.jpg"
         before = self.listing(m4b.parent)
 
-        self.process("ingest:" + self.OTHER, "second", fail_sidecar=True)
+        original_meta = sidecar.read_bytes()
+        self.process(KEY, "second", fail_sidecar=True)
 
         self.assertEqual((m4b.read_bytes(), mp3.read_bytes(), cover.read_bytes()),
                          (b"first-m4b", b"first-mp3", b"first-cover"),
                          "the new edition's audio stayed published after the sidecar failed")
-        self.assertEqual(sidecar.read_text(encoding="utf-8"), '{"title": "first"}')
+        self.assertEqual(sidecar.read_bytes(), original_meta)
         self.assertEqual(sidecar.stat().st_mode & 0o777, 0o640)  # SEC-03b: the mode comes back too
         self.assertEqual(self.listing(m4b.parent), before)  # every backup went back
-        self.assertEqual(self.state.get("ingest:" + self.OTHER).status, "failed")
+        self.assertEqual(self.state.get(KEY).status, "failed")
 
     def test_a_first_publish_whose_sidecar_fails_leaves_nothing(self):
         with self.assertRaises(OSError):
@@ -179,20 +180,22 @@ class Core03SidecarInsideThePublishTests(PublishCase):
 
     def test_a_successful_replace_keeps_the_previous_metadata_with_its_audio(self):
         m4b, sidecar = self.first_edition()
-        self.process("ingest:" + self.OTHER, "second")
+        original_meta = sidecar.read_bytes()
+        self.process(KEY, "second")
         self.assertEqual(m4b.read_bytes(), b"second-m4b")
         self.assertIn('"title": "Project Hail Mary"', sidecar.read_text(encoding="utf-8"))
         self.assertEqual(sidecar.stat().st_mode & 0o777, 0o640)  # SEC-03b
         (backup,) = sorted(m4b.parent.glob("metadata.json.bak-*"))
-        self.assertEqual(backup.read_text(encoding="utf-8"), '{"title": "first"}')
+        self.assertEqual(backup.read_bytes(), original_meta)
 
-    def test_a_first_publish_over_a_stray_sidecar_leaves_no_backup(self):
+    def test_a_first_publish_with_a_stray_sidecar_goes_to_review(self):
         m4b = pipeline.library.m4b_path("", ["Andy Weir"], "Project Hail Mary")
         m4b.parent.mkdir(parents=True)
         (m4b.parent / "metadata.json").write_text("{}", encoding="utf-8")
-        self.convert(KEY, "first")
-        self.assertEqual(self.listing(m4b.parent),
-                         ["Project Hail Mary.m4b", "Project Hail Mary.mp3", "cover.jpg", "metadata.json"])
+        self.run_process(KEY, "first")
+        self.assertEqual(self.state.get(KEY).status, "review")
+        self.assertEqual(self.listing(m4b.parent), ["metadata.json"])
+        self.assertEqual((m4b.parent / "metadata.json").read_text(encoding="utf-8"), "{}")
 
 
 # --------------------------------------------------------------------------- CORE-04
@@ -223,15 +226,15 @@ class Core04EveryRequestedFormatTests(PublishCase):
         row = self.state.get(KEY)
         self.assertEqual((row.status, row.output), ("converted", str(m4b)))
 
-    def test_without_a_stored_output_a_partial_set_is_not_recorded_ready(self):
+    def test_without_a_stored_output_a_partial_set_goes_to_review(self):
         m4b = self.converted("M4B")
-        self.state.delete(KEY)  # no row: only the file at the current layout path is known
+        self.state.delete(KEY)
         self.output_format = "M4B + MP3"
         self.retry()
-        self.assertTrue(m4b.with_suffix(".mp3").exists(),
-                        "the M4B alone was taken as 'already published'")
+        self.assertFalse(m4b.with_suffix(".mp3").exists())
+        self.assertEqual(m4b.read_bytes(), b"first-m4b")
         row = self.state.get(KEY)
-        self.assertEqual((row.status, row.output), ("converted", str(m4b)))
+        self.assertEqual((row.status, row.output), ("review", ""))
 
     def test_with_both_formats_present_nothing_is_encoded(self):
         m4b = self.converted("M4B + MP3")
@@ -255,6 +258,9 @@ class Core04EveryRequestedFormatTests(PublishCase):
         old.parent.mkdir(parents=True)
         current.rename(old)
         row = self.state.get(KEY)
+        detail = json.loads(row.detail)
+        detail["output"]["path"] = str(old)
+        row.detail = json.dumps(detail)
         row.output = str(old)
         self.state.save(row)
         self.output_format = "M4B + MP3"

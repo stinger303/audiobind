@@ -1,5 +1,6 @@
 """v0.14.4 pipeline LOWs: pin message, forced dry run, convert race, ready rows re-audited."""
 
+import json
 import pathlib
 import tempfile
 import threading
@@ -85,11 +86,11 @@ class TestForcedDryRun(StateCase):
         self.assertIn("dry run", row.note)
         self.assertNotIn("already published", row.note)
 
-    def test_already_published_is_still_reported_as_such(self):
+    def test_unverified_existing_output_goes_to_review_even_in_dry_run(self):
         row = self.run_forced(out_exists=True)
-        self.assertEqual(row.status, "ready")
-        self.assertIn("already published", row.note)
-        self.assertTrue(row.output.endswith("B.m4b"))
+        self.assertEqual(row.status, "review")
+        self.assertIn("Output collision", row.note)
+        self.assertFalse(row.output)
 
 
 class TestConvertRace(StateCase):
@@ -101,7 +102,7 @@ class TestConvertRace(StateCase):
         result = {}
 
         def worker():
-            result["value"] = pipeline.convert_unit(audit, log=lambda *_: None)
+            result["value"] = pipeline.convert_unit(audit, state=self.state, log=lambda *_: None)
 
         with (
             mock.patch.object(pipeline.catalog, "book", return_value={"title": "B"}),
@@ -115,6 +116,10 @@ class TestConvertRace(StateCase):
             self.assertTrue(thread.is_alive())  # waiting on the lock
             out.parent.mkdir(parents=True)
             out.write_text("m4b")  # ...and that conversion publishes the book
+            detail = json.dumps({"output": {"path": str(out), "asin": audit.match.asin,
+                                             "wrote": [out.name],
+                                             "wrote_id": {out.name: pipeline.file_identity(out)}}})
+            self.state.save(UnitState(path=u.state_key, status="converted", output=str(out), detail=detail))
             pipeline.CONVERT_LOCK.release()
             thread.join(5)
         self.assertIsNone(result["value"])

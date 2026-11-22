@@ -6,9 +6,11 @@ import tempfile
 import unittest
 from unittest import mock
 
-from audiobind import config, encode, id3, pipeline, web
+from audiobind import config, encode, id3, matching, pipeline, web
+from audiobind.catalog import Product
 from audiobind.config import CONFIG
 from audiobind.control import CONTROL
+from audiobind.state import State
 from audiobind.units import BookUnit, Part
 
 try:
@@ -380,26 +382,34 @@ class BothTests(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
+        self.state = State(pathlib.Path(self.dir.name) / "state")
+        self.addCleanup(self.state.close)
         self.root = pathlib.Path(self.dir.name)
         unit = BookUnit(path="/src", name="Book", parent="", parts=[Part("Book", ["/src/a.mp3"])])
         self.audit = pipeline.Audit(unit=unit)
-        self.audit.match = mock.Mock(asin="B000000001", product=mock.Mock(authors=["A"], title="T"))
+        self.audit.match = matching.Match(product=Product(asin="B000000001", authors=["A"], title="T"))
         self.audit.durations = {"/src/a.mp3": 60.0}
         self.encodes = []
 
     def run_convert(self, setting, fail_on=None):
         out_root = self.root / "out"
         self.published = []
+        self.encodes.clear()
 
         def fake_encode(unit, match, book, work_dir, out_path, **kw):
             self.encodes.append((kw["fmt"], kw["publish"], pathlib.Path(out_path).name))
             if kw["fmt"] == fail_on:
                 raise RuntimeError(f"{fail_on} verification failed")
-            return encode.EncodeResult(pathlib.Path(work_dir) / f"o.{kw['fmt']}", 60.0, 10, 1, "x")
+            work_dir.mkdir(parents=True)
+            encoded = work_dir / f"o.{kw['fmt']}"
+            encoded.write_bytes(b"audio")
+            return encode.EncodeResult(encoded, 60.0, 5, 1, "x")
 
-        def fake_publish(result, out_path, placed=None):
-            self.published.append(pathlib.Path(out_path).name)
-            return result
+        publish_result = encode.publish_result
+
+        def track_publish(result, out_path):
+            self.published.append(out_path.name)
+            return publish_result(result, out_path)
 
         with (
             mock.patch.object(pipeline.catalog, "book", return_value={"title": "T"}),
@@ -409,10 +419,9 @@ class BothTests(unittest.TestCase):
             mock.patch.object(pipeline, "effective_val", side_effect=lambda k: setting if k == "output_format" else None),
             mock.patch.object(encode, "plan_chapters", return_value=encode.ChapterPlan([], "x", {"/src/a.mp3": 60.0})),
             mock.patch.object(encode, "encode", side_effect=fake_encode),
-            mock.patch.object(encode, "publish_result", side_effect=fake_publish),
-            mock.patch.object(encode, "write_abs_metadata"),
+            mock.patch.object(encode, "publish_result", side_effect=track_publish),
         ):
-            return pipeline.convert_unit(self.audit, log=lambda *_: None)
+            return pipeline.convert_unit(self.audit, state=self.state, log=lambda *_: None)
 
     def test_m4b_only(self):
         self.run_convert("M4B")
@@ -431,7 +440,7 @@ class BothTests(unittest.TestCase):
         self.assertTrue(all(not e[1] for e in self.encodes))  # nothing published during the encode
         self.assertEqual(self.published, ["T.m4b", "T.mp3"])
         self.assertTrue(self.audit.out_path.endswith("T.m4b"))
-        self.assertEqual(result.path.name, "o.m4b")
+        self.assertEqual(result.path.name, "T.m4b")
 
     def test_a_failed_second_encode_publishes_nothing(self):
         with self.assertRaises(RuntimeError):
@@ -442,9 +451,7 @@ class BothTests(unittest.TestCase):
     def test_an_existing_main_file_is_not_encoded_again(self):
         # CORE-04: the M4B alone is not "already published" when the MP3 is also asked for -
         # only the missing MP3 is encoded, and the M4B stays the unit's output
-        out = self.root / "out" / "A" / "T"
-        out.mkdir(parents=True)
-        (out / "T.m4b").write_bytes(b"x")
+        out = self.run_convert("M4B").path.parent
         result = self.run_convert("M4B + MP3")
         self.assertEqual([e[0] for e in self.encodes], ["mp3"])
         self.assertEqual(self.published, ["T.mp3"])
@@ -452,10 +459,7 @@ class BothTests(unittest.TestCase):
         self.assertFalse(self.audit.already_published)
 
     def test_every_requested_file_present_is_not_encoded_again(self):
-        out = self.root / "out" / "A" / "T"
-        out.mkdir(parents=True)
-        (out / "T.m4b").write_bytes(b"x")
-        (out / "T.mp3").write_bytes(b"x")
+        self.run_convert("M4B + MP3")
         self.assertIsNone(self.run_convert("M4B + MP3"))
         self.assertEqual(self.encodes, [])
         self.assertTrue(self.audit.already_published)

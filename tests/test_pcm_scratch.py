@@ -18,6 +18,7 @@ from unittest import mock
 
 from audiobind import encode, pipeline
 from audiobind.control import CONTROL
+from audiobind.state import State
 from audiobind.units import BookUnit, Part
 
 Usage = namedtuple("Usage", "total used free")
@@ -190,6 +191,8 @@ class OrphanReclaimTests(MixedCase):
         audit.match = mock.Mock(asin="B000000001", product=mock.Mock(authors=["A"], title="T"))
         audit.durations = {self.files[0]: 120.0, self.files[1]: 20.0}
         audit.codecs = {"mp3", "flac"}
+        state = State(pathlib.Path(self.dir.name) / "state")
+        self.addCleanup(state.close)
         with (
             mock.patch.object(pipeline.catalog, "book", return_value={"title": "T"}),
             mock.patch.object(pipeline.library, "m4b_path", return_value=self.root / "nope" / "T.m4b"),
@@ -200,7 +203,7 @@ class OrphanReclaimTests(MixedCase):
             mock.patch.object(encode, "encode", side_effect=RuntimeError("stop here")),
             self.assertRaises(RuntimeError),
         ):
-            pipeline.convert_unit(audit, log=lambda *_: None)
+            pipeline.convert_unit(audit, state=state, log=lambda *_: None)
         self.assertFalse(legacy.exists())
         self.assertFalse(unowned.exists())
         self.assertFalse(unowned.with_name("parts.owner").exists())

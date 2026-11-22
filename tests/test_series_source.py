@@ -82,7 +82,7 @@ class SeriesCase(unittest.TestCase):
             self.state.set_overrides(PATH, overrides)
         CONTROL.set_dry_run(True)
         with patch.object(catalog, "book", return_value=book):
-            self.assertIsNone(pipeline.convert_unit(current, log=lambda *_: None))
+            self.assertIsNone(pipeline.convert_unit(current, state=self.state, log=lambda *_: None))
         pipeline.record(self.state, current, "ready", note="dry run - nothing written")
         detail = json.loads(self.state.get(PATH).detail)
         tagged = overrides_mod.apply(book, current.overrides)

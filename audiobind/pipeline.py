@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import errno
 import hashlib
@@ -24,7 +23,7 @@ from .control import CONTROL, Stopped
 from .probe import ProbeTimeout, probe
 from .state import SOURCE_INGEST, State, UnitState
 from .units import AUDIO_EXT, BookUnit, looks_like_collection, owned_paths, unsafe_path_reason
-from .util import norm
+from .util import loads_dict, norm
 
 #: the daemon and the manual "Retry / Convert anyway" buttons must not encode two books at once
 CONVERT_LOCK = threading.Lock()
@@ -104,18 +103,14 @@ class Audit:
     #: where convert_unit would file the book, and whether it was already there
     out_path: str = ""
     already_published: bool = False
-    publication_recorded: bool = False
+    output_collision: str = ""
     #: which names the catalog match was searched with: "folder" (the folder/file name, as
     #: always) or "embedded" (an ingest unit's own audio tags, after the folder found nothing)
     name_source: str = NAME_SOURCE_FOLDER
     #: Hardcover's second opinion (hardcover.evidence_for) for the detail panel; None while it is off.
     #: Never read by the grade or the action
     hardcover: dict | None = None
-    #: CORE-04a: the names (in the book's folder) the last publish placed, the backups it renamed
-    #: aside (original name -> backup name), and the merged record ({name: [size, mtime_ns]},
-    #: CORE-04d) kept as detail.output.wrote / wrote_id
-    placed: list = field(default_factory=list)
-    moved_aside: dict = field(default_factory=dict)
+    #: CORE-04d: names and identities kept as detail.output.wrote / wrote_id.
     wrote: dict | None = None
     source_ownership: dict = field(default_factory=dict)
     #: Q-B12: the Audnex record convert_unit fetched for this match (before the overrides), so the
@@ -387,15 +382,10 @@ def work_dir_for(unit: BookUnit) -> Path:
     return CONFIG.work_dir / hashlib.sha1(unit.state_key.encode("utf-8")).hexdigest()[:8]
 
 
-def _missing_formats(formats: list[str], paths: dict, reencode: bool) -> list[str]:
-    """CORE-04: the requested formats still to make - every one for a re-encode, else those not on disk."""
-    return list(formats) if reencode else [fmt for fmt in formats if not paths[fmt].exists()]
-
-
 def missing_beside(primary: Path) -> list[str]:
     """The requested formats with no file beside ``primary`` (same folder and name, its own extension)."""
     formats = encode.formats_for(effective_val("output_format"))
-    return _missing_formats(formats, {fmt: primary.with_suffix(f".{fmt}") for fmt in formats}, False)
+    return [fmt for fmt in formats if not primary.with_suffix(f".{fmt}").exists()]
 
 
 def _refuse_uncontained(destinations: list[Path]) -> None:
@@ -415,20 +405,19 @@ def _refuse_uncontained(destinations: list[Path]) -> None:
 
 
 def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reencode: bool = False,
-                 at: Path | None = None, state: State | None = None):
+                 at: Path | None = None, *, state: State):
     """Encode, verify and file one book. Returns the EncodeResult (or None in a dry run).
 
-    "Already published" means every requested format is on disk (CORE-04): when only some are,
-    just the missing ones are encoded and placed beside the ones already there, which are left
-    untouched. ``at`` is a published file of this book to file them beside (a book kept where an
-    older layout put it) instead of the current layout's path, so it never gets a second copy.
+    "Already published" means every requested format is on disk and verified for this edition.
+    Verified formats can be kept while missing formats are added. ``at`` anchors the requested
+    formats beside a previously published file, including under an older layout.
 
     ``cancelled`` (optional, no arguments) is asked again once the encoder is free: True means
     the book was removed from Audiobind while it waited, and nothing is encoded. ``heartbeat``
     (optional) is called, throttled, from the encode's progress so one long encode never makes
     the healthcheck read the daemon as stalled. ``reencode`` (the manual Convert anyway) encodes
     even when the output already exists; the old files are renamed aside to ``.bak-<timestamp>``
-    and the verified result takes their place (restored if the publish fails - see _publish_all).
+    and the verified result takes their place through the publication journal.
     """
     unit, match = audit.unit, audit.match
     if not match.product:
@@ -455,29 +444,24 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
         _refuse_uncontained([*paths.values(), at.parent / "cover.jpg", at.parent / "metadata.json"])
     out_path = paths[formats[0]]
     audit.out_path = str(out_path)
-    todo = _missing_formats(formats, paths, reencode)
-    if not todo:
-        audit.already_published = True
-        log(f"  already published: {out_path}")
-        return None
-    if CONTROL.dry_run:
-        for fmt in todo:
-            log(f"  [dry-run] would write {paths[fmt]}")
-        return None  # nothing was written, so it is not "converted"
-
-    work_dir = work_dir_for(unit)
-    with CONVERT_LOCK, (state.publication_lock() if state is not None else contextlib.nullcontext()):
-        if state is not None:
-            _recover_publications(state)
+    with CONVERT_LOCK, state.publication_lock():
+        _recover_publications(state)
+        existing = {str(path): _publication_identity(path) for path in paths.values()}
+        audit.output_collision = _output_collision(state, audit, paths.values(), existing)
+        if audit.output_collision:
+            return None
         if CONTROL.deleting(unit.state_key):
             return None
-        # checked again under the lock: a manual action and the daemon can both reach
-        # this point for the same book, and only the first may encode it (unless asked to re-encode)
-        todo = _missing_formats(formats, paths, reencode)
+        todo = formats if reencode else [fmt for fmt in formats if existing[str(paths[fmt])] is None]
         if not todo:
             audit.already_published = True
-            log(f"  already published (while waiting for the encoder): {out_path}")
+            log(f"  already published: {out_path}")
             return None
+        if CONTROL.dry_run:
+            for fmt in todo:
+                log(f"  [dry-run] would write {paths[fmt]}")
+            return None
+        work_dir = work_dir_for(unit)
         if todo != formats:
             log(f"  {', '.join(f for f in formats if f not in todo).upper()} already published; "
                 f"adding {', '.join(todo).upper()}")
@@ -515,24 +499,10 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
                     sequence=sequence,
                 )
             duration = results.get(formats[0], results[todo[0]]).duration
-            if state is not None:
-                return _publish_recorded(state, audit, todo, results, paths, book,
-                                         plan.chapters, duration, log)
-            # CORE-03: metadata.json is written inside the publish, so a failed sidecar rolls
-            # back the audio and cover with it, and the previous metadata comes back too
-            placed, backups = _publish_all(todo, results, paths, log=log,
-                                           sidecar=lambda: _write_sidecar(out_path, book, match, plan.chapters,
-                                                                          duration, log=log))
-            audit.placed = [path.name for path in placed]
-            audit.moved_aside = {path.name: backup.name for path, backup in backups.items()}
-            for fmt in todo:
-                res = results[fmt]
-                log(f"  published {paths[fmt]} ({res.size / 1e6:.0f} MB, {res.chapters} chapters)")
-            if formats[0] in results:
-                return results[formats[0]]
-            # the main file was already there and is still the unit's output
-            return dataclasses.replace(results[todo[0]], path=out_path, size=out_path.stat().st_size,
-                                       cover=None)
+            if cancelled is not None and cancelled():
+                return None
+            return _publish_recorded(state, audit, todo, results, paths, book,
+                                     plan.chapters, duration, log)
         finally:
             # a stopped encode leaves only the work directory, which is deleted here, so the
             # library never sees a partial file and the book is simply retried next scan
@@ -567,96 +537,6 @@ def _backup_path(path: Path, stamp: str) -> Path:
     return candidate
 
 
-def _publish_all(formats: list[str], results: dict, paths: dict, log=print,
-                 sidecar=None) -> tuple[list[Path], dict[Path, Path]]:
-    """Publish every verified format, the m4b (archival copy) first - all of them or none.
-
-    If a later format fails to publish (a cross-filesystem copy that runs out of space), the
-    files this call already placed are removed again, with a cover.jpg and any folders it
-    created, so the library never keeps an m4b without the mp3 the owner asked for - which the
-    next scan would otherwise take as "already published" and never finish. Files that were
-    there before are never removed.
-
-    An output that already exists (a Convert anyway, or a *different* source whose catalog
-    metadata resolves to the same path) is first renamed aside to ``<path>.bak-<timestamp>`` -
-    every format, plus the cover.jpg that belongs to that edition. A failed publish renames
-    them back, so the previous edition is left exactly as it was; a successful one keeps them
-    (logged) so the replaced book can still be recovered by hand.
-
-    ``sidecar`` (optional, no arguments) writes metadata.json once every format is placed, as
-    part of the same unit (CORE-03): an existing regular metadata.json is first copied to its own
-    ``.bak-<timestamp>`` (a copy, not a rename - the writer may decline to write it), and a failed
-    publish - the sidecar write included - puts it back with the audio and cover. The copy is kept
-    beside a replaced edition's backups and removed when no audio was replaced.
-
-    Returns (every path this call placed, in order - audio, cover.jpg, a metadata.json the
-    sidecar wrote; the backups kept, original -> backup) for the row's record of what Audiobind
-    wrote (CORE-04a).
-    """
-    folder = paths[formats[0]].parent
-    new_dirs = []
-    probe_dir = folder
-    root = Path(CONFIG.output_root)
-    while not probe_dir.exists() and probe_dir not in (root, probe_dir.parent):
-        new_dirs.append(probe_dir)  # deepest first
-        probe_dir = probe_dir.parent
-    cover = folder / "cover.jpg"
-    meta = folder / "metadata.json"
-    # CORE-02b: lexists - a dangling symlink is there, and not this call's to remove
-    preexisting = {path for path in [*paths.values(), cover, meta] if os.path.lexists(path)}
-    to_back_up = [paths[fmt] for fmt in formats if paths[fmt] in preexisting]
-    if cover in preexisting and any(results[fmt].cover is not None for fmt in formats):
-        # publishing overwrites cover.jpg - also when only a missing format is added beside a kept
-        # file (CORE-03b), so the existing art is always moved aside first and a rollback restores it
-        to_back_up.append(cover)
-    replacing = bool(to_back_up)
-    stamp = time.strftime("%Y%m%dT%H%M%S")
-    backups: dict[Path, Path] = {}
-    placed: list[Path] = []  # CORE-02b: only what publish_result actually put in place
-    try:
-        for path in to_back_up:
-            backup = _backup_path(path, stamp)
-            os.rename(path, backup)
-            backups[path] = backup
-        if sidecar is not None and meta.is_file() and not meta.is_symlink():
-            backup = _backup_path(meta, stamp)
-            shutil.copy2(meta, backup)  # content and mode (SEC-03b) both come back on restore
-            backups[meta] = backup
-        for fmt in formats:
-            # CORE-02: publish_result places the audio, then the cover, then stats it, so it
-            # can fail with the audio already visible. CORE-02b: it records each path the moment
-            # it is in place - a path whose placement failed (or that another writer made after
-            # the snapshot above) is never on the list, so the rollback never unlinks it.
-            encode.publish_result(results[fmt], paths[fmt], placed=placed)
-        if sidecar is not None and sidecar():
-            placed.append(meta)  # CORE-04a: written by this publish (the last step - nothing to undo)
-    except BaseException:
-        for path in dict.fromkeys(placed):
-            if path not in preexisting:
-                try:
-                    path.unlink()
-                except OSError:
-                    pass
-        for path, backup in backups.items():
-            try:
-                os.replace(backup, path)  # over whatever this run placed there
-            except OSError as exc:
-                log(f"  could not restore {path} from {backup}: {exc}")
-        for directory in new_dirs:
-            try:
-                directory.rmdir()  # only ever an empty folder this call made
-            except OSError:
-                break
-        raise
-    if not replacing and meta in backups:
-        # no edition was replaced, so there is nothing for the old metadata to pair with
-        with contextlib.suppress(OSError):
-            backups.pop(meta).unlink()
-    for path, backup in backups.items():
-        log(f"  replaced {path.name}; the previous file is kept at {backup}")
-    return list(dict.fromkeys(placed)), backups
-
-
 class PublicationRecoveryError(RuntimeError):
     """The pending attempt must be reconciled before a scan can continue."""
 
@@ -666,7 +546,7 @@ def _publication_identity(path: Path) -> list[int] | None:
         info = path.lstat()
     except FileNotFoundError:
         return None
-    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
+    return [stat.S_IFMT(info.st_mode), info.st_ino, info.st_size, info.st_mtime_ns]
 
 
 def _sync_directory(path: Path) -> None:
@@ -757,16 +637,23 @@ def _publish_recorded(state: State, audit: Audit, formats: list[str], results: d
         log(f"  metadata.json skipped: {meta} is a symlink")
     _refuse_uncontained([*destinations.values(), cover, meta])
     before = {str(path): _publication_identity(path) for path in {*destinations.values(), cover, meta}}
+    # Recheck after encoding, before creating an intent or touching a destination. Include
+    # companions only when this publication would write them.
+    audit.output_collision = _output_collision(state, audit, [*destinations.values(), *writes], before)
+    if audit.output_collision:
+        return None
     stamp = time.strftime("%Y%m%dT%H%M%S")
     backups = {str(path): str(_backup_path(path, stamp)) for path in writes if before[str(path)] is not None}
     new_dirs = []
     parent = folder
+    root = Path(CONFIG.output_root).resolve()
     while not parent.exists():
         new_dirs.append(str(parent))
         parent = parent.parent
     plan = {"stage": str(stage), "before": before, "backups": backups,
-            "writes": [str(path) for path in writes], "expected": {}, "new_dirs": new_dirs}
-    owned = _owned_before(state.get(audit.unit.state_key))
+            "writes": [str(path) for path in writes], "expected": {},
+            "new_dirs": [name for name in new_dirs if root in Path(name).parents]}
+    owned = _owned_before(state.get(audit.unit.state_key), audit.match.asin)
     attempt = state.begin_publication(audit.unit.state_key, plan)
     try:
         stage.mkdir(parents=True)
@@ -786,19 +673,21 @@ def _publish_recorded(state: State, audit: Audit, formats: list[str], results: d
             expected[str(path)] = _publication_identity(staged)
         _sync_directory(stage)
         _sync_directory(folder)
-        if any(_publication_identity(Path(name)) != identity for name, identity in before.items()):
-            raise OSError(f"Output changed while staging publication in {folder}")
+        for name, identity in before.items():
+            if _publication_identity(Path(name)) != identity:
+                audit.output_collision = (
+                    f"Output collision: {Path(name).name} changed while preparing this book."
+                )
+                _recover_publications(state)
+                return None
 
-        audit.placed = [path.name for path in writes]
-        audit.moved_aside = {Path(name).name: Path(backup).name for name, backup in backups.items()}
-        placed_names = set(audit.placed)
         audit.wrote = {path.name: expected[str(path)][-2:] for path in writes}
         if owned is not None and owned[0].resolve() == folder:
             for name, identity in owned[1].items():
-                if name not in placed_names:
-                    audit.wrote[name] = identity
-                if name in audit.moved_aside:
-                    audit.wrote[audit.moved_aside[name]] = identity
+                audit.wrote.setdefault(name, identity)
+                backup = backups.get(str(folder / name))
+                if backup is not None:
+                    audit.wrote[Path(backup).name] = identity
         first = next(iter(paths))
         result = dataclasses.replace(results.get(first, results[formats[0]]), path=primary,
                                      size=expected[str(destinations[first])][-2], cover=None)
@@ -806,19 +695,28 @@ def _publish_recorded(state: State, audit: Audit, formats: list[str], results: d
         plan["expected"] = expected
         state.seal_publication(attempt, plan, outcome)
         for name, backup in backups.items():
+            if _publication_identity(Path(name)) != before[name] or os.path.lexists(backup):
+                audit.output_collision = f"Output collision: {Path(name).name} changed during publication."
+                _recover_publications(state)
+                return None
             os.rename(name, backup)
         _sync_directory(folder)
         for path in writes:
+            if os.path.lexists(path):
+                audit.output_collision = f"Output collision: {path.name} appeared during publication."
+                _recover_publications(state)
+                return None
             encode._place(stage / path.name, path, move=True)
         _sync_directory(stage)
         _sync_directory(folder)
+    except PublicationRecoveryError:
+        raise
     except Exception:
         if not _recover_publications(state, current=attempt):
             raise
     else:
         if not _recover_publications(state, current=attempt):
             raise OSError(f"Output changed during publication in {folder}")
-    audit.publication_recorded = True
     for path in writes:
         log(f"  published {path}")
     for name, backup in backups.items():
@@ -834,6 +732,38 @@ def recorded_output(row) -> dict:
         return {}
     output = detail.get("output") if isinstance(detail, dict) else None
     return output if isinstance(output, dict) else {}
+
+
+def _published_edition(row: UnitState) -> tuple[dict, str]:
+    """Read the edition captured by publication, including identity-bearing older rows."""
+    output = recorded_output(row)
+    path = output.get("path")
+    if not row.output or not isinstance(path, str) or Path(path).absolute() != Path(row.output).absolute():
+        return {}, ""
+    if "asin" in output:
+        return output, output["asin"] if isinstance(output["asin"], str) else ""
+    match = loads_dict(row.detail).get("match")
+    if row.status == "converted" and isinstance(match, dict) and match.get("asin") == row.asin:
+        return output, row.asin
+    return {}, ""
+
+
+def _output_collision(state: State, audit: Audit, paths, snapshot: dict) -> str:
+    row = state.get(audit.unit.state_key)
+    output, asin = _published_edition(row) if row else ({}, "")
+    ids = _manifest_files(output) or {}
+    for path in dict.fromkeys(paths):
+        identity = snapshot[str(path)]
+        if identity is None:
+            continue
+        if (asin and asin == audit.match.asin
+                and Path(output["path"]).parent.resolve() == path.parent.resolve()
+                and identity[0] == stat.S_IFREG and ids.get(path.name) == identity[-2:]):
+            continue
+        return (f"Output collision: {path.name} already exists, but Audiobind cannot verify "
+                f"that it belongs to this book and edition ({audit.match.asin}). "
+                "Review the existing file before trying again.")
+    return ""
 
 
 def wrote_output(row) -> bool:
@@ -879,7 +809,10 @@ def wrote_files(row) -> dict[str, list[int]] | None:
     """
     if not wrote_output(row):
         return {}
-    output = recorded_output(row)
+    return _manifest_files(recorded_output(row))
+
+
+def _manifest_files(output: dict) -> dict[str, list[int]] | None:
     names, ids = output.get("wrote"), output.get("wrote_id")
     if isinstance(names, list) and all(isinstance(name, str) for name in names) and isinstance(ids, dict):
         return {name: ids[name] for name in names if _is_identity(ids.get(name))}
@@ -937,44 +870,21 @@ def attribute(folder: Path, present: list[str], recorded: dict | None,
     return own, left
 
 
-def _owned_before(row) -> tuple[Path, dict[str, list[int]]] | None:
+def _owned_before(row, asin: str) -> tuple[Path, dict[str, list[int]]] | None:
     """(folder, {name: identity}) Audiobind provably owns in this row's output folder right now,
     before a publish (CORE-04d: only names whose file is still the one it wrote)."""
-    if row is None or not wrote_output(row):
+    if row is None:
+        return None
+    output, edition = _published_edition(row)
+    if not edition or edition != asin:
         return None
     folder = Path(row.output).parent
-    recorded = wrote_files(row)
+    recorded = _manifest_files(output)
     if recorded is None:
         return None
     names = attribute(folder, [n for n in recorded if os.path.lexists(folder / n)], recorded, "")[0]
     owned = {name: file_identity(folder / name) for name in names}
     return folder, {name: ident for name, ident in owned.items() if ident is not None}
-
-
-def _merged_wrote(owned: tuple[Path, dict[str, list[int]]] | None, folder: Path,
-                  audit: Audit) -> dict[str, list[int]]:
-    """What the row records as written after a publish into ``folder`` - {name: [size, mtime_ns]}
-    as each file is now (CORE-04d): what it placed, plus - in the same folder - what Audiobind
-    owned before and the backups of those files, each only while it is still that same file."""
-    ids = {}
-    for name in audit.placed:
-        ident = file_identity(folder / name)
-        if ident is not None:
-            ids[name] = ident
-    if owned is not None:
-        try:
-            same = owned[0].resolve() == folder.resolve()
-        except (OSError, RuntimeError):
-            same = False
-        if same:
-            for name, before in owned[1].items():
-                if name not in ids and file_identity(folder / name) == before:
-                    ids[name] = before
-            for name, backup in audit.moved_aside.items():
-                # a backup is a rename (or a copy2) of the file it replaced: the same size and mtime
-                if name in owned[1] and file_identity(folder / backup) == owned[1][name]:
-                    ids[backup] = owned[1][name]
-    return ids
 
 
 def _recorded_series(state: State, audit: Audit) -> dict:
@@ -1147,11 +1057,16 @@ def _record_row(
         }
     )
     previous = state.get(audit.unit.state_key) if output and not result else None
-    if previous and previous.output == output and wrote_output(previous):
-        detail_data["output"] = recorded_output(previous)
+    if previous and previous.output == output:
+        published, edition = _published_edition(previous)
+        if edition:
+            detail_data["output"] = {**published, "asin": edition}
+        elif wrote_output(previous):
+            detail_data["output"] = recorded_output(previous)
     if result and audit.wrote is not None:
         # CORE-04a: exactly which files in the folder Audiobind wrote - Delete removes only these,
         # and (CORE-04d) only while each still has the size and mtime recorded here
+        detail_data["output"]["asin"] = audit.match.asin
         detail_data["output"]["wrote"] = sorted(audit.wrote)
         detail_data["output"]["wrote_id"] = {name: audit.wrote[name] for name in sorted(audit.wrote)}
     if unmeasured:
@@ -1277,31 +1192,15 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
             log("  removed from Audiobind while being checked - not converted")
             return
         kept = "" if reencode else kept_conversion(state, unit)
-        if kept and not missing_beside(Path(kept)):
-            # no re-encode, no duplicate, no orphaned folder (CORE-04: only when every requested
-            # format is there - a missing one is made below, beside the kept file)
-            prev = state.get(unit.state_key)
-            if prev is not None and prev.status == "converted":
-                if manual and audit.unit.source != SOURCE_INGEST and audit.source_ownership:
-                    rec("converted", output=kept, note="re-checked; existing conversion kept")
-                else:
-                    log(f"  already converted at {kept} - run Match Audiobookshelf layout to move it")
-            else:
-                # a ready row, or a converted book an earlier re-check put in review/held: it
-                # would convert now, and its file is already published - say so, as
-                # nothing_written does when the file sits at the current layout's path
-                log(f"  already published at {kept} - not encoded again (Convert anyway re-encodes)")
-                rec("ready", output=kept, note="already published - the output file exists")
-            return
+        if kept:
+            # Probe the saved layout before entering the conversion failure handler.
+            # An I/O error here must leave the previous row untouched.
+            missing_beside(Path(kept))
         try:
-            owned = _owned_before(state.get(unit.state_key))  # read before the publish changes the folder
             result = convert_unit(audit, log=log, cancelled=dismissed, heartbeat=state.heartbeat,
                                   reencode=reencode, at=Path(kept) if kept else None, state=state)
             if result is None:  # dry run, already published, or removed while it waited
                 nothing_written()
-            elif not audit.publication_recorded:
-                audit.wrote = _merged_wrote(owned, Path(result.path).parent, audit)
-                rec("converted", output=str(result.path), result=result)
         except Stopped:
             log("  stopped by operator - partial file discarded, book will be retried")
             rec("interrupted", note="stopped by operator - retried next scan")
@@ -1325,14 +1224,18 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
         Shared by the forced and the automatic branch, so a Convert anyway in dry run
         says "dry run" rather than claiming the output already exists.
         """
-        if audit.already_published:
+        if audit.output_collision:
+            log(f"  {audit.output_collision}")
+            rec("review", note=audit.output_collision)
+        elif audit.already_published:
             prev = state.get(unit.state_key)
-            if prev and prev.output:
-                # a re-check of an already-converted book must not downgrade it
-                log("  already published - row unchanged")
+            if prev and prev.status == "converted":
+                if manual and audit.unit.source != SOURCE_INGEST and audit.source_ownership:
+                    rec("converted", output=prev.output, note="re-checked; existing conversion kept")
+                else:
+                    log(f"  already converted at {prev.output} - run Match Audiobookshelf layout to move it")
             else:
-                # the output path is kept so the next scan can skip this book while it exists
-                rec("ready", output=audit.out_path, note="already published - the output file exists")
+                rec("ready", output=audit.out_path, note="already published - verified for this edition")
         else:
             rec("ready", note="dry run - nothing written")
 

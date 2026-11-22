@@ -110,7 +110,6 @@ class ConvertAnywayAtCurrentLayoutTests(PipelineCase):
         row = self.state.get(KEY)
         self.assertEqual(row.status, "converted")
         out = pathlib.Path(row.output)
-        out.write_bytes(b"the previous encode")
         self.encode_calls.clear()
         return out
 
@@ -131,14 +130,14 @@ class ConvertAnywayAtCurrentLayoutTests(PipelineCase):
         with self.patched():
             pipeline.process_unit(self.state, ingest.find_any_unit(KEY), log=lambda *_: None, manual=True)
         self.assertEqual(self.encode_calls, [])
-        self.assertEqual(out.read_bytes(), b"the previous encode")
+        self.assertEqual(out.read_bytes(), b"m4b")
 
     def test_a_forced_recheck_without_reencode_does_not_encode(self):
         out = self.converted_at_current_layout()
         with self.patched():
             pipeline.process_unit(self.state, ingest.find_any_unit(KEY), log=lambda *_: None, force=True)
         self.assertEqual(self.encode_calls, [])
-        self.assertEqual(out.read_bytes(), b"the previous encode")
+        self.assertEqual(out.read_bytes(), b"m4b")
 
 
 class ForcedConvertKeepsThePreviousEditionTests(PipelineCase):
@@ -185,22 +184,21 @@ class ForcedConvertKeepsThePreviousEditionTests(PipelineCase):
             mock.patch.object(encode, "encode", side_effect=fake_encode),
             mock.patch.object(encode, "_place", side_effect=place),
         ):
-            pipeline.convert_unit(audit, log=(logs.append if logs is not None else lambda *_: None),
-                                  reencode=reencode)
+            log = logs.append if logs is not None else lambda *_: None
+            pipeline.convert_unit(audit, state=self.state, log=log, reencode=reencode)
         return pathlib.Path(audit.out_path)
 
     @staticmethod
     def backups(path: pathlib.Path) -> list[pathlib.Path]:
         return sorted(path.parent.glob(path.name + ".bak-*"))
 
-    def test_forcing_a_different_unit_onto_the_same_path_keeps_the_first_book_recoverable(self):
+    def test_reencoding_the_same_unit_keeps_the_previous_book_recoverable(self):
         m4b = self.convert(KEY, "first")
         mp3 = m4b.with_suffix(".mp3")
         self.assertEqual((m4b.read_bytes(), mp3.read_bytes()), (b"first-m4b", b"first-mp3"))
 
         logs = []
-        self.assertEqual(self.convert("ingest:" + self.OTHER, "second",
-                                      reencode=True, logs=logs), m4b)  # the same path
+        self.assertEqual(self.convert(KEY, "second", reencode=True, logs=logs), m4b)  # the same path
         self.assertEqual((m4b.read_bytes(), mp3.read_bytes()), (b"second-m4b", b"second-mp3"))
         for path, old in ((m4b, b"first-m4b"), (mp3, b"first-mp3"),
                           (m4b.parent / "cover.jpg", b"first-cover")):
@@ -215,7 +213,7 @@ class ForcedConvertKeepsThePreviousEditionTests(PipelineCase):
         before = sorted(p.name for p in m4b.parent.iterdir())
 
         with self.assertRaises(OSError):  # the m4b is replaced, then the mp3 runs out of space
-            self.convert("ingest:" + self.OTHER, "second", fail_ext=".mp3", reencode=True)
+            self.convert(KEY, "second", fail_ext=".mp3", reencode=True)
         self.assertEqual((m4b.read_bytes(), mp3.read_bytes(), cover.read_bytes()),
                          (b"first-m4b", b"first-mp3", b"first-cover"))
         self.assertEqual(sorted(p.name for p in m4b.parent.iterdir()), before)  # backups restored
