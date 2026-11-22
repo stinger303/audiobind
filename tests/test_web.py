@@ -164,7 +164,7 @@ class TestRender(unittest.TestCase):
             s.save(UnitState(path="Done/Book", status="converted", title="Done", hours=1))
             s.save(UnitState(path="Ready/Book", status="ready", title="Ready", hours=1))
             page = web.render(s)
-            self.assertIn("nothing needs you.</p>", page)
+            self.assertIn("Nothing needs your review.</p>", page)
             self.assertNotIn("ab-shelf", page)
             self.assertNotIn('href="/?status=attention">Needs your review', page.split('<div class="chips">')[1])
         finally:

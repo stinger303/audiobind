@@ -146,6 +146,9 @@ docker exec audiobind audiobind health             # exit 0 while the daemon is 
 docker exec -it audiobind audiobind reset-password # forgot the password: set a new one
 ```
 
+The library header shows when the service last checked in and when a scan last finished.
+The service can keep checking in while scanning is paused. Ingest availability is shown in the sidebar.
+
 ## Deleting a book
 
 The confirmation describes what happens to the book in Audiobind, its source files and its converted copy.

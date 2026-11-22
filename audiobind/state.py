@@ -665,9 +665,10 @@ class State:
                 (time.time(), seen, converted, held, failed, run_id),
             )
 
-    def last_run(self) -> dict | None:
+    def last_run(self, *, finished_only: bool = False) -> dict | None:
+        where = "WHERE finished_at IS NOT NULL" if finished_only else ""
         with self._lock:  # a background prefetch may be reading at the same time
-            row = self.connection.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+            row = self.connection.execute(f"SELECT * FROM runs {where} ORDER BY id DESC LIMIT 1").fetchone()
         return dict(row) if row else None
 
     # ---------------------------------------------------------------- meta

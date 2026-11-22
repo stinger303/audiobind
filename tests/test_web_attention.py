@@ -4,6 +4,7 @@ import pathlib
 import re
 import tempfile
 import unittest
+from contextlib import closing
 from unittest import mock
 
 from audiobind import web
@@ -86,8 +87,23 @@ class TestNeedsYouView(unittest.TestCase):
         self.assertNotIn("ab-group", body(page))
         self.assertNotIn("Needs your review", chips(page))
         self.assertIn('<a class="chip on" href="/?status=all">All <span class="n">2</span></a>', page)
-        self.assertRegex(page, r'<p class="ab-allclear">All clear - last scan [^<]+, nothing needs you\.</p>')
+        self.assertIn('<p class="ab-allclear">Nothing needs your review.</p>', page)
+        self.assertIn("No scan has finished", page)
         self.assertEqual(page.count('class="ab-allclear"'), 1)
+
+    def test_fresh_heartbeat_uses_the_previous_finished_scan(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(State(pathlib.Path(tmp))) as state:
+            with mock.patch.object(web.time, "time", return_value=1000):
+                state.finish_run(state.start_run(), 0, 0, 0, 0)
+            with mock.patch.object(web.time, "time", return_value=1600):
+                state.start_run()
+                state.heartbeat()
+                with mock.patch.object(web.CONTROL._paused, "is_set", return_value=True):
+                    page = web.render(state)
+        header = page.split('<header', 1)[1].split('</header>', 1)[0]
+        self.assertIn("Last scan finished 10m ago", header)
+        self.assertIn("Service alive", header)
+        self.assertIn("checked in 0s ago", header)
 
     def test_chip_order_needs_you_first_all_last(self):
         names = re.findall(r'href="/\?status=(\w+)"', chips(render_with([HELD, REVIEW, DONE])))

@@ -161,7 +161,7 @@ body{
 .ab-status.ab-stale .ab-dot{background:var(--ab-amber);box-shadow:0 0 6px rgba(242,163,60,.7)}
 .ab-status .ab-dot{width:6px;height:6px;border-radius:50%;
   background:var(--ab-green);box-shadow:0 0 6px rgba(39,166,68,.7)}
-.ab-status small{font-weight:400;color:var(--ab-text3)}
+.ab-status small,.ab-scan-age{font-size:12px;font-weight:400;color:var(--ab-text3)}
 .ab-version{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text3);
   background:rgba(255,255,255,.04);border:1px solid var(--ab-border-subtle);
   border-radius:4px;padding:2px 7px;}
@@ -1772,7 +1772,10 @@ PAGE = """<!doctype html>
     <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
             aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1><a href="/?status=all" title="Back to the library" style="color:inherit;text-decoration:none">{view_heading}</a></h1>
-    <span class="ab-status{health_stale}"><span class="ab-dot"></span>{health_text}<small> &middot; last scan {health_scan}</small></span>
+    <span class="ab-status{health_stale}">
+      <span class="ab-dot"></span>{health_text}<small>&middot; {service_check_in}</small>
+    </span>
+    <span class="ab-scan-age">{scan_freshness}</span>
     <span class="ab-version">v{version}</span>
     {dry_text}
   </header>
@@ -6718,13 +6721,15 @@ def render(state, status: str = "", query: str = "") -> str:
     # stored series listings only; stale ones are refreshed in the background
     series_shelf = _series_shelf(state)
 
+    finished_run = state.last_run(finished_only=True)
+    scan_freshness = "No scan has finished"
+    if finished_run:
+        scan_freshness = "Last scan finished " + _fmt_age(max(0, time.time() - finished_run["finished_at"]))
+
     # nothing needs you: one line above the table, no box, no icon
     allclear = ""
     if view == "all" and not status and attention_count == 0:
-        allclear = (
-            f'<p class="ab-allclear">All clear - last scan {_html(_fmt_age(state.heartbeat_age()))}, '
-            "nothing needs you.</p>"
-        )
+        allclear = '<p class="ab-allclear">Nothing needs your review.</p>'
 
     # table
     shown = len(units)
@@ -7221,13 +7226,18 @@ def render(state, status: str = "", query: str = "") -> str:
             "</section>"
         ).format(ti=_html(nxt.title if nxt and nxt.title else qsnap["units"][0]), n=qsnap["count"])
 
-    # health
+    # service check-in
     set_effective(state)
     heartbeat_age = state.heartbeat_age()
     eff_interval = effective_val("scan_interval_min")
     healthy = heartbeat_age < eff_interval * 60 * 2.5 + 300
     health_stale = "" if healthy else " ab-stale"
-    health_text = "Healthy" if healthy else "Stale"
+    if heartbeat_age == float("inf"):
+        health_text = "Service status unknown"
+        service_check_in = "never checked in"
+    else:
+        health_text = "Service alive" if healthy else "Service check-in overdue"
+        service_check_in = f"checked in {_fmt_age(heartbeat_age)}"
 
     # header indicators
     dry_header = (
@@ -7251,7 +7261,8 @@ def render(state, status: str = "", query: str = "") -> str:
         ingest_line=_ingest_line(),
         health_stale=health_stale,
         health_text=health_text,
-        health_scan=_fmt_age(heartbeat_age),
+        service_check_in=service_check_in,
+        scan_freshness=scan_freshness,
         rail_total=total,
         series_item=_series_rail_item(series_shelf["missing_total"]),
         discover_item=_discover_rail_item(state),
