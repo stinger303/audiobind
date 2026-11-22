@@ -5,9 +5,9 @@
 ## Multipart books
 
 Discovery can group siblings with matching names and distinct part numbers such as
-`Part 1` and `Part 2`. Each part except the final one must be within 25% of the median
-size of the non-final parts. The final part can be any size, so a short closing disc
-or a larger part containing extras can still belong to the same book. Volume numbers
+`Part 1` and `Part 2`. The largest part can be up to six times the size of the smallest,
+including the final part. This bound allows uneven rips and splits sets with a wider
+spread. If part sizes are unavailable, discovery uses the names alone. Volume numbers
 identify separate books.
 
 ## Controls in the web UI

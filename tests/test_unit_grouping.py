@@ -3,8 +3,8 @@
 group_key() strips every digit, so ``Author/Dune 1`` and ``Author/Dune 2`` used to key to "dune"
 and become one unit: two books concatenated into one file. Now siblings are merged only when each
 carries a real part marker (disc/part/cd + number; "Vol 2" is a book's own number), their names
-agree once that marker is removed (other digits kept), their ordinals differ, and their sizes - the
-runtime proxy discovery has - are comparable for the non-final parts (CORE-05b).
+agree once that marker is removed (other digits kept), their ordinals differ, and the largest
+part is at most six times the size of the smallest (CORE-05b).
 """
 
 import os
@@ -100,10 +100,10 @@ class GenuinePartsTests(GroupingCase):
             self.touch("C", f"Bar - Pt. {n}", "01.mp3")
         self.assertEqual(self.rels(), [("A", 2), ("B", 2), ("C", 2)])
 
-    def test_a_short_last_disc_and_mp3_cd_sized_discs_still_group(self):
+    def test_a_short_last_disc_at_the_sixfold_bound_still_groups(self):
         self.touch("Big", "Disc 1", "01.mp3", size=690 * MB)
         self.touch("Big", "Disc 2", "01.mp3", size=680 * MB)
-        self.touch("Big", "Disc 3", "01.mp3", size=40 * MB)
+        self.touch("Big", "Disc 3", "01.mp3", size=115 * MB)
         self.assertEqual(self.rels(), [("Big", 3)])
 
     def test_shared_parent_keys_are_unchanged(self):
@@ -157,8 +157,10 @@ class CompatibilityNotSizeTests(GroupingCase):
         self.assertEqual(self.rels(found), [("Author/Title Disc 01", 1), ("Author/Title Disc 1", 1)])
 
     def test_a_repeated_ordinal_in_a_longer_set_is_not_guessed_at(self):
-        for name in ("Disc 1", "Disc 2", "Disc 02"):
+        for name in ("Disc 2", "Disc 1", "Disc 02"):
             self.touch("Novel", name, "01.mp3", size=70 * MB)
+        leaves = sorted(units.discover(self.root, []), key=lambda leaf: leaf["name"], reverse=True)
+        self.assertEqual(len(units.group(leaves)), 3)
         self.assertEqual(self.rels(), [("Novel/Disc 02", 1), ("Novel/Disc 1", 1), ("Novel/Disc 2", 1)])
 
     def test_a_title_beside_its_numbered_sequel_is_two_books(self):
@@ -166,10 +168,19 @@ class CompatibilityNotSizeTests(GroupingCase):
         self.touch("Author", "Book 2", "01.mp3", size=300 * MB)
         self.assertEqual(self.rels(), [("Author/Book", 1), ("Author/Book 2", 1)])
 
-    def test_a_final_part_can_be_much_larger(self):
-        self.touch("Author", "Foo Part 1", "01.mp3", size=100 * MB)
-        self.touch("Author", "Foo Part 2", "01.mp3", size=700 * MB)
-        self.assertEqual(self.rels(), [("Author", 2)])
+    def test_a_tenfold_spread_splits_even_when_the_largest_part_is_last(self):
+        """Guard against merging likely separate books that happen to share a part name."""
+        self.touch("Author", "Foo Part 1", "01.mp3", size=40 * MB)
+        self.touch("Author", "Foo Part 2", "01.mp3", size=400 * MB)
+        self.assertEqual(self.rels(), [("Author/Foo Part 1", 1), ("Author/Foo Part 2", 1)])
+
+    def test_unreadable_sizes_leave_grouping_to_names(self):
+        paths = [self.touch("Novel", f"Disc {disc}", "01.mp3") for disc in (1, 2)]
+        leaves = units.discover(self.root, [])
+        for path in paths:
+            os.unlink(path)
+        (unit,) = units.group(leaves)
+        self.assertEqual(len(unit.parts), 2)
 
     def test_private_part_folders_with_a_larger_final_part_group(self):
         book = "James Patterson - Private 01 - Private"
@@ -179,11 +190,11 @@ class CompatibilityNotSizeTests(GroupingCase):
         self.assertEqual(unit.rel_path, book)
         self.assertEqual(len(unit.files), 4)
 
-    def test_private_london_duration_ratios_split_when_sizes_are_proportional(self):
+    def test_private_london_uneven_part_folders_group(self):
         book = "James Patterson - Private 02 - Private London"
-        for part, size in enumerate((70, 104, 210, 293), 1):
+        for part, size in enumerate((20, 30, 59, 83), 1):
             self.touch(book, f"Part {part}", "01.mp3", size=size * MB)
-        self.assertEqual(self.rels(), [(f"{book}/Part {part}", 1) for part in range(1, 5)])
+        self.assertEqual(self.rels(), [(book, 4)])
 
     def test_a_middle_disc_far_off_the_others_breaks_the_set(self):
         self.touch("Novel", "Disc 1", "01.mp3", size=700 * MB)

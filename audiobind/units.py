@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import re
-import statistics
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -196,12 +195,6 @@ def _part_base(name: str, marker: re.Match) -> str:
     return norm(NOISE_RE.sub(" ", name[: marker.start()] + " " + name[marker.end():]))
 
 
-#: CORE-05b: parts of one book run about as long as each other. Every part but the last must be
-#: within this share of the median non-final part. The final part can be any size. Discovery
-#: compares file sizes as a proxy for runtime without probing audio.
-PART_LENGTH_TOLERANCE = 0.25
-
-
 def _leaf_bytes(leaf: dict) -> int:
     total = 0
     for path in leaf["files"]:
@@ -215,20 +208,18 @@ def _leaf_bytes(leaf: dict) -> int:
 def _is_part_set(members: list[dict]) -> bool:
     """True when marked siblings can be the successive parts of one book (CORE-05b).
 
-    Their ordinals must all differ ("Disc 1" and "Disc 01" are two copies of disc one, not discs
-    one and two), and their non-final sizes must fit PART_LENGTH_TOLERANCE."""
+    Their ordinals must all differ. The 6× spread across all part sizes is a sanity bound,
+    not an estimate of how even the parts are. If the spread cannot be measured, use the
+    naming evidence alone.
+    """
     if len(members) < 2:
         return True
-    ordered = sorted(members, key=lambda m: int(_part_marker(m["name"]).group(2)))
-    ordinals = [int(_part_marker(m["name"]).group(2)) for m in ordered]
-    if len(set(ordinals)) != len(ordinals):
+    ordinals = {int(_part_marker(m["name"]).group(2)) for m in members}
+    if len(ordinals) != len(members):
         return False
-    sizes = [_leaf_bytes(m) for m in ordered[:-1]]
-    typical = statistics.median(sizes)
-    if typical <= 0:
-        return True  # nothing to compare: names alone decide, as for any unsized set
-    low, high = typical * (1 - PART_LENGTH_TOLERANCE), typical * (1 + PART_LENGTH_TOLERANCE)
-    return all(low <= size <= high for size in sizes)
+    sizes = [_leaf_bytes(member) for member in members]
+    smallest = min(sizes)
+    return smallest == 0 or max(sizes) <= 6 * smallest
 
 
 def group(leaves: list[dict]) -> list[BookUnit]:
@@ -237,8 +228,8 @@ def group(leaves: list[dict]) -> list[BookUnit]:
     CORE-05: siblings share a unit only on positive multi-part evidence - each carries a part
     marker (disc/part/cd + number; a volume number is a book's own), their names are identical once
     that marker is removed (any other digit is content: "Dune 1" and "Dune 2" are two books), their
-    ordinals differ, and their non-final sizes are comparable (_is_part_set). Anything else is a unit of
-    its own. The unit's key is still group_key(), so a
+    ordinals differ, and their measured sizes fit the sixfold spread bound (_is_part_set).
+    Anything else is a unit of its own. The unit's key is still group_key(), so a
     genuine part set keeps the rel_path (state key) it always had.
     """
     buckets: dict[tuple[str, str, str], list[dict]] = {}
