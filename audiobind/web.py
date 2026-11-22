@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import socket
 import sys
 import threading
@@ -72,7 +73,6 @@ from .covers import valid_asin
 from . import pipeline as pipeline_mod
 from .pipeline import CONVERT_LOCK, process_unit
 from .state import LOCKABLE_FIELDS, SOURCE_INGEST, WISHLIST_REQUEUEABLE, key_source
-from .units import files_under
 from .util import loads_dict, redact_url
 
 _log = logging.getLogger("audiobind").info
@@ -7333,6 +7333,9 @@ DELETE_BUSY = (b'{"error":"a book is being converted or the library layout is be
                b'nothing was deleted. Try again when it finishes."}')
 
 
+OUTPUT_CHANGED = (b'{"error":"The published folder changed on disk. '
+                  b'Please re-check the book before deleting it."}')
+
 SOURCE_CHANGED = (b'{"error":"The source changed on disk or this row has no audited source ownership. '
                   b'Please re-check the book before deleting it."}')
 
@@ -7534,12 +7537,52 @@ def put_back(moved: dict[Path, Path], journal: Path | None = None) -> list[Path]
     return left
 
 
-def remove_trashed(trash: Path) -> None:
-    """Remove one path move_aside renamed: a folder recursively, anything else (a link) unlinked."""
-    if not trash.is_symlink() and trash.is_dir():
-        shutil.rmtree(str(trash))
-    elif os.path.lexists(trash):
-        trash.unlink()
+def staged_entries(moved: dict[Path, Path], root: Path, entries: dict) -> dict:
+    """Translate the authorized names to the hidden staging paths."""
+    staged = {}
+    for target, trash in moved.items():
+        for name, identity in entries.items():
+            path = root / name
+            if path.is_relative_to(target):
+                staged[(trash / path.relative_to(target)).relative_to(root).as_posix()] = identity
+    return staged
+
+
+def staged_matches(moved: dict[Path, Path], root: Path, entries: dict) -> bool:
+    try:
+        return pipeline_mod.source_entries(root, list(moved.values())) == entries
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
+def remove_trashed(trash: Path, root: Path, entries: dict) -> None:
+    """Purge only staged entries from the authorized inventory, never a recursive sweep."""
+    children = {}
+    for name, identity in entries.items():
+        path = root / name
+        if path.is_relative_to(trash):
+            children.setdefault(path.parent, []).append((path, identity))
+
+    def remove(parent_fd, path, identity):
+        info = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+        if identity is None:
+            child_fd = os.open(path.name, os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+            try:
+                for child, expected in children.get(path, ()):
+                    remove(child_fd, child, expected)
+            finally:
+                os.close(child_fd)
+            os.rmdir(path.name, dir_fd=parent_fd)
+        else:
+            if not stat.S_ISREG(info.st_mode) or [info.st_size, info.st_mtime_ns] != identity:
+                raise OSError(errno.ESTALE, "staged file identity changed", str(path))
+            os.unlink(path.name, dir_fd=parent_fd)
+
+    parent_fd = os.open(trash.parent, os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        remove(parent_fd, trash, entries[trash.relative_to(root).as_posix()])
+    finally:
+        os.close(parent_fd)
 
 
 def plan_target(p) -> tuple[Path, str]:
@@ -8514,9 +8557,6 @@ class Handler(BaseHTTPRequestHandler):
             # only thing between this call and the filesystem, so they must stay strict.
             log = logging.getLogger("audiobind")
             journal = delete_journal(self.state)  # WEBAPI-02c: where each move aside is recorded first
-            # WEBAPI-02b: the walk is slow on a big tree or a stalled share, so it runs before the
-            # encoder lock is taken (the claim and path checks under the lock still come after it)
-            before = files_under([str(t) for t in targets]) if targets else set()
 
             # WEBAPI-01: the checks at the top ran before the walk above, and a Convert anyway can
             # have queued this book since. Decided again under the encoder lock (no encode can
@@ -8536,6 +8576,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             source_trash: dict[Path, Path] = {}
             output_trash: dict[Path, Path] = {}
+            source_staged = {}
+            output_staged = {}
             source_removed = False
             source_kept_reason = ""
             output_removed = "absent"
@@ -8602,7 +8644,11 @@ class Handler(BaseHTTPRequestHandler):
                         return
                     source_trash, error = move_aside(targets, journal)
                     if error is None:
-                        pass
+                        source_staged = staged_entries(source_trash, lib_root, current)
+                        if not staged_matches(source_trash, lib_root, source_staged):
+                            put_back(source_trash, journal)
+                            self._send(409, SOURCE_CHANGED, "application/json")
+                            return
                     elif error.errno == errno.EROFS or "Read-only" in str(error):
                         source_kept_reason = "your source library is mounted read-only"
                         log.info("HARD DELETE %s; source kept: %s", rel, error)
@@ -8679,6 +8725,20 @@ class Handler(BaseHTTPRequestHandler):
                             output_kept_reason = f"the folder holds only {others}"
                         output_removed_files = own
                         output_left = left
+                    try:
+                        output_entries = pipeline_mod.source_entries(out_root, moves)
+                    except (OSError, ValueError, RuntimeError):
+                        output_entries = None
+                    expected_files = {(out_trash / name).relative_to(out_root).as_posix() for name in own}
+                    if output_entries is None or {
+                        name for name, identity in output_entries.items() if identity is not None
+                    } != expected_files or (out_wrote is not None and any(
+                        output_entries[(out_trash / name).relative_to(out_root).as_posix()] != out_wrote[name]
+                        for name in own
+                    )):
+                        put_back(source_trash, journal)
+                        self._send(409, OUTPUT_CHANGED, "application/json")
+                        return
                     output_trash, error = move_aside(moves, journal)
                     if error is not None:
                         put_back(source_trash, journal)
@@ -8692,6 +8752,12 @@ class Handler(BaseHTTPRequestHandler):
                             "source_removed": False,
                         }).encode(), "application/json")
                         return
+                    output_staged = staged_entries(output_trash, out_root, output_entries)
+                    if not staged_matches(output_trash, out_root, output_staged):
+                        put_back(output_trash, journal)
+                        put_back(source_trash, journal)
+                        self._send(409, OUTPUT_CHANGED, "application/json")
+                        return
                 else:
                     log.info("HARD DELETE %s; output -> none", rel)
             finally:
@@ -8700,16 +8766,12 @@ class Handler(BaseHTTPRequestHandler):
             # WEBAPI-02b: the slow part, with the encoder free. Each target already sits under a trash
             # name beside its own; a removal that fails puts what is left back under its name
             if source_trash:
-                trashed_before = set()
-                for f in before:
-                    for target, trash in source_trash.items():
-                        if f == str(target) or f.startswith(str(target) + os.sep):
-                            trashed_before.add(str(trash) + f[len(str(target)):])
-                            break
+                trashed_before = {str(lib_root / name) for name, identity in source_staged.items()
+                                  if identity is not None}
                 error = None
                 for trash in source_trash.values():
                     try:
-                        remove_trashed(trash)
+                        remove_trashed(trash, lib_root, source_staged)
                     except OSError as exc:
                         error = exc
                         break
@@ -8721,7 +8783,7 @@ class Handler(BaseHTTPRequestHandler):
                     remaining = {f for f in trashed_before if os.path.lexists(f)}
                     put_back(source_trash, journal)
                     failure = None
-                    if remaining and remaining != trashed_before:
+                    if remaining != trashed_before:
                         # some files are already gone: never call that "kept", and keep the row
                         # (and the published output) so the operator can see and finish the job
                         log.error("HARD DELETE %s; source PARTIALLY removed: %s", rel, error)
@@ -8753,7 +8815,7 @@ class Handler(BaseHTTPRequestHandler):
             if output_trash:
                 try:
                     for trash in output_trash.values():
-                        remove_trashed(trash)
+                        remove_trashed(trash, out_root, output_staged)
                     settle_journal(journal, output_trash)
                     if output_removed_files is None:
                         log.info("HARD DELETE %s; output removed: %s", rel, out_trash)

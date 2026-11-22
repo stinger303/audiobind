@@ -32,3 +32,20 @@ class DeleteRegressionTests(LiveServerCase):
         self.assertIn("re-check", body["error"])
         self.assertEqual(source.read_bytes(), b"different book")
         self.assertIsNotNone(self.state.get("Author/Book"))
+    def test_p0_02_audio_arriving_at_rename_survives(self):
+        source = self.audited_book()
+        late = source.with_name("different.mp3")
+        real_move = web.move_aside
+
+        def move(paths, journal):
+            if source.parent in paths:
+                late.write_bytes(b"different book")
+            return real_move(paths, journal)
+
+        with mock.patch.object(web, "move_aside", side_effect=move):
+            status, body = self.delete()
+        self.assertEqual(status, 409, body)
+        self.assertEqual(late.read_bytes(), b"different book")
+        self.assertTrue(source.exists())
+        self.assertIsNotNone(self.state.get("Author/Book"))
+
