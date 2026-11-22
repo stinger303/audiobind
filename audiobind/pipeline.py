@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import threading
 import time
 import traceback
@@ -20,7 +21,7 @@ from .config import CONFIG, effective_auto_tiers, effective_val
 from .control import CONTROL, Stopped
 from .probe import ProbeTimeout, probe
 from .state import SOURCE_INGEST, State, UnitState
-from .units import BookUnit, looks_like_collection, unsafe_path_reason
+from .units import AUDIO_EXT, BookUnit, looks_like_collection, owned_paths, unsafe_path_reason
 from .util import norm
 
 #: the daemon and the manual "Retry / Convert anyway" buttons must not encode two books at once
@@ -29,6 +30,49 @@ CONVERT_LOCK = threading.Lock()
 #: Audit.name_source values, recorded in the detail's match block
 NAME_SOURCE_FOLDER = "folder"
 NAME_SOURCE_EMBEDDED = "embedded"
+
+
+def source_entries(root: Path, targets: list[Path]) -> dict:
+    """Inventory delete targets without following symlinks or accepting a partial walk."""
+    entries = {}
+
+    def visit(path):
+        info = path.lstat()
+        name = path.relative_to(root).as_posix()
+        if stat.S_ISDIR(info.st_mode):
+            entries[name] = None
+            for child in path.iterdir():
+                visit(child)
+        elif stat.S_ISREG(info.st_mode):
+            entries[name] = [info.st_size, info.st_mtime_ns]
+        else:
+            raise OSError(f"unsupported entry in source inventory: {path}")
+
+    for target in targets:
+        if target == root or target.parent.resolve() != target.parent:
+            raise OSError(f"unsafe source inventory target: {target}")
+        visit(target)
+    return entries
+
+
+def source_ownership(unit: BookUnit) -> dict:
+    if unit.source == SOURCE_INGEST:
+        return {}
+    root = Path(CONFIG.library_root).resolve()
+    targets = [Path(p).absolute() for p in owned_paths(unit)]
+    if root in targets:
+        targets = [Path(unit.parent).absolute() / part.name for part in unit.parts]
+    try:
+        entries = source_entries(root, targets)
+        audio = {name for name, identity in entries.items()
+                 if identity is not None and Path(name).suffix.lower() in AUDIO_EXT}
+        if audio != {Path(f).absolute().relative_to(root).as_posix() for f in unit.files}:
+            return {"blocked": "the source folder also holds audio belonging to other books"}
+        if audio:
+            return {"targets": [p.relative_to(root).as_posix() for p in targets], "entries": entries}
+    except (OSError, ValueError, RuntimeError):
+        pass
+    return {}
 
 
 @dataclass
@@ -65,6 +109,7 @@ class Audit:
     placed: list = field(default_factory=list)
     moved_aside: dict = field(default_factory=dict)
     wrote: dict | None = None
+    source_ownership: dict = field(default_factory=dict)
     #: Q-B12: the Audnex record convert_unit fetched for this match (before the overrides), so the
     #: recorded series is the one the tags were written from; None when it never asked
     audnex: dict | None = None
@@ -81,7 +126,7 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
 
     ``pin_failures``: how many checks in a row ``asin_override`` has had no catalog data (see
     matching.PIN_GIVE_UP_AFTER)."""
-    audit = Audit(unit=unit)
+    audit = Audit(unit=unit, source_ownership=source_ownership(unit))
     total = 0.0
     timed_out = 0
     for path in unit.files:
@@ -196,6 +241,8 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
     # evidence only: asked after the grade and the action are final, and nothing above reads it.
     # None (no request, no cache file) unless HARDCOVER_EVIDENCE is on and a token is set
     audit.hardcover = hardcover.evidence_for(audit.match.product)
+    if audit.source_ownership and audit.source_ownership != source_ownership(unit):
+        audit.source_ownership = {}
     return audit
 
 
@@ -893,6 +940,7 @@ def record(
             },
             "overrides": overrides_mod.normalise(audit.overrides),
             "source": {
+                "ownership": audit.source_ownership,
                 "parts": len(audit.unit.parts),
                 "files": audit.unit.n_files,
                 "mb": audit.src_mb,

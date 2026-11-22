@@ -72,7 +72,7 @@ from .covers import valid_asin
 from . import pipeline as pipeline_mod
 from .pipeline import CONVERT_LOCK, process_unit
 from .state import LOCKABLE_FIELDS, SOURCE_INGEST, WISHLIST_REQUEUEABLE, key_source
-from .units import files_under, find_unit, foreign_audio, owned_paths
+from .units import files_under
 from .util import loads_dict, redact_url
 
 _log = logging.getLogger("audiobind").info
@@ -7333,6 +7333,18 @@ DELETE_BUSY = (b'{"error":"a book is being converted or the library layout is be
                b'nothing was deleted. Try again when it finishes."}')
 
 
+SOURCE_CHANGED = (b'{"error":"The source changed on disk or this row has no audited source ownership. '
+                  b'Please re-check the book before deleting it."}')
+
+
+def source_ownership_for(row) -> dict:
+    try:
+        ownership = json.loads(row.detail).get("source", {}).get("ownership", {})
+    except (ValueError, TypeError, AttributeError):
+        return {}
+    return ownership if isinstance(ownership, dict) else {}
+
+
 def conversion_claim(rel: str) -> str:
     """WEBAPI-01: why a conversion has a claim on ``rel`` right now ('' = none).
 
@@ -8438,43 +8450,23 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(400, b'{"error":"source path escapes library root"}', "application/json")
                     return
 
-                # What this book owns on disk - its own folder or part folders, never a parent it
-                # shares with sibling books. Each target must sit strictly inside LIBRARY_ROOT.
-                unit = find_unit(CONFIG.library_root, CONFIG.ignore_globs, rel)
-                if unit is not None:
-                    owned = owned_paths(unit)
-                    if any(Path(p).resolve() == lib_root for p in owned):
-                        owned = [os.path.join(unit.parent, part.name) for part in unit.parts]
-                    for p in owned:
-                        resolved = Path(p).resolve()
-                        try:
-                            resolved.relative_to(lib_root)
-                        except ValueError:
-                            self._send(400, b'{"error":"source path escapes library root"}', "application/json")
-                            return
-                        if resolved == lib_root:
-                            self._send(400, b'{"error":"refusing to delete the library root"}', "application/json")
-                            return
-                        # remove through the resolved parent (TOCTOU: re-verified before removal)
-                        target, kind = plan_target(p)
-                        if removal_unsafe(target, lib_root, kind):
-                            self._send(400, b'{"error":"source path escapes library root"}', "application/json")
-                            return
-                        targets.append(target)
-                        kinds[target] = kind
-                    foreign = foreign_audio(unit, [str(t) for t in targets])
-                    if foreign:
-                        self._send(
-                            409,
-                            json.dumps(
-                                {
-                                    "error": f"this folder also holds {len(foreign)} audio file(s) that belong "
-                                    "to other books - nothing was deleted. Remove this book's files by hand."
-                                }
-                            ).encode(),
-                            "application/json",
-                        )
+                ownership = source_ownership_for(unit_state)
+                if ownership.get("blocked"):
+                    self._send(409, json.dumps({
+                        "error": ownership["blocked"] + ". Re-check the book before deleting.",
+                    }).encode(), "application/json")
+                    return
+                if not ownership and src_path.exists():
+                    self._send(409, SOURCE_CHANGED, "application/json")
+                    return
+                for name in ownership.get("targets", []):
+                    raw = lib_root / name
+                    target, kind = plan_target(raw)
+                    if target != raw or removal_unsafe(target, lib_root, kind):
+                        self._send(409, SOURCE_CHANGED, "application/json")
                         return
+                    targets.append(target)
+                    kinds[target] = kind
 
             # Path traversal guard: resolve output inside OUTPUT_ROOT
             out_root = Path(CONFIG.output_root).resolve()
@@ -8570,6 +8562,13 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 not_ours, out_trash, out_shared, out_wrote, out_name = planned
 
+                if not ingest_row and (
+                    ownership != source_ownership_for(unit_state)
+                    or (not ownership and src_path.exists())
+                ):
+                    self._send(409, SOURCE_CHANGED, "application/json")
+                    return
+
                 if targets:
                     changed = ""
                     for target in targets:
@@ -8593,6 +8592,13 @@ class Handler(BaseHTTPRequestHandler):
                             ).encode(),
                             "application/json",
                         )
+                        return
+                    try:
+                        current = pipeline_mod.source_entries(lib_root, targets)
+                    except (OSError, ValueError, RuntimeError):
+                        current = None
+                    if current != ownership.get("entries"):
+                        self._send(409, SOURCE_CHANGED, "application/json")
                         return
                     source_trash, error = move_aside(targets, journal)
                     if error is None:
