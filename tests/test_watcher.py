@@ -11,6 +11,7 @@ import threading
 import time
 import unittest
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
 from audiobind import daemon, tracker, qbit, watcher
@@ -166,6 +167,77 @@ class WatcherCase(unittest.TestCase):
 
 
 class TestCycle(WatcherCase):
+    def loopback_tracker(self):
+        calls = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.respond("/search.json", answer(entry(1001, "Project Hail Mary"))[2])
+
+            def do_GET(self):
+                self.respond("/download.php?tid=1001&fl", TORRENT)
+
+            def respond(self, expected, body):
+                calls.append(self.path)
+                if self.path != expected or calls.count(self.path) > 1:
+                    self.send_error(503)
+                    return
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        endpoint = tracker.Endpoints.build(
+            f"http://127.0.0.1:{server.server_port}", "/search.json", "/download.php",
+            freeleech_param="fl", search_body='{"q": "{{title}} {{author}}"}',
+        )
+        clock = FakeClock()
+        self.w._client = make_client(endpoints=endpoint,
+                                     limiter=tracker.RateLimiter(clock=clock, sleep=clock.sleep))
+        return self.w._client, calls
+
+    def test_restart_reconciles_add_without_downloading_again(self):
+        self.want()
+        _, calls = self.loopback_tracker()
+        digest = qbit.info_hash(TORRENT)
+
+        def crash_after_add(*args, **kwargs):
+            FakeQbit.progress_map[digest] = 0.25
+            raise SystemExit("power lost after client accepted torrent")
+
+        with mock.patch.object(FakeQbit, "add_torrent", side_effect=crash_after_add):
+            with self.assertRaises(SystemExit):
+                self.cycle()
+        self.cycle()
+        self.assertEqual(calls, ["/search.json", "/download.php?tid=1001&fl"])
+        self.assertEqual(self.row()["status"], "downloading")
+        self.assertEqual(self.row()["torrent_hash"], digest)
+        self.assertEqual(self.state.wedges_spent_since(0), 1)
+
+    def test_restart_holds_unknown_tracker_download_for_review(self):
+        self.want()
+        client, calls = self.loopback_tracker()
+        download = client.download
+
+        def crash_after_download(*args):
+            download(*args)
+            raise SystemExit("power lost during download")
+
+        with mock.patch.object(client, "download", side_effect=crash_after_download):
+            with self.assertRaises(SystemExit):
+                self.cycle()
+        self.cycle()
+        self.assertEqual(calls, ["/search.json", "/download.php?tid=1001&fl"])
+        self.assertEqual(self.row()["status"], "error")
+        self.assertIn("review", self.row()["note"])
+        self.assertEqual(self.state.wedges_spent_since(0), 0)
+
     def test_found_not_free_downloads_with_a_credit_and_goes_downloading(self):
         self.want()
         self.fake_tracker(answer(entry(1001, "Project Hail Mary")), (200, {}, TORRENT))

@@ -29,6 +29,7 @@ reason) and only a Retry click puts it back. Any tracker failure ends the cycle 
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import threading
 import time
@@ -791,6 +792,11 @@ class Watcher:
         return self.start(state)
 
     def _loop(self, state) -> None:
+        try:
+            with self._cycle_lock:
+                self._reconcile_handoffs(state)
+        except Exception:
+            log.exception("wishlist watcher: startup handoff reconciliation failed")
         while not self._stop.is_set():
             remaining = self.next_at - time.time()
             if remaining > 0:
@@ -848,10 +854,39 @@ class Watcher:
             self.busy = False
             self._cycle_lock.release()
 
+    @staticmethod
+    def _handoff_client_key() -> str:
+        return hashlib.sha256(f"{client_kind()}\n{client_url()}".encode()).hexdigest()
+
+    def _reconcile_handoffs(self, state) -> None:
+        for asin, intent in state.tracker_handoffs().items():
+            digest = intent.get("hash", "")
+            reason = "the tracker download may have completed and spent a freeleech credit"
+            if digest and intent["client"] == self._handoff_client_key():
+                client = make_client()
+                try:
+                    client.login()
+                    if digest in client.progress([digest]):
+                        state.settle_tracker_handoff(
+                            asin, WISHLIST_DOWNLOADING,
+                            "Recovered handoff: torrent found in download client.", digest,
+                        )
+                        continue
+                    reason = "the torrent was not found in the download client"
+                except ClientError as exc:
+                    reason = f"the download client could not confirm the torrent ({exc})"
+                finally:
+                    client.logout()
+            elif digest:
+                reason = "the download client settings changed since the handoff"
+            note = f"Tracker torrent #{intent['tid']} needs owner review before retrying: {reason}."
+            state.settle_tracker_handoff(asin, WISHLIST_ERROR, note)
+
     def _cycle(self, state, trigger: str) -> dict:
         reason = disabled_reason()
         if reason:
             return {"skipped": reason}
+        self._reconcile_handoffs(state)
         if self.paused(state):
             return {"skipped": "paused"}
         route = capture_route()
@@ -1112,6 +1147,7 @@ class Watcher:
         """The download client (qBittorrent by default), logged in once per cycle - before the first
         tracker download."""
         if "qbit" not in holder:
+            holder["handoff_client"] = self._handoff_client_key()
             client = make_client()
             try:
                 client.login()
@@ -1166,41 +1202,50 @@ class Watcher:
         if not current or current["status"] != WISHLIST_WANTED:
             return "skipped"  # removed or changed by a click while this cycle ran
         qb = self._qbit(holder)  # before the download: a dead qBittorrent costs no freeleech credit
+        filename, category = f"tracker-{pick.tid}.torrent", qbit_category()
+        intent = {"tid": pick.tid, "use_credit": use_credit, "client": holder["handoff_client"]}
+        if not state.begin_tracker_handoff(asin, intent):
+            return "skipped"
         log.info("wishlist watcher: %s (%s) - downloading %s", asin, title, decision)
         try:
             torrent = client.download(pick.tid, use_credit)
         except tracker.TrackerRouteChanged:
+            state.settle_tracker_handoff(asin, None)
             raise
         except tracker.TrackerError as exc:
-            state.wishlist_set_status(
-                asin, WISHLIST_ERROR, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
-                note=(f"download of tracker torrent #{pick.tid} failed ({when}): {exc}. Decision was: {credit_why}. "
-                      "Not retried on its own - a freeleech credit may have been spent; press Retry to search again."),
+            state.settle_tracker_handoff(
+                asin, WISHLIST_ERROR,
+                f"Download of tracker torrent #{pick.tid} failed ({when}): {exc}. "
+                "Review before retrying: a freeleech credit may have been spent.",
             )
             holder["row_error"] = True
             raise
+        intent.update(hash=qbit.info_hash(torrent), filename=filename, category=category,
+                      spent_at=time.time() if use_credit else 0)
+        state.prepare_tracker_add(asin, intent)
+        if use_credit and budget is not None:
+            budget.spent_cycle += 1
         try:
-            digest = qb.add_torrent(torrent, f"tracker-{pick.tid}.torrent", qbit_category())
+            digest = qb.add_torrent(torrent, filename, category)
         except ClientError as exc:
-            state.wishlist_set_status(
-                asin, WISHLIST_ERROR, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
-                note=(f"fetched tracker torrent #{pick.tid} ({credit_why}) but {client_label()} did not take it ({when}): {exc}. "
-                      "Press Retry to search again."),
-            )
-            holder["row_error"] = True
-            if use_credit:  # the tracker already took the credit, whatever qBittorrent says
-                state.mark_wedge_spent(pick.tid, time.time())
-                if budget is not None:
-                    budget.spent_cycle += 1
-            raise _QbitDown(f"{client_label()} did not take a torrent ({exc})") from None
-        state.wishlist_set_status(
-            asin, WISHLIST_DOWNLOADING, expect=WISHLIST_WANTED, checked=True, tracker_tid=pick.tid,
-            torrent_hash=digest, note=f"sent to {client_label()} {when}: {decision}",
+            digest = intent["hash"]
+            try:
+                present = digest and digest in qb.progress([digest])
+            except ClientError:
+                present = False
+            if not present:
+                state.settle_tracker_handoff(
+                    asin, WISHLIST_ERROR,
+                    f"Fetched tracker torrent #{pick.tid} ({credit_why}) but "
+                    f"{client_label()} did not take it ({when}): {exc}. "
+                    "Review the download client before retrying.",
+                )
+                holder["row_error"] = True
+                raise _QbitDown(f"{client_label()} did not take a torrent ({exc})") from None
+        state.settle_tracker_handoff(
+            asin, WISHLIST_DOWNLOADING, f"sent to {client_label()} {when}: {decision}",
+            digest or intent["hash"],
         )
-        if use_credit:
-            state.mark_wedge_spent(pick.tid, time.time())
-            if budget is not None:
-                budget.spent_cycle += 1
         log.info("wishlist watcher: %s (%s) sent to %s (hash %s)", asin, title, client_label(), digest or "unknown")
         return "sent"
 

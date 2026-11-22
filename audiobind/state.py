@@ -110,6 +110,11 @@ CREATE TABLE IF NOT EXISTS wishlist (
     sequence    TEXT NOT NULL DEFAULT '',
     hours       REAL NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS tracker_handoffs (
+    asin TEXT PRIMARY KEY,
+    added_at REAL NOT NULL,
+    payload TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS catalog_seen (
     asin        TEXT PRIMARY KEY,
     image       TEXT NOT NULL DEFAULT '',
@@ -1215,10 +1220,55 @@ class State:
         handful of books the tracker does not have from starving every row behind them."""
         with self._lock:
             rows = self.connection.execute(
-                "SELECT * FROM wishlist WHERE status = ? ORDER BY checked_at ASC, added_at ASC, asin LIMIT ?",
+                "SELECT * FROM wishlist WHERE status = ? "
+                "AND asin NOT IN (SELECT asin FROM tracker_handoffs) "
+                "ORDER BY checked_at ASC, added_at ASC, asin LIMIT ?",
                 (WISHLIST_WANTED, max(0, int(limit))),
             ).fetchall()
         return [self._wishlist_row(r) for r in rows]
+
+    def begin_tracker_handoff(self, asin: str, intent: dict) -> bool:
+        with self._lock, self._txn():
+            cursor = self.connection.execute(
+                "INSERT OR IGNORE INTO tracker_handoffs (asin, added_at, payload) "
+                "SELECT asin, added_at, ? FROM wishlist WHERE asin = ? AND status = ?",
+                (json.dumps(intent), asin, WISHLIST_WANTED),
+            )
+            return cursor.rowcount == 1
+
+    def tracker_handoffs(self) -> dict[str, dict]:
+        with self._lock:
+            rows = self.connection.execute("SELECT asin, payload FROM tracker_handoffs").fetchall()
+        return {row["asin"]: json.loads(row["payload"]) for row in rows}
+
+    def prepare_tracker_add(self, asin: str, intent: dict) -> None:
+        with self._lock, self._txn():
+            self.connection.execute(
+                "UPDATE tracker_handoffs SET payload = ? WHERE asin = ?", (json.dumps(intent), asin)
+            )
+
+    def settle_tracker_handoff(self, asin: str, status: str | None, note: str = "", digest: str = "") -> None:
+        with self._lock, self._txn():
+            row = self.connection.execute("SELECT * FROM tracker_handoffs WHERE asin = ?", (asin,)).fetchone()
+            if not row:
+                return
+            intent = json.loads(row["payload"])
+            spent_at = intent.get("spent_at", 0)
+            if spent_at:
+                self.connection.execute(
+                    "INSERT INTO credit_spends (tracker_tid, spent_at) VALUES (?, ?)",
+                    (intent["tid"], spent_at),
+                )
+            if status:
+                now = time.time()
+                self.connection.execute(
+                    "UPDATE wishlist SET status = ?, note = ?, tracker_tid = ?, torrent_hash = ?, "
+                    "updated_at = ?, checked_at = ?, wedge_spent = ?, wedge_at = ? "
+                    "WHERE asin = ? AND added_at = ? AND status = ?",
+                    (status, note, intent["tid"], digest, now, now, bool(spent_at), spent_at,
+                     asin, row["added_at"], WISHLIST_WANTED),
+                )
+            self.connection.execute("DELETE FROM tracker_handoffs WHERE asin = ?", (asin,))
 
     def wishlist_set_status(
         self,

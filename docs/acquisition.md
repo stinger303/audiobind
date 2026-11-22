@@ -377,3 +377,9 @@ a drifted cycle is still refused.
 
 With `notify` or `auto`, `GET /api/watcher` also carries `ip_updater` (`mode`, `can_write`,
 `decision`, `reason`, `last_updated_at`, `last_old`, `last_new`, `last_result`). With `off`, the key is absent.
+
+The watcher records a handoff before requesting the torrent and saves its info hash and
+destination before adding it to the download client. After an interruption, the watcher
+checks the saved hash in that client on startup or before its next cycle. A confirmed torrent resumes as
+downloading. An uncertain handoff shows an error for owner review before using Retry,
+since another tracker request could consume a second credit.
