@@ -12,7 +12,7 @@ from . import series as series_mod
 from . import watcher as watcher_mod
 from .config import CONFIG, deprecated_env_lines, effective_val, rejected_env_lines, set_effective
 from .control import CONTROL
-from .pipeline import process_unit
+from .pipeline import process_unit, recover_publications
 from .prefetch import PREFETCH, already_decided, next_eligible
 from .state import SOURCE_INGEST, State, UnitState
 from .units import BookUnit, discover_units, is_single_file
@@ -120,6 +120,7 @@ def scan_once(state: State, force: bool = False) -> dict:
     """One pass over the library (and the ingest folder, when INGEST_DIR is set).
 
     Already-decided units are skipped unless forced."""
+    recover_publications(state)
     set_effective(state)
     run_id = state.start_run()
     state.heartbeat()  # "last scan" should read fresh the moment a pass begins
@@ -262,6 +263,7 @@ def run() -> None:
     # WEBAPI-02c: a Delete interrupted between its renames and the removal is undone first, so the
     # first scan finds every book where its row says it is
     web.recover_deletes(web.delete_journal(state))
+    recover_publications(state)
     # CORE-01c: PCM parts a hard-killed conversion left on the scratch disk
     for stale in encode.reclaim_stale_parts():
         log.info("reclaimed stranded PCM parts: %s", stale)

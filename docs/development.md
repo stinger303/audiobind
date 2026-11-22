@@ -29,3 +29,10 @@ Any change that can move a match must pass the match-test programme: see
   ("files were dropped") for a file that was never measured.
 * **Audiobookshelf rewrites `metadata.json`** when it scans the new book. Losing our extra
   `duration` key is the app adopting the book, not a failed write.
+
+* **Publication is journaled in the SQLite manifest.** A durable attempt precedes staging in the
+  book folder. Once staging has finished, the attempt records the verified file identities and
+  the converted row before any destination is renamed. Startup checks every pending attempt
+  before discovery. A complete set is recorded and the intent is retired in one SQLite transaction.
+  An incomplete set is rolled back using the original files and the attempt is retired after restore.
+  Successful replacements keep their backups beside the book.

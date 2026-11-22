@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import errno
 import hashlib
 import json
 import os
@@ -12,6 +13,7 @@ import stat
 import threading
 import time
 import traceback
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -102,6 +104,7 @@ class Audit:
     #: where convert_unit would file the book, and whether it was already there
     out_path: str = ""
     already_published: bool = False
+    publication_recorded: bool = False
     #: which names the catalog match was searched with: "folder" (the folder/file name, as
     #: always) or "embedded" (an ingest unit's own audio tags, after the folder found nothing)
     name_source: str = NAME_SOURCE_FOLDER
@@ -412,7 +415,7 @@ def _refuse_uncontained(destinations: list[Path]) -> None:
 
 
 def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reencode: bool = False,
-                 at: Path | None = None):
+                 at: Path | None = None, state: State | None = None):
     """Encode, verify and file one book. Returns the EncodeResult (or None in a dry run).
 
     "Already published" means every requested format is on disk (CORE-04): when only some are,
@@ -463,7 +466,9 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
         return None  # nothing was written, so it is not "converted"
 
     work_dir = work_dir_for(unit)
-    with CONVERT_LOCK:
+    with CONVERT_LOCK, (state.publication_lock() if state is not None else contextlib.nullcontext()):
+        if state is not None:
+            _recover_publications(state)
         if CONTROL.deleting(unit.state_key):
             return None
         # checked again under the lock: a manual action and the daemon can both reach
@@ -510,6 +515,9 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
                     sequence=sequence,
                 )
             duration = results.get(formats[0], results[todo[0]]).duration
+            if state is not None:
+                return _publish_recorded(state, audit, todo, results, paths, book,
+                                         plan.chapters, duration, log)
             # CORE-03: metadata.json is written inside the publish, so a failed sidecar rolls
             # back the audio and cover with it, and the previous metadata comes back too
             placed, backups = _publish_all(todo, results, paths, log=log,
@@ -553,7 +561,7 @@ def _backup_path(path: Path, stamp: str) -> Path:
     """A free ``<path>.bak-<stamp>[-n]`` name beside ``path`` (same filesystem, so a rename)."""
     candidate = path.with_name(f"{path.name}.bak-{stamp}")
     n = 1
-    while candidate.exists():
+    while os.path.lexists(candidate):
         candidate = path.with_name(f"{path.name}.bak-{stamp}-{n}")
         n += 1
     return candidate
@@ -647,6 +655,175 @@ def _publish_all(formats: list[str], results: dict, paths: dict, log=print,
     for path, backup in backups.items():
         log(f"  replaced {path.name}; the previous file is kept at {backup}")
     return list(dict.fromkeys(placed)), backups
+
+
+class PublicationRecoveryError(RuntimeError):
+    """The pending attempt must be reconciled before a scan can continue."""
+
+
+def _publication_identity(path: Path) -> list[int] | None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
+
+
+def _sync_directory(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _settle_publication(state: State, attempt: int, plan: dict, outcome: UnitState | None) -> bool:
+    before, expected, backups = plan["before"], plan["expected"], plan["backups"]
+    stage = Path(plan["stage"])
+    _refuse_uncontained([stage, *(Path(p) for p in before), *(Path(p) for p in backups.values())])
+    complete = outcome is not None and all(
+        _publication_identity(Path(path)) == identity for path, identity in expected.items()
+    )
+    if outcome is not None and not complete:
+        for name in plan["writes"]:
+            path = Path(name)
+            backup = Path(backups[name]) if name in backups else None
+            current = _publication_identity(path)
+            if backup is not None and _publication_identity(backup) == before[name]:
+                if current is not None and current not in (before[name], expected[name]):
+                    # Preserve an external replacement before restoring the previous book.
+                    os.rename(path, _backup_path(path, f"conflict-{attempt}"))
+                os.replace(backup, path)
+            elif before[name] is None and current == expected[name]:
+                path.unlink()
+            elif before[name] is not None and current != before[name]:
+                raise PublicationRecoveryError(f"Cannot restore {path}: its publication backup is missing")
+        previous = state.get(outcome.path)
+        if (previous and previous.status == "converted" and previous.output in before
+                and _publication_identity(Path(previous.output)) != before[previous.output]):
+            outcome = dataclasses.replace(previous, status="review", output="",
+                                          note="Previous output changed during interrupted publication")
+        else:
+            outcome = None
+    if stage.exists():
+        shutil.rmtree(stage)
+    if stage.parent.is_dir():
+        _sync_directory(stage.parent)
+    if not complete:
+        for name in plan["new_dirs"]:
+            directory = Path(name)
+            try:
+                directory.rmdir()
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                if exc.errno != errno.ENOTEMPTY:
+                    raise
+                break
+            _sync_directory(directory.parent)
+    state.finish_publication(attempt, outcome)
+    return complete
+
+
+def _recover_publications(state: State, current: int | None = None) -> bool:
+    completed = False
+    try:
+        for attempt, plan, outcome in state.pending_publications():
+            if _settle_publication(state, attempt, plan, outcome) and attempt == current:
+                completed = True
+    except Exception as exc:
+        raise PublicationRecoveryError(f"Cannot reconcile pending publication: {exc}") from exc
+    return completed
+
+
+def recover_publications(state: State) -> None:
+    with CONVERT_LOCK, state.publication_lock():
+        _recover_publications(state)
+
+
+def _publish_recorded(state: State, audit: Audit, formats: list[str], results: dict, paths: dict,
+                      book: dict, chapters: list[dict], duration: float, log):
+    primary = next(iter(paths.values()))
+    folder = primary.parent.resolve()
+    destinations = {fmt: folder / path.name for fmt, path in paths.items()}
+    stage = folder / f".audiobind-publish-{uuid.uuid4().hex}"
+    cover, meta = folder / "cover.jpg", folder / "metadata.json"
+    writes = [destinations[fmt] for fmt in formats]
+    if any(result.cover is not None for result in results.values()):
+        writes.append(cover)
+    if not meta.is_symlink():
+        writes.append(meta)
+    else:
+        log(f"  metadata.json skipped: {meta} is a symlink")
+    _refuse_uncontained([*destinations.values(), cover, meta])
+    before = {str(path): _publication_identity(path) for path in {*destinations.values(), cover, meta}}
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    backups = {str(path): str(_backup_path(path, stamp)) for path in writes if before[str(path)] is not None}
+    new_dirs = []
+    parent = folder
+    while not parent.exists():
+        new_dirs.append(str(parent))
+        parent = parent.parent
+    plan = {"stage": str(stage), "before": before, "backups": backups,
+            "writes": [str(path) for path in writes], "expected": {}, "new_dirs": new_dirs}
+    owned = _owned_before(state.get(audit.unit.state_key))
+    attempt = state.begin_publication(audit.unit.state_key, plan)
+    try:
+        stage.mkdir(parents=True)
+        for name in reversed(new_dirs):
+            _sync_directory(Path(name).parent)
+        for fmt in formats:
+            encode.publish_result(results[fmt], stage / destinations[fmt].name)
+        if meta in writes:
+            _write_sidecar(stage / primary.name, book, audit.match, chapters, duration, log=log)
+            if before[str(meta)] is not None:
+                (stage / meta.name).chmod(stat.S_IMODE(meta.stat().st_mode))
+        expected = before.copy()
+        for path in writes:
+            staged = stage / path.name
+            with staged.open("rb") as handle:
+                os.fsync(handle.fileno())
+            expected[str(path)] = _publication_identity(staged)
+        _sync_directory(stage)
+        _sync_directory(folder)
+        if any(_publication_identity(Path(name)) != identity for name, identity in before.items()):
+            raise OSError(f"Output changed while staging publication in {folder}")
+
+        audit.placed = [path.name for path in writes]
+        audit.moved_aside = {Path(name).name: Path(backup).name for name, backup in backups.items()}
+        placed_names = set(audit.placed)
+        audit.wrote = {path.name: expected[str(path)][-2:] for path in writes}
+        if owned is not None and owned[0].resolve() == folder:
+            for name, identity in owned[1].items():
+                if name not in placed_names:
+                    audit.wrote[name] = identity
+                if name in audit.moved_aside:
+                    audit.wrote[audit.moved_aside[name]] = identity
+        first = next(iter(paths))
+        result = dataclasses.replace(results.get(first, results[formats[0]]), path=primary,
+                                     size=expected[str(destinations[first])][-2], cover=None)
+        outcome = _record_row(state, audit, "converted", output=str(primary), result=result)
+        plan["expected"] = expected
+        state.seal_publication(attempt, plan, outcome)
+        for name, backup in backups.items():
+            os.rename(name, backup)
+        _sync_directory(folder)
+        for path in writes:
+            encode._place(stage / path.name, path, move=True)
+        _sync_directory(stage)
+        _sync_directory(folder)
+    except Exception:
+        if not _recover_publications(state, current=attempt):
+            raise
+    else:
+        if not _recover_publications(state, current=attempt):
+            raise OSError(f"Output changed during publication in {folder}")
+    audit.publication_recorded = True
+    for path in writes:
+        log(f"  published {path}")
+    for name, backup in backups.items():
+        log(f"  replaced {Path(name).name}; the previous file is kept at {backup}")
+    return result
 
 
 def recorded_output(row) -> dict:
@@ -879,6 +1056,19 @@ def record(
     """Record one audit outcome. ``reopen`` marks a manual re-check that still ended
     in a decision-needed state, so the web panel re-opens with the reason. ``unmeasured`` marks
     a book held by the B2 refusal (C3)."""
+    state.save(_record_row(state, audit, status, output, note, result, reopen, unmeasured))
+
+
+def _record_row(
+    state: State,
+    audit: Audit,
+    status: str,
+    output: str = "",
+    note: str = "",
+    result=None,
+    reopen: bool = False,
+    unmeasured: bool = False,
+) -> UnitState:
     custom = overrides_mod.normalise(audit.overrides)
     detail_data = (
         {
@@ -972,38 +1162,36 @@ def record(
         # only while Hardcover evidence is on: with it off the stored detail is byte-identical
         detail_data["hardcover"] = audit.hardcover
     detail = json.dumps(detail_data)
-    state.save(
-        UnitState(
-            # the state key: rel_path for a library book, "ingest:<rel_path>" for an ingest one
-            path=audit.unit.state_key,
-            status=status,
-            confidence=audit.confidence,
-            asin=audit.match.asin,
-            title=(
-                custom.get("title")
-                or (audit.match.product.title if audit.match.product else audit.unit.title_guess)
-            ),
-            author=(
-                custom["authors"][0]
-                if custom.get("authors")
-                else (
-                    audit.match.product.authors[0]
-                    if audit.match.product and audit.match.product.authors
-                    else audit.unit.author_guess
-                )
-            ),
-            hours=audit.hours,
-            files=audit.unit.n_files,
-            output=output,
-            note=note or "; ".join(audit.notes),
-            src_mb=audit.src_mb,
-            out_mb=round(result.size / 1e6, 1) if result else (previous.out_mb if previous else 0.0),
-            chapters=result.chapters if result else (previous.chapters if previous else 0),
-            # runners-up from the catalog search (other editions, near misses) are kept
-            # so the detail panel can offer one-click "use this edition" ASIN pins
-            alternates=json.dumps(audit.match.alternates),
-            detail=detail,
-        )
+    return UnitState(
+        # the state key: rel_path for a library book, "ingest:<rel_path>" for an ingest one
+        path=audit.unit.state_key,
+        status=status,
+        confidence=audit.confidence,
+        asin=audit.match.asin,
+        title=(
+            custom.get("title")
+            or (audit.match.product.title if audit.match.product else audit.unit.title_guess)
+        ),
+        author=(
+            custom["authors"][0]
+            if custom.get("authors")
+            else (
+                audit.match.product.authors[0]
+                if audit.match.product and audit.match.product.authors
+                else audit.unit.author_guess
+            )
+        ),
+        hours=audit.hours,
+        files=audit.unit.n_files,
+        output=output,
+        note=note or "; ".join(audit.notes),
+        src_mb=audit.src_mb,
+        out_mb=round(result.size / 1e6, 1) if result else (previous.out_mb if previous else 0.0),
+        chapters=result.chapters if result else (previous.chapters if previous else 0),
+        # runners-up from the catalog search (other editions, near misses) are kept
+        # so the detail panel can offer one-click "use this edition" ASIN pins
+        alternates=json.dumps(audit.match.alternates),
+        detail=detail,
     )
 
 
@@ -1108,10 +1296,10 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
         try:
             owned = _owned_before(state.get(unit.state_key))  # read before the publish changes the folder
             result = convert_unit(audit, log=log, cancelled=dismissed, heartbeat=state.heartbeat,
-                                  reencode=reencode, at=Path(kept) if kept else None)
+                                  reencode=reencode, at=Path(kept) if kept else None, state=state)
             if result is None:  # dry run, already published, or removed while it waited
                 nothing_written()
-            else:
+            elif not audit.publication_recorded:
                 audit.wrote = _merged_wrote(owned, Path(result.path).parent, audit)
                 rec("converted", output=str(result.path), result=result)
         except Stopped:
@@ -1123,6 +1311,8 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
             # failed, and the next ordinary scan checks it again
             log(f"  held: {exc}")
             rec("held", note=unmeasured_held_note(str(exc)), unmeasured=True)
+        except PublicationRecoveryError:
+            raise
         except Exception as exc:  # noqa: BLE001 - one book must not stop a scan
             log(f"  FAILED: {exc}")
             # B4: the row keeps the short note; the log keeps where it happened (never the DB)

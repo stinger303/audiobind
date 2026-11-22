@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import sqlite3
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from .util import loads_dict
@@ -34,6 +35,12 @@ CREATE TABLE IF NOT EXISTS units (
     alternates  TEXT DEFAULT '',
     source      TEXT DEFAULT 'library',
     pin_failures INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS publications (
+    attempt INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit    TEXT NOT NULL UNIQUE,
+    plan    TEXT NOT NULL,
+    outcome TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -353,6 +360,52 @@ class State:
         self.connection.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('field_locks_v1', 'true')")
 
     # ---------------------------------------------------------------- units
+    @contextmanager
+    def publication_lock(self):
+        """Serialize publishers and recovery across processes sharing this manifest."""
+        with (self.path.parent / "publication.lock").open("a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            yield
+
+    @contextmanager
+    def _durable_publication(self):
+        with self._lock:
+            self.connection.execute("PRAGMA synchronous=FULL")
+            try:
+                with self._txn():
+                    yield
+            finally:
+                self.connection.execute("PRAGMA synchronous=NORMAL")
+
+    def begin_publication(self, unit: str, plan: dict) -> int:
+        with self._durable_publication():
+            cursor = self.connection.execute(
+                "INSERT INTO publications (unit, plan) VALUES (?, ?)", (unit, json.dumps(plan))
+            )
+            return cursor.lastrowid
+
+    def seal_publication(self, attempt: int, plan: dict, outcome: UnitState) -> None:
+        with self._durable_publication():
+            self.connection.execute(
+                "UPDATE publications SET plan = ?, outcome = ? WHERE attempt = ?",
+                (json.dumps(plan), json.dumps(asdict(outcome)), attempt),
+            )
+
+    def pending_publications(self) -> list[tuple[int, dict, UnitState | None]]:
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT attempt, plan, outcome FROM publications ORDER BY attempt"
+            ).fetchall()
+        return [(row["attempt"], json.loads(row["plan"]),
+                 UnitState(**json.loads(row["outcome"])) if row["outcome"] else None) for row in rows]
+
+    def finish_publication(self, attempt: int, outcome: UnitState | None) -> None:
+        """Commit the row and retire the intent in the same durable SQLite transaction."""
+        with self._durable_publication():
+            if outcome is not None:
+                self._save_locked(outcome)
+            self.connection.execute("DELETE FROM publications WHERE attempt = ?", (attempt,))
+
     def get(self, path: str) -> UnitState | None:
         with self._lock:
             row = self.connection.execute("SELECT * FROM units WHERE path = ?", (path,)).fetchone()
@@ -401,7 +454,6 @@ class State:
                 key_source(state.path),
             ),
         )
-        self.connection.commit()
 
     def clear_detail(self, path: str) -> bool:
         """Drop a row's detail blob on purpose. save() will not do it: an empty ``detail`` there
