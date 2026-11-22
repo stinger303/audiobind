@@ -49,3 +49,21 @@ class DeleteRegressionTests(LiveServerCase):
         self.assertTrue(source.exists())
         self.assertIsNotNone(self.state.get("Author/Book"))
 
+    def test_p0_03_legacy_confirmation_lists_exact_files_and_can_be_declined(self):
+        output = self.out / "Book" / "Book.m4b"
+        output.parent.mkdir()
+        output.write_bytes(b"replacement")
+        cover = output.with_name("cover.jpg")
+        cover.write_bytes(b"replacement cover")
+        key = "ingest:Book"
+        self.state.save(UnitState(path=key, status="converted", output=str(output)))
+        status, body = self.delete(key)
+        self.assertEqual(status, 409, body)
+        self.assertEqual(body["legacy_output_paths"], ["Book/Book.m4b", "Book/cover.jpg"])
+        self.assertEqual(output.read_bytes(), b"replacement")
+        self.assertEqual(cover.read_bytes(), b"replacement cover")
+        status, body = self.delete(key, legacy_output="keep")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["output"], "kept")
+        self.assertTrue(output.exists())
+

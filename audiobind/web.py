@@ -1133,9 +1133,18 @@ function abModalConfirm() {
   btn.disabled = true;
   btn.textContent = ingest ? 'removing\u2026' : 'deleting\u2026';
   abToast(ingest ? 'removing from Audiobind\u2026' : 'deleting permanently\u2026');
-  fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
-                     body: JSON.stringify({action:'delete', path: path, confirm: true})})
-    .then(r => r.json())
+  const sendDelete = extra => fetch('/api/unit', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({action:'delete', path: path, confirm: true, ...extra})}).then(r => r.json());
+  sendDelete({})
+    .then(result => {
+      if (!result.legacy_output_paths) return result;
+      const remove = window.confirm(
+        'Audiobind cannot verify who wrote these files in the output folder.\n\n' +
+        result.legacy_output_paths.join('\n') +
+        '\n\nOK deletes these files permanently. Cancel keeps these files and continues deleting the book.'
+      );
+      return sendDelete({legacy_output: remove ? result.legacy_output_snapshot : 'keep'});
+    })
     .then(result => {
       if (!result.ok) {
         abToast(result.error || 'delete failed');
@@ -8542,8 +8551,7 @@ class Handler(BaseHTTPRequestHandler):
                         out_trash = out_parent
                 # never take a published book that another row also points at
                 out_shared = output_sharers(self.state, rel, out_trash) if out_trash is not None else 0
-                # CORE-04a: the files in that folder Audiobind wrote (CORE-04c - None: unknown
-                # provenance, which proves only the row's own output; see pipeline.attribute)
+                # None means the row has no recorded identities for its published files.
                 return not_ours, out_trash, out_shared, pipeline_mod.wrote_files(row), out_name
 
             if plan_output(unit_state) is None:
@@ -8610,6 +8618,27 @@ class Handler(BaseHTTPRequestHandler):
                 ):
                     self._send(409, SOURCE_CHANGED, "application/json")
                     return
+
+                legacy_entries = {}
+                if out_wrote is None and out_trash is not None and not out_shared and out_trash.exists():
+                    present = pipeline_mod.folder_files(out_trash)
+                    names = sorted(pipeline_mod.legacy_owned(present, out_name))
+                    for name in names:
+                        candidate = out_trash / name
+                        if not candidate.is_symlink() and candidate.is_file():
+                            identity = pipeline_mod.file_identity(candidate)
+                            if identity is not None:
+                                legacy_entries[candidate.relative_to(out_root).as_posix()] = identity
+                    choice = payload.get("legacy_output")
+                    if legacy_entries and choice != "keep" and choice != legacy_entries:
+                        self._send(409, json.dumps({
+                            "error": "Audiobind could not verify these output files. Confirm their removal separately.",
+                            "legacy_output_paths": list(legacy_entries),
+                            "legacy_output_snapshot": legacy_entries,
+                        }).encode(), "application/json")
+                        return
+                    if choice == "keep":
+                        legacy_entries = {}
 
                 if targets:
                     changed = ""
@@ -8703,8 +8732,13 @@ class Handler(BaseHTTPRequestHandler):
                         )
                         return
                     present = pipeline_mod.folder_files(out_trash)
-                    own, left = pipeline_mod.attribute(out_trash, present, out_wrote, out_name)
-                    if not left:
+                    if out_wrote is None:
+                        own = [name for name in present
+                               if (out_trash / name).relative_to(out_root).as_posix() in legacy_entries]
+                        left = {name: pipeline_mod.UNATTRIBUTED for name in present if name not in own}
+                    else:
+                        own, left = pipeline_mod.attribute(out_trash, present, out_wrote, out_name)
+                    if not left and own and out_wrote is not None:
                         moves = [out_trash]
                         output_removed = "removed"
                     else:
@@ -8735,7 +8769,7 @@ class Handler(BaseHTTPRequestHandler):
                     } != expected_files or (out_wrote is not None and any(
                         output_entries[(out_trash / name).relative_to(out_root).as_posix()] != out_wrote[name]
                         for name in own
-                    )):
+                    )) or (out_wrote is None and output_entries != legacy_entries):
                         put_back(source_trash, journal)
                         self._send(409, OUTPUT_CHANGED, "application/json")
                         return

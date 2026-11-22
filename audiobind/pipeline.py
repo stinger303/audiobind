@@ -691,7 +691,7 @@ def wrote_files(row) -> dict[str, list[int]] | None:
 
     {} for a row whose output is not Audiobind's at all; None for a converted row whose record is
     missing or unreadable (no ``wrote`` list, or one without the ``wrote_id`` identities) - unknown
-    provenance, which proves no more than ``legacy_owned`` allows (CORE-04c).
+    provenance that requires separate confirmation before Delete can remove those files.
     """
     if not wrote_output(row):
         return {}
@@ -725,9 +725,7 @@ CHANGED = "this file changed since Audiobind wrote it (its size or modification 
 
 
 def legacy_owned(present: list[str], output_name: str) -> set[str]:
-    """CORE-04c: what a converted row without a usable list proves Audiobind wrote, of the
-    ``present`` names in its folder: its recorded output file, and cover.jpg / metadata.json
-    only when the folder holds nothing else - unknown provenance is not ownership."""
+    """Legacy filename candidates for the recorded output and its possible companions."""
     owned = {output_name} & set(present)
     if set(present) <= {output_name, *COMPANIONS}:
         owned |= set(COMPANIONS) & set(present)
@@ -741,11 +739,9 @@ def attribute(folder: Path, present: list[str], recorded: dict | None,
     A recorded name proves nothing on its own (CORE-04d): it is Audiobind's only while the file
     there still has the size and mtime recorded when Audiobind wrote it."""
     own, left = [], {}
-    if recorded is None:
-        owned = legacy_owned(present, output_name)
     for name in present:
         if recorded is None:
-            ours, why = name in owned, UNATTRIBUTED
+            ours, why = False, UNATTRIBUTED
         elif name not in recorded:
             ours, why = False, NOT_WRITTEN
         else:
