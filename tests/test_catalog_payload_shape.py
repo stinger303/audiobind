@@ -54,7 +54,7 @@ class TestNonObjectPayloads(unittest.TestCase):
             catalog.cache_clear()
 
     def test_an_object_still_comes_through_and_is_cached(self):
-        with answering(b'{"products": [{"asin": "B005EHN61O", "title": "Dune"}]}'):
+        with answering(b'{"products": [{"asin": "B005EHN61O", "title": "Dune", "runtime_length_min": 720}]}'):
             found = catalog.search(title="Dune")
         self.assertEqual([p.asin for p in found], ["B005EHN61O"])
 

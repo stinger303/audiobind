@@ -1335,7 +1335,7 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
             # failed, and the next ordinary scan checks it again
             log(f"  held: {exc}")
             rec("held", note=unmeasured_held_note(str(exc)), unmeasured=True)
-        except SourceContainmentError as exc:
+        except (SourceContainmentError, catalog.InvalidProduct) as exc:
             rec("review", note=str(exc))
         except (PublicationRecoveryError, WriterBusy):
             raise
@@ -1385,7 +1385,7 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
         audit = audit_unit(
             unit, asin_override, pin_failures=state.get_pin_failures(unit.state_key) if asin_override else 0
         )
-    except SourceContainmentError as exc:
+    except (SourceContainmentError, catalog.InvalidProduct) as exc:
         audit = Audit(unit=unit, notes=[str(exc)])
         log(f"  review: {exc}")
         rec("review", note=str(exc))

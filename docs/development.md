@@ -51,3 +51,8 @@ Any change that can move a match must pass the match-test programme: see
 The scan resolves source audio before each media reader uses it. The resolved path must
 stay within the unit's library or ingest root. Internal links work, and an escaping link
 puts the book in review.
+
+Catalogue responses are checked before caching and again when read from cache. A
+malformed product invalidates its response so matching cannot choose from an incomplete
+candidate list. During a scan the affected book goes to review with the field that failed
+validation, and the scan continues.

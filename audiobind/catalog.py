@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
+import math
+import re
 import threading
 import time
 import urllib.error
@@ -17,6 +20,8 @@ from .http_redirect import CrossOriginRedirect, SameOriginRedirects
 USER_AGENT = "audiobind/0.1 (+https://github.com/stinger303/audiobind)"
 AUDIBLE = "https://api.audible.com/1.0/catalog/products"
 AUDNEX = "https://api.audnex.us"
+log = logging.getLogger("audiobind")
+ASIN_SHAPE = re.compile(r"[A-Z0-9]{10}", re.ASCII | re.IGNORECASE)
 
 _lock = threading.Lock()
 _last_call = 0.0
@@ -28,6 +33,83 @@ _cache: dict[str, tuple[float, dict]] = {}
 _cache_lock = threading.Lock()
 CACHE_TTL_SECONDS = 900
 CACHE_MAX_ENTRIES = 256
+
+
+class InvalidProduct(RuntimeError):
+    """A catalogue response contains malformed product data."""
+
+
+def _require(condition: bool, field: str) -> None:
+    if not condition:
+        raise InvalidProduct(f"Invalid catalogue product field: {field}")
+
+
+def _valid_asin(value) -> bool:
+    return isinstance(value, str) and ASIN_SHAPE.fullmatch(value) is not None
+
+
+def _strings(obj: dict, fields: tuple[str, ...]) -> None:
+    for key in fields:
+        value = obj.get(key)
+        _require(value is None or isinstance(value, str), key)
+
+
+def _objects(value, field: str, text_key: str) -> None:
+    if value is not None:
+        _require(isinstance(value, list), field)
+        for item in value:
+            _require(isinstance(item, dict) and isinstance(item.get(text_key), str), field)
+
+
+def _validate_product(product, runtime_key: str) -> None:
+    _require(isinstance(product, dict), "product")
+    _require(_valid_asin(product.get("asin")), "asin")
+    title = product.get("title")
+    _require(isinstance(title, str) and bool(title.strip()), "title")
+    runtime = product.get(runtime_key)
+    try:
+        minutes = float(runtime) if not isinstance(runtime, bool) else 0
+    except (TypeError, ValueError, OverflowError):
+        minutes = 0
+    _require(math.isfinite(minutes) and minutes > 0, runtime_key)
+    _strings(product, ("subtitle", "language", "release_date", "releaseDate", "publisher_name",
+                       "publisherName", "merchandising_summary", "description", "image"))
+    for key in ("authors", "narrators", "genres"):
+        _objects(product.get(key), key, "name")
+    _objects(product.get("series"), "series", "title")
+    for entry in product.get("series") or []:
+        _require(entry.get("asin") is None or _valid_asin(entry["asin"]), "series.asin")
+    for key in ("seriesPrimary", "seriesSecondary"):
+        entry = product.get(key)
+        if entry is not None:
+            _require(isinstance(entry, dict), key)
+            _strings(entry, ("name",))
+    _validate_images(product)
+
+
+def _validate_images(product: dict) -> None:
+    images = product.get("product_images")
+    _require(images is None or (
+        isinstance(images, dict) and all(isinstance(value, str) for value in images.values())
+    ), "product_images")
+
+
+def _validate_payload(url: str, payload: dict) -> None:
+    if "products" in payload or url.split("?", 1)[0] == AUDIBLE:
+        products = payload.get("products")
+        _require(isinstance(products, list), "products")
+        for product in products:
+            _validate_product(product, "runtime_length_min")
+    book_prefix = f"{AUDNEX}/books/"
+    if url.startswith(book_prefix):
+        asin = urllib.parse.unquote(url[len(book_prefix):].split("?", 1)[0])
+        if "/" not in asin:
+            _validate_product(payload, "runtimeLengthMin")
+            _require(payload["asin"].upper() == asin.upper(), "asin does not match the requested book")
+    if "product" in payload and url.startswith(AUDIBLE + "/"):
+        product = payload["product"]
+        _require(isinstance(product, dict), "product")
+        _validate_images(product)
 
 
 def cache_clear() -> None:
@@ -44,10 +126,21 @@ def cache_get(url: str):
         if time.time() - stored_at > CACHE_TTL_SECONDS:
             _cache.pop(url, None)
             return None
+        try:
+            _validate_payload(url, payload)
+        except InvalidProduct as exc:
+            _cache.pop(url, None)
+            log.warning("Dropped cached catalogue response: %s", exc)
+            raise
         return payload
 
 
 def cache_put(url: str, payload: dict) -> None:
+    try:
+        _validate_payload(url, payload)
+    except InvalidProduct as exc:
+        log.warning("Dropped catalogue response: %s", exc)
+        raise
     with _cache_lock:
         if len(_cache) >= CACHE_MAX_ENTRIES:
             oldest = sorted(_cache.items(), key=lambda item: item[1][0])[: len(_cache) // 4 or 1]
@@ -227,7 +320,10 @@ def query(
             params[name] = str(value).strip()
     if len(params) == 4:  # nothing to search for
         return []
-    data = _get_json(AUDIBLE + "?" + urllib.parse.urlencode(params))
+    try:
+        data = _get_json(AUDIBLE + "?" + urllib.parse.urlencode(params))
+    except InvalidProduct:
+        return None
     if not isinstance(data, dict):
         return None
     return [Product.from_audible(p) for p in (data.get("products") or []) if isinstance(p, dict)]
@@ -256,7 +352,10 @@ def series_products(keywords: str, author: str = "", page: int = 0) -> list[dict
     }
     if author:
         params["author"] = author
-    data = _get_json(AUDIBLE + "?" + urllib.parse.urlencode(params))
+    try:
+        data = _get_json(AUDIBLE + "?" + urllib.parse.urlencode(params))
+    except InvalidProduct:
+        return None
     if not isinstance(data, dict):
         return None
     return [p for p in (data.get("products") or []) if isinstance(p, dict)]
@@ -277,7 +376,10 @@ def book(asin: str) -> dict:
 
 def cached_book(asin: str) -> dict | None:
     """The Audnex record ``book`` already fetched for this ASIN, or None: never a request."""
-    return cache_get(_book_url(asin)) if asin else None
+    try:
+        return cache_get(_book_url(asin)) if asin else None
+    except InvalidProduct:
+        return None
 
 
 def chapters(asin: str) -> list[dict]:
@@ -345,7 +447,10 @@ def product_images(asin: str) -> dict:
     catalog for ``product_images`` is the reliable source, and ``_get_json``'s memoisation
     makes the repeat lookups free.
     """
-    data = _get_json(f"{AUDIBLE}/{_q(asin)}?response_groups=media&image_sizes=500,1000") or {}
+    try:
+        data = _get_json(f"{AUDIBLE}/{_q(asin)}?response_groups=media&image_sizes=500,1000") or {}
+    except InvalidProduct:
+        return {}
     product = data.get("product") or {}
     return product.get("product_images") or {}
 

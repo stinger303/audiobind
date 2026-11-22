@@ -283,15 +283,15 @@ class TestCatalogCache(unittest.TestCase):
 
         def counting_get(url, **kw):
             requests.append(url)
-            payload = {"asin": "B00TEST0001", "title": "T"}
+            payload = {"asin": "B00TEST001", "title": "T", "runtimeLengthMin": 60}
             catalog.cache_put(url, payload)
             return payload
 
         try:
             catalog._get_json = counting_get
-            first = catalog.book("B00TEST0001")  # the prefetch thread
+            first = catalog.book("B00TEST001")  # the prefetch thread
             catalog._get_json = original  # the network is now "gone"
-            second = catalog.book("B00TEST0001")  # the main loop
+            second = catalog.book("B00TEST001")  # the main loop
             self.assertEqual(first, second)
             self.assertEqual(len(requests), 1)
         finally:
