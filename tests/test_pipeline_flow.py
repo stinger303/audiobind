@@ -137,7 +137,7 @@ class TestEmbeddedRetryOnLow(unittest.TestCase):
 
 
 class TestWorkDir(PipelineCase):
-    def convert(self):
+    def convert(self, *, reencode=False):
         unit = ingest.find_any_unit(KEY)
         audit = pipeline.Audit(unit=unit, match=matching.Match(product=PHM, confidence="HIGH"), action="convert")
         with (
@@ -148,14 +148,12 @@ class TestWorkDir(PipelineCase):
             mock.patch.object(encode, "plan_chapters", return_value=mock.Mock(chapters=[])),
             mock.patch.object(encode, "encode", side_effect=self.fake_encode),
         ):
-            return pipeline.convert_unit(audit, state=self.state, log=lambda *_: None)
+            return pipeline.convert_unit(audit, state=self.state, log=lambda *_: None, reencode=reencode)
 
     def test_the_same_book_gets_a_private_directory_on_every_call(self):
         self.add_torrent()
         self.convert()
-        for out in CONFIG.output_root.rglob("*.m4b"):
-            out.unlink()  # so the second call encodes again instead of "already published"
-        self.convert()
+        self.convert(reencode=True)  # encode again while keeping proof of the published edition
         first, second = (call["work_dir"].parent for call in self.encode_calls)
         self.assertNotEqual(first, second)
         self.assertFalse(first.exists())

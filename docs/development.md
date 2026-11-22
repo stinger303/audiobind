@@ -28,7 +28,9 @@ Any change that can move a match must pass the match-test programme: see
   before ffmpeg runs, naming the file. Summing it as 0 s would make the check blame the merge
   ("files were dropped") for a file that was never measured.
 * **Audiobookshelf rewrites `metadata.json`** when it scans the new book. Losing our extra
-  `duration` key is the app adopting the book, not a failed write.
+  `duration` key is the app adopting the book, not a failed write. Publication checks existing
+  audio and companions before encoding. Verified audio for the edition allows publication to
+  refresh a regular `metadata.json` or `cover.jpg` even if another tool changed it.
 
 * **Publication is journaled in the SQLite manifest.** A durable attempt precedes staging in the
   book folder. Once staging has finished, the attempt records the verified file identities and

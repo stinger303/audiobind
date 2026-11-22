@@ -502,7 +502,7 @@ def _convert_unit(audit, log, cancelled, heartbeat, reencode, at, state):
             if publication_folder_quarantined(state, out_path.parent):
                 audit.output_collision = "The output folder has a quarantined publication."
                 return None
-            existing = {str(path): _publication_identity(path) for path in paths.values()}
+            existing = _publication_snapshot(out_path)
             audit.output_collision = _output_collision(state, audit, paths.values(), existing)
         if audit.output_collision:
             return None
@@ -711,10 +711,9 @@ def _publish_recorded(state: State, audit: Audit, formats: list[str], results: d
     else:
         log(f"  metadata.json skipped: {meta} is a symlink")
     _refuse_uncontained([*destinations.values(), cover, meta])
-    before = {str(path): _publication_identity(path) for path in {*destinations.values(), cover, meta}}
-    # Recheck after encoding, before creating an intent or touching a destination. Include
-    # companions only when this publication would write them.
-    audit.output_collision = _output_collision(state, audit, [*destinations.values(), *writes], before)
+    before = _publication_snapshot(folder / primary.name)
+    # Recheck after encoding, before creating an intent or touching a destination.
+    audit.output_collision = _output_collision(state, audit, destinations.values(), before)
     if audit.output_collision:
         return None
     stamp = time.strftime("%Y%m%dT%H%M%S")
@@ -729,6 +728,11 @@ def _publish_recorded(state: State, audit: Audit, formats: list[str], results: d
             "writes": [str(path) for path in writes], "expected": {},
             "new_dirs": [name for name in new_dirs if root in Path(name).parents]}
     owned = _owned_before(state.get(audit.unit.state_key), audit.match.asin)
+    for path in (cover, meta):
+        identity = before[str(path)]
+        if (path in writes and identity is not None
+                and (owned is None or owned[1].get(path.name) != identity[-2:])):
+            log(f"  Refreshing {path.name} beside the verified audio.")
     attempt = state.begin_publication(audit.unit.state_key, plan)
     try:
         stage.mkdir(parents=True)
@@ -823,21 +827,41 @@ def _published_edition(row: UnitState) -> tuple[dict, str]:
     return {}, ""
 
 
+def _publication_snapshot(primary: Path) -> dict:
+    audio = [primary.with_suffix(f".{fmt}") for fmt in encode.formats_for("M4B + MP3")]
+    paths = [*audio, primary.with_name("cover.jpg"), primary.with_name("metadata.json")]
+    return {str(path): _publication_identity(path) for path in paths}
+
+
 def _output_collision(state: State, audit: Audit, paths, snapshot: dict) -> str:
     row = state.get(audit.unit.state_key)
     output, asin = _published_edition(row) if row else ({}, "")
-    ids = _manifest_files(output) or {}
-    for path in dict.fromkeys(paths):
-        identity = snapshot[str(path)]
-        if identity is None:
-            continue
-        if (asin and asin == audit.match.asin
-                and Path(output["path"]).parent.resolve() == path.parent.resolve()
-                and identity[0] == stat.S_IFREG and ids.get(path.name) == identity[-2:]):
-            continue
+    folder = next(iter(paths)).parent.resolve()
+    owned = asin == audit.match.asin and bool(asin) and Path(output["path"]).parent.resolve() == folder
+    ids = (_manifest_files(output) or {}) if owned else {}
+
+    def proven_audio(path, identity):
+        return identity is not None and identity[0] == stat.S_IFREG and ids.get(path.name) == identity[-2:]
+
+    def collision(path):
         return (f"Output collision: {path.name} already exists, but Audiobind cannot verify "
                 f"that it belongs to this book and edition ({audit.match.asin}). "
                 "Review the existing file before trying again.")
+
+    for path in paths:
+        identity = snapshot[str(path)]
+        if identity is not None and not proven_audio(path, identity):
+            return collision(path)
+    audio_proven = any(proven_audio(Path(name), identity) for name, identity in snapshot.items()
+                       if Path(name).suffix.lower() in AUDIO_EXT)
+    for name, identity in snapshot.items():
+        path = Path(name)
+        if path.name not in {"cover.jpg", "metadata.json"} or identity is None:
+            continue
+        if path.name == "metadata.json" and identity[0] == stat.S_IFLNK:
+            continue  # a symlinked sidecar stays in place
+        if not audio_proven or identity[0] != stat.S_IFREG:
+            return collision(path)
     return ""
 
 
