@@ -30,6 +30,7 @@ import urllib.request
 
 from .base import AUTH, ERROR, REFUSED, UNAVAILABLE, ClientError, DownloadClient
 from .torrentfile import _skip, info_hash  # noqa: F401 - re-exported through audiobind.qbit
+from ..http_redirect import SameOriginRedirects
 from ..util import redact_url
 
 TIMEOUT = 20.0
@@ -73,7 +74,9 @@ class QbitClient(DownloadClient):
         self._username = str(username or "")
         self._password = str(password or "")
         self.jar = http.cookiejar.CookieJar()
-        self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
+        self._opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(self.jar), SameOriginRedirects
+        )
         self.logged_in = False
 
     def __repr__(self) -> str:  # never the password

@@ -26,14 +26,18 @@ class TestCatalogReadCap(unittest.TestCase):
     def test_oversized_json_is_refused_without_retry(self):
         body = b"{" + b" " * (catalog.MAX_BODY + 10) + b"}"
         catalog.cache_clear()
-        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: _Response(body)) as op:
+        with mock.patch.object(
+            catalog._json_opener, "open", side_effect=lambda *a, **k: _Response(body)
+        ) as op:
             with mock.patch.object(catalog.time, "sleep"):
                 self.assertIsNone(catalog._get_json("https://api.example.invalid/x"))
         self.assertEqual(op.call_count, 1)
 
     def test_normal_json_still_reads(self):
         catalog.cache_clear()
-        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: _Response(b'{"a": 1}')):
+        with mock.patch.object(
+            catalog._json_opener, "open", side_effect=lambda *a, **k: _Response(b'{"a": 1}')
+        ):
             with mock.patch.object(catalog.time, "sleep"):
                 self.assertEqual(catalog._get_json("https://api.example.invalid/ok"), {"a": 1})
 

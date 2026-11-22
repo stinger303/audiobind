@@ -274,7 +274,8 @@ def sealed(get_json):
     catalog.cache_clear()
     with patched(catalog, _get_json=get_json,
                  effective_val=lambda name: REGION if name == "region" else real_effective(name)), \
-            patched(urllib.request, urlopen=_no_network):
+            patched(urllib.request, urlopen=_no_network), \
+            patched(catalog._json_opener, open=_no_network):
         yield
     catalog.cache_clear()
 

@@ -309,20 +309,20 @@ class IncompleteReadTests(unittest.TestCase):
         self.addCleanup(sleeper.stop)
 
     def test_a7_a_cut_off_body_is_a_failed_lookup_not_an_exception(self):
-        with mock.patch.object(catalog.urllib.request, "urlopen",
+        with mock.patch.object(catalog._json_opener, "open",
                                side_effect=lambda *a, **k: _CutOffResponse()) as opened:
             self.assertIsNone(catalog._get_json("https://example.test/a7"))
         self.assertEqual(opened.call_count, 3)  # retried like any other transport failure
         self.assertIsNone(catalog.cache_get("https://example.test/a7"))
 
     def test_a7_every_caller_sees_an_empty_result(self):
-        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: _CutOffResponse()):
+        with mock.patch.object(catalog._json_opener, "open", side_effect=lambda *a, **k: _CutOffResponse()):
             self.assertEqual(catalog.search(title="Dune"), [])
             self.assertEqual(catalog.book("B005EHN61O"), {})
 
     def test_a7_a_retry_after_a_cut_off_body_still_gets_the_answer(self):
         answers = iter([_CutOffResponse(), _Response(b'{"asin": "B005EHN61O"}')])
-        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: next(answers)):
+        with mock.patch.object(catalog._json_opener, "open", side_effect=lambda *a, **k: next(answers)):
             self.assertEqual(catalog._get_json("https://example.test/a7b"), {"asin": "B005EHN61O"})
 
 
@@ -374,7 +374,7 @@ class ShortContentLengthTests(unittest.TestCase):
     def test_a7_short_a_two_byte_body_under_content_length_20_is_not_cached(self):
         url = "https://example.test/a7-short"
         raw = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 20\r\n\r\n{}"
-        with mock.patch.object(catalog.urllib.request, "urlopen",
+        with mock.patch.object(catalog._json_opener, "open",
                                side_effect=lambda *a, **k: real_response(raw)) as opened:
             self.assertIsNone(catalog._get_json(url))
         self.assertEqual(opened.call_count, 3)  # retried like any other transport failure
@@ -383,14 +383,14 @@ class ShortContentLengthTests(unittest.TestCase):
     def test_a7_short_a_complete_body_is_still_an_answer(self):
         url = "https://example.test/a7-full"
         raw = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"
-        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: real_response(raw)):
+        with mock.patch.object(catalog._json_opener, "open", side_effect=lambda *a, **k: real_response(raw)):
             self.assertEqual(catalog._get_json(url), {})
         self.assertEqual(catalog.cache_get(url), {})
 
     def test_a7_short_no_content_length_header_is_judged_by_the_body_alone(self):
         url = "https://example.test/a7-chunked"
         raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n"
-        with mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: real_response(raw)):
+        with mock.patch.object(catalog._json_opener, "open", side_effect=lambda *a, **k: real_response(raw)):
             self.assertEqual(catalog._get_json(url), {})
 
 

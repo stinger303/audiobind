@@ -51,7 +51,7 @@ class TestCatalogBackoff(unittest.TestCase):
     def _failing(self, exc):
         sleeps = []
         patches = (
-            mock.patch.object(catalog.urllib.request, "urlopen", side_effect=exc),
+            mock.patch.object(catalog._json_opener, "open", side_effect=exc),
             mock.patch.object(catalog.time, "sleep", side_effect=sleeps.append),
         )
         for p in patches:

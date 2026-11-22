@@ -177,3 +177,6 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
 - **Audiobookshelf may lose listening progress.** It may treat a renamed or moved folder as a new
   book. Note where you are in books you are listening to, or let Audiobookshelf rescan and check
   before you delete anything there.
+
+qBittorrent WebUI and catalogue requests accept redirects within the original scheme,
+host and port. A redirect that changes the origin fails and records the reason in the log.

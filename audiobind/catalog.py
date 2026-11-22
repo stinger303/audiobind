@@ -12,6 +12,7 @@ import urllib.request
 from dataclasses import dataclass, field
 
 from .config import effective_val
+from .http_redirect import CrossOriginRedirect, SameOriginRedirects
 
 USER_AGENT = "audiobind/0.1 (+https://github.com/stinger303/audiobind)"
 AUDIBLE = "https://api.audible.com/1.0/catalog/products"
@@ -19,6 +20,7 @@ AUDNEX = "https://api.audnex.us"
 
 _lock = threading.Lock()
 _last_call = 0.0
+_json_opener = urllib.request.build_opener(SameOriginRedirects)
 
 #: Successful responses are memoised by URL so a prefetched lookup is free when the main loop
 #: asks for it a moment later. Failures are never cached - they must be retried.
@@ -147,7 +149,7 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
             request = urllib.request.Request(
                 url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
             )
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with _json_opener.open(request, timeout=timeout) as response:
                 raw = response.read(MAX_BODY + 1)
                 expected = _content_length(response)
             if len(raw) > MAX_BODY:
@@ -161,6 +163,9 @@ def _get_json(url: str, tries: int = 3, timeout: int = 25) -> dict | None:
                 return None  # well-formed but not an object: a failed lookup, do not retry
             cache_put(url, payload)
             return payload
+        except CrossOriginRedirect as exc:
+            exc.close()
+            return None
         except urllib.error.HTTPError as exc:
             if exc.code in (400, 404):
                 return None
@@ -302,7 +307,7 @@ def allowed_image_url(url: str) -> bool:
     return any(host == s or host.endswith("." + s) for s in IMAGE_HOST_SUFFIXES)
 
 
-class _AllowlistRedirects(urllib.request.HTTPRedirectHandler):
+class _AllowlistRedirects(SameOriginRedirects):
     """A redirect must land on an allowed image URL too."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):

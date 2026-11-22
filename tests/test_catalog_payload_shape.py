@@ -20,7 +20,7 @@ class _Response(io.BytesIO):
 
 
 def answering(body: bytes):
-    return mock.patch.object(catalog.urllib.request, "urlopen", side_effect=lambda *a, **k: _Response(body))
+    return mock.patch.object(catalog._json_opener, "open", side_effect=lambda *a, **k: _Response(body))
 
 
 class TestNonObjectPayloads(unittest.TestCase):
