@@ -162,6 +162,22 @@ class TestWire(unittest.TestCase):
                 egress._fetch(self.url, "", 5)
             self.assertEqual([h.proxies for h in captured["h"] if isinstance(h, urllib.request.ProxyHandler)], [{}])
 
+    def test_explicit_proxy_ignores_no_proxy_for_all_tracker_transports(self):
+        from audiobind import ipupdate
+
+        target = "http://127.0.0.1:1/"
+        routes = (
+            lambda: tracker._opener(self.url).open(target, timeout=2).read(),
+            lambda: egress._fetch(target, self.url, 2),
+            lambda: ipupdate.urllib_transport(self.url)("GET", target, {}, 2),
+        )
+        with mock.patch.dict("os.environ", {"no_proxy": "127.0.0.1", "NO_PROXY": "127.0.0.1"}), \
+                mock.patch.object(ipupdate, "MAM_URLS", (target,)):
+            for route in routes:
+                with self.subTest(route=route):
+                    route()
+        self.assertEqual(len(_Capture.seen), 3)
+
     def test_configured_proxy_still_wins(self):
         opener = tracker._opener("http://vpn:8888")
         handlers = [h for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler)]

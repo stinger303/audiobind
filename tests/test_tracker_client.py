@@ -301,7 +301,7 @@ class TestRequests(unittest.TestCase):
         self.assertNotIn("SECRET-COOKIE", repr(mc))
 
     def test_redirects_are_never_followed(self):
-        handler = tracker._NoRedirect()
+        handler = tracker.tracker_route._NoRedirect()
         self.assertIsNone(handler.redirect_request(None, None, 302, "Found", {}, "https://tracker.example/login.php"))
 
 

@@ -27,6 +27,8 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
+from . import tracker_route
+
 from . import __version__, markers
 from .matching import adaptation_label, series_positions
 from .util import clean, norm, sim
@@ -604,13 +606,6 @@ class TrackerBackoff(TrackerError):
     """Refused locally: the tracker is in backoff, so no request was sent."""
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """A redirect is never followed: it would be a request to an endpoint nobody authorized."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
 def authorized_url(url: str, endpoints: Endpoints) -> bool:
     """True only for the two endpoints configured for automation: the search URL (exactly, or with
     a query string when the search method is GET) and the download URL with its id parameter."""
@@ -636,10 +631,7 @@ def _opener(proxy: str = ""):
     on the wire is the one TrackerClient sets (``audiobind/<version>`` or TRACKER_USER_AGENT)."""
     with _OPENERS_LOCK:
         if proxy not in _OPENERS:
-            mapping = {"http": proxy, "https": proxy} if proxy else {}
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler(mapping), _NoRedirect())
-            opener.addheaders = []
-            _OPENERS[proxy] = opener
+            _OPENERS[proxy] = tracker_route.build_opener(proxy)
         return _OPENERS[proxy]
 
 

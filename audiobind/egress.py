@@ -12,6 +12,8 @@ from __future__ import annotations
 import ipaddress
 import urllib.request
 
+from . import tracker_route
+
 PROBE_URLS = ("https://ipinfo.io/ip", "https://api.ipify.org")
 MAX_ANSWER = 256
 
@@ -22,10 +24,7 @@ class EgressError(Exception):
 
 def _fetch(url: str, proxy: str, timeout: float) -> str:
     """One GET, plain text. The single network call of the guard; tests replace it."""
-    # explicit map always: {} means no proxy and never the environment's HTTP(S)_PROXY
-    mapping = {"http": proxy, "https": proxy} if proxy else {}
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler(mapping))
-    opener.addheaders = []
+    opener = tracker_route.build_opener(proxy)
     request = urllib.request.Request(url, headers={"Accept": "text/plain"})
     with opener.open(request, timeout=timeout) as response:
         return response.read(MAX_ANSWER).decode("ascii", "replace")

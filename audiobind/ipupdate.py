@@ -22,6 +22,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from . import tracker_route
+
 NOOP = "noop"
 UPDATE = "update"
 REFUSE = "refuse"
@@ -134,21 +136,12 @@ def is_mam(tracker_url: str) -> bool:
     return host == MAM_DOMAIN or host.endswith("." + MAM_DOMAIN)
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """A redirect (usually to the login page) is answered as its status, never followed."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
 def urllib_transport(proxy: str = "", user_agent: str = ""):
     """The real transport: ``transport(method, url, headers, timeout) -> (status, body)``.
 
     Only the two MAM_URLS, no redirects, and an explicit proxy map (TRACKER_PROXY, or none at all,
     never the environment's). One attempt per call: no retry, and never a direct fallback."""
-    mapping = {"http": proxy, "https": proxy} if proxy else {}
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler(mapping), _NoRedirect())
-    opener.addheaders = []
+    opener = tracker_route.build_opener(proxy)
 
     def transport(method: str, url: str, headers: dict, timeout: float) -> tuple[int, bytes]:
         if url not in MAM_URLS:

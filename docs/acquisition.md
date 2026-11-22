@@ -303,7 +303,8 @@ default bridge network, use the server's IP.
 `TRACKER_PROXY` takes `http://host:port` or `https://host:port`; a value that is not one of those
 stops Audiobind from starting, with a message naming `TRACKER_PROXY`. On Unraid: Docker tab →
 Audiobind → Edit → Show more settings → "Tracker proxy" → Apply (restarts the container). Every tracker search and download
-goes through it. It is **fail-closed**: if the proxy is down or refuses, the request fails and
+goes through it, as do the address probe and allowed-IP updater. Environment bypass rules
+(`NO_PROXY` and `no_proxy`) do not apply. It is **fail-closed**: if the proxy is down or refuses, the request fails and
 the watcher backs off. Audiobind never retries without the proxy and never falls back to a
 direct connection.
 
