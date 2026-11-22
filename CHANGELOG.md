@@ -7,7 +7,7 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
-## [Unreleased]
+## [0.25.3] - 2026-11-21
 
 **A complete "Set up downloading" guide, and a series name you can trust.** Plus the fixes an audit batch,
 a cross-model review and a matcher case produced: nothing changes a match decision.

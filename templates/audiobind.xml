@@ -26,6 +26,11 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.25.3
+* The "Set up downloading" guide is complete: after how books arrive and the download client, it checks the address your tracker will see and collects your tracker's own settings, with a Test button that proves them before you finish.
+* One series name, everywhere: the book panel, the Match column, the series shelf and the Audiobookshelf move now all use the same value, taken from the same place the file is tagged from.
+* Fixed: a book that vanishes mid-check no longer ends the scan, the delete message says exactly what was removed and what stayed, and a book Audiobind cannot measure is held for you instead of quietly disappearing from the lists.
+* Fixed: an ASIN in a folder name that belongs to another book is now explained in plain words instead of reading as a bare tie.
 ### 0.25.1
 * A first-time-setup pass fixed every contradiction between this template, the docs and the Settings page: the template now ships the 15% wrong-edition tolerance the code and docs already use, the qBittorrent URL default is empty instead of a localhost address that cannot work on bridge, and the host port defaults to 8686 because qBittorrent usually holds 8080.
 * Existing installs keep their saved values. Set Max runtime delta to 0.15 by hand, and if you never set qBittorrent URL, set it now.
