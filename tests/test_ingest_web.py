@@ -85,7 +85,7 @@ class TestIngestRows(IngestWebCase):
         self.assertIn(">Remove from library</button>", ingest_row)
         self.assertNotIn(">Remove from library</button>", library_row)
         self.assertNotIn("data-source", library_row)
-        self.assertIn("Permanently delete this book's source folder", library_row)
+        self.assertIn("This removes the book from Audiobind", library_row)
 
     def test_search_for_ingest_narrows_to_ingest_rows(self):
         body = re.search(r'<tbody id="ab-body">(.*?)</tbody>', web.render(self.state, query="ingest"), re.S)
@@ -175,8 +175,7 @@ class TestPageScript(unittest.TestCase):
         self.assertIn("dataset.source === 'ingest'", body)
         self.assertNotIn("fetch(", body)  # no instant request any more: the modal confirms first
         self.assertIn("'Remove from Audiobind?'", body)
-        self.assertIn("'This removes the converted copy from /output and forgets the book in Audiobind. '", body)
-        self.assertIn("'The torrent and its files stay in qBittorrent and keep seeding. This cannot be undone.'", body)
+        self.assertRegex(body, r"textContent =\s*summary")
         self.assertIn("'Remove from library'", body)
         self.assertIn("'Delete permanently'", body)  # a library row puts the usual label back
 
@@ -184,7 +183,8 @@ class TestPageScript(unittest.TestCase):
         start = web.SCRIPT.index("function abModalConfirm")
         body = web.SCRIPT[start:web.SCRIPT.index("window.addEventListener('keydown'", start)]
         self.assertIn("confirm: true", body)
-        self.assertIn("Removed from Audiobind. The torrent is still seeding in qBittorrent.", body)
+        self.assertIn("Removed from Audiobind.", body)
+        self.assertIn("The torrent is still seeding in qBittorrent.", body)
 
 
 if __name__ == "__main__":

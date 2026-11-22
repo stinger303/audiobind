@@ -13,6 +13,7 @@ import socket
 import sys
 import threading
 import time
+from collections import Counter
 from contextlib import ExitStack
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1093,28 +1094,19 @@ function abBookTitle(path) {
   return ((first && first.textContent) || path || 'this book').trim();
 }
 function unitDelete(btn) {
-  const path = btn.dataset.path;
-  const title = btn.dataset.title || path;
-  abOpenDeleteModal(path, title, btn);
+  abOpenDeleteModal(btn, btn.dataset.deleteSummary);
 }
 let abDeleteTrigger = null;
-function abOpenDeleteModal(path, title, trigger) {
+function abOpenDeleteModal(trigger, summary) {
   abDeleteTrigger = trigger;
+  const ingest = trigger.dataset.source === 'ingest';
+  document.getElementById('ab-modal-title').textContent =
+    ingest ? 'Remove from Audiobind?' : 'Delete this book?';
+  document.getElementById('ab-modal-warning').textContent =
+    summary || 'File removal could not be checked. Cancel and open the book details.';
   const confirmBtn = document.getElementById('ab-modal-confirm');
-  if (trigger && trigger.dataset.source === 'ingest') {
-    // a seeding torrent: only Audiobind's converted copy goes, the torrent's files are never touched
-    document.getElementById('ab-modal-title').textContent = 'Remove from Audiobind?';
-    document.getElementById('ab-modal-warning').textContent =
-      'This removes the converted copy from /output and forgets the book in Audiobind. ' +
-      'The torrent and its files stay in qBittorrent and keep seeding. This cannot be undone.';
-    confirmBtn.textContent = 'Remove from library';
-  } else {
-    document.getElementById('ab-modal-title').textContent = 'Delete this book?';
-    document.getElementById('ab-modal-warning').textContent =
-      'This permanently deletes ' + title + "'s source folder and its published files. " +
-      "This cannot be undone."
-    confirmBtn.textContent = 'Delete permanently';
-  }
+  confirmBtn.disabled = !summary;
+  confirmBtn.textContent = ingest ? 'Remove from library' : 'Delete permanently';
   document.getElementById('ab-modal').hidden = false;
   document.getElementById('ab-modal-cancel').focus();
 }
@@ -1152,38 +1144,31 @@ function abModalConfirm() {
         btn.textContent = label;
         return;
       }
-      // C2: a loose single-file book is a file, never a folder; files Audiobind did not write that
-      // were left beside its removed conversion are said separately from the conversion itself
-      const what = result.source_kind === 'file' ? 'file' : 'folder';
-      const others = result.output_other_files_left
-        ? ' Other files in that output folder were left alone: ' + result.output_other_files_left + '.' : '';
+      const source = result.source_kind === 'file' ? 'source file' :
+        result.source_kind === 'files' ? 'source files' : 'source folder';
+      const messages = ['Removed from Audiobind.'];
       if (result.dismissed) {
-        abToast('Removed from Audiobind. The torrent is still seeding in qBittorrent.' +
-                (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : '') +
-                others);
-      } else if (result.source_kept) {
-        const deleted = result.output === 'removed' ? 'Deleted from Audiobind and your output library.' :
-          'Removed from Audiobind.';
-        abToast(deleted + ' The source ' + what + ' stays (' +
-                (result.source_kept_reason || 'your library is read-only') +
-                ') - it will reappear on the next scan unless you remove it from the share.' +
-                (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : '') +
-                others);
+        messages.push('The torrent is still seeding in qBittorrent.');
       } else if (result.source_removed) {
-        if (result.output === 'kept') {
-          abToast('Deleted the source ' + what + '. The converted copy stays in your output library (' +
-                  result.output_kept_reason + ').');
-        } else if (result.output === 'removed') {
-          abToast('Deleted the source ' + what + ' and the converted copy in your output library.' + others);
-        } else {
-          abToast('Deleted the source ' + what +
-                  '. There was no converted copy in your output library to remove.');
-        }
-      } else if (result.output === 'kept') {
-        abToast('Deleted. Output kept: ' + result.output_kept_reason + '.');
-      } else if (others) {
-        abToast('Deleted the converted copy from your output library.' + others);
+        messages.push('The ' + source + (source === 'source files' ? ' were' : ' was') + ' deleted.');
+      } else if (result.source_kept) {
+        messages.push('The ' + source + (source === 'source files' ? ' stay' : ' stays') +
+          ' (' + result.source_kept_reason + '). The book may reappear on the next scan.');
+      } else {
+        messages.push('There was no source to remove.');
       }
+
+      if (result.output === 'removed') {
+        messages.push('The converted copy was deleted.');
+        if (result.output_other_files_left) messages.push('Other files in the output folder stayed.');
+      } else if (result.output === 'kept') {
+        const reason = result.output_left && Object.keys(result.output_left).length
+          ? 'Audiobind could not verify that it wrote the files still there' : result.output_kept_reason;
+        messages.push('The output stays (' + reason + ').');
+      } else {
+        messages.push('There was no converted copy to remove.');
+      }
+      abToast(messages.join(' '));
       setTimeout(() => location.reload(), 500);
     })
     .catch(() => {
@@ -1417,7 +1402,9 @@ function abMenuPick(item) {
     abUnitAction(item, 'recheck');
   } else if (act === 'delete') {
     // the kebab is the trigger: Cancel returns focus to something that is still visible
-    abOpenDeleteModal(kebab.dataset.path, kebab.dataset.title || kebab.dataset.path, kebab);
+    const panel = row.nextElementSibling;
+    const button = panel && panel.querySelector('[data-delete-summary]');
+    abOpenDeleteModal(kebab, button && button.dataset.deleteSummary);
   }
 }
 document.addEventListener('click', function(e) {
@@ -6767,6 +6754,15 @@ def render(state, status: str = "", query: str = "") -> str:
             data = parsed_details[unit.path] = _detail_dict(unit)
         return data
 
+    output_counts = Counter()
+    for unit in all_units:
+        if unit.output:
+            try:
+                folder = Path(unit.output).resolve().parent
+            except (OSError, RuntimeError):
+                continue
+            output_counts.update((folder, *folder.parents))
+
     def detail_panel(unit) -> str:
         ingest_row = is_ingest_row(unit)
         data = detail_of(unit)
@@ -7013,17 +7009,13 @@ def render(state, status: str = "", query: str = "") -> str:
             "Passes your confidence setting &rarr; converts automatically. Still "
             "too unsure &rarr; this panel re-opens with the reason.</span>" + "</div>"
         )
-        delete_title = (
-            "Remove the converted copy from the output folder and forget this book in Audiobind. "
-            "The torrent and its files stay in qBittorrent and keep seeding."
-            if ingest_row
-            else "Permanently delete this book's source folder and its published files. Cannot be undone."
-        )
+        delete_title = _delete_confirmation(unit, ingest_row, output_counts)
         delete_source_attr = f' data-source="{SOURCE_INGEST}"' if ingest_row else ""
         delete_label = "Remove from library" if ingest_row else "Delete"
         delete_act = (
             '<div class="acts">'
-            f'<button class="btn danger" title="{delete_title}" onclick="unitDelete(this)" '
+            '<button class="btn danger" title="Review what this delete will remove" '
+            f'data-delete-summary="{_attr(delete_title)}" onclick="unitDelete(this)" '
             f'data-path="{_attr(unit.path)}" data-title="{_attr(unit.title or unit.path)}"{delete_source_attr} '
             f'style="margin-left:auto">{delete_label}</button></div>'
         )
@@ -7389,6 +7381,80 @@ def source_ownership_for(row) -> dict:
     if not isinstance(targets, list) or not targets or not all(isinstance(name, str) for name in targets):
         return {}
     return ownership if isinstance(ownership.get("entries"), dict) else {}
+
+
+def _delete_source_kind(targets: list[Path], src_path: Path | None) -> str:
+    if any(target.is_dir() for target in targets):
+        return "folder"
+    if len(targets) > 1:
+        return "files"
+    return "file" if targets or (src_path and src_path.is_file()) else "folder"
+
+
+def _delete_source_confirmation(unit) -> str:
+    root = Path(CONFIG.library_root).resolve()
+    source = root / unit.path.split("#", 1)[0]
+    ownership = source_ownership_for(unit)
+    targets = [root / name for name in ownership.get("targets", [])]
+    kind = _delete_source_kind(targets, source)
+    label = f"The source {kind}"
+    stays = "stay" if kind == "files" else "stays"
+    if ownership.get("blocked"):
+        return f"{label} {stays}. Re-check the book before deleting."
+    if not targets:
+        if source.exists():
+            return (f"{label} {stays} until Audiobind can verify it belongs to this book."
+                    " Re-check the book first.")
+        return "There is no source to remove."
+    for raw in targets:
+        target, target_kind = plan_target(raw)
+        if target != raw or removal_unsafe(target, root, target_kind) or not os.path.lexists(target):
+            return f"{label} {stays} if the source changed. Re-check the book before deleting."
+        if os.statvfs(target.parent).f_flag & os.ST_RDONLY:
+            return f"{label} {stays} because the library is read-only."
+        if not os.access(target.parent, os.W_OK | os.X_OK):
+            return f"{label} {stays} because Audiobind cannot delete it."
+        if target_kind == "dir" and os.statvfs(target).f_flag & os.ST_RDONLY:
+            return f"{label} {stays} because the library is read-only."
+    return f"Audiobind will delete the source {kind} if it still matches the last scan."
+
+
+def _delete_output_confirmation(unit, output_counts: Counter) -> str:
+    if not unit.output:
+        return "There is no converted copy to remove."
+    if not audiobind_wrote_output(unit):
+        return "The output stays because Audiobind did not create it."
+    path = Path(unit.output).resolve()
+    folder = path.parent
+    root = Path(CONFIG.output_root).resolve()
+    if root not in folder.parents:
+        return "The output stays because its folder cannot be safely removed."
+    if output_counts[folder] > 1:
+        return "The output stays because another book uses it."
+    if not folder.is_dir():
+        return "There is no converted copy to remove."
+    if os.statvfs(folder).f_flag & os.ST_RDONLY:
+        return "The output stays because its folder is read-only."
+    recorded = pipeline_mod.wrote_files(unit)
+    if recorded is None:
+        return "Files Audiobind cannot verify stay unless you approve their deletion separately."
+    if not recorded:
+        return "The output stays because Audiobind cannot verify that it wrote those files."
+    return "Only unchanged files Audiobind can verify it wrote will be deleted from the output folder."
+
+
+def _delete_confirmation(unit, ingest_row: bool, output_counts: Counter) -> str:
+    try:
+        source = ("The torrent and its files stay in qBittorrent and keep seeding."
+                  if ingest_row else _delete_source_confirmation(unit))
+    except (OSError, RuntimeError):
+        source = "Source files stay unless Audiobind can verify their ownership and permissions."
+    try:
+        output = _delete_output_confirmation(unit, output_counts)
+    except (OSError, RuntimeError):
+        output = "Output files stay unless Audiobind can verify they are safe to delete."
+    return (f"This removes the book from Audiobind if the checks pass. {source} {output} "
+            "This cannot be undone.")
 
 
 def conversion_claim(rel: str) -> str:
@@ -8608,11 +8674,7 @@ class Handler(BaseHTTPRequestHandler):
             # The book and output-folder claims span the purge and state write. The
             # publication lock protects revalidation and staging against journal recovery.
             # C2: what the source is, so neither the reasons below nor the page call a loose file a folder
-            source_kind = "folder"
-            if targets and not any(kinds[t] == "dir" or (kinds[t] == "link" and t.is_dir()) for t in targets):
-                source_kind = "file"
-            elif not targets and src_path is not None and src_path.is_file():
-                source_kind = "file"
+            source_kind = _delete_source_kind(targets, src_path)
             source_trash: dict[Path, Path] = {}
             output_trash: dict[Path, Path] = {}
             source_staged = {}
@@ -8744,6 +8806,9 @@ class Handler(BaseHTTPRequestHandler):
                     output_removed = "kept"
                     output_kept_reason = OUTPUT_NOT_OURS
                     log.info("HARD DELETE %s; output kept, %s: %s", rel, output_kept_reason, unit_state.output)
+                elif out_trash is None and unit_state.output and Path(unit_state.output).exists():
+                    output_removed = "kept"
+                    output_kept_reason = "the file is directly in the output folder"
                 elif out_trash is not None and out_shared:
                     output_removed = "kept"
                     output_kept_reason = f"also used by {out_shared} other book(s)"

@@ -294,7 +294,7 @@ class TestDeleteUI(unittest.TestCase):
 
     def test_confirm_strip_warns_of_permanent_deletion(self):
         page = web.render(self.state)
-        self.assertIn("permanently deletes", page)
+        self.assertIn("This removes the book from Audiobind if the checks pass.", page)
         self.assertIn("cannot be undone", page)
         self.assertIn("Delete permanently", page)
         self.assertIn(">Cancel<", page)

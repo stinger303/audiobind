@@ -148,6 +148,9 @@ docker exec -it audiobind audiobind reset-password # forgot the password: set a 
 
 ## Deleting a book
 
+The confirmation describes what happens to the book in Audiobind, its source files and its converted copy.
+Afterward, the message reports what actually happened to each. A read-only source stays in your library.
+
 Delete checks the source paths, file sizes and modification times recorded during the book's audit.
 If the source changed or the row predates that record, re-check the book before deleting it.
 A delete that detects a late arrival during staging restores the staged files and keeps the row.

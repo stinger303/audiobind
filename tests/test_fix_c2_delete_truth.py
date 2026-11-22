@@ -12,14 +12,15 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from audiobind import web
 from audiobind.state import UnitState
 
 try:
+    from live import LiveServerCase, audited_row
     from test_d1_data_safety import DeleteCase
     from test_fix_b9_delete_toast import HARNESS, function_source
-    from live import LiveServerCase, audited_row
 except ImportError:
     from tests.live import LiveServerCase, audited_row
     from tests.test_d1_data_safety import DeleteCase
@@ -58,8 +59,18 @@ class TestC2MixedOutputFolder(DeleteCase):
         text = render_toast(self, body)
         self.assertNotIn("stays in your output library", text)
         self.assertIn("converted copy", text)
-        self.assertIn("notes.txt", text)
-        self.assertIn("left", text)
+        self.assertIn("Other files in the output folder stayed.", text)
+
+    def test_toast_reports_row_source_and_output_without_file_names(self):
+        (self.out_book / "notes.txt").write_bytes(b"owner")
+        status, result = self.delete()
+        self.assertEqual(status, 200)
+        text = render_toast(self, result)
+        self.assertIn("Removed from Audiobind.", text)
+        self.assertIn("The source folder was deleted.", text)
+        self.assertIn("The converted copy was deleted.", text)
+        self.assertIn("Other files in the output folder stayed.", text)
+        self.assertNotIn("notes.txt", text)
 
     def test_nothing_of_ours_removed_is_still_kept(self):
         row = self.state.get(self.REL)
@@ -71,12 +82,13 @@ class TestC2MixedOutputFolder(DeleteCase):
         self.assertEqual(body["output"], "kept")
         self.assertNotIn("output_other_files_left", body)
 
-    def test_the_toast_for_a_fully_removed_output_is_unchanged(self):
+    def test_the_toast_for_a_fully_removed_output(self):
         status, body = self.delete()
         self.assertEqual((status, body["output"]), (200, "removed"), body)
         self.assertNotIn("output_other_files_left", body)
         text = render_toast(self, body)
-        self.assertEqual(text, "Deleted the source folder and the converted copy in your output library.")
+        self.assertEqual(text, "Removed from Audiobind. The source folder was deleted. "
+                               "The converted copy was deleted.")
 
 
 class TestC2LooseFileIsNotAFolder(LiveServerCase):
@@ -87,6 +99,13 @@ class TestC2LooseFileIsNotAFolder(LiveServerCase):
         (self.lib / self.REL).write_bytes(b"audio")
         row = UnitState(path=self.REL, status="review", title="Island of Glass")
         self.state.save(audited_row(self.lib, row))
+
+    def test_confirmation_describes_a_read_only_loose_source(self):
+        with mock.patch.object(web.os, "statvfs", return_value=mock.Mock(f_flag=web.os.ST_RDONLY)):
+            page = web.render(self.state)
+        self.assertIn("The source file stays because the library is read-only.", page)
+        self.assertIn("There is no converted copy to remove.", page)
+        self.assertNotIn("source folder and its published files", page)
 
     def test_the_toast_says_file(self):
         status, body = self.post({"action": "delete", "path": self.REL, "confirm": True})

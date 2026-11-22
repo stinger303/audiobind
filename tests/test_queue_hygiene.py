@@ -536,7 +536,7 @@ class TestKebabMenu(unittest.TestCase):
         self.assertIn("e.key === 'Escape'", menu_js)
         self.assertIn("e.key === 'ArrowDown'", menu_js)
         self.assertIn("e.key === 'ArrowUp'", menu_js)
-        self.assertIn("abOpenDeleteModal(kebab.dataset.path", menu_js)  # Delete... keeps the modal
+        self.assertIn("abOpenDeleteModal(kebab, button && button.dataset.deleteSummary)", menu_js)
         self.assertIn("abEditAsin(row)", menu_js)  # Edit ASIN keeps its behavior
         self.assertIn("abUnitAction(item, 'recheck')", menu_js)
 

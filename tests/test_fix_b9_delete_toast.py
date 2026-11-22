@@ -74,7 +74,7 @@ class TestB9DeleteToastReadsSourceRemoved(unittest.TestCase):
         text = self.last_toast({"source_removed": True, "output": "removed"})
         self.assertIn("source folder", text)
         self.assertIn("converted copy", text)
-        self.assertTrue(text.startswith("Deleted the source folder and the converted copy"), text)
+        self.assertIn("The source folder was deleted. The converted copy was deleted.", text)
 
     def test_source_removed_output_kept_says_both(self):
         text = self.last_toast({"source_removed": True, "output": "kept",

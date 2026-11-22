@@ -240,7 +240,7 @@ class TestRenderedSearchAndSort(unittest.TestCase):
         self.assertIn('title="Re-check this book against the catalog', page)
         self.assertIn('title="Convert this book even though', page)
         self.assertIn('title="Set this exact Audible entry for the book (locks it)', page)
-        self.assertIn('title="Permanently delete this book', page)
+        self.assertIn('title="Review what this delete will remove"', page)
 
     def test_dry_run_sits_with_the_other_controls(self):
         page = web.render(self.state)
