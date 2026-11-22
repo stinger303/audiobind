@@ -33,8 +33,9 @@ names what is still missing.
 ### The guided setup ("Set up downloading")
 
 Instead of filling the Watcher tab field by field, you can use the guide at `/setup/downloading`.
-It is reachable from the Library page's one-time card and from the **Set up downloading** button
-on Settings > Watcher, and only when you are signed in. It saves into the very same settings the
+When you're signed in, choose **View the setup guide** on Settings > Watcher to resume where you left off.
+You can also open the guide from the Library page's one-time card or the **Set up downloading** button
+that appears on the Watcher tab before the watcher is configured. It saves into the very same settings the
 Watcher tab saves, through the same checks, and remembers where you were across a container
 restart.
 

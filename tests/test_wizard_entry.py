@@ -1,4 +1,4 @@
-"""The two ways into the Set up downloading wizard: the Library page's one-time card and the Watcher tab's button."""
+"""Entry points for the downloading guide on the Library page and the Watcher tab."""
 
 import json
 import re
@@ -16,6 +16,7 @@ except ImportError:
     from tests.test_wizard_shell import WizardCase, seed_account
 
 CARD = 'id="ab-wizcard"'
+GUIDE_LINK = '<a href="/setup/downloading">View the setup guide</a>'
 
 
 class EntryCase(WizardCase):
@@ -108,16 +109,19 @@ class TestSignedOutAnswer(EntryCase):
         self.assertFalse(wizard.read(self.state)["dismissed"])
 
 
-class TestWatcherTabButton(EntryCase):
+class TestWatcherTabEntry(EntryCase):
     def test_the_button_is_at_the_top_while_the_watcher_is_not_configured(self):
         page = web.render_settings(self.state, "watcher")
+        self.assertIn(GUIDE_LINK, page)
         self.assertIn('id="ab-wiz-open" href="/setup/downloading">Set up downloading</a>', page)
         self.assertLess(page.index('id="ab-wiz-open"'), page.index('data-setting="tracker_url"'),
                         "above the fields")
 
-    def test_no_button_once_the_watcher_is_configured(self):
+    def test_the_guide_link_remains_once_the_watcher_is_configured(self):
         self.tracker_configured()
-        self.assertNotIn('id="ab-wiz-open"', web.render_settings(self.state, "watcher"))
+        page = web.render_settings(self.state, "watcher")
+        self.assertNotIn('id="ab-wiz-open"', page)
+        self.assertIn(GUIDE_LINK, page)
 
     def test_the_button_is_a_link_not_a_submit_so_the_form_is_not_saved_by_it(self):
         page = web.render_settings(self.state, "watcher")

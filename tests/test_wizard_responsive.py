@@ -12,9 +12,9 @@ import re
 from audiobind import web, wizard
 
 try:
-    from test_wizard_step4 import Step4Case
+    from test_wizard_step4 import SITE, Step4Case
 except ImportError:
-    from tests.test_wizard_step4 import Step4Case
+    from tests.test_wizard_step4 import SITE, Step4Case
 
 WIDTHS = (390, 768, 1024, 1440)
 #: the narrowest content column the guide gets: a 390 px phone minus the shell's side padding
@@ -31,6 +31,38 @@ def rules(selector_part):
 
 
 class TestResponsive(Step4Case):
+    def test_the_watcher_guide_link_fits_in_the_settings_column(self):
+        self.configure()
+        page = web.render_settings(self.state, "watcher")
+        tab = re.search(r'<div class="ab-tabpanel" id="ab-tab-watcher" data-tab="watcher">.*?</section>',
+                        page, re.S).group(0)
+        self.assertRegex(tab, r'<div class="ab-acct-who ab-setup-guide"><a href="/setup/downloading">')
+        self.assertIn("overflow-wrap:anywhere", rules(".ab-setup-guide")[".ab-setup-guide a"])
+        self.assertRegex(tab, r'<div class="ab-acct-row ab-watch-actions">[^<]*<button')
+        self.assertIn("flex-wrap:wrap", rules(".ab-watch-actions")[".ab-watch-actions"])
+        self.assertIn("min-width:0", rules(".ab-main")[".ab-main"])
+        self.assertIn("*{box-sizing:border-box", web.STYLES)
+        drawer = re.search(r"@media\(max-width:(\d+)px\)\{\s*\.ab-navbtn.*?\.ab-rail\{position:fixed",
+                           web.STYLES, re.S)
+        breakpoint = int(drawer.group(1))
+        rail = int(re.search(r"\.ab-rail\{width:(\d+)px", web.STYLES).group(1))
+        column = re.search(r'<section class="ab-settings" style="padding:(\d+)px;max-width:(\d+)px;">',
+                           page)
+        padding, ceiling = map(int, column.groups())
+        for width in WIDTHS:
+            with self.subTest(width=width):
+                available = width - (0 if width <= breakpoint else rail)
+                # The column is auto-width with a ceiling; padding is inside its border box.
+                self.assertGreaterEqual(min(available, ceiling) - 2 * padding, PHONE_COLUMN - 24)
+
+    def test_the_settings_page_does_not_name_a_tracker_site(self):
+        for configured in (False, True):
+            with self.subTest(configured=configured):
+                if configured:
+                    self.configure()
+                page = web.render_settings(self.state, "watcher").lower()
+                self.assertNotIn(SITE, page)
+
     def pages(self):
         self.configure()
         self.check_again(["2001:db8:ffff:ffff:ffff:ffff:ffff:ffff"])  # the longest address there is

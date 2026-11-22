@@ -676,6 +676,7 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-wizcard a.btn,.ab-wiz-open a.btn{text-decoration:none}
 .ab-wiz-open{flex-wrap:wrap;margin:6px 0 10px}
 .ab-wiz-open .ab-acct-who{margin-bottom:0;flex:1 1 220px}
+.ab-setup-guide a{color:var(--ab-accent-bright);overflow-wrap:anywhere}
 .ab-wiz-form{display:flex;flex-direction:column;gap:10px}
 .ab-wiz-choices{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;min-width:0}
 .ab-wiz-choices legend{padding:0;margin-bottom:6px}
@@ -776,6 +777,7 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-watch-grid dd{margin:0;color:var(--ab-text2);overflow-wrap:anywhere}
 .ab-watch-warn{border-color:rgba(242,163,60,.35);background:var(--ab-amber-soft);color:var(--ab-amber);margin:10px 0}
 .ab-watch-warn b{color:var(--ab-amber)}
+.ab-watch-actions{flex-wrap:wrap}
 
 /* the hamburger and the drawer scrim exist on every page but only show at <=1080 px; on desktop
    the button is display:none and the scrim carries [hidden], so neither takes any room */
@@ -4758,6 +4760,10 @@ def _check_ip_block() -> str:
 def render_watcher_section(state) -> str:
     """Settings > Watcher: status, the connection settings, pacing, connection tests, Run / Pause."""
     s = watcher_mod.WATCHER.status(state)
+    guide_link = (
+        '<div class="ab-acct-who ab-setup-guide">'
+        f'<a href="{wizard_mod.PATH}">View the setup guide</a></div>'
+    )
     warn = ""
     if not s["configured"]:
         # QBIT_URL has no default: while it is empty it is one of the things still to set
@@ -4776,6 +4782,7 @@ def render_watcher_section(state) -> str:
             "<code>QBIT_PASS</code>). Fill them in below and save - no restart needed - or set them as container "
             "variables. A Wishlist tab appears in the sidebar once these settings are complete.</div>"
             + _wizard_open_button()
+            + guide_link
             + _watch_connection_fields()
             + _watch_test_and_save()
             + _egress_pin_field()
@@ -4914,13 +4921,14 @@ def render_watcher_section(state) -> str:
         "match to qBittorrent; the ingest folder takes it from there. Everything below can be set here or as a "
         "container variable; a value saved here wins and applies from the next cycle, no restart. The pause switch "
         "is kept across restarts.</div>"
-        f'{warn}{ready}<dl class="ab-watch-grid">{grid}</dl>'
+        f'{guide_link}{warn}{ready}<dl class="ab-watch-grid">{grid}</dl>'
         + _egress_pin_field()
         + _watch_connection_fields()
         + _watch_schedule_fields()
         + _watch_test_and_save()
         + _ip_updater_section(s)
-        + f'<div class="ab-acct-row">{run_btn}{toggle}{dry_toggle}<span class="ab-fb" id="ab-watch-fb" role="status"></span></div>'
+        + f'<div class="ab-acct-row ab-watch-actions">{run_btn}{toggle}{dry_toggle}'
+        + '<span class="ab-fb" id="ab-watch-fb" role="status"></span></div>'
         + dry_line
         + "</section>"
     )
