@@ -161,9 +161,11 @@ def make_tracker(route: TrackerRoute | None = None) -> tracker.TrackerClient:
                                  proxy=settings["tracker_proxy"], user_agent=settings["tracker_user_agent"])
 
 
-def make_ip_transport():
-    """The MAM IP endpoints' transport (ipupdate.MAM_URLS only), through TRACKER_PROXY."""
-    return ipupdate.urllib_transport(_setting("tracker_proxy"), tracker.resolve_user_agent(_setting("tracker_user_agent")))
+def make_ip_transport(route: TrackerRoute):
+    """The MAM IP transport, bound to the route used for the probe."""
+    settings = route.settings
+    return ipupdate.urllib_transport(settings["tracker_proxy"],
+                                     tracker.resolve_user_agent(settings["tracker_user_agent"]))
 
 
 def make_qbit(url: str | None = None) -> qbit.QbitClient:
@@ -489,60 +491,78 @@ def _ipupdate_record(state) -> dict:
     return dict(rec) if isinstance(rec, dict) else {}
 
 
-def _mam_session() -> str:
-    """The session cookie when the configured tracker is MyAnonamouse, else "": the MAM IP calls
-    are never made, and the cookie never sent, anywhere else."""
-    return _setting("tracker_session") if ipupdate.is_mam(_setting("tracker_url")) else ""
+def _mam_session(route: TrackerRoute | None = None) -> str:
+    """The session is sent only for a configured MyAnonamouse tracker."""
+    settings = (route or capture_route()).settings
+    return settings["tracker_session"] if ipupdate.is_mam(settings["tracker_url"]) else ""
 
 
-def _judge_drift(rec: dict, probed: str, probe_error: str, now: float) -> tuple[str, str, str, str]:
-    """(outcome, reason, observed, source). ``decide()`` on the egress probe's answer first. Only
-    when that says ``update`` (so the probe worked and the address is not the home IP) and a MAM
-    session is configured is MAM's ``jsonIp.php`` asked, and ``decide()`` runs again on MAM's answer:
-    the IP MAM itself sees is the better source of truth. No session: the probe's answer stands."""
-    expected, home, last = _setting("tracker_expected_egress_ip"), _setting("tracker_home_ip"), rec.get("last_updated_at")
+def _recovery_blocked(route: TrackerRoute, probed: str) -> str:
+    """The drift exception relaxes the pin for recovery only. It still requires a verified non-home IP."""
+    try:
+        route.check()
+    except tracker.TrackerRouteChanged as exc:
+        return str(exc)
+    home = route.settings["tracker_home_ip"]
+    if not home:
+        return "TRACKER_HOME_IP is not set, so the updater cannot rule out your home connection"
+    if not probed:
+        return "the egress probe did not verify an address"
+    if egress.judge(home, probed)[0] != "ok":
+        return "the address check saw your home connection"
+    return ""
+
+
+def _recovery_transport(route: TrackerRoute, probed: str, report: dict):
+    """Recheck containment before every read, write and verification request."""
+    transport = make_ip_transport(route)
+
+    def send(*args):
+        blocked = _recovery_blocked(route, probed)
+        if blocked:
+            raise ipupdate.UpdateError(ipupdate.REFUSED, blocked)
+        report["updater_attempted"] = True
+        return transport(*args)
+
+    return send
+
+
+def _judge_drift(rec: dict, probed: str, probe_error: str, now: float, route: TrackerRoute,
+                 transport) -> tuple[str, str, str, str]:
+    """Decide from the probe first, then consult MAM only for a contained drift."""
+    expected = route.settings["tracker_expected_egress_ip"]
+    home = route.settings["tracker_home_ip"]
+    last = rec.get("last_updated_at")
     outcome, why = ipupdate.decide(probed, expected, home, last, now, probe_error=probe_error)
-    session = _mam_session()
+    session = _mam_session(route)
     if outcome != ipupdate.UPDATE or not session:
         return outcome, why, probed, "egress probe"
+    blocked = _recovery_blocked(route, probed)
+    if blocked:
+        return ipupdate.REFUSE, blocked, probed, "egress probe"
+    log.info("allowed-IP updater: route %s approved for recovery via %s, egress %s, home %s, pinned %s",
+             route.id, "proxy" if route.settings["tracker_proxy"] else "direct", probed, home, expected)
     try:
-        seen, err = ipupdate.read_ip(session, make_ip_transport()), ""
+        seen, err = ipupdate.read_ip(session, transport), ""
     except ipupdate.UpdateError as exc:
         seen, err = "", f"MAM's jsonIp.php - {exc}"
     outcome, why = ipupdate.decide(seen, expected, home, last, now, probe_error=err)
     return outcome, why, seen, "MAM"
 
 
-def _write_blocked(probed: str, observed: str) -> str:
-    """Why the update endpoint must not be called ("" = it may). The egress guard's rules, checked
-    again right before the write, independent of ``decide()``: the probe must have answered, the
-    guard must be able to recognise the home connection (TRACKER_HOME_IP set), and neither the
-    probe's answer nor MAM's may be the home IP. MAM registers the address the request comes from,
-    so a write from home would make the home IP the seedbox IP."""
-    home = _setting("tracker_home_ip")
-    if not home:
-        return "TRACKER_HOME_IP is not set, so the egress guard cannot tell a home address - no automatic write"
-    if not str(probed or "").strip():
-        return "the egress probe did not answer - the egress IP is unverified"
-    for label, ip in (("the egress probe", probed), ("MAM", observed)):
-        if egress.judge(home, ip)[0] != "ok":
-            return f"{label} sees {ip}, which the egress guard does not pass (your home connection, or no address)"
-    return ""
-
-
 #: one MAM write at a time (the cycle's auto write and the Settings button)
 _WRITE_LOCK = threading.Lock()
 
 
-def _write_and_pin(state, probed: str, observed: str, now: float, via: str) -> tuple[bool, str]:
+def _write_and_pin(state, probed: str, observed: str, now: float, via: str, route: TrackerRoute,
+                   transport) -> tuple[bool, str]:
     """Set MAM's dynamic seedbox IP to ``observed``, verify it, then re-pin the allowlist to it.
     Only called after the egress guard and ``decide()`` said ``update``. Records the attempt, the
     result and (on success) the timestamp the hourly limit uses. (ok, message)."""
-    blocked = _write_blocked(probed, observed)
+    blocked = _recovery_blocked(route, probed) or _recovery_blocked(route, observed)
     if blocked:
-        log.warning("allowed-IP updater: nothing sent to MAM - %s", blocked)
         return False, blocked
-    old = _setting("tracker_expected_egress_ip")
+    old = route.settings["tracker_expected_egress_ip"]
     with _WRITE_LOCK:
         rec = _ipupdate_record(state)
         last = rec.get("last_updated_at")
@@ -550,7 +570,10 @@ def _write_and_pin(state, probed: str, observed: str, now: float, via: str) -> t
             return False, "the allowed IP was changed under an hour ago - at most one change an hour"
         rec["last_attempt_at"] = now
         try:
-            new = ipupdate.write(_mam_session(), observed, make_ip_transport())
+            new = ipupdate.write(_mam_session(route), observed, transport)
+            if route.settings != _route_settings():
+                raise ipupdate.UpdateError(
+                    ipupdate.REFUSED, "MAM verified the update but the saved route changed")
         except ipupdate.UpdateError as exc:
             rec["last_result"] = {"at": now, "ok": False, "kind": exc.kind, "ip": observed, "message": str(exc), "via": via}
             rec["notified_ip"] = observed
@@ -576,20 +599,27 @@ def use_current_ip(state) -> tuple[bool, str]:
     (ok, message)."""
     if ip_updater_mode() == "off":
         return False, "the allowed-IP updater is off (IP_UPDATER=off)"
+    route = capture_route()
     observed, why = "", ""
     try:
-        observed = egress.probe(_setting("tracker_proxy"))
+        observed = egress.probe(route.settings["tracker_proxy"])
     except Exception as exc:  # noqa: BLE001 - whatever went wrong, the address is unknown
         why = str(exc) or type(exc).__name__
-    old = _setting("tracker_expected_egress_ip")
+    try:
+        route.check()
+    except tracker.TrackerRouteChanged as exc:
+        return False, str(exc)
+    old = route.settings["tracker_expected_egress_ip"]
     rec = _ipupdate_record(state)
     now = time.time()
     probed = observed
-    outcome, reason, observed, source = _judge_drift(rec, observed, why, now)
+    transport = _recovery_transport(route, probed, {}) if _mam_session(route) else None
+    outcome, reason, observed, source = _judge_drift(rec, observed, why, now, route, transport)
     if outcome != ipupdate.UPDATE:
         return False, reason
     if source == "MAM":  # a MAM session: set it on MAM, verify, then re-pin
-        return _write_and_pin(state, probed, observed, now, "Use the current IP on Settings > Watcher")
+        return _write_and_pin(state, probed, observed, now, "Use the current IP on Settings > Watcher",
+                              route, transport)
     state.set_meta("setting_expected_egress", observed)
     set_effective(state)
     rec.update({"last_updated_at": now, "old": old, "new": observed, "notified_ip": ""})
@@ -843,16 +873,22 @@ class Watcher:
         summary["egress_guard"] = verdict
         if observed:
             summary["egress_ip"] = observed
-        if verdict == "changed":
-            return self._refuse(state, summary, reason, trigger)
-        if ip_updater_mode() != "off" and verdict != "off":
-            # after the guard, never instead of it: the verdict above stands whatever this says
-            try:
-                self._ip_notice(state, verdict, observed)
-            except Exception:  # noqa: BLE001 - the updater must never break a cycle
-                log.exception("allowed-IP updater: drift check failed")
-        if verdict in ("blocked", "unknown"):
-            return self._refuse(state, summary, reason, trigger)
+        mode = ip_updater_mode()
+        summary.update(updater_attempted=False, updater_result="updater is off")
+        if mode != "off":
+            summary["updater_result"] = "no verified drift"
+            if verdict == "changed":
+                summary["updater_result"] = reason
+            elif verdict != "off":
+                try:
+                    summary["updater_result"] = self._ip_notice(
+                        state, verdict, observed, route, summary, mode)
+                except Exception:  # noqa: BLE001 - the updater must never break a cycle
+                    summary["updater_result"] = "drift check failed"
+                    log.exception("allowed-IP updater: drift check failed")
+        if verdict in ("blocked", "unknown", "changed"):
+            return self._refuse(state, summary, reason)
+        summary["normal_tracker_blocked"] = False
         client = self.client(route)
         holder: dict = {}
         budget = self._budget(state, holder)
@@ -872,6 +908,7 @@ class Watcher:
                                 state, client, row, summary["watcher_dry_run"], holder, budget)
                     except tracker.TrackerRouteChanged as exc:
                         summary["egress_guard"] = "changed"
+                        summary["normal_tracker_blocked"] = True
                         summary["error"] = str(exc)
                         break
                     except tracker.TrackerError as exc:
@@ -1014,57 +1051,60 @@ class Watcher:
             return "changed", str(exc), observed
         verdict, reason = egress.judge(home, observed, expected)
         if verdict == "unknown":
-            reason = f"the egress IP could not be verified ({why}) - the watcher will not contact the tracker until it can"
+            reason = f"the egress IP could not be verified ({why})"
         elif verdict == "blocked":
-            reason += " - the watcher will not contact the tracker from here. Update the allowed address in Settings, or start the VPN container / fix TRACKER_PROXY"
+            reason += ". Update the allowed address in Settings, or check your VPN or tracker proxy"
         else:
             log.info("tracker egress: %s (route %s approved via %s, home %s, pinned %s)",
                      observed, route.id, "proxy" if proxy else "direct", home or "unset", expected or "unset")
         state.set_meta(META_EGRESS, {"ip": observed, "at": time.time(), "reason": reason if verdict == "unknown" else ""})
         return verdict, reason, observed
 
-    def _ip_notice(self, state, verdict: str, observed: str) -> None:
-        """IP_UPDATER notify / auto, after the egress guard. ``notify`` reports a drift once per new IP
-        and is read-only: at most a ``jsonIp.php`` read, never the update endpoint. ``auto`` with a MAM
-        session writes the new IP to MAM (``_write_and_pin``: write, verify, re-pin, log old -> new);
-        a failed write is not retried for an hour. ``auto`` with no MAM session reports as ``notify``."""
+    def _ip_notice(self, state, verdict: str, observed: str, route: TrackerRoute,
+                   report: dict, mode: str) -> str:
+        """Report a drift or try recovery without changing the normal tracker verdict."""
         probed = observed
         rec = _ipupdate_record(state)
         now = time.time()
+        transport = _recovery_transport(route, probed, report) if _mam_session(route) else None
         outcome, why, observed, source = _judge_drift(
-            rec, observed, "the egress probe failed" if verdict == "unknown" else "", now)
+            rec, observed, "the egress probe failed" if verdict == "unknown" else "", now, route, transport)
         if outcome == ipupdate.UPDATE:
-            auto = ip_updater_mode() == "auto"
+            auto = mode == "auto"
             attempted = float(rec.get("last_attempt_at") or 0)
-            blocked = _write_blocked(probed, observed) if auto and source == "MAM" else ""
-            if auto and source == "MAM" and not blocked and now - attempted >= ipupdate.MIN_INTERVAL:
-                _write_and_pin(state, probed, observed, now, "IP_UPDATER=auto")
-                return
-            if rec.get("notified_ip") == observed:
-                return
+            if auto and source == "MAM" and now - attempted >= ipupdate.MIN_INTERVAL:
+                _, result = _write_and_pin(state, probed, observed, now, "IP_UPDATER=auto", route, transport)
+                return result
+
             suffix = ""
             if auto and source != "MAM":
                 suffix = " (IP_UPDATER=auto: no MyAnonamouse session is configured, so nothing was changed automatically)"
-            elif blocked:
-                suffix = f" (IP_UPDATER=auto: nothing sent to MAM - {blocked})"
             elif auto:
                 suffix = " (IP_UPDATER=auto: the last attempt failed under an hour ago, so it is not retried yet)"
-            log.warning(
-                "allowed-IP updater: %s. Set the tracker account's allowed IP to %s on the tracker's website, "
-                "then press Use the current IP on Settings > Watcher%s", why, observed, suffix)
-            rec["notified_ip"] = observed
-            state.set_meta(META_IPUPDATE, rec)
-        elif outcome == ipupdate.NOOP and rec.get("notified_ip"):
+            if rec.get("notified_ip") != observed:
+                log.warning(
+                    "allowed-IP updater: %s. Set the tracker account's allowed IP to %s "
+                    "on the tracker's website, "
+                    "then press Use the current IP on Settings > Watcher%s", why, observed, suffix)
+                rec["notified_ip"] = observed
+                state.set_meta(META_IPUPDATE, rec)
+            return why + suffix
+        if outcome == ipupdate.NOOP and rec.get("notified_ip"):
             rec["notified_ip"] = ""  # back in step: a later drift is reported again
             state.set_meta(META_IPUPDATE, rec)
+        return why
 
-    def _refuse(self, state, summary: dict, reason: str, trigger: str) -> dict:
-        """End the cycle at the guard: nothing was requested from the tracker."""
+    def _refuse(self, state, summary: dict, reason: str) -> dict:
+        """Keep the refusal and any recovery attempt visible as separate outcomes."""
         summary["error"] = reason
+        summary["normal_tracker_blocked"] = True
         summary["seconds"] = round(time.time() - summary["at"], 1)
         state.set_meta(META_LAST_CYCLE, summary)
         state.set_meta(META_LAST_ERROR, {"at": time.time(), "message": reason})
-        log.error("wishlist watcher: egress guard (%s) - %s; no request was sent to the tracker", summary["egress_guard"], reason)
+        log.error("wishlist watcher: egress guard (%s) blocked tracker searches and downloads. "
+                  "%s. Recovery %s - %s",
+                  summary["egress_guard"], reason,
+                  "attempted" if summary["updater_attempted"] else "skipped", summary["updater_result"])
         self.next_at = time.time() + watch_interval_min() * 60
         return summary
 

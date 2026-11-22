@@ -369,7 +369,7 @@ class MamCase(UpdaterCase):
             p.start()
             self.patches.append(p)
         self.mam = MamTransport()
-        p = mock.patch.object(watcher, "make_ip_transport", lambda: self.mam)
+        p = mock.patch.object(watcher, "make_ip_transport", lambda route: self.mam)
         p.start()
         self.patches.append(p)
 
@@ -446,15 +446,43 @@ class TestGuardGatesTheWrite(MamCase):
         self.run_cycle(NEW)
         self.assertEqual(self.mam.urls(), ["jsonIp.php"])
 
-    def test_no_home_ip_configured_means_no_write(self):
-        with mock.patch.object(CONFIG, "tracker_home_ip", ""), \
-                self.assertLogs("audiobind", level=logging.WARNING) as logs:
-            self.script(ip=[ip_answer(NEW)] * 2)
-            self.run_cycle(NEW)
-            self.run_cycle(NEW)
-        self.assertNotIn("dynamicSeedbox.php", self.mam.urls())
-        said = [line for line in logs.output if "TRACKER_HOME_IP is not set" in line]
-        self.assertEqual(len(said), 1, "said once per new IP, not every cycle")
+    def test_pin_without_home_blocks_even_the_credentialed_read(self):
+        with mock.patch.object(CONFIG, "tracker_home_ip", ""):
+            self.script(ip=[ip_answer(NEW)])
+            summary = self.run_cycle(NEW)
+        self.assertEqual(self.mam.urls(), [])
+        self.assertTrue(summary["normal_tracker_blocked"])
+        self.assertFalse(summary["updater_attempted"])
+        self.assertIn("TRACKER_HOME_IP is not set", summary["updater_result"])
+
+    def test_verified_drift_reports_recovery_separately_from_the_refusal(self):
+        self.script(ip=[ip_answer(NEW), ip_answer(NEW)], seedbox=[OK_SET])
+        with self.assertLogs("audiobind", level=logging.INFO) as logs:
+            summary = self.run_cycle(NEW)
+        self.assertEqual(self.mam.urls(), ["jsonIp.php", "dynamicSeedbox.php", "jsonIp.php"])
+        self.assertNotIn("no request was sent to the tracker", "\n".join(logs.output))
+        self.assertTrue(summary["normal_tracker_blocked"])
+        self.assertTrue(summary["updater_attempted"])
+        self.assertIn("verified", summary["updater_result"])
+        rows = dict(web._ip_updater_rows(self.w.status(self.state)))
+        self.assertIn("Attempted", rows["Last cycle's IP recovery"])
+
+    def test_route_changes_after_recovery_read_never_reach_the_write(self):
+        self.script(ip=[ip_answer(NEW)], seedbox=[OK_SET])
+
+        def transport(*args):
+            response = self.mam(*args)
+            CONFIG.tracker_proxy = "http://other-proxy:8888"
+            return response
+
+        with mock.patch.object(CONFIG, "tracker_proxy", "http://original-proxy:8888"), \
+                mock.patch.object(watcher, "make_ip_transport", return_value=transport) as factory:
+            summary = self.run_cycle(NEW)
+        self.assertEqual(factory.call_args.args[0].settings["tracker_proxy"], "http://original-proxy:8888")
+        self.assertEqual(self.mam.urls(), ["jsonIp.php"])
+        self.assertTrue(summary["updater_attempted"])
+        self.assertIn("routing settings changed", summary["updater_result"])
+        self.assertEqual(config.effective_val("tracker_expected_egress_ip"), PINNED)
 
     def test_not_mam_means_no_mam_call(self):
         with mock.patch.object(CONFIG, "tracker_url", "https://tracker.example"):

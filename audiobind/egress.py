@@ -3,8 +3,8 @@
 ``probe`` asks a plain-text "what is my IP" service (through TRACKER_PROXY when one is set, so it
 sees what the tracker sees); ``judge`` compares the answer with TRACKER_HOME_IP (never this IP)
 and TRACKER_EXPECTED_EGRESS_IP (only this IP). The watcher runs both at the start of every cycle
-and makes no tracker request unless the verdict is ``ok`` (or ``off``). This is the only request
-in the app that is not a tracker endpoint, and it carries no cookie.
+and blocks searches and downloads unless the verdict is ``ok`` (or ``off``). A verified non-home
+address may be used for allowed-IP recovery. The probe itself carries no cookie.
 """
 
 from __future__ import annotations

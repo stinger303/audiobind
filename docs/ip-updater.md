@@ -33,7 +33,9 @@ is separate from the tracker client: `tracker.py` still automates only search an
 configured, observed is MAM's own `jsonIp.php` answer. Without one, it is the egress probe's
 answer (ipinfo.io / ipify). The probe still runs first, as the egress guard. MAM is asked only once
 the probe-based decision already says "update": the probe answered, the address is not the home IP,
-an IP is pinned, and the hourly limit allows it.
+an IP is pinned, and the hourly limit allows it. Credentialed recovery also requires a configured
+home IP so Audiobind can rule out the home connection. Every recovery call uses the same route
+settings as the probe. If those settings change, recovery stops.
 
 ## What each mode does
 
@@ -50,7 +52,8 @@ an IP is pinned, and the hourly limit allows it.
   5. re-pins `TRACKER_EXPECTED_EGRESS_IP` to that IP, logs `allowed IP old -> new` at INFO, and
      records the time for the hourly limit.
 
-  The cycle that saw the drift is still refused. The next one runs against the new pin.
+  The cycle that saw the drift still blocks searches and downloads. The log separately says
+  whether recovery was attempted and how it ended. The next cycle runs against the new pin.
 * `auto` without a MAM session (or on another tracker) behaves like `notify` and says so.
 
 ### What `auto` will not do

@@ -752,7 +752,7 @@ class TestExpectedUI(TestGuardUI):
         self.assertIn("blocked", html)
         self.assertIn(f"only allows {VPN}", html)
         self.assertIn("start your VPN container", html)
-        self.assertIn(f"only reaches the tracker from {VPN}", html)
+        self.assertIn(f"only searches and downloads from {VPN}", html)
 
     def test_match_shows_allowed(self):
         with mock.patch.object(CONFIG, "tracker_expected_egress_ip", VPN), \

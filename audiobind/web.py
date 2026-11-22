@@ -4848,7 +4848,7 @@ def render_watcher_section(state) -> str:
             sees += f" &#183; expected <b>{_html(s['egress_expected'])}</b>"
     guard_bits = []
     if s.get("egress_expected"):
-        guard_bits.append(f"only reaches the tracker from {_html(s['egress_expected'])}")
+        guard_bits.append(f"only searches and downloads from {_html(s['egress_expected'])}")
     if s.get("egress_home_ip"):
         guard_bits.append(f"refuses to run from your home IP ({_html(s['egress_home_ip'])})")
     if guard_bits:
@@ -4863,6 +4863,8 @@ def render_watcher_section(state) -> str:
         if last.get("would_send"):
             parts.append(f"{int(last['would_send'])} would be sent (dry run)")
         parts.append(f"{int(last.get('not_found') or 0)} not found")
+        if last.get("normal_tracker_blocked"):
+            parts.append("tracker searches and downloads blocked")
         if last.get("errors"):
             parts.append(f"{int(last['errors'])} error(s)")
         last_html = f"{_html(rel_age(last['at']))} ({_html(str(last.get('trigger') or ''))}) &#8212; {_html(', '.join(parts))}"
@@ -4992,7 +4994,8 @@ def _ip_updater_rows(s: dict) -> list[tuple[str, str]]:
         mode_html += (" &#8212; acting as <code>notify</code>: no MyAnonamouse session is configured, "
                       "so Audiobind never changes the allowed IP on the tracker")
     elif mode == "auto":
-        mode_html += " &#8212; a drift is set on MyAnonamouse automatically, then verified"
+        mode_html += (" &#8212; a verified change away from your home IP can be set on "
+                      "MyAnonamouse automatically")
     elif can_write:
         mode_html += " &#8212; read-only: Audiobind only changes MyAnonamouse when you press the button"
     decision = str(upd.get("decision") or "")
@@ -5006,10 +5009,10 @@ def _ip_updater_rows(s: dict) -> list[tuple[str, str]]:
         last = "never"
     if can_write:
         title = ("Ask MyAnonamouse which IP it sees, set it as the session's dynamic seedbox IP, check that MAM now "
-                 "sees it, then make it the address this installation only reaches the tracker from.")
+                 "sees it, then use it as the allowed address for tracker searches and downloads.")
     else:
-        title = ("After you have changed the allowed IP on the tracker's website: check the egress IP again and make it "
-                 "the address this installation only reaches the tracker from. Nothing is sent to the tracker.")
+        title = ("After changing the allowed IP on the tracker's website, check this connection again and "
+                 "save it for tracker searches and downloads.")
     button = (
         '<button class="btn" type="button" id="ab-watch-useip" onclick="abWatcher(\'use_current_ip\')" '
         f'title="{_html(title)}">Use the current IP</button>'
@@ -5019,6 +5022,10 @@ def _ip_updater_rows(s: dict) -> list[tuple[str, str]]:
         ("Allowed IP", f"{_html(s.get('egress_expected') or 'not pinned')} &#183; {verdict_html}"),
         ("Last updated", f"{last} {button}"),
     ]
+    cycle = s.get("last_cycle") or {}
+    if cycle.get("updater_result"):
+        action = "Attempted" if cycle.get("updater_attempted") else "Skipped"
+        rows.append(("Last cycle's IP recovery", f"{action} &middot; {_html(cycle['updater_result'])}"))
     result = upd.get("last_result") or {}
     if result:
         when = _html(rel_age(result["at"])) if result.get("at") else DASH
