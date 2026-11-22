@@ -1,5 +1,7 @@
 """Delete must preserve files and rows that it cannot safely remove."""
 
+import json
+import sqlite3
 from unittest import mock
 
 from audiobind import pipeline, web
@@ -67,3 +69,42 @@ class DeleteRegressionTests(LiveServerCase):
         self.assertEqual(body["output"], "kept")
         self.assertTrue(output.exists())
 
+    def test_p0_09_failed_dismissal_rolls_back_row_removal(self):
+        key = "ingest:Book"
+        self.state.save(UnitState(path=key, status="review"))
+        self.state.connection.execute(
+            "CREATE TRIGGER prevent_dismiss BEFORE INSERT ON dismissed "
+            "BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END"
+        )
+        handler = object.__new__(web.Handler)
+        handler.state = self.state
+        handler._read_json = mock.Mock()
+        handler._read_json.return_value = {"action": "delete", "path": key, "confirm": True}
+        with self.assertRaises(sqlite3.IntegrityError):
+            web.Handler._handle_unit(handler)
+        self.assertIsNotNone(self.state.get(key))
+        self.assertFalse(self.state.is_dismissed(key))
+
+    def test_p0_09_manual_queue_cannot_claim_ingest_during_purge(self):
+        key = "ingest:Book"
+        output = self.out / "Book" / "Book.m4b"
+        output.parent.mkdir()
+        output.write_bytes(b"published")
+        detail = {"output": {"wrote": [output.name], "wrote_id": {
+            output.name: pipeline.file_identity(output),
+        }}}
+        row = UnitState(path=key, status="converted", output=str(output), detail=json.dumps(detail))
+        self.state.save(row)
+        real_remove = web.remove_trashed
+
+        def remove(*args):
+            queued = web.CONTROL.try_enqueue(key)
+            if queued:
+                web.CONTROL.dequeue(key)
+            self.assertFalse(queued)
+            return real_remove(*args)
+
+        with mock.patch.object(web, "remove_trashed", side_effect=remove):
+            status, body = self.delete(key)
+        self.assertEqual(status, 200, body)
+        self.assertTrue(self.state.is_dismissed(key))

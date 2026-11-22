@@ -910,12 +910,13 @@ class State:
             return state
         return replace(state, title=title, author=author)
 
-    def delete(self, path: str) -> bool:
-        """Remove a unit row from the database. Returns True if a row was deleted."""
-        with self._lock:
+    def delete(self, path: str, *, dismiss_ingest: bool = False) -> bool:
+        """Remove a unit row and optionally dismiss its ingest key in one transaction."""
+        with self._lock, self._txn():
             self.connection.execute("DELETE FROM field_locks WHERE path = ?", (path,))
             cursor = self.connection.execute("DELETE FROM units WHERE path = ?", (path,))
-            self.connection.commit()
+            if dismiss_ingest:
+                self.dismiss(path)
             return cursor.rowcount > 0
 
     # ------------------------------------------------- dismissed ingest books

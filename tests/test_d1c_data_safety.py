@@ -27,38 +27,49 @@ def listing(folder) -> list:
 
 # --------------------------------------------------------------------------- CORE-04c
 class Core04cUnknownProvenanceIsNotOwnershipTests(DeleteCase):
-    """A converted row with no list of the files it wrote (an older release, unreadable detail)
-    proves only its own output file - never the whole folder."""
+    """Unverifiable names require their own confirmation."""
+
+    def legacy(self):
+        row = self.state.get(self.REL)
+        detail = json.loads(row.detail)
+        del detail["output"]
+        row.detail = json.dumps(detail)
+        self.state.save(row)
 
     def test_a_legacy_row_leaves_the_owner_files_and_says_so(self):
+        self.legacy()
         (self.out_book / "notes.txt").write_bytes(b"owner")
         (self.out_book / "cover.jpg").write_bytes(b"owner-art")
-        status, body = self.delete()  # DeleteCase's row has no detail: no "wrote" list at all
-        self.assertEqual(status, 200, body)
-        self.assertEqual(listing(self.out_book), ["cover.jpg", "notes.txt"], "an owner file was deleted")
-        # C2: the M4B Audiobind wrote was removed; the owner's files left are said separately
-        self.assertEqual(body["output"], "removed")
-        self.assertEqual(body["output_removed_files"], ["Book.m4b"])
-        self.assertEqual(sorted(body["output_left"]), ["cover.jpg", "notes.txt"])
-        self.assertIn("could not", body["output_other_files_left"])
-        self.assertIsNone(self.state.get(self.REL))
+        status, body = self.delete()
+        self.assertEqual(status, 409, body)
+        self.assertEqual(body["legacy_output_paths"], ["Author/Book/Book.m4b"])
+        self.assertEqual(listing(self.out_book), ["Book.m4b", "cover.jpg", "notes.txt"])
+        self.assertIsNotNone(self.state.get(self.REL))
 
-    def test_unreadable_detail_is_unknown_too(self):
-        (self.out_book / "notes.txt").write_bytes(b"owner")
+    def test_unreadable_detail_requires_a_source_recheck(self):
         row = self.state.get(self.REL)
         row.detail = "{not json"
         self.state.save(row)
         status, body = self.delete()
-        self.assertEqual(status, 200, body)
-        self.assertEqual(listing(self.out_book), ["notes.txt"])
+        self.assertEqual(status, 409, body)
+        self.assertIn("re-check", body["error"])
+        self.assertEqual(listing(self.out_book), ["Book.m4b"])
 
-    def test_a_legacy_folder_holding_only_our_files_is_removed_completely(self):
+    def test_legacy_candidates_are_removed_only_after_separate_confirmation(self):
+        self.legacy()
         (self.out_book / "cover.jpg").write_bytes(b"ours")
         (self.out_book / "metadata.json").write_bytes(b"{}")
         status, body = self.delete()
+        self.assertEqual(status, 409, body)
+        self.assertEqual(body["legacy_output_paths"],
+                         ["Author/Book/Book.m4b", "Author/Book/cover.jpg", "Author/Book/metadata.json"])
+        snapshot = body["legacy_output_snapshot"]
+        self.assertIsInstance(snapshot, str)  # browser JSON numbers cannot round-trip nanosecond mtimes
+        status, body = self.post({"action": "delete", "path": self.REL, "confirm": True,
+                                  "legacy_output": snapshot})
         self.assertEqual(status, 200, body)
         self.assertEqual(body["output"], "removed")
-        self.assertFalse(self.out_book.exists())
+        self.assertEqual(listing(self.out_book), [])
 
 
 class Core04cLegacyRowRepublishTests(PublishCase):
@@ -80,7 +91,7 @@ class Core04cLegacyRowRepublishTests(PublishCase):
         row = self.state.get(KEY)
         self.assertEqual(row.status, "converted")
         self.assertNotIn("notes.txt", wrote(row))
-        self.assertIn("Project Hail Mary.m4b", wrote(row))  # the row's own output is still proven
+        self.assertNotIn("Project Hail Mary.m4b", wrote(row))  # the old file has no recorded identity
 
 
 # --------------------------------------------------------------------------- CORE-04d
@@ -95,8 +106,10 @@ class Core04dARecordedNameIsCheckedAgainstTheFileTests(DeleteCase):
     def record(self, names):
         """What a publish records: each name with its size and mtime at that moment."""
         row = self.state.get(self.REL)
-        row.detail = json.dumps({"output": {"path": row.output, "wrote": sorted(names),
-                                            "wrote_id": {n: identity(self.out_book / n) for n in names}}})
+        detail = json.loads(row.detail)
+        detail["output"] = {"path": row.output, "wrote": sorted(names),
+                            "wrote_id": {n: identity(self.out_book / n) for n in names}}
+        row.detail = json.dumps(detail)
         self.state.save(row)
 
     def test_a_recorded_file_replaced_by_an_owner_copy_is_left_and_the_answer_says_why(self):
@@ -182,9 +195,9 @@ class WebApi02cDeleteIntentIsDurableTests(DeleteCase):
         seen = []
         real = web.remove_trashed
 
-        def remove(trash):
+        def remove(*args):
             seen.append(json.loads(self.journal().read_text()) if self.journal().exists() else None)
-            return real(trash)
+            return real(*args)
 
         with mock.patch.object(web, "remove_trashed", side_effect=remove):
             status, body = self.delete()

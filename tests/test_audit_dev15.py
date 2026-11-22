@@ -17,12 +17,12 @@ from audiobind.state import UnitState
 from audiobind.units import BookUnit
 
 try:
-    from live import LiveServerCase
+    from live import LiveServerCase, audited_row, published_row
     from test_ingest_discovery import touch
     from test_ingest_pipeline import KEY, PHM, TORRENT, PipelineCase
     from test_ingest_web import IngestWebCase
 except ImportError:
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, audited_row, published_row
     from tests.test_ingest_discovery import touch
     from tests.test_ingest_pipeline import KEY, PHM, TORRENT, PipelineCase
     from tests.test_ingest_web import IngestWebCase
@@ -32,8 +32,8 @@ except ImportError:
 class DeleteOwnershipTests(LiveServerCase):
     def book(self, rel, status, output, detail=None):
         touch(str(self.lib / rel / "01.mp3"))
-        self.state.save(UnitState(path=rel, status=status, output=str(output),
-                                  detail=json.dumps(detail) if detail is not None else ""))
+        row = UnitState(path=rel, status=status, output=str(output), detail=json.dumps(detail or {}))
+        self.state.save(audited_row(self.lib, row))
 
     def test_ready_row_keeps_a_pre_existing_folder(self):
         folder = self.out / "Andy Weir" / "Project Hail Mary"
@@ -74,6 +74,7 @@ class DeleteOwnershipTests(LiveServerCase):
         folder = self.out / "A" / "Book"
         touch(str(folder / "Book.m4b"), b"m4b")
         self.book("A/Book", "converted", folder / "Book.m4b", {"output": {"path": str(folder / "Book.m4b")}})
+        self.state.save(published_row(self.state.get("A/Book")))
         status, body = self.post({"action": "delete", "path": "A/Book", "confirm": True})
         self.assertEqual(status, 200, body)
         self.assertEqual(body["output"], "removed")
@@ -83,7 +84,8 @@ class DeleteOwnershipTests(LiveServerCase):
         folder = self.out / "A" / "Book"
         touch(str(folder / "Book.m4b"), b"m4b")
         self.book("A/Book", "converted", folder / "Book.m4b")
-        with mock.patch.object(web.shutil, "rmtree", side_effect=PermissionError(13, "Permission denied")):
+        self.state.save(published_row(self.state.get("A/Book")))
+        with mock.patch.object(web, "remove_trashed", side_effect=PermissionError(13, "Permission denied")):
             status, body = self.post({"action": "delete", "path": "A/Book", "confirm": True})
         self.assertEqual(status, 500, body)
         self.assertFalse(body["ok"])

@@ -49,7 +49,7 @@ def source_entries(root: Path, targets: list[Path]) -> dict:
             raise OSError(f"unsupported entry in source inventory: {path}")
 
     for target in targets:
-        if target == root or target.parent.resolve() != target.parent:
+        if root not in target.parents or target.parent.resolve() != target.parent:
             raise OSError(f"unsafe source inventory target: {target}")
         visit(target)
     return entries
@@ -58,15 +58,20 @@ def source_entries(root: Path, targets: list[Path]) -> dict:
 def source_ownership(unit: BookUnit) -> dict:
     if unit.source == SOURCE_INGEST:
         return {}
-    root = Path(CONFIG.library_root).resolve()
-    targets = [Path(p).absolute() for p in owned_paths(unit)]
-    if root in targets:
-        targets = [Path(unit.parent).absolute() / part.name for part in unit.parts]
     try:
+        configured_root = Path(CONFIG.library_root).absolute()
+        root = configured_root.resolve()
+
+        def relative(path):
+            return Path(path).absolute().relative_to(configured_root)
+
+        targets = [root / relative(p) for p in owned_paths(unit)]
+        if root in targets:
+            targets = [root / relative(unit.parent) / part.name for part in unit.parts]
         entries = source_entries(root, targets)
         audio = {name for name, identity in entries.items()
                  if identity is not None and Path(name).suffix.lower() in AUDIO_EXT}
-        if audio != {Path(f).absolute().relative_to(root).as_posix() for f in unit.files}:
+        if audio != {relative(f).as_posix() for f in unit.files}:
             return {"blocked": "the source folder also holds audio belonging to other books"}
         if audio:
             return {"targets": [p.relative_to(root).as_posix() for p in targets], "entries": entries}
@@ -459,6 +464,8 @@ def convert_unit(audit: Audit, log=print, cancelled=None, heartbeat=None, reenco
 
     work_dir = work_dir_for(unit)
     with CONVERT_LOCK:
+        if CONTROL.deleting(unit.state_key):
+            return None
         # checked again under the lock: a manual action and the daemon can both reach
         # this point for the same book, and only the first may encode it (unless asked to re-encode)
         todo = _missing_formats(formats, paths, reencode)
@@ -761,16 +768,8 @@ def _owned_before(row) -> tuple[Path, dict[str, list[int]]] | None:
     folder = Path(row.output).parent
     recorded = wrote_files(row)
     if recorded is None:
-        # unknown provenance (CORE-04c): only what legacy_owned can prove
-        output_name = Path(row.output).name
-        try:
-            in_root = folder.resolve() == Path(CONFIG.output_root).resolve()
-        except (OSError, RuntimeError):
-            in_root = True
-        present = [output_name] if in_root else folder_files(folder)
-        names = legacy_owned(present, output_name)
-    else:
-        names = attribute(folder, [n for n in recorded if os.path.lexists(folder / n)], recorded, "")[0]
+        return None
+    names = attribute(folder, [n for n in recorded if os.path.lexists(folder / n)], recorded, "")[0]
     owned = {name: file_identity(folder / name) for name in names}
     return folder, {name: ident for name, ident in owned.items() if ident is not None}
 
@@ -957,6 +956,9 @@ def record(
             ),
         }
     )
+    previous = state.get(audit.unit.state_key) if output and not result else None
+    if previous and previous.output == output and wrote_output(previous):
+        detail_data["output"] = recorded_output(previous)
     if result and audit.wrote is not None:
         # CORE-04a: exactly which files in the folder Audiobind wrote - Delete removes only these,
         # and (CORE-04d) only while each still has the size and mtime recorded here
@@ -995,8 +997,8 @@ def record(
             output=output,
             note=note or "; ".join(audit.notes),
             src_mb=audit.src_mb,
-            out_mb=round(result.size / 1e6, 1) if result else 0.0,
-            chapters=result.chapters if result else 0,
+            out_mb=round(result.size / 1e6, 1) if result else (previous.out_mb if previous else 0.0),
+            chapters=result.chapters if result else (previous.chapters if previous else 0),
             # runners-up from the catalog search (other editions, near misses) are kept
             # so the detail panel can offer one-click "use this edition" ASIN pins
             alternates=json.dumps(audit.match.alternates),
@@ -1039,6 +1041,16 @@ def process_unit(
     manual: bool = False,
     reencode: bool = False,
 ) -> Audit:
+    if not CONTROL.begin_audit(unit.state_key, manual=manual):
+        log("  another action has this book - skipped")
+        return Audit(unit=unit, action="busy")
+    try:
+        return _process_unit(state, unit, log, force, manual, reencode)
+    finally:
+        CONTROL.end_audit(unit.state_key)
+
+
+def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, reencode: bool) -> Audit:
     """Audit, then convert when the confidence tier and runtime check allow it.
 
     ``force`` is the operator saying "I looked at this, convert it anyway": the tier, the runtime
@@ -1082,8 +1094,10 @@ def process_unit(
             # format is there - a missing one is made below, beside the kept file)
             prev = state.get(unit.state_key)
             if prev is not None and prev.status == "converted":
-                # the row is left exactly as it was
-                log(f"  already converted at {kept} - run Match Audiobookshelf layout to move it")
+                if manual and audit.unit.source != SOURCE_INGEST and audit.source_ownership:
+                    rec("converted", output=kept, note="re-checked; existing conversion kept")
+                else:
+                    log(f"  already converted at {kept} - run Match Audiobookshelf layout to move it")
             else:
                 # a ready row, or a converted book an earlier re-check put in review/held: it
                 # would convert now, and its file is already published - say so, as

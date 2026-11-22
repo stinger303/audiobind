@@ -9,9 +9,9 @@ from audiobind import web
 from audiobind.state import UnitState
 
 try:
-    from live import LiveServerCase
+    from live import LiveServerCase, audited_row
 except ImportError:
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, audited_row
 
 
 def touch(path):
@@ -23,9 +23,9 @@ def touch(path):
 class TestDeleteErrors(LiveServerCase):
     def test_error_text_with_quotes_and_backslashes_is_valid_json(self):
         touch(str(self.lib / "Author" / "Book" / "01.mp3"))
-        self.state.save(UnitState(path="Author/Book", status="review"))
+        self.state.save(audited_row(self.lib, UnitState(path="Author/Book", status="review")))
         nasty = OSError(errno.EIO, 'disk said "no" \\ twice')
-        with mock.patch.object(web.shutil, "rmtree", side_effect=nasty):
+        with mock.patch.object(web, "remove_trashed", side_effect=nasty):
             status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
         self.assertEqual(status, 500)
         # v0.15.1: the client gets the errno name, the raw message (paths) stays in the log
@@ -41,11 +41,15 @@ class TestDeleteErrors(LiveServerCase):
         out_book = self.out / "Author" / "Foo"
         out_book.mkdir(parents=True)
         (out_book / "Foo.m4b").write_text("m4b")
-        self.state.save(UnitState(path="Author#foo", status="converted", output=str(out_book / "Foo.m4b")))
+        self.state.save(audited_row(self.lib, UnitState(
+            path="Author#foo", status="converted", output=str(out_book / "Foo.m4b")
+        )))
         locked = self.lib / "Author" / "Foo Part 2"
         locked.chmod(0o500)
         try:
-            status, body = self.post({"action": "delete", "path": "Author#foo", "confirm": True})
+            status, body = self.post({
+                "action": "delete", "path": "Author#foo", "confirm": True, "legacy_output": "keep",
+            })
         finally:
             locked.chmod(0o755)
         self.assertEqual(status, 500)
@@ -59,7 +63,7 @@ class TestDeleteErrors(LiveServerCase):
     def test_permission_denied_is_reported_separately_from_read_only(self):
         src = self.lib / "Author" / "Book"
         touch(str(src / "01.mp3"))
-        self.state.save(UnitState(path="Author/Book", status="review"))
+        self.state.save(audited_row(self.lib, UnitState(path="Author/Book", status="review")))
         src.chmod(0o500)
         try:
             status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
@@ -72,8 +76,9 @@ class TestDeleteErrors(LiveServerCase):
 
     def test_read_only_mount_says_read_only(self):
         touch(str(self.lib / "Author" / "Book" / "01.mp3"))
-        self.state.save(UnitState(path="Author/Book", status="review"))
-        with mock.patch.object(web.shutil, "rmtree", side_effect=OSError(errno.EROFS, "Read-only file system")):
+        self.state.save(audited_row(self.lib, UnitState(path="Author/Book", status="review")))
+        error = OSError(errno.EROFS, "Read-only file system")
+        with mock.patch.object(web, "remove_trashed", side_effect=error):
             status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
         self.assertEqual(status, 200)
         self.assertTrue(body["source_kept"])

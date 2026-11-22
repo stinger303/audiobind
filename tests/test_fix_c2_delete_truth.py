@@ -19,9 +19,9 @@ from audiobind.state import UnitState
 try:
     from test_d1_data_safety import DeleteCase
     from test_fix_b9_delete_toast import HARNESS, function_source
-    from live import LiveServerCase
+    from live import LiveServerCase, audited_row
 except ImportError:
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, audited_row
     from tests.test_d1_data_safety import DeleteCase
     from tests.test_fix_b9_delete_toast import HARNESS, function_source
 
@@ -44,7 +44,7 @@ def render_toast(case: unittest.TestCase, result: dict) -> str:
 
 class TestC2MixedOutputFolder(DeleteCase):
     def test_ours_removed_and_the_owner_file_left_are_both_said(self):
-        # the row has no wrote list: only Book.m4b is provably ours
+        # Only Book.m4b has a recorded identity.
         (self.out_book / "notes.txt").write_bytes(b"owner")
         status, body = self.delete()
         self.assertEqual(status, 200, body)
@@ -85,7 +85,8 @@ class TestC2LooseFileIsNotAFolder(LiveServerCase):
     def setUp(self):
         super().setUp()
         (self.lib / self.REL).write_bytes(b"audio")
-        self.state.save(UnitState(path=self.REL, status="review", title="Island of Glass"))
+        row = UnitState(path=self.REL, status="review", title="Island of Glass")
+        self.state.save(audited_row(self.lib, row))
 
     def test_the_toast_says_file(self):
         status, body = self.post({"action": "delete", "path": self.REL, "confirm": True})

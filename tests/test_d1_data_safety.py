@@ -16,10 +16,10 @@ from audiobind.probe import Probe
 from audiobind.state import State, UnitState
 
 try:
-    from live import LiveServerCase
+    from live import LiveServerCase, audited_row, published_row
     from test_ingest_pipeline import KEY, PHM, PipelineCase
 except ImportError:
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, audited_row, published_row
     from tests.test_ingest_pipeline import KEY, PHM, PipelineCase
 # the watcher fakes (test_watcher_budget itself imports them this way)
 from tests.test_watcher import TORRENT, answer, entry
@@ -293,8 +293,10 @@ class DeleteCase(LiveServerCase):
         self.out_book = self.out / "Author" / "Book"
         self.out_book.mkdir(parents=True)
         (self.out_book / "Book.m4b").write_bytes(b"m4b")
-        self.state.save(UnitState(path=self.REL, status="converted", title="Book",
-                                  output=str(self.out_book / "Book.m4b")))
+        row = UnitState(
+            path=self.REL, status="converted", title="Book", output=str(self.out_book / "Book.m4b")
+        )
+        self.state.save(audited_row(self.lib, published_row(row)))
 
     def delete(self):
         return self.post({"action": "delete", "path": self.REL, "confirm": True})
@@ -324,16 +326,20 @@ class WebApi01DeleteVersusConversionTests(DeleteCase):
         CONTROL.try_enqueue(self.REL)
         self.assert_untouched(*self.delete())
 
-    def test_a_force_queued_during_the_walk_is_refused_and_nothing_changes(self):
-        with self.then("find_unit", lambda: CONTROL.try_enqueue(self.REL)):
+    def test_a_force_cannot_queue_during_delete_planning(self):
+        queued = []
+        with self.then("plan_target", lambda: queued.append(CONTROL.try_enqueue(self.REL))):
             status, body = self.delete()
-        self.assert_untouched(status, body)
+        self.assertEqual(status, 200, body)
+        self.assertTrue(queued)
+        self.assertFalse(any(queued))
 
-    def test_a_force_queued_right_before_the_removal_stops_it(self):
-        with self.then("files_under", lambda: CONTROL.try_enqueue(self.REL)):
-            status, body = self.delete()
-        self.assert_untouched(status, body)
-        self.assertFalse(body.get("source_partial"), body)
+    def test_an_active_audit_blocks_delete(self):
+        self.assertTrue(CONTROL.begin_audit(self.REL))
+        try:
+            self.assert_untouched(*self.delete())
+        finally:
+            CONTROL.end_audit(self.REL)
 
     def test_a_conversion_holding_the_encoder_makes_the_delete_wait(self):
         self.assertTrue(pipeline.CONVERT_LOCK.acquire(blocking=False))
@@ -367,7 +373,7 @@ class WebApi02DeleteVersusLayoutMoveTests(DeleteCase):
         moved = self.out / "Author" / "Series" / "1 - Book"
         moved.parent.mkdir(parents=True, exist_ok=True)
         self.out_book.rename(moved)
-        self.state.set_output(self.REL, str(moved / "Book.m4b"), self.state.get(self.REL).detail)
+        web.abs_layout._record_output(self.state, self.REL, moved / "Book.m4b")
         self.moved = moved
 
     def test_a_layout_move_during_the_walk_removes_the_new_folder_or_refuses(self):

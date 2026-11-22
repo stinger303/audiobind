@@ -177,7 +177,12 @@ def scan_once(state: State, force: bool = False) -> dict:
                     # B1: a library file deleted, replaced or unreadable between the scan and the read
                     # (a mount that dropped, say) fails this one book; the rest of the pass goes on
                     log.warning("[%s] FAILED - a source file could not be read: %s", unit.state_key, exc)
-                    _record_unreadable(state, unit, exc)
+                    if CONTROL.begin_audit(unit.state_key):
+                        try:
+                            if previous is None or state.get(unit.state_key) is not None:
+                                _record_unreadable(state, unit, exc)
+                        finally:
+                            CONTROL.end_audit(unit.state_key)
             CONTROL.scan_tick(index + 1)
             current = state.get(unit.state_key)
             status = current.status if current else ""

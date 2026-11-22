@@ -53,6 +53,8 @@ class Control:
         self._scan_force = False
         #: manually requested conversions waiting for the one-at-a-time encoder
         self._queue: list[str] = []
+        self._deleting: set[str] = set()
+        self._auditing: set[str] = set()
         #: called (throttled) from encode progress so a long encode keeps the healthcheck fresh
         self._heartbeat = None
         self._heartbeat_at = 0.0
@@ -103,6 +105,37 @@ class Control:
         self._stop.clear()
         self.dequeue(name)
 
+    def begin_delete(self, rel: str) -> str:
+        """Acquire the per-unit delete claim, or return the reason it is busy."""
+        with self._lock:
+            if self.current_unit == rel:
+                return "cannot delete a book that is currently encoding"
+            if rel in self._queue or rel in self._auditing:
+                return "this book is being checked or waiting for a manual action"
+            if rel in self._deleting:
+                return "this book is already being deleted"
+            self._deleting.add(rel)
+            return ""
+
+    def end_delete(self, rel: str) -> None:
+        with self._lock:
+            self._deleting.remove(rel)
+
+    def deleting(self, rel: str) -> bool:
+        with self._lock:
+            return rel in self._deleting
+
+    def begin_audit(self, rel: str, *, manual: bool = False) -> bool:
+        with self._lock:
+            if rel in self._deleting or rel in self._auditing or (not manual and rel in self._queue):
+                return False
+            self._auditing.add(rel)
+            return True
+
+    def end_audit(self, rel: str) -> None:
+        with self._lock:
+            self._auditing.remove(rel)
+
     # ---------------------------------------------------------------- queue
     def enqueue(self, rel: str) -> None:
         """Mark a manually requested conversion as waiting for the encoder."""
@@ -113,7 +146,7 @@ class Control:
     def try_enqueue(self, rel: str) -> bool:
         """Queue ``rel`` unless it is already waiting (atomic check-and-add)."""
         with self._lock:
-            if rel in self._queue:
+            if rel in self._queue or rel in self._deleting or rel in self._auditing:
                 return False
             self._queue.append(rel)
             return True

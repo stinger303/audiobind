@@ -173,7 +173,7 @@ class Core04aTheRowRecordsTheFilesItWroteTests(PublishCase):
         self.assertEqual(len(backups), 2)
         self.assertEqual(wrote(row), sorted([*self.NAMES, *backups]))
 
-    def test_a_row_from_before_the_list_keeps_its_whole_folder(self):
+    def test_a_row_from_before_the_list_keeps_legacy_files_unverified(self):
         self.output_format = "M4B"
         self.run_process(KEY, "first")
         row = self.state.get(KEY)
@@ -182,7 +182,7 @@ class Core04aTheRowRecordsTheFilesItWroteTests(PublishCase):
         row.detail = json.dumps(detail)
         self.state.save(row)
         row = self.add_mp3()
-        self.assertIn("Project Hail Mary.m4b", wrote(row))
+        self.assertEqual(wrote(row), ["Project Hail Mary.mp3", "cover.jpg", "metadata.json"])
 
 
 class Core04aDeleteRemovesOnlyWhatAudiobindWroteTests(DeleteCase):
@@ -195,7 +195,9 @@ class Core04aDeleteRemovesOnlyWhatAudiobindWroteTests(DeleteCase):
         for name in names:
             st = os.lstat(self.out_book / name)
             ids[name] = [st.st_size, st.st_mtime_ns]
-        row.detail = json.dumps({"output": {"path": row.output, "wrote": names, "wrote_id": ids}})
+        detail = json.loads(row.detail)
+        detail["output"] = {"path": row.output, "wrote": names, "wrote_id": ids}
+        row.detail = json.dumps(detail)
         self.state.save(row)
 
     def test_an_owner_m4b_survives_when_only_the_mp3_was_audiobinds(self):
@@ -249,7 +251,7 @@ class WebApi02bSlowRemovalOutsideTheLockTests(DeleteCase):
                       if p.name not in ("Book",))
 
     def test_the_lock_is_free_during_the_removal_and_when_the_answer_is_sent(self):
-        real_rename, real_rmtree, real_send = web.os.rename, web.shutil.rmtree, web.Handler._send
+        real_rename, real_remove, real_send = web.os.rename, web.remove_trashed, web.Handler._send
         renamed_locked, free_while_removing, sent_locked = [], [], []
 
         def rename(src, dst, *args, **kw):
@@ -257,12 +259,12 @@ class WebApi02bSlowRemovalOutsideTheLockTests(DeleteCase):
                 renamed_locked.append(pipeline.CONVERT_LOCK.locked())
             return real_rename(src, dst, *args, **kw)
 
-        def slow_rmtree(path, *args, **kw):
+        def slow_remove(path, *args, **kw):
             got = pipeline.CONVERT_LOCK.acquire(blocking=False)  # an encode could start right now
             if got:
                 pipeline.CONVERT_LOCK.release()
             free_while_removing.append(got)
-            return real_rmtree(path, *args, **kw)
+            return real_remove(path, *args, **kw)
 
         def send(handler, *args, **kw):
             sent_locked.append(pipeline.CONVERT_LOCK.locked())
@@ -270,7 +272,7 @@ class WebApi02bSlowRemovalOutsideTheLockTests(DeleteCase):
 
         with (
             mock.patch.object(web.os, "rename", side_effect=rename),
-            mock.patch.object(web.shutil, "rmtree", side_effect=slow_rmtree),
+            mock.patch.object(web, "remove_trashed", side_effect=slow_remove),
             mock.patch.object(web.Handler, "_send", new=send),
         ):
             status, body = self.delete()

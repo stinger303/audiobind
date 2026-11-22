@@ -10,9 +10,9 @@ from audiobind.config import CONFIG
 from audiobind.state import State, UnitState
 
 try:
-    from live import sign_in_urllib, sign_out_urllib
+    from live import audited_row, published_row, sign_in_urllib, sign_out_urllib
 except ImportError:
-    from tests.live import sign_in_urllib, sign_out_urllib
+    from tests.live import audited_row, published_row, sign_in_urllib, sign_out_urllib
 
 
 class TestEncodingBookHidden(unittest.TestCase):
@@ -358,7 +358,9 @@ class TestDeleteHandler(unittest.TestCase):
         out_book.mkdir(parents=True, exist_ok=True)
         (out_book / "Book.m4b").write_text("m4b")
         self.state.save(
-            UnitState(path="Author/Book", status="converted", title="Book", output=str(out_book / "Book.m4b"))
+            audited_row(self.lib, published_row(UnitState(
+                path="Author/Book", status="converted", title="Book", output=str(out_book / "Book.m4b")
+            )))
         )
         return src, out_book
 
@@ -381,7 +383,7 @@ class TestDeleteHandler(unittest.TestCase):
         src = self.lib / "Author" / "Book"
         src.mkdir(parents=True)
         (src / "01.mp3").write_text("audio")
-        self.state.save(UnitState(path="Author/Book", status="review"))
+        self.state.save(audited_row(self.lib, UnitState(path="Author/Book", status="review")))
         status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
         self.assertEqual(status, 200)
         self.assertTrue(body["source_removed"])

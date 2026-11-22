@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import stat
 import socket
 import sys
@@ -1139,9 +1138,9 @@ function abModalConfirm() {
     .then(result => {
       if (!result.legacy_output_paths) return result;
       const remove = window.confirm(
-        'Audiobind cannot verify who wrote these files in the output folder.\n\n' +
-        result.legacy_output_paths.join('\n') +
-        '\n\nOK deletes these files permanently. Cancel keeps these files and continues deleting the book.'
+        'Audiobind cannot verify who wrote these files in the output folder.\\n\\n' +
+        result.legacy_output_paths.join('\\n') +
+        '\\n\\nOK deletes these files permanently. Cancel keeps these files and continues deleting the book.'
       );
       return sendDelete({legacy_output: remove ? result.legacy_output_snapshot : 'keep'});
     })
@@ -1162,7 +1161,9 @@ function abModalConfirm() {
                 (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : '') +
                 others);
       } else if (result.source_kept) {
-        abToast('Deleted from Audiobind and your output library. The source ' + what + ' stays (' +
+        const deleted = result.output === 'removed' ? 'Deleted from Audiobind and your output library.' :
+          'Removed from Audiobind.';
+        abToast(deleted + ' The source ' + what + ' stays (' +
                 (result.source_kept_reason || 'your library is read-only') +
                 ') - it will reappear on the next scan unless you remove it from the share.' +
                 (result.output === 'kept' ? ' Output kept: ' + result.output_kept_reason + '.' : '') +
@@ -7354,7 +7355,14 @@ def source_ownership_for(row) -> dict:
         ownership = json.loads(row.detail).get("source", {}).get("ownership", {})
     except (ValueError, TypeError, AttributeError):
         return {}
-    return ownership if isinstance(ownership, dict) else {}
+    if not isinstance(ownership, dict):
+        return {}
+    if isinstance(ownership.get("blocked"), str):
+        return ownership
+    targets = ownership.get("targets")
+    if not isinstance(targets, list) or not targets or not all(isinstance(name, str) for name in targets):
+        return {}
+    return ownership if isinstance(ownership.get("entries"), dict) else {}
 
 
 def conversion_claim(rel: str) -> str:
@@ -7536,7 +7544,12 @@ def put_back(moved: dict[Path, Path], journal: Path | None = None) -> list[Path]
             continue  # removed completely
         if not os.path.lexists(path):
             try:
-                os.rename(trash, path)
+                if trash.is_dir() and not trash.is_symlink():
+                    os.rename(trash, path)
+                else:
+                    # A rename could overwrite a new file that arrived at its original name.
+                    os.link(trash, path, follow_symlinks=False)
+                    trash.unlink()
                 continue
             except OSError:
                 pass
@@ -7587,8 +7600,13 @@ def remove_trashed(trash: Path, root: Path, entries: dict) -> None:
                 raise OSError(errno.ESTALE, "staged file identity changed", str(path))
             os.unlink(path.name, dir_fd=parent_fd)
 
-    parent_fd = os.open(trash.parent, os.O_DIRECTORY | os.O_NOFOLLOW)
+    flags = os.O_DIRECTORY | os.O_NOFOLLOW
+    parent_fd = os.open(root, flags)
     try:
+        for name in trash.parent.relative_to(root).parts:
+            child_fd = os.open(name, flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = child_fd
         remove(parent_fd, trash, entries[trash.relative_to(root).as_posix()])
     finally:
         os.close(parent_fd)
@@ -8404,6 +8422,22 @@ class Handler(BaseHTTPRequestHandler):
         rel = str(payload.get("path", ""))
         action = str(payload.get("action", "")).lower()
 
+        if action != "delete":
+            self._handle_unit_action(rel, action, payload)
+            return
+        if not payload.get("confirm"):
+            self._send(400, b'{"error":"confirmation required"}', "application/json")
+            return
+        busy = CONTROL.begin_delete(rel)
+        if busy:
+            self._send(409, json.dumps({"error": busy}).encode(), "application/json")
+            return
+        try:
+            self._handle_unit_action(rel, action, payload)
+        finally:
+            CONTROL.end_delete(rel)
+
+    def _handle_unit_action(self, rel: str, action: str, payload: dict) -> None:
         if action == "set_meta":
             if self.state.get(rel) is None:
                 self._send(404, b'{"error":"no such unit"}', "application/json")
@@ -8461,33 +8495,11 @@ class Handler(BaseHTTPRequestHandler):
             # an ingest row's files are a torrent that is still seeding under a read-only mount:
             # only Audiobind's converted copy goes, the source block below never runs for it, and
             # the key is dismissed so the next scan does not convert the torrent all over again
-            stored = self.state.get(rel)
-            ingest_row = ingest_mod.is_ingest(rel) or (stored is not None and stored.source == SOURCE_INGEST)
-            if not payload.get("confirm"):
-                self._send(400, b'{"error":"confirmation required"}', "application/json")
-                return
-
-            # Refuse while encoding
-            if CONTROL.running and CONTROL.current_unit == rel:
-                self._send(
-                    409, b'{"error":"cannot delete a book that is currently encoding"}', "application/json"
-                )
-                return
-
-            # a queued Retry / Convert anyway would re-create the row (and re-convert) right after
-            if rel in CONTROL.queue_snapshot()["units"]:
-                self._send(
-                    409,
-                    b'{"error":"this book is waiting for a manual action - delete it once that finishes"}',
-                    "application/json",
-                )
-                return
-
-            # Validate unit exists in state
             unit_state = self.state.get(rel)
             if unit_state is None:
                 self._send(404, b'{"error":"no such unit"}', "application/json")
                 return
+            ingest_row = ingest_mod.is_ingest(rel) or unit_state.source == SOURCE_INGEST
 
             lib_root = Path(CONFIG.library_root).resolve()
             src_path: Path | None = None
@@ -8507,9 +8519,6 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(409, json.dumps({
                         "error": ownership["blocked"] + ". Re-check the book before deleting.",
                     }).encode(), "application/json")
-                    return
-                if not ownership and src_path.exists():
-                    self._send(409, SOURCE_CHANGED, "application/json")
                     return
                 for name in ownership.get("targets", []):
                     raw = lib_root / name
@@ -8566,13 +8575,8 @@ class Handler(BaseHTTPRequestHandler):
             log = logging.getLogger("audiobind")
             journal = delete_journal(self.state)  # WEBAPI-02c: where each move aside is recorded first
 
-            # WEBAPI-01: the checks at the top ran before the walk above, and a Convert anyway can
-            # have queued this book since. Decided again under the encoder lock (no encode can
-            # begin while it is held), never waited for: a conversion holding it gets a busy
-            # answer, and nothing has been changed yet. WEBAPI-02: a layout move takes the lock too,
-            # so it cannot move the published folder between the read below and the decision.
-            # WEBAPI-02b: only the decision and the renames that move the targets aside (fast, atomic,
-            # same folder) happen under it; the removal itself and the answer come after it is released
+            # The per-unit claim spans the purge and state write. The encoder lock protects
+            # revalidation and staging against conversions and layout moves.
             # C2: what the source is, so neither the reasons below nor the page call a loose file a folder
             source_kind = "folder"
             if targets and not any(kinds[t] == "dir" or (kinds[t] == "link" and t.is_dir()) for t in targets):
@@ -8601,8 +8605,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(409, json.dumps({"error": claim, "source_partial": False}).encode(),
                                "application/json")
                     return
-                # WEBAPI-02: the row as it is now - a layout move may have re-pointed it during
-                # the walk - and it cannot change again while the lock is held
+                # A layout move may have re-pointed the row before the encoder lock was acquired.
                 unit_state = self.state.get(rel)
                 if unit_state is None:
                     self._send(404, b'{"error":"no such unit"}', "application/json")
@@ -8629,12 +8632,15 @@ class Handler(BaseHTTPRequestHandler):
                             identity = pipeline_mod.file_identity(candidate)
                             if identity is not None:
                                 legacy_entries[candidate.relative_to(out_root).as_posix()] = identity
+                    # Keep nanosecond identities intact across the browser's JSON round trip.
+                    snapshot = json.dumps(legacy_entries, sort_keys=True)
                     choice = payload.get("legacy_output")
-                    if legacy_entries and choice != "keep" and choice != legacy_entries:
+                    if legacy_entries and choice != "keep" and choice != snapshot:
                         self._send(409, json.dumps({
-                            "error": "Audiobind could not verify these output files. Confirm their removal separately.",
+                            "error": "Audiobind could not verify these output files. "
+                                     "Confirm their removal separately.",
                             "legacy_output_paths": list(legacy_entries),
-                            "legacy_output_snapshot": legacy_entries,
+                            "legacy_output_snapshot": snapshot,
                         }).encode(), "application/json")
                         return
                     if choice == "keep":
@@ -8797,8 +8803,8 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 CONVERT_LOCK.release()
 
-            # WEBAPI-02b: the slow part, with the encoder free. Each target already sits under a trash
-            # name beside its own; a removal that fails puts what is left back under its name
+            # Each staged target sits under a hidden name beside its own. On failure, restore
+            # what remains before releasing the per-unit claim.
             if source_trash:
                 trashed_before = {str(lib_root / name) for name, identity in source_staged.items()
                                   if identity is not None}
@@ -8882,7 +8888,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
 
             # Remove from state
-            self.state.delete(rel)
+            self.state.delete(rel, dismiss_ingest=ingest_row)
             result = {
                 "ok": True,
                 "deleted": rel,
@@ -8900,7 +8906,6 @@ class Handler(BaseHTTPRequestHandler):
                 result["output_left"] = output_left  # CORE-04c: {name: why it was not removed}
             if ingest_row:
                 # the torrent folder is still in INGEST_DIR: without this the next scan converts it again
-                self.state.dismiss(rel)
                 result["dismissed"] = True
                 log.info("HARD DELETE %s; removed from Audiobind, the torrent keeps seeding", rel)
             self._send(200, json.dumps(result).encode(), "application/json")
@@ -8966,7 +8971,7 @@ class Handler(BaseHTTPRequestHandler):
                 return ""
         # atomic: two requests for one book can't both get past this
         if not CONTROL.try_enqueue(rel):
-            self._send(409, b'{"error":"this book is already waiting for an action"}', "application/json")
+            self._send(409, b'{"error":"this book is busy with another action"}', "application/json")
             return ""
         try:
             if self.state.undismiss(rel):

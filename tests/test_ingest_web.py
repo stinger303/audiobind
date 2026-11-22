@@ -10,9 +10,9 @@ from audiobind.config import CONFIG
 from audiobind.state import UnitState
 
 try:
-    from live import LiveServerCase
+    from live import LiveServerCase, audited_row
 except ImportError:
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, audited_row
 
 try:
     from test_ingest_discovery import touch, tree_snapshot
@@ -138,6 +138,7 @@ class TestIngestDelete(IngestWebCase):
         self.assertTrue((self.ingest_root / TORRENT / "01.mp3").exists())
 
     def test_library_delete_still_works(self):
+        self.state.save(audited_row(self.lib, self.state.get("Author/Book")))
         status, body = self.post({"action": "delete", "path": "Author/Book", "confirm": True})
         self.assertEqual(status, 200, body)
         self.assertIsNone(self.state.get("Author/Book"))

@@ -12,9 +12,9 @@ from audiobind.control import CONTROL
 from audiobind.state import UnitState
 
 try:
-    from live import LiveServerCase
+    from live import LiveServerCase, audited_row
 except ImportError:
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, audited_row
 
 
 class TestPostGuard(LiveServerCase):
@@ -24,7 +24,7 @@ class TestPostGuard(LiveServerCase):
         src = self.lib / "Author" / "Book"
         os.makedirs(src)
         (src / "01.mp3").write_bytes(b"audio")
-        self.state.save(UnitState(path="Author/Book", status="review"))
+        self.state.save(audited_row(self.lib, UnitState(path="Author/Book", status="review")))
         self.delete = json.dumps({"action": "delete", "path": "Author/Book", "confirm": True}).encode()
 
     def tearDown(self):

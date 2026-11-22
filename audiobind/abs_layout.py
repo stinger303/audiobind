@@ -24,6 +24,7 @@ from types import SimpleNamespace
 from . import library
 from . import overrides as overrides_mod
 from .config import CONFIG
+from .control import CONTROL
 from .units import AUDIO_EXT, foreign_audio
 from .util import loads_dict as _loads
 
@@ -293,6 +294,11 @@ def apply(state) -> dict:
     if result["moves"]:
         _write_journal(journal, entries)  # written first: an empty journal proves the run started
     for move in result["moves"]:
+        if CONTROL.deleting(move.state_key):
+            result["skipped"].append({
+                "from": str(move.src), "reason": "book is being deleted", "state_key": move.state_key,
+            })
+            continue
         src = move.src.resolve()
         current = src  # where the book's main file is right now, recorded even after a half-done move
 

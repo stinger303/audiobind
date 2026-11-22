@@ -7,13 +7,13 @@ import tempfile
 import unittest
 from unittest import mock
 
-from audiobind import web
+from audiobind import pipeline, web
 from audiobind.state import UnitState
 
 try:
-    from live import LiveServerCase
+    from live import LiveServerCase, audited_row, published_row
 except ImportError:
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, audited_row, published_row
 
 
 def touch(path, data=b"audio"):
@@ -68,7 +68,10 @@ class RemovalUnsafeTests(unittest.TestCase):
 class SharedOutputTests(LiveServerCase):
     def _book(self, rel, status, output):
         touch(str(self.lib / rel / "01.mp3"))
-        self.state.save(UnitState(path=rel, status=status, output=str(output)))
+        row = UnitState(path=rel, status=status, output=str(output))
+        if status == "converted" and output.exists():
+            row = published_row(row)
+        self.state.save(audited_row(self.lib, row))
 
     def test_output_kept_when_another_row_uses_it(self):
         published = self.out / "Author" / "Title" / "Title.m4b"
@@ -124,16 +127,16 @@ class ToctouLiveTests(LiveServerCase):
         self.outside = self.root / "outside"
         touch(str(self.outside / "Book" / "precious.mp3"))
         touch(str(self.lib / "Author" / "Book" / "01.mp3"))
-        self.state.save(UnitState(path="Author/Book", status="review"))
-        self.real_files_under = web.files_under
+        self.state.save(audited_row(self.lib, UnitState(path="Author/Book", status="review")))
+        self.real_source_entries = pipeline.source_entries
 
     def _swap_then(self, swap):
-        def side_effect(paths):
-            result = self.real_files_under(paths)
+        def side_effect(*args):
+            result = self.real_source_entries(*args)
             swap()
             return result
 
-        return mock.patch.object(web, "files_under", side_effect=side_effect)
+        return mock.patch.object(pipeline, "source_entries", side_effect=side_effect)
 
     def test_parent_swapped_mid_delete_aborts_and_keeps_row(self):
         def swap():

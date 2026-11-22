@@ -13,9 +13,9 @@ from audiobind.state import UnitState
 from audiobind.units import discover_units, owned_paths
 
 try:
-    from live import LiveServerCase  # unittest discover -s tests
+    from live import LiveServerCase, audited_row  # unittest discover -s tests
 except ImportError:  # python -m unittest tests.test_shared_parent
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, audited_row
 
 
 def touch(path):
@@ -92,7 +92,7 @@ class TestSharedParentDelete(LiveServerCase):
 
     def test_deleting_one_series_leaves_the_siblings_intact(self):
         shared_author(str(self.lib))
-        self.state.save(UnitState(path="Author#foo", status="review"))
+        self.state.save(audited_row(self.lib, UnitState(path="Author#foo", status="review")))
         self.state.save(UnitState(path="Author#bar", status="review"))
         status, body = self.post({"action": "delete", "path": "Author#foo", "confirm": True})
         self.assertEqual(status, 200, body)
@@ -108,13 +108,12 @@ class TestSharedParentDelete(LiveServerCase):
 
     def test_a_legacy_shared_parent_row_never_rmtrees_the_author_folder(self):
         # rows written by <=0.14.3 used "Author" for both series; that path is no longer a
-        # unit on disk, so delete must forget the row without touching the folder
+        # unit on disk, so delete must preserve the row and leave the folder alone
         shared_author(str(self.lib))
         self.state.save(UnitState(path="Author", status="review"))
         status, body = self.post({"action": "delete", "path": "Author", "confirm": True})
-        self.assertEqual(status, 200, body)
-        self.assertFalse(body["source_removed"])
-        self.assertTrue(body["source_kept"])
+        self.assertEqual(status, 409, body)
+        self.assertIsNotNone(self.state.get("Author"))
         for name in ("Foo Part 1", "Foo Part 2", "Bar Part 1", "Bar Part 2", "Baz"):
             self.assertTrue((self.lib / "Author" / name / "01.mp3").exists(), name)
 
@@ -122,7 +121,7 @@ class TestSharedParentDelete(LiveServerCase):
         touch(str(self.lib / "Book" / "intro.mp3"))
         for disc in (1, 2):
             touch(str(self.lib / "Book" / f"Disc {disc}" / "01.mp3"))
-        self.state.save(UnitState(path="Book", status="review"))
+        self.state.save(audited_row(self.lib, UnitState(path="Book", status="review")))
         status, body = self.post({"action": "delete", "path": "Book", "confirm": True})
         self.assertEqual(status, 409)
         self.assertIn("other books", body["error"])

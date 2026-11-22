@@ -139,3 +139,13 @@ docker exec audiobind audiobind daemon             # the default: scan forever
 docker exec audiobind audiobind health             # exit 0 while the daemon is alive
 docker exec -it audiobind audiobind reset-password # forgot the password: set a new one
 ```
+
+## Deleting a book
+
+Delete checks the source paths, file sizes and modification times recorded during the book's audit.
+If the source changed or the row predates that record, re-check the book before deleting it.
+A delete that detects a late arrival during staging restores the staged files and keeps the row.
+
+If Audiobind cannot verify the published files of an older row, it lists the exact paths for a separate
+confirmation. Declining that confirmation keeps those files. Removing an ingest row keeps its torrent
+seeding and dismisses the row so scans skip it.

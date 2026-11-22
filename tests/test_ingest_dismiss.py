@@ -9,6 +9,7 @@ from unittest import mock
 from audiobind import daemon, ingest, web
 from audiobind.config import CONFIG
 from audiobind.state import State, UnitState
+from tests.live import published_row
 
 try:
     from test_ingest_discovery import IngestConfigCase, touch, tree_snapshot
@@ -62,8 +63,10 @@ class TestIngestDeleteRemovesOutputOnly(IngestWebCase):
         out = self.out / "Andy Weir" / "Project Hail Mary" / "Project Hail Mary.m4b"
         out.parent.mkdir(parents=True)
         out.write_text("m4b")
-        self.state.save(UnitState(path=KEY, status="converted", output=str(out), source="ingest",
-                                  title="Project Hail Mary"))
+        row = UnitState(
+            path=KEY, status="converted", output=str(out), source="ingest", title="Project Hail Mary"
+        )
+        self.state.save(published_row(row))
         return out
 
     def test_output_removed_ingest_untouched_row_gone_key_dismissed(self):
@@ -134,7 +137,7 @@ class TestIngestDeleteRemovesOutputOnly(IngestWebCase):
     def test_output_removal_failure_keeps_the_row_like_a_library_delete(self):
         # dev15: a failed removal is a failure - the row is kept and the key is NOT dismissed
         out = self.published()
-        with mock.patch.object(web.shutil, "rmtree", side_effect=PermissionError(13, "Permission denied")):
+        with mock.patch.object(web, "remove_trashed", side_effect=PermissionError(13, "Permission denied")):
             status, body = self.post({"action": "delete", "path": KEY, "confirm": True})
         self.assertEqual(status, 500, body)
         self.assertFalse(body["ok"])

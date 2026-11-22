@@ -16,9 +16,9 @@ from audiobind.units import discover_units, find_unit
 from audiobind.util import safe_name, truncate_utf8
 
 try:
-    from live import LiveServerCase
+    from live import LiveServerCase, audited_row, published_row
 except ImportError:
-    from tests.live import LiveServerCase
+    from tests.live import LiveServerCase, audited_row, published_row
 
 HEADERS = {
     "X-Frame-Options": "DENY",
@@ -128,9 +128,9 @@ class LiveLows(LiveServerCase):
         published = self.out / "Author" / "Book" / "Book.m4b"
         published.parent.mkdir(parents=True)
         published.write_bytes(b"m4b")
-        self.state.save(UnitState(path="Gone/Book", status="converted", output=str(published)))
+        self.state.save(published_row(UnitState(path="Gone/Book", status="converted", output=str(published))))
         boom = PermissionError(13, "Permission denied", str(published.parent))
-        with mock.patch.object(web.shutil, "rmtree", side_effect=boom):
+        with mock.patch.object(web, "remove_trashed", side_effect=boom):
             status, body = self.post({"action": "delete", "path": "Gone/Book", "confirm": True})
         # dev15: a failed removal keeps the row and answers ok: false (still no raw OSError text)
         self.assertEqual(status, 500, body)
@@ -149,7 +149,7 @@ class LiveLows(LiveServerCase):
         units = discover_units(self.lib, [])
         self.assertEqual([u.rel_path for u in units], ["./ingest:Some Book"])
         self.assertIsNotNone(find_unit(self.lib, [], "./ingest:Some Book"))
-        self.state.save(UnitState(path="./ingest:Some Book", status="review"))
+        self.state.save(audited_row(self.lib, UnitState(path="./ingest:Some Book", status="review")))
         status, body = self.post({"action": "delete", "path": "./ingest:Some Book", "confirm": True})
         self.assertEqual(status, 200, body)
         self.assertFalse(folder.exists())

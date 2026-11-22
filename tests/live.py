@@ -6,11 +6,13 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.request
+from dataclasses import replace
 
 from audiobind import auth as auth_mod
-from audiobind import web
+from audiobind import pipeline, web
 from audiobind.config import CONFIG
 from audiobind.state import State
+from audiobind.units import find_unit
 
 #: the account seed_account() creates (cheap PBKDF2 rounds: these tests are not about hashing)
 TEST_USER = "tester"
@@ -101,3 +103,22 @@ class LiveServerCase(unittest.TestCase):
 
     def post(self, payload, path="/api/unit"):
         return self.request(path, payload)
+
+
+def audited_row(root, row):
+    """Give delete fixtures the evidence an audit would have recorded."""
+    unit = find_unit(root, [], row.path)
+    assert unit is not None, row.path
+    detail = json.loads(row.detail or "{}")
+    detail.setdefault("source", {})["ownership"] = pipeline.source_ownership(unit)
+    return replace(row, detail=json.dumps(detail))
+
+
+def published_row(row):
+    """Give delete fixtures the evidence for their simulated main output."""
+    output = pathlib.Path(row.output)
+    detail = json.loads(row.detail or "{}")
+    detail.setdefault("output", {}).update(
+        path=row.output, wrote=[output.name], wrote_id={output.name: pipeline.file_identity(output)}
+    )
+    return replace(row, detail=json.dumps(detail))
