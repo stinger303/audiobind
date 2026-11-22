@@ -26,6 +26,12 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.25.5
+* A folder that names a production (full cast, GraphicAudio, dramatized) no longer matches a plain edition at the highest tier, and a folder that names no production no longer silently takes a marked one: both now land where you get to choose.
+* A failed catalogue lookup is no longer treated as proof a book does not exist. A near-titled work with a catalogue record could previously beat the exact book that had none.
+* An ASIN in the folder name or filename now counts as evidence instead of overriding the comparison, so a wrong hint cannot outrank an exact title.
+* A tracker result that is a summary, another volume or a box set of the title you wanted is refused with a readable reason instead of being downloaded.
+* Fixed a crash when a book's title field contains only spaces.
 ### 0.25.4
 * A book whose parts are uneven now groups again: the last part is allowed to be the biggest, and the size check is a sanity bound rather than a tight tolerance, so a set of 20/30/59/83 MB stays one book instead of becoming four rows that ask the catalogue for "Part 2".
 * The setup guide has a way in after you are set up: Settings -> Watcher now carries a "View the setup guide" link. Before, the Library card was dismissed for good and the Watcher button only appeared while the watcher was unconfigured.

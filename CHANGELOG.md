@@ -7,6 +7,40 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
+## [0.25.5] - 2026-11-21
+
+**The wrong-book paths close.** Four defects that could let a different book, edition or volume win the
+match, plus one crash the widened property grid found the same night.
+
+### Fixed
+
+- A folder that names a production (`(Full Cast)`, GraphicAudio, dramatized) is no longer matched to a plain
+  edition at **HIGH**. Only one direction of that comparison was guarded; both now cap at MEDIUM, so a
+  silent wrong conversion becomes your click. `1c8de0e`
+- A catalogue lookup that **fails** is no longer read as "this book does not exist". Corroboration has three
+  states now — corroborated, contradicted, unknown — and only a contradiction can remove a rival or widen a
+  margin. A near-titled work with an Audnex record could previously beat the exact book without one at
+  margin 0.992. `759cd81`
+- An ASIN in the filename is **evidence, not an override**: it may raise a candidate's score but never sets
+  it to 1.0, never jumps it ahead of stronger title/author evidence, and must clear the same title gate as
+  everyone else. `4117832`
+- The tracker no longer accepts a summary, another volume or a box set for a wishlist row: a `[Summary]`,
+  `(Book 1)` or `(Box Set)` result is rejected with a readable reason instead of being downloaded. `db2106a`
+- A whitespace-only title no longer crashes the catalogue query builder (`IndexError` out of
+  `search_queries`). Unreachable from the folder parser, reachable from a unit whose guesses were set
+  directly. `a07e0cb`
+
+### Changed
+
+- Benchmark baseline accepted for five asin-hint rows with the owner's sign-off (`7974d70`). One action moves
+  — `asin_hint_known_to_audnex` from hold to review, a right pick whose margin came from unknown rivals being
+  filtered out. `asin_hint_self_corroboration` now picks the right book and leaves the known-gap list.
+
+### Tests
+
+2,625 → 2,659. New: `tests/test_match_0306.py` (four findings, fail-before recorded) and
+`tests/test_match_blank_title.py`.
+
 ## [0.25.4] - 2026-11-21
 
 **Two fixes found by walking the released build.**
