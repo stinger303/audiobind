@@ -1,7 +1,9 @@
 """Delete must preserve files and rows that it cannot safely remove."""
 
 import json
+import os
 import sqlite3
+import threading
 from unittest import mock
 
 from audiobind import pipeline, web
@@ -25,6 +27,72 @@ class DeleteRegressionTests(LiveServerCase):
 
     def delete(self, path="Author/Book", **extra):
         return self.post({"action": "delete", "path": path, "confirm": True, **extra})
+
+    def test_symlinked_cover_is_removed_without_following_it(self):
+        source = self.audited_book()
+        artifact = self.lib / "other.jpg"
+        artifact.write_bytes(b"keep")
+        link = source.with_name("cover.jpg")
+        link.symlink_to(artifact)
+        unit = find_unit(self.lib, [], "Author/Book")
+        pipeline.record(self.state, pipeline.Audit(unit, source_ownership=pipeline.source_ownership(unit)),
+                        "review")
+        status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertFalse(link.is_symlink())
+        self.assertEqual(artifact.read_bytes(), b"keep")
+
+    def test_inventory_accepts_an_internal_parent_alias(self):
+        source = self.audited_book()
+        moved = self.lib / "Moved"
+        source.parent.parent.rename(moved)
+        source.parent.parent.symlink_to(moved, target_is_directory=True)
+        self.assertEqual(self.delete()[0], 409)
+        finished = threading.Event()
+        run = web.run_manual
+
+        def recheck(*args, **kwargs):
+            try:
+                return run(*args, **kwargs)
+            finally:
+                finished.set()
+
+        with mock.patch.object(web, "run_manual", side_effect=recheck), \
+                mock.patch.object(pipeline, "probe", return_value=Probe()), \
+                mock.patch.object(pipeline.matching, "match_unit", return_value=pipeline.matching.Match()):
+            status, body = self.post({"action": "recheck", "path": "Author/Book"})
+            self.assertEqual(status, 200, body)
+            self.assertTrue(finished.wait(5))
+        status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertFalse((moved / "Book" / source.name).exists())
+        self.assertTrue(source.parent.parent.is_symlink())
+
+    def test_fifo_is_left_after_rechecking_changed_inventory(self):
+        source = self.audited_book()
+        fifo = source.with_name("pipe")
+        os.mkfifo(fifo)
+        self.assertEqual(self.delete()[0], 409)
+        unit = find_unit(self.lib, [], "Author/Book")
+        with mock.patch.object(pipeline, "probe", return_value=Probe()), mock.patch.object(
+            pipeline.matching, "match_unit", return_value=pipeline.matching.Match()
+        ):
+            pipeline.process_unit(self.state, unit, manual=True)
+        status, body = self.delete()
+        self.assertEqual(status, 200, body)
+        self.assertIn("pipe", body["source_kept_reason"])
+        self.assertFalse(source.exists())
+        self.assertTrue(fifo.exists())
+
+    def test_escaping_parent_is_a_containment_refusal(self):
+        source = self.audited_book()
+        moved = self.out / "Author"
+        source.parent.parent.rename(moved)
+        (self.lib / "Author").symlink_to(moved, target_is_directory=True)
+        status, body = self.delete()
+        self.assertEqual(status, 400, body)
+        self.assertIn("escapes library root", body["error"])
+        self.assertTrue((moved / "Book" / source.name).exists())
 
     def test_p0_01_same_path_replacement_is_kept(self):
         source = self.audited_book()

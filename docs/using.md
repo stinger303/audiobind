@@ -156,6 +156,9 @@ Afterward, the message reports what actually happened to each. A read-only sourc
 
 Delete checks the source paths, file sizes and modification times recorded during the book's audit.
 If the source changed or the row predates that record, re-check the book before deleting it.
+Delete removes symbolic links in the book folder without following them. It accepts a linked
+parent inside the library and refuses paths that escape the library. Special entries such as
+named pipes stay in place and are listed after the other source files are deleted.
 A delete that detects a late arrival during staging restores the staged files and keeps the row.
 
 If Audiobind cannot verify the published files of an older row, it lists the exact paths for a separate

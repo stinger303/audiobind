@@ -21,7 +21,7 @@ from .config import CONFIG, effective_auto_tiers, effective_val
 from .control import CONTROL, Stopped
 from .probe import ProbeTimeout, probe
 from .state import SOURCE_INGEST, WRITER_BUSY, State, UnitState, WriterBusy
-from .units import AUDIO_EXT, BookUnit, looks_like_collection, owned_paths, unsafe_path_reason
+from .units import AUDIO_EXT, BookUnit, find_unit, looks_like_collection, owned_paths, unsafe_path_reason
 from .util import loads_dict, norm
 
 #: the daemon and the manual "Retry / Convert anyway" buttons must not encode two books at once
@@ -30,6 +30,55 @@ CONVERT_LOCK = threading.Lock()
 #: Audit.name_source values, recorded in the detail's match block
 NAME_SOURCE_FOLDER = "folder"
 NAME_SOURCE_EMBEDDED = "embedded"
+
+
+class SourceContainmentError(ValueError):
+    """A source path points outside the configured library."""
+
+
+def source_target(root: Path, target: Path) -> Path:
+    """Resolve parent components inside the root and preserve the leaf itself."""
+    if root not in target.parents or ".." in target.relative_to(root).parts:
+        raise SourceContainmentError(f"{target} escapes library root")
+    parent = root
+    for name in target.parent.relative_to(root).parts:
+        parent = (parent / name).resolve()
+        if not parent.is_relative_to(root):
+            raise SourceContainmentError(f"{target} escapes library root")
+    return parent / target.name
+
+
+def find_source_alias(key: str) -> BookUnit | None:
+    """Re-check an existing library row whose parent became an internal symlink."""
+    configured = Path(CONFIG.library_root).absolute()
+    root = configured.resolve()
+    name, marker, part_key = key.partition("#")
+    raw = root / name
+    try:
+        actual = source_target(root, raw)
+    except (OSError, ValueError, RuntimeError):
+        return None
+    if actual == raw or actual.is_symlink():
+        return None
+    actual_key = actual.relative_to(root).as_posix() + marker + part_key
+    unit = find_unit(root, CONFIG.ignore_globs, actual_key)
+    if unit is None:
+        return None
+
+    def alias(path: str) -> str:
+        relative = Path(path).relative_to(actual.parent)
+        return str(configured / raw.parent.relative_to(root) / relative)
+
+    parts = [dataclasses.replace(part, files=[alias(path) for path in part.files]) for part in unit.parts]
+    return dataclasses.replace(unit, path=alias(unit.path), parent=alias(unit.parent),
+                               parts=parts, rel_path=key)
+
+
+def source_entry_identity(info: os.stat_result) -> list | dict:
+    if stat.S_ISREG(info.st_mode):
+        return [info.st_size, info.st_mtime_ns]
+    kind = "link" if stat.S_ISLNK(info.st_mode) else "irregular"
+    return {"kind": kind, "id": [info.st_mode, info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]}
 
 
 def source_entries(root: Path, targets: list[Path]) -> dict:
@@ -43,15 +92,11 @@ def source_entries(root: Path, targets: list[Path]) -> dict:
             entries[name] = None
             for child in path.iterdir():
                 visit(child)
-        elif stat.S_ISREG(info.st_mode):
-            entries[name] = [info.st_size, info.st_mtime_ns]
         else:
-            raise OSError(f"unsupported entry in source inventory: {path}")
+            entries[name] = source_entry_identity(info)
 
     for target in targets:
-        if root not in target.parents or target.parent.resolve() != target.parent:
-            raise OSError(f"unsafe source inventory target: {target}")
-        visit(target)
+        visit(source_target(root, target))
     return entries
 
 
@@ -70,8 +115,10 @@ def source_ownership(unit: BookUnit) -> dict:
             targets = [root / relative(unit.parent) / part.name for part in unit.parts]
         entries = source_entries(root, targets)
         audio = {name for name, identity in entries.items()
-                 if identity is not None and Path(name).suffix.lower() in AUDIO_EXT}
-        if audio != {relative(f).as_posix() for f in unit.files}:
+                 if isinstance(identity, list) and Path(name).suffix.lower() in AUDIO_EXT}
+        unit_audio = {source_target(root, root / relative(f)).relative_to(root).as_posix()
+                      for f in unit.files}
+        if audio != unit_audio:
             return {"blocked": "the source folder also holds audio belonging to other books"}
         if audio:
             return {"targets": [p.relative_to(root).as_posix() for p in targets], "entries": entries}

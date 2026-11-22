@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import re
-import stat
 import socket
 import sys
 import threading
@@ -1151,6 +1150,7 @@ function abModalConfirm() {
         messages.push('The torrent is still seeding in qBittorrent.');
       } else if (result.source_removed) {
         messages.push('The ' + source + (source === 'source files' ? ' were' : ' was') + ' deleted.');
+        if (result.source_kept_reason) messages.push(result.source_kept_reason + '.');
       } else if (result.source_kept) {
         messages.push('The ' + source + (source === 'source files' ? ' stay' : ' stays') +
           ' (' + result.source_kept_reason + '). The book may reappear on the next scan.');
@@ -7375,8 +7375,11 @@ def run_manual(state, unit, force: bool = False, slot=None, reencode: bool = Fal
 OUTPUT_CHANGED = (b'{"error":"The published folder changed on disk. '
                   b'Please re-check the book before deleting it."}')
 
-SOURCE_CHANGED = (b'{"error":"The source changed on disk or this row has no audited source ownership. '
+SOURCE_CHANGED = (b'{"error":"A source entry changed on disk since the last check. '
                   b'Please re-check the book before deleting it."}')
+SOURCE_UNCHECKED = (b'{"error":"There is no saved list of the source files. '
+                    b'Please re-check the book before deleting it."}')
+SOURCE_OUTSIDE = b'{"error":"source path escapes library root"}'
 
 
 def source_ownership_for(row) -> dict:
@@ -7418,8 +7421,11 @@ def _delete_source_confirmation(unit) -> str:
                     " Re-check the book first.")
         return "There is no source to remove."
     for raw in targets:
-        target, target_kind = plan_target(raw)
-        if target != raw or removal_unsafe(target, root, target_kind) or not os.path.lexists(target):
+        try:
+            target, target_kind = plan_target(pipeline_mod.source_target(root, raw))
+        except (OSError, ValueError, RuntimeError):
+            return f"{label} {stays} if the source path cannot be checked."
+        if removal_unsafe(target, root, target_kind) or not os.path.lexists(target):
             return f"{label} {stays} if the source changed. Re-check the book before deleting."
         if os.statvfs(target.parent).f_flag & os.ST_RDONLY:
             return f"{label} {stays} because the library is read-only."
@@ -7700,7 +7706,8 @@ def remove_trashed(trash: Path, root: Path, entries: dict) -> None:
                 os.close(child_fd)
             os.rmdir(path.name, dir_fd=parent_fd)
         else:
-            if not stat.S_ISREG(info.st_mode) or [info.st_size, info.st_mtime_ns] != identity:
+            actual = pipeline_mod.source_entry_identity(info)
+            if actual != identity or (isinstance(actual, dict) and actual["kind"] != "link"):
                 raise OSError(errno.ESTALE, "staged file identity changed", str(path))
             os.unlink(path.name, dir_fd=parent_fd)
 
@@ -8612,6 +8619,7 @@ class Handler(BaseHTTPRequestHandler):
             src_path: Path | None = None
             targets: list[Path] = []
             kinds: dict[Path, str] = {}
+            raw_targets: list[Path] = []
             if not ingest_row:
                 # Path traversal guard: resolve source inside LIBRARY_ROOT
                 src_path = (lib_root / rel.split("#", 1)[0]).resolve()
@@ -8629,10 +8637,16 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 for name in ownership.get("targets", []):
                     raw = lib_root / name
-                    target, kind = plan_target(raw)
-                    if target != raw or removal_unsafe(target, lib_root, kind):
+                    try:
+                        target = pipeline_mod.source_target(lib_root, raw)
+                    except pipeline_mod.SourceContainmentError:
+                        self._send(400, SOURCE_OUTSIDE, "application/json")
+                        return
+                    target, kind = plan_target(target)
+                    if removal_unsafe(target, lib_root, kind):
                         self._send(409, SOURCE_CHANGED, "application/json")
                         return
+                    raw_targets.append(raw)
                     targets.append(target)
                     kinds[target] = kind
 
@@ -8722,7 +8736,7 @@ class Handler(BaseHTTPRequestHandler):
                     ownership != source_ownership_for(unit_state)
                     or (not ownership and src_path.exists())
                 ):
-                    self._send(409, SOURCE_CHANGED, "application/json")
+                    self._send(409, SOURCE_CHANGED if ownership else SOURCE_UNCHECKED, "application/json")
                     return
 
                 legacy_entries = {}
@@ -8774,12 +8788,32 @@ class Handler(BaseHTTPRequestHandler):
                         )
                         return
                     try:
-                        current = pipeline_mod.source_entries(lib_root, targets)
+                        current = pipeline_mod.source_entries(lib_root, raw_targets)
+                        if [pipeline_mod.source_target(lib_root, raw) for raw in raw_targets] != targets:
+                            current = None
+                    except pipeline_mod.SourceContainmentError:
+                        self._send(409, b'{"error":"The source changed on disk during deletion and now '
+                                   b'escapes the library root."}', "application/json")
+                        return
                     except (OSError, ValueError, RuntimeError):
                         current = None
                     if current != ownership.get("entries"):
                         self._send(409, SOURCE_CHANGED, "application/json")
                         return
+                    irregular = [lib_root / name for name, identity in current.items()
+                                 if isinstance(identity, dict) and identity["kind"] == "irregular"]
+                    if irregular:
+                        protected = set(irregular)
+                        for path in irregular:
+                            protected.update(path.parents)
+                        # Stage the largest safe subtrees. Their parents stay beside the irregular entries.
+                        candidates = (lib_root / name for name in current)
+                        targets = [path for path in candidates
+                                   if path not in protected and path.parent in protected]
+                        names = ", ".join(str(path.relative_to(lib_root)) for path in irregular)
+                        source_kept_reason = f"Left special source entries in place: {names}"
+                        source_kind = "files"
+                        log.warning("HARD DELETE %s; %s", rel, source_kept_reason)
                     source_trash, error = move_aside(targets, journal)
                     if error is None:
                         source_staged = staged_entries(source_trash, lib_root, current)
@@ -9053,6 +9087,8 @@ class Handler(BaseHTTPRequestHandler):
         """Validate and start one manual action; returns the action started, or '' after
         sending the refusal. The started thread owns ``slot`` from then on."""
         unit = ingest_mod.find_any_unit(rel)
+        if unit is None and not ingest_mod.is_ingest(rel) and self.state.get(rel) is not None:
+            unit = pipeline_mod.find_source_alias(rel)
         if unit is None:
             if ingest_mod.is_ingest(rel):
                 self._send(
