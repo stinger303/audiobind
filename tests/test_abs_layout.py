@@ -59,6 +59,10 @@ class LayoutCase(unittest.TestCase):
                                                                   overrides)))
         return path
 
+    def apply_preview(self):
+        preview = abs_layout.plan(self.state)
+        return abs_layout.apply(self.state, preview["plan_id"])
+
     def journals(self):
         return sorted(self.cfg.glob("abs-layout-*.json"))
 
@@ -85,7 +89,7 @@ class TestPlan(LayoutCase):
         self.assertEqual(result["moves"], [])
         self.assertEqual(result["skipped"], [])
         self.assertEqual(result["unchanged"], 2)
-        out = abs_layout.apply(self.state)
+        out = self.apply_preview()
         self.assertEqual(out["moved"], [])
         self.assertEqual(out["journal"], "")
         self.assertEqual(self.journals(), [])
@@ -115,7 +119,7 @@ class TestPlan(LayoutCase):
                                   detail=detail(["Author"], "Saga", "1", "Book")))
         skipped = abs_layout.plan(self.state)["skipped"]
         self.assertIn("not inside OUTPUT_ROOT", skipped[0]["reason"])
-        abs_layout.apply(self.state)
+        self.apply_preview()
         self.assertTrue(elsewhere.exists())
 
     def test_skip_when_target_exists(self):
@@ -125,7 +129,7 @@ class TestPlan(LayoutCase):
         result = abs_layout.plan(self.state)
         self.assertEqual(result["moves"], [])
         self.assertIn("already exists", result["skipped"][0]["reason"])
-        abs_layout.apply(self.state)
+        self.apply_preview()
         self.assertEqual((self.out / "Author/Saga/3 - Book/keep.txt").read_text(), "mine")
         self.assertTrue((self.out / "Author/Saga/03 - Book/Book.m4b").exists())
 
@@ -163,7 +167,7 @@ class TestApply(LayoutCase):
     def test_apply_moves_updates_output_and_journals(self):
         src = self.book("a", "Author/Saga/03 - Book/Book.m4b", ["Author"], "Book", "Saga", "3",
                         extra=("cover.jpg", "metadata.json", "Book.mp3"))
-        result = abs_layout.apply(self.state)
+        result = self.apply_preview()
         new = self.out.resolve() / "Author/Saga/3 - Book/Book.m4b"
         self.assertEqual(result["failed"], [])
         self.assertEqual(result["moved"], [{"from": str(src), "to": str(new), "state_key": "a"}])
@@ -186,7 +190,7 @@ class TestApply(LayoutCase):
 
     def test_emptied_author_folder_is_removed(self):
         self.book("a", "Pratchett/Good Omens/Good Omens.m4b", ["Terry Pratchett", "Neil Gaiman"], "Good Omens")
-        abs_layout.apply(self.state)
+        self.apply_preview()
         self.assertFalse((self.out / "Pratchett").exists())
         self.assertTrue(self.out.exists())
         self.assertTrue((self.out / "Terry Pratchett & Neil Gaiman/Good Omens/Good Omens.m4b").exists())
@@ -194,7 +198,7 @@ class TestApply(LayoutCase):
     def test_file_only_rename_keeps_the_folder(self):
         # the folder is right, only the file name is not: rename the files, not the folder
         self.book("a", "Author/Book/old name.m4b", ["Author"], "Book", extra=("old name.mp3", "cover.jpg"))
-        result = abs_layout.apply(self.state)
+        result = self.apply_preview()
         self.assertEqual(len(result["moved"]), 1)
         folder = self.out / "Author/Book"
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ["Book.m4b", "Book.mp3", "cover.jpg"])
@@ -214,7 +218,7 @@ class TestApply(LayoutCase):
             return real(src, dst)
 
         with mock.patch("audiobind.abs_layout.os.rename", side_effect=flaky):
-            result = abs_layout.apply(self.state)
+            result = self.apply_preview()
         self.assertEqual([f["state_key"] for f in result["failed"]], ["a"])
         self.assertEqual(result["failed"][0]["error"], "Permission denied")
         self.assertEqual([m["state_key"] for m in result["moved"]], ["b"])
@@ -237,7 +241,7 @@ class TestApply(LayoutCase):
 
         with mock.patch.object(abs_layout.os, "rename", side_effect=crash_after_rename):
             with self.assertRaises(SystemExit):
-                abs_layout.apply(self.state)
+                self.apply_preview()
 
         [entry] = json.loads(next(self.cfg.glob("*.json.open")).read_text())["moves"]
         self.assertEqual(entry["status"], "open")
@@ -254,7 +258,7 @@ class TestApply(LayoutCase):
         [move] = abs_layout.plan(self.state)["moves"]
         with mock.patch.object(abs_layout, "_record_output", side_effect=SystemExit):
             with self.assertRaises(SystemExit):
-                abs_layout.apply(self.state)
+                self.apply_preview()
 
         self.assertEqual(self.state.get("a").output, str(src))
         self.assertTrue(move.dst.exists())
@@ -294,7 +298,7 @@ class TestApply(LayoutCase):
             mock.patch.object(abs_layout.os, "rename", side_effect=exdev),
             mock.patch.object(abs_layout.os, "replace", side_effect=promote),
         ):
-            result = abs_layout.apply(self.state)
+            result = self.apply_preview()
         self.assertEqual(promotions, [dst])
         self.assertEqual(len(result["moved"]), 1)
         self.assertTrue((dst / "Book.m4b").exists())
@@ -312,7 +316,7 @@ class TestDev15Hardening(LayoutCase):
         # as if the author folder became a link after the path was built and checked
         with mock.patch.object(abs_layout, "target_for", return_value=self.out / "Linked" / "Book" / "Book.m4b"):
             result = abs_layout.plan(self.state)
-            applied = abs_layout.apply(self.state)
+            applied = self.apply_preview()
         self.assertEqual(result["moves"], [])
         self.assertEqual(result["skipped"][0]["reason"], "the new path would leave OUTPUT_ROOT")
         self.assertEqual(applied["moved"], [])
@@ -325,7 +329,7 @@ class TestDev15Hardening(LayoutCase):
         result = abs_layout.plan(self.state)
         self.assertEqual(result["moves"], [])
         self.assertEqual(result["skipped"][0]["reason"], "another book in Audiobind is filed in this folder")
-        abs_layout.apply(self.state)
+        self.apply_preview()
         self.assertTrue(src.exists())
 
     def test_journal_records_renames_and_restores_names_after_a_failure(self):
@@ -338,7 +342,7 @@ class TestDev15Hardening(LayoutCase):
             return real(a, b)
 
         with mock.patch("audiobind.abs_layout.os.rename", side_effect=fail_on_main):
-            result = abs_layout.apply(self.state)
+            result = self.apply_preview()
         self.assertEqual([f["state_key"] for f in result["failed"]], ["a"])
         [entry] = json.loads(self.journals()[0].read_text())["moves"]
         folder = (self.out / "Author/Book").resolve()
@@ -393,7 +397,8 @@ class TestEndpoint(LiveServerCase):
         self.assertTrue(body["dry_run"])
         self.assertEqual(body["moves"], [{"from": str(self.src),
                                           "to": str(self.out.resolve() / "Author/Saga/3 - Book/Book.m4b"),
-                                          "state_key": "a"}])
+                                          "state_key": "a", "companion_moves": []}])
+        self.assertRegex(body["plan_id"], r"^[0-9a-f]{64}$")
         self.assertEqual(body["skipped"], [])
         self.assertTrue(self.src.exists())
 
@@ -403,7 +408,10 @@ class TestEndpoint(LiveServerCase):
         self.assertTrue(self.src.exists())
 
     def test_apply(self):
-        status, body = self.post({"dry_run": False, "confirm": True}, path="/api/library/abs-layout")
+        endpoint = "/api/library/abs-layout"
+        _, preview = self.post({"dry_run": True}, path=endpoint)
+        status, body = self.post({"dry_run": False, "confirm": True,
+                                  "plan_id": preview["plan_id"]}, path=endpoint)
         self.assertEqual(status, 200)
         self.assertTrue(body["ok"])
         self.assertEqual(body["renamed"], 1)
@@ -411,9 +419,68 @@ class TestEndpoint(LiveServerCase):
         self.assertTrue((self.out / "Author/Saga/3 - Book/Book.m4b").exists())
 
     def test_refused_while_encoding(self):
+        endpoint = "/api/library/abs-layout"
+        _, preview = self.post({"dry_run": True}, path=endpoint)
         with self.state.unit_writer("a"):
-            status, body = self.post({"dry_run": False, "confirm": True}, path="/api/library/abs-layout")
+            status, body = self.post({"dry_run": False, "confirm": True,
+                                      "plan_id": preview["plan_id"]}, path=endpoint)
         self.assertEqual(status, 409)
+        self.assertTrue(self.src.exists())
+
+
+class TestPreviewBinding(LayoutCase):
+    def setUp(self):
+        super().setUp()
+        self.src = self.book("a", "Author/Saga/03 - Book/Book.m4b", ["Author"], "Book", "Saga", "3")
+
+    def post(self, payload):
+        handler = mock.Mock(state=self.state)
+        handler._read_json.return_value = payload
+        web.Handler._handle_abs_layout(handler)
+        status, body, _ = handler._send.call_args.args
+        return status, json.loads(body)
+
+    def test_apply_refuses_when_a_new_book_appears_after_preview(self):
+        status, preview = self.post({"dry_run": True})
+        self.assertEqual(status, 200)
+        extra = self.book("b", "Other/Old/Extra.m4b", ["Other"], "Extra")
+        status, body = self.post({"dry_run": False, "confirm": True,
+                                  "plan_id": preview.get("plan_id")})
+        self.assertEqual(status, 409)
+        self.assertIn("fresh preview", body["error"])
+        self.assertTrue(self.src.exists())
+        self.assertTrue(extra.exists())
+
+    def test_apply_refuses_a_new_companion_without_a_manifest_change(self):
+        _, preview = self.post({"dry_run": True})
+        companion = self.src.with_suffix(".mp3")
+        companion.write_bytes(b"audio")
+        _, current = self.post({"dry_run": True})
+        [move] = current["moves"]
+        self.assertEqual(move["companion_moves"], [
+            {"from": str(companion), "to": str(pathlib.Path(move["to"]).with_suffix(".mp3"))},
+        ])
+        status, body = self.post({"dry_run": False, "confirm": True,
+                                  "plan_id": preview["plan_id"]})
+        self.assertEqual(status, 409)
+        self.assertIn("fresh preview", body["error"])
+        self.assertTrue(companion.exists())
+
+    def test_apply_refuses_without_a_preview(self):
+        status, body = self.post({"dry_run": False, "confirm": True})
+        self.assertEqual(status, 400)
+        self.assertIn("Run Preview first", body["error"])
+        self.assertTrue(self.src.exists())
+
+    def test_apply_refuses_a_new_revision_with_the_same_moves(self):
+        _, preview = self.post({"dry_run": True})
+        self.state.save(UnitState(path="b", status="review", title="Other"))
+        _, current = self.post({"dry_run": True})
+        self.assertEqual(current["moves"], preview["moves"])
+        status, body = self.post({"dry_run": False, "confirm": True,
+                                  "plan_id": preview["plan_id"]})
+        self.assertEqual(status, 409)
+        self.assertIn("fresh preview", body["error"])
         self.assertTrue(self.src.exists())
 
 
@@ -430,7 +497,7 @@ class TestSettingsCard(unittest.TestCase):
         self.assertIn("This moves and renames folders inside /output. Audiobookshelf may treat a renamed "
                       "folder as a new book and lose its listening progress.", html)
         self.assertIn('onclick="abAbsPreview()">Preview</button>', html)
-        self.assertIn('onclick="abAbsAsk()">Apply</button>', html)
+        self.assertIn('disabled onclick="abAbsAsk()">Apply</button>', html)
         self.assertIn('id="ab-modal"', html)
         self.assertIn("Renamed ' + n + ' book(s) to the Audiobookshelf layout.", html)
 

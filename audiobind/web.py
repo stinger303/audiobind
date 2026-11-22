@@ -5052,7 +5052,7 @@ def render_library_section() -> str:
         f'<div class="ab-hintbox ab-watch-warn" role="alert"><b>Heads up.</b> {_html(ABS_LAYOUT_WARNING)}</div>'
         '<div class="ab-acct-row">'
         '<button class="btn" type="button" id="ab-abs-preview" onclick="abAbsPreview()">Preview</button>'
-        '<button class="btn" type="button" id="ab-abs-apply" onclick="abAbsAsk()">Apply</button>'
+        '<button class="btn" type="button" id="ab-abs-apply" disabled onclick="abAbsAsk()">Apply</button>'
         '<span class="ab-fb" id="ab-abs-fb" role="status"></span></div>'
         '<div id="ab-abs-plan" hidden></div>'
         + _hardcover_section()
@@ -5136,7 +5136,12 @@ function abAbsRender(res) {
     empty.textContent = 'Every converted book already matches the Audiobookshelf layout.';
     panel.appendChild(empty);
   }
-  moves.forEach(m => panel.appendChild(abAbsLine('', abAbsRel(m.from, root), abAbsRel(m.to, root), '')));
+  moves.forEach(m => {
+    panel.appendChild(abAbsLine('', abAbsRel(m.from, root), abAbsRel(m.to, root), ''));
+    (m.companion_moves || []).forEach(f => {
+      panel.appendChild(abAbsLine('', abAbsRel(f.from, root), abAbsRel(f.to, root), 'Companion file'));
+    });
+  });
   if (failed.length) {
     const h = document.createElement('h4'); h.textContent = 'Failed'; panel.appendChild(h);
     failed.forEach(f => panel.appendChild(abAbsLine('ab-abs-bad', abAbsRel(f.from, root), abAbsRel(f.to, root), f.error)));
@@ -5154,7 +5159,11 @@ function abAbsRender(res) {
   box.appendChild(panel);
   box.hidden = false;
 }
+let abAbsPlanId = null;
 function abAbsPreview() {
+  const apply = document.getElementById('ab-abs-apply');
+  abAbsPlanId = null;
+  apply.disabled = true;
   const fb = document.getElementById('ab-abs-fb');
   const btn = document.getElementById('ab-abs-preview');
   fb.className = 'ab-fb';
@@ -5165,6 +5174,8 @@ function abAbsPreview() {
     if (!out.ok) { fb.className = 'ab-fb ab-bad'; fb.textContent = out.res.error || 'that did not work'; return; }
     fb.textContent = 'preview only - nothing was changed';
     abAbsRender(out.res);
+    abAbsPlanId = out.res.plan_id;
+    apply.disabled = !abAbsPlanId;
   }).catch(err => {
     btn.disabled = false;
     if (String(err && err.message) === 'signed out') return;
@@ -5174,19 +5185,26 @@ function abAbsPreview() {
 }
 let abAbsTrigger = null;
 function abAbsAsk() {
+  if (!abAbsPlanId) return;
+  document.getElementById('ab-abs-preview').disabled = true;
   abAbsTrigger = document.getElementById('ab-abs-apply');
   document.getElementById('ab-modal-title').textContent = 'Match the Audiobookshelf layout?';
   document.getElementById('ab-modal-warning').textContent = """ + json.dumps(ABS_LAYOUT_WARNING) + """ +
-    ' Books whose new folder already exists are skipped, never overwritten. Run Preview first to see every move.';
+    ' Books whose new folder already exists are skipped, never overwritten.';
   document.getElementById('ab-modal-confirm').textContent = 'Move and rename';
   document.getElementById('ab-modal').hidden = false;
   document.getElementById('ab-modal-cancel').focus();
 }
 function abModalCancel() {
+  if (document.getElementById('ab-modal-confirm').disabled) return;
+  document.getElementById('ab-abs-preview').disabled = false;
   document.getElementById('ab-modal').hidden = true;
   if (abAbsTrigger) abAbsTrigger.focus();
 }
 function abModalConfirm() {
+  const planId = abAbsPlanId;
+  if (!planId) return;
+  abAbsPlanId = null;
   const btn = document.getElementById('ab-modal-confirm');
   const fb = document.getElementById('ab-abs-fb');
   const apply = document.getElementById('ab-abs-apply');
@@ -5195,8 +5213,13 @@ function abModalConfirm() {
   btn.textContent = 'moving\\u2026';
   fb.className = 'ab-fb';
   fb.textContent = 'moving books\\u2026';
-  const done = () => { btn.disabled = false; apply.disabled = false; document.getElementById('ab-modal').hidden = true; };
-  abAbsPost({dry_run: false, confirm: true}).then(out => {
+  const done = () => {
+    btn.disabled = false;
+    document.getElementById('ab-abs-preview').disabled = false;
+    document.getElementById('ab-modal').hidden = true;
+    document.getElementById('ab-abs-preview').focus();
+  };
+  abAbsPost({dry_run: false, confirm: true, plan_id: planId}).then(out => {
     done();
     if (!out.ok && !out.res.dry_run && out.res.renamed === undefined) {
       fb.className = 'ab-fb ab-bad';
@@ -9440,11 +9463,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(400, b'{"error":"unknown action"}', "application/json")
 
     def _handle_abs_layout(self) -> None:
-        """POST /api/library/abs-layout: {"dry_run": bool, "confirm": bool}.
-
-        Settings > Library "Match Audiobookshelf layout". A dry run (the default) only reads and
-        returns the plan; the real run needs confirm: true and moves folders inside OUTPUT_ROOT.
-        """
+        """Preview a layout plan or confirm the preview's identity before moving folders."""
         payload = self._read_json()
         if payload is None:
             return
@@ -9453,8 +9472,9 @@ class Handler(BaseHTTPRequestHandler):
             body = {
                 "ok": True,
                 "dry_run": True,
+                "plan_id": result["plan_id"],
                 "output_root": str(CONFIG.output_root),
-                "moves": [m.public() for m in result["moves"]],
+                "moves": [{**m.public(), "companion_moves": m.companion_moves()} for m in result["moves"]],
                 "skipped": result["skipped"],
                 "unchanged": result["unchanged"],
             }
@@ -9463,8 +9483,16 @@ class Handler(BaseHTTPRequestHandler):
         if payload.get("confirm") is not True:
             self._send(400, b'{"error":"confirmation required"}', "application/json")
             return
+        plan_id = payload.get("plan_id")
+        if not isinstance(plan_id, str) or re.fullmatch(r"[0-9a-f]{64}", plan_id) is None:
+            self._send(400, b'{"error":"Run Preview first and submit its plan_id to apply."}',
+                       "application/json")
+            return
         try:
-            result = abs_layout.apply(self.state)
+            result = abs_layout.apply(self.state, plan_id)
+        except abs_layout.LayoutPlanChanged as exc:
+            self._send(409, json.dumps({"error": str(exc)}).encode(), "application/json")
+            return
         except WriterBusy:
             self._send(409, b'{"error":"another run is working on this book or changing the library layout"}',
                        "application/json")

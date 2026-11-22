@@ -570,6 +570,15 @@ class State:
             ).fetchall()
         return [(r[0], r[1]) for r in rows]
 
+    def layout_snapshot(self) -> tuple[str, list[UnitState], list[tuple[str, str]]]:
+        """Read the revision, candidates and output ownership from the same SQLite snapshot."""
+        with self._lock:
+            self.connection.execute("BEGIN")
+            try:
+                return self.rev(), self.all("converted"), self.outputs()
+            finally:
+                self.connection.rollback()
+
     def library_totals(self) -> tuple[int, int, float, float]:
         """(rows, converted rows, hours of converted books, output MB of converted books), summed
         in SQLite: the status page asks every 2-5 s per open tab, and all() would read every

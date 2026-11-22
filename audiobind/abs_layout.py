@@ -11,6 +11,7 @@ with the reason. Every move is written to an undo journal in STATE_DIR as it hap
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
 import logging
 import os
@@ -38,9 +39,17 @@ class Move:
     src: Path  # the row's output file as recorded
     dst: Path  # where the layout puts it
     folder: bool  # True: the book folder moves; False: only file names change in place
+    source: Path  # resolved source at preview time
+    files: tuple[tuple[str, str], ...]  # old and new audio basenames, primary last
 
     def public(self) -> dict:
         return {"from": str(self.src), "to": str(self.dst), "state_key": self.state_key}
+
+    def companion_moves(self) -> list[dict]:
+        return [
+            {"from": str(self.src.parent / old), "to": str(self.dst.parent / new)}
+            for old, new in self.files if old != self.src.name and (self.folder or old != new)
+        ]
 
 
 #: metadata.json's series entry: "Name #3", "Name #", or just "Name"
@@ -120,7 +129,13 @@ def _siblings(src: Path) -> list[Path]:
                     found.append(path)
     except OSError:
         pass
-    return found
+    return [src, *sorted(found[1:])]
+
+
+def _audio_pairs(siblings: list[Path], target: Path) -> tuple[tuple[str, str], ...]:
+    pairs = [(path.name, target.stem + path.suffix) for path in reversed(siblings[1:])]
+    pairs.append((siblings[0].name, target.name))
+    return tuple(pairs)
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -133,7 +148,7 @@ def plan(state) -> dict:
     Reads only: nothing on disk or in the database changes.
     """
     root = Path(CONFIG.output_root).resolve()
-    rows = state.all("converted")
+    revision, rows, outputs = state.layout_snapshot()
     moves: list[Move] = []
     skipped: list[dict] = []
     unchanged = 0
@@ -142,7 +157,7 @@ def plan(state) -> dict:
     # which rows (of any status) point into which folder: a folder two rows share cannot move
     # for one of them without leaving the other pointing at nothing
     folders: dict[Path, int] = {}
-    for _path, output in state.outputs():
+    for _path, output in outputs:
         try:
             folder = Path(output).resolve().parent
         except (OSError, RuntimeError):
@@ -194,11 +209,14 @@ def plan(state) -> dict:
                 skip(row, "another book in Audiobind is filed in this folder")
                 continue
             # only the file name changes: rename the book's files in place
-            clash = [p for p in _siblings(resolved) if os.path.lexists(dst_dir / (dst.stem + p.suffix))]
-            if clash:
-                skip(row, f"{dst_dir / (dst.stem + clash[0].suffix)} already exists")
+            pairs = _audio_pairs(_siblings(resolved), dst)
+            clash = next(
+                (dst_dir / new for old, new in pairs if old != new and os.path.lexists(dst_dir / new)), None,
+            )
+            if clash is not None:
+                skip(row, f"{clash} already exists")
                 continue
-            moves.append(Move(row.path, src, dst, folder=False))
+            moves.append(Move(row.path, src, dst, False, resolved, pairs))
             claimed.add(dst)
             continue
         if src_dir == root or src.parent.is_symlink():
@@ -213,13 +231,19 @@ def plan(state) -> dict:
         if shared:
             skip(row, "another book in Audiobind is filed in this folder")
             continue
-        foreign = foreign_audio(SimpleNamespace(files=[str(p) for p in _siblings(resolved)]), [str(src_dir)])
+        siblings = _siblings(resolved)
+        foreign = foreign_audio(SimpleNamespace(files=[str(p) for p in siblings]), [str(src_dir)])
         if foreign:
             skip(row, f"the folder also holds {len(foreign)} audio file(s) that belong to other books")
             continue
-        moves.append(Move(row.path, src, dst, folder=True))
+        moves.append(Move(row.path, src, dst, True, resolved, _audio_pairs(siblings, dst)))
         claimed.update({dst, dst_dir})
-    return {"moves": moves, "skipped": skipped, "unchanged": unchanged}
+    identity = {
+        "revision": revision, "root": str(root), "outputs": sorted(outputs),
+        "moves": [(move.public(), str(move.source), move.folder, move.files) for move in moves],
+    }
+    plan_id = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+    return {"moves": moves, "skipped": skipped, "unchanged": unchanged, "plan_id": plan_id}
 
 
 def _prune_empty(start: Path, root: Path) -> None:
@@ -270,12 +294,12 @@ def _directory_id(path: Path) -> list[int] | None:
 
 
 def _intent(move: Move) -> dict:
-    src, dst = move.src.resolve(), move.dst
+    src, dst = move.source, move.dst
     folder = dst.parent
     files = [
-        {"from": str(folder / path.name), "to": str(folder / (dst.stem + path.suffix)),
-         "identity": pipeline.file_identity(path)}
-        for path in reversed(_siblings(src)) if path.stem != dst.stem
+        {"from": str(folder / old_name), "to": str(folder / new_name),
+         "identity": pipeline.file_identity(src.parent / old_name)}
+        for old_name, new_name in move.files if old_name != new_name
     ]
     identity = pipeline.file_identity(src)
     if identity is None:
@@ -327,17 +351,19 @@ def _move_dir(entry: dict, journal: Path, entries: list[dict]) -> None:
     except OSError as exc:
         if exc.errno != errno.EXDEV:
             raise
-        shutil.copytree(src, stage, symlinks=True, copy_function=_copy_sync)
-        _rename_files(entry, stage)
-        for folder, _, _ in os.walk(stage, topdown=False):
-            pipeline._sync_directory(Path(folder))
-        entry["copy_id"] = _directory_id(stage)
-        _write_journal(journal, entries)
-        if os.path.lexists(dst):
-            raise FileExistsError(errno.EEXIST, "target already exists", str(dst))
-        os.replace(stage, dst)
     else:
         _rename_files(entry, dst)
+        return
+
+    shutil.copytree(src, stage, symlinks=True, copy_function=_copy_sync)
+    _rename_files(entry, stage)
+    for folder, _, _ in os.walk(stage, topdown=False):
+        pipeline._sync_directory(Path(folder))
+    entry["copy_id"] = _directory_id(stage)
+    _write_journal(journal, entries)
+    if os.path.lexists(dst):
+        raise FileExistsError(errno.EEXIST, "target already exists", str(dst))
+    os.replace(stage, dst)
 
 
 def _check_entry_paths(entry: dict, root: Path) -> None:
@@ -435,16 +461,22 @@ def recover(state) -> None:
             _recover_locked(state)
 
 
-def apply(state) -> dict:
-    """Make the planned moves under the exclusive layout claim."""
+class LayoutPlanChanged(Exception):
+    """The current plan differs from the one the operator previewed."""
+
+
+def apply(state, plan_id: str) -> dict:
+    """Make only the previewed moves under the exclusive layout claim."""
     with state.layout_writer():
         pipeline.recover_publications(state)
         _recover_locked(state)
-        return _apply(state)
+        result = plan(state)
+        if result["plan_id"] != plan_id:
+            raise LayoutPlanChanged("The library changed. Run a fresh preview before applying.")
+        return _apply(state, result)
 
 
-def _apply(state) -> dict:
-    result = plan(state)
+def _apply(state, result: dict) -> dict:
     root = Path(CONFIG.output_root).resolve()
     active = state.layout_intent
     entries: list[dict] = []

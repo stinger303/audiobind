@@ -155,11 +155,14 @@ destination folder before making it visible at the final path. The finished jour
 `STATE_DIR/abs-layout-<UTC time>.json` with each move's status and paths for manual undo.
 The action needs exclusive access to media writes. A scan only reconciles interrupted moves.
 
-Scripted equivalent (`dry_run` defaults to true; the real run needs `"confirm": true`):
+Apply requires the plan identity from Preview. If the library changes before Apply, run a fresh
+preview. For scripts, `dry_run` defaults to true. Read `plan_id` from the preview response and
+submit it with the confirmation:
 
 ```bash
 curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"dry_run":true}' localhost:8080/api/library/abs-layout
-curl -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"dry_run":false,"confirm":true}' localhost:8080/api/library/abs-layout
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"dry_run":false,"confirm":true,"plan_id":"<plan_id from Preview>"}' localhost:8080/api/library/abs-layout
 ```
 
 ### Upgrading from a release before 0.19.0-dev14
