@@ -732,8 +732,8 @@ def search_queries(title: str, author: str) -> tuple[list[dict], int, str]:
 
     cleaned = ""
     n_variants = 0
-    if title:
-        variants = title_variants(title)[:MAX_VARIANT_QUERIES]
+    variants = title_variants(title)[:MAX_VARIANT_QUERIES] if title else []
+    if variants:
         for variant in variants:
             add({"title": variant})
         n_variants = len(titled)
