@@ -214,6 +214,8 @@ def replay(corpus_path: Path = CORPUS, cache_path: Path = CACHE) -> Replay:
                          sample_rate="44100")
 
         tags = {"now": ("", "")}
+        stack.enter_context(mock.patch.object(config.CONFIG, "library_root", library))
+        stack.enter_context(mock.patch.object(ingest, "configured_dir", return_value=str(ingest_root)))
         stack.enter_context(mock.patch.object(pipeline, "probe", fake_probe))
         stack.enter_context(mock.patch.object(ingest, "embedded_names", lambda _unit: tags["now"]))
         stack.enter_context(mock.patch.object(catalog, "_get_json", frozen))

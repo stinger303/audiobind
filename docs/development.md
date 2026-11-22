@@ -47,3 +47,7 @@ Any change that can move a match must pass the match-test programme: see
   commit. Layout work needs the exclusive layout claim. The shared publication journal is
   serialized during settlement and file placement. Every encode cleans only its own scratch
   directory. A hard-killed attempt can leave scratch files for an operator to remove.
+
+The scan resolves source audio before each media reader uses it. The resolved path must
+stay within the unit's library or ingest root. Internal links work, and an escaping link
+puts the book in review.

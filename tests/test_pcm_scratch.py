@@ -196,6 +196,7 @@ class OrphanReclaimTests(MixedCase):
         with (
             mock.patch.object(pipeline.catalog, "book", return_value={"title": "T"}),
             mock.patch.object(pipeline.library, "m4b_path", return_value=self.root / "nope" / "T.m4b"),
+            mock.patch.object(pipeline.CONFIG, "library_root", pathlib.Path("/src")),
             mock.patch.object(pipeline.CONFIG, "work_dir", self.root / "work"),
             mock.patch.object(pipeline.CONTROL, "_dry_run", False),
             mock.patch.object(encode.catalog, "chapters", return_value=[]),

@@ -182,6 +182,7 @@ class TestEncodeRun(unittest.TestCase):
             contextlib.closing(state),
             mock.patch.object(pipeline.catalog, "book", return_value={"title": "T"}),
             mock.patch.object(pipeline.library, "m4b_path", return_value=self.work / "nope" / "T.m4b"),
+            mock.patch.object(pipeline.CONFIG, "library_root", pathlib.Path("/src")),
             mock.patch.object(pipeline.CONFIG, "work_dir", self.work),
             mock.patch.object(pipeline.CONTROL, "_dry_run", False),
             mock.patch.object(encode, "probe", side_effect=AssertionError("probed again")),

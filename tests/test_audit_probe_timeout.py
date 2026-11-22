@@ -7,6 +7,7 @@ whole book: the silent chapter loss C4 closed everywhere else.
 """
 
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from audiobind import catalog, encode, pipeline
@@ -41,6 +42,11 @@ def unit(*files):
 
 
 class TestAudit(unittest.TestCase):
+    def setUp(self):
+        root = mock.patch.object(pipeline.CONFIG, "library_root", Path("/src"))
+        root.start()
+        self.addCleanup(root.stop)
+
     def audit(self, fake, files=("/src/a.mp3", "/src/b.mp3")):
         with (
             mock.patch.object(pipeline, "probe", side_effect=fake),

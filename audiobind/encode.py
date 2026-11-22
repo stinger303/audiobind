@@ -130,7 +130,7 @@ def _probe_sources(unit: BookUnit) -> tuple[dict[str, float], set[str], set[str]
     rates: set[str] = set()
     for path in unit.files:
         try:
-            info = probe(path, raise_on_timeout=True)
+            info = probe(unit.resolve_media(path), raise_on_timeout=True)
             result[path] = info.duration
             if info.codec:
                 codecs.add(info.codec)
@@ -246,7 +246,7 @@ def _source_chapters(unit: BookUnit, durations: dict[str, float] | None = None) 
         if length <= 0:
             return []  # cannot place chapters on a timeline we cannot measure
         try:
-            found = probe_chapters(path, raise_on_timeout=True)
+            found = probe_chapters(unit.resolve_media(path), raise_on_timeout=True)
         except ProbeTimeout as exc:
             raise RuntimeError(
                 f"ffprobe timed out after {exc.timeout}s reading the chapters of {path}; "
@@ -817,7 +817,7 @@ def _signalled(killed: str, doing: str) -> str:
 
 
 def _normalise_parts(files: list[str], work_dir: Path, channels: int | None = None,
-                     sample_rate: int | None = None) -> list[str]:
+                     sample_rate: int | None = None, resolve_media=str) -> list[str]:
     """Decode each source to ``work_dir/parts/NNNN.wav``; the paths, in concat order.
 
     The caller has claimed ``work_dir/parts`` (``_claim_parts``) and releases it."""
@@ -827,9 +827,8 @@ def _normalise_parts(files: list[str], work_dir: Path, channels: int | None = No
         dest = parts_dir / f"{n:04d}.wav"
         stderr_path = parts_dir / f"{n:04d}.log"
         with stderr_path.open("wb") as stderr_file:
-            proc = subprocess.Popen(
-                _nice_prefix() + normalise_command(source, dest, channels, sample_rate), stdout=subprocess.DEVNULL, stderr=stderr_file
-            )
+            command = normalise_command(resolve_media(source), dest, channels, sample_rate)
+            proc = subprocess.Popen(_nice_prefix() + command, stdout=subprocess.DEVNULL, stderr=stderr_file)
         CONTROL.attach_process(proc)
         try:
             proc.wait()
@@ -909,21 +908,16 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
     mp3 = fmt == "mp3"
     # AB-MONO-REENC: what a re-encode writes, min(source, cap) per axis (ignored by a copy)
     out_channels, out_rate = output_shape(plan.channels, plan.sample_rates, "mp3" if mp3 else "aac")
+    mixed = unit.n_files > 1 and len(plan.codecs or ()) > 1
     joined = list(unit.files)
-    if len(joined) > 1 and len(plan.codecs or ()) > 1:
-        # the concat demuxer decodes every part with the first part's decoder: a FLAC after an MP3
-        # is thrown away packet by packet with exit 0 (CORE-01). One codec skips all of this.
+    if mixed:
+        # The concat demuxer uses the first part's decoder for every input (CORE-01).
         log(f"  audio: mixed codecs {sorted(plan.codecs)} - decoding each file to PCM before joining")
-        # CORE-01c: never start a decode the scratch disk cannot hold to the end
         check_pcm_space(total_duration, work_dir, out_channels, out_rate)
         _claim_parts(work_dir / "parts")
-        joined = _normalise_parts(joined, work_dir, out_channels, out_rate)
+        joined = _normalise_parts(joined, work_dir, out_channels, out_rate, unit.resolve_media)
         copy_audio = False
     concat_file = work_dir / "concat.txt"
-    with concat_file.open("w", encoding="utf-8") as handle:
-        for path in joined:
-            handle.write("file '" + str(path).replace("'", "'\\''") + "'\n")
-
     metadata_file = work_dir / "meta.txt"
     tags = write_ffmetadata(metadata_file, book, match, chapters)
 
@@ -939,7 +933,8 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
         # already AAC in an MP4 container: keep the samples, only rewrite the wrapper
         log("  audio: copied (source is already AAC) - no re-encode, no quality loss")
     else:
-        source_bytes = sum(os.path.getsize(f) for f in unit.files if os.path.exists(f))
+        sources = [unit.resolve_media(f) for f in unit.files]
+        source_bytes = sum(os.path.getsize(f) for f in sources if os.path.exists(f))
         source_kbps = (source_bytes * 8 / total_duration / 1000) if total_duration else 0
         eff_bitrate = effective_val("audio_bitrate")
         bitrate = choose_bitrate(source_kbps, eff_bitrate)
@@ -947,6 +942,12 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
             bitrate = mp3_bitrate(bitrate)
         log(f"  audio: {'mp3' if mp3 else 'aac'} {bitrate}k (source {source_kbps:.0f}k, "
             f"floor {eff_bitrate}), {out_channels} ch / {out_rate} Hz")
+    if not mixed:
+        joined = [unit.resolve_media(path) for path in joined]
+    with concat_file.open("w", encoding="utf-8") as handle:
+        for path in joined:
+            handle.write("file '" + path.replace("'", "'\\''") + "'\n")
+
     command = _nice_prefix() + build_command(
         fmt,
         concat_file,

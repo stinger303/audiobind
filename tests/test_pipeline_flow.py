@@ -67,6 +67,8 @@ class TestEmbeddedRetryOnLow(unittest.TestCase):
             return folder if len(calls) == 1 else embedded
 
         with (
+            mock.patch.object(ingest, "configured_dir", return_value="/ingest"),
+            mock.patch.object(CONFIG, "library_root", pathlib.Path("/ingest")),
             mock.patch.object(pipeline, "probe", return_value=Probe(duration=7200.0, codec="mp3", channels="2")),
             mock.patch.object(pipeline.os.path, "getsize", return_value=1000),
             mock.patch.object(pipeline.matching, "match_unit", side_effect=match_unit),

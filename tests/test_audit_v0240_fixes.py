@@ -37,6 +37,7 @@ class CollectionShapeTests(unittest.TestCase):
             return Probe(duration=hours_by_file[path] * 3600, codec="mp3", channels="2")
 
         with (
+            mock.patch.object(CONFIG, "library_root", pathlib.Path("/b")),
             mock.patch.object(pipeline, "probe", side_effect=fake_probe),
             mock.patch.object(matching, "match_unit", return_value=matching.Match()),  # NONE
         ):

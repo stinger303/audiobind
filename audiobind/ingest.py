@@ -194,7 +194,7 @@ def embedded_names(unit: BookUnit) -> tuple[str, str]:
     """
     if not unit.files:
         return "", ""
-    tags = probe_tags(unit.files[0])
+    tags = probe_tags(unit.resolve_media(unit.files[0]))
     if not tags:
         return "", ""
     title_keys = ("album", "title") if unit.n_files > 1 else ("title", "album")

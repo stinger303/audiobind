@@ -127,6 +127,9 @@ class RealAuditAndEncodeTests(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         self.root = pathlib.Path(self.dir.name)
+        root = mock.patch.object(CONFIG, "library_root", self.root)
+        root.start()
+        self.addCleanup(root.stop)
         CONTROL.clear_stop()
 
     def audit(self, source):

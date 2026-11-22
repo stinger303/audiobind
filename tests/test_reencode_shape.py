@@ -108,6 +108,9 @@ class RealReencodeTests(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         self.root = pathlib.Path(self.dir.name)
+        root = mock.patch.object(CONFIG, "library_root", self.root)
+        root.start()
+        self.addCleanup(root.stop)
         CONTROL.clear_stop()
 
     def run_case(self, sources, cap, fmt="m4b"):

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .state import INGEST_KEY_PREFIX, SOURCE_INGEST, SOURCE_LIBRARY
@@ -70,6 +71,9 @@ class BookUnit:
     #: Child"); the matcher asks the catalog which reading is a real book
     alt_author_guess: str = ""
     alt_title_guess: str = ""
+    #: The pipeline supplies a source-root check for every media read.
+    resolve_media: Callable[[str], str] = field(default=str, compare=False, repr=False)
+
     #: an ASIN found in brackets in an ingest name ("In Too Deep [B0CLGF5CFH]"); a candidate the
     #: matcher checks against the title, never a pin
     asin_hint: str = ""

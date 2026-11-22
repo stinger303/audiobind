@@ -49,6 +49,26 @@ def source_target(root: Path, target: Path) -> Path:
     return parent / target.name
 
 
+def media_path(unit: BookUnit, path: str) -> str:
+    """Resolve a media operand immediately before handing it to a reader."""
+    is_ingest = unit.source == SOURCE_INGEST
+    configured = ingest.configured_dir() if is_ingest else CONFIG.library_root
+    label = "ingest root" if is_ingest else "library root"
+    try:
+        resolved = Path(path).resolve()
+        if configured and resolved.is_relative_to(Path(configured).resolve()):
+            if not any(char in str(resolved) for char in ("\n", "\r", "\0")):
+                return str(resolved)
+            raise SourceContainmentError(f"Unsafe source media target for {path!r}")
+    except (OSError, RuntimeError) as exc:
+        raise SourceContainmentError(f"Cannot resolve source media {path!r}: {exc}") from exc
+    raise SourceContainmentError(f"Source media {path!r} escapes {label}")
+
+
+def guarded_media_unit(unit: BookUnit) -> BookUnit:
+    return dataclasses.replace(unit, resolve_media=lambda path: media_path(unit, path))
+
+
 def find_source_alias(key: str) -> BookUnit | None:
     """Re-check an existing library row whose parent became an internal symlink."""
     configured = Path(CONFIG.library_root).absolute()
@@ -181,7 +201,7 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
     timed_out = 0
     for path in unit.files:
         try:
-            info = probe(path, raise_on_timeout=True)
+            info = probe(media_path(unit, path), raise_on_timeout=True)
         except ProbeTimeout:
             # never measured, so never recorded: a stored 0.0 would be trusted by plan_chapters (the
             # key is present) and a forced conversion would drop every source chapter. With the key
@@ -207,7 +227,7 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
     src_bytes = 0
     for f in unit.files:
         try:
-            src_bytes += os.path.getsize(f)
+            src_bytes += os.path.getsize(media_path(unit, f))
         except OSError:
             continue  # removed since the folder was listed: left out, never a failed scan
     audit.src_mb = round(src_bytes / 1e6, 1)
@@ -322,7 +342,7 @@ def _match_embedded(unit: BookUnit, local_hours: float) -> matching.Match | None
     _embedded_is_better whether it replaces the folder's, and the usual grading and auto-convert
     rules still apply), else None so the folder's match stands. The unit itself is not changed.
     """
-    author, title = ingest.embedded_names(unit)
+    author, title = ingest.embedded_names(guarded_media_unit(unit))
     if not (author or title):
         return None
     # the folder name's swapped reading belongs to the folder name, not to the tags
@@ -346,7 +366,7 @@ def _chapter_plan(unit: BookUnit, asin: str, audit: Audit) -> encode.ChapterPlan
     cap) rather than the caps. With no durations (nothing measured) plan_chapters probes itself."""
     probed = bool(audit.durations)
     return encode.plan_chapters(
-        unit,
+        guarded_media_unit(unit),
         asin,
         durations=audit.durations or None,
         codecs=set(audit.codecs) if probed else None,
@@ -537,7 +557,7 @@ def _convert_unit(audit, log, cancelled, heartbeat, reencode, at, state):
                 # second encode fails the unit and leaves the library untouched, never an
                 # m4b without the mp3 the owner asked for
                 results[fmt] = encode.encode(
-                    unit,
+                    guarded_media_unit(unit),
                     match,
                     book,
                     work_dir / fmt,
@@ -1315,6 +1335,8 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
             # failed, and the next ordinary scan checks it again
             log(f"  held: {exc}")
             rec("held", note=unmeasured_held_note(str(exc)), unmeasured=True)
+        except SourceContainmentError as exc:
+            rec("review", note=str(exc))
         except (PublicationRecoveryError, WriterBusy):
             raise
         except Exception as exc:  # noqa: BLE001 - one book must not stop a scan
@@ -1359,9 +1381,16 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
         state.heartbeat()
         return audit
     asin_override = state.get_asin_override(unit.state_key)
-    audit = audit_unit(
-        unit, asin_override, pin_failures=state.get_pin_failures(unit.state_key) if asin_override else 0
-    )
+    try:
+        audit = audit_unit(
+            unit, asin_override, pin_failures=state.get_pin_failures(unit.state_key) if asin_override else 0
+        )
+    except SourceContainmentError as exc:
+        audit = Audit(unit=unit, notes=[str(exc)])
+        log(f"  review: {exc}")
+        rec("review", note=str(exc))
+        state.heartbeat()
+        return audit
     if asin_override:
         # counted before anything is recorded, so a crash later in this check still counts it
         if audit.match.asin_pin_failed or audit.match.pin_abandoned:
