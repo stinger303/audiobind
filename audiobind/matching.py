@@ -68,6 +68,10 @@ class Match:
     #: series position: "catalog hit is Book 1 of its series and your folder says Book 2"): every
     #: other candidate was vetoed too, so this is the best of a bad pool. grade() holds it at LOW
     veto: str = ""
+    #: set when the ASIN in the name (unit.asin_hint) resolved to another work than the chosen
+    #: product: two signals naming different books. Nothing tells which one lied (a stale hint, or
+    #: a mistitled folder whose hint is right), so grade() holds it at LOW and a person decides
+    hint_conflict: str = ""
 
     @property
     def asin(self) -> str:
@@ -500,8 +504,9 @@ def corroborated(product: Product) -> bool | None:
     return True
 
 
-def _product_from_book(book: dict) -> Product:
-    """A Product from an Audnex book record."""
+def _product_from_book(book: dict, default_language: str = "english") -> Product:
+    """A Product from an Audnex book record. ``default_language`` stands in for a record that lists
+    none: "english" for a pin (never graded), "" (unknown) for a candidate that is graded."""
     series = book.get("seriesPrimary") or {}
     return catalog.Product(
         asin=book["asin"],
@@ -512,7 +517,7 @@ def _product_from_book(book: dict) -> Product:
         series=series.get("name", "") or "",
         sequence=str(series.get("position", "") or ""),
         hours=round(float(book.get("runtimeLengthMin") or 0) / 60, 2),
-        language=book.get("language") or "english",
+        language=book.get("language") or default_language,
         year=(book.get("releaseDate") or "")[:4],
         publisher=book.get("publisherName") or "",
         image=book.get("image") or "",
@@ -664,6 +669,7 @@ def _search_match(unit: BookUnit, local_hours: float) -> Match:
         missing_adaptation=missing_adaptation(best["product"], wanted),
         edition_conflict=best.get("edition_conflict", ""),
         veto=best.get("veto", ""),
+        hint_conflict=_hint_conflict(unit.asin_hint, scored, best["product"]),
     )
     match.confidence = grade(match)
     # keep the runners-up (other editions of the same work, near misses) so the
@@ -767,9 +773,11 @@ def _score_product(product: Product, title: str, author: str, local_hours: float
 def _hint_entry(asin: str, title: str, author: str, local_hours: float) -> dict | None:
     """The scored entry for an ASIN found in the torrent name, or None.
 
-    A candidate, never a pin: it enters the pool at score 1.0 only when the catalog knows the ASIN
-    and its title clears TITLE_FLOOR against the wanted one; grade() still decides. Only the total
-    is boosted: title_sim stays the real similarity, so a barely-matching hint is graded on it.
+    Evidence, never an override: it enters the pool only when the catalog knows the ASIN and its
+    title clears TITLE_FLOOR against the wanted one, and it is scored and graded exactly like any
+    other candidate - no boost, so a hint naming another work loses to the exact title. A record
+    with no language is unknown (penalised, capped at MEDIUM), never assumed English. The catalog
+    search's own entry for the same ASIN replaces this one (see _score_reading).
     """
     try:
         book = catalog.book(asin)
@@ -777,12 +785,21 @@ def _hint_entry(asin: str, title: str, author: str, local_hours: float) -> dict 
         return None
     if not isinstance(book, dict) or not book.get("asin"):
         return None
-    product = _product_from_book(book)
+    product = _product_from_book(book, default_language="")
     if not title or floor_sim(title, product) < TITLE_FLOOR:
         return None
     entry = _score_product(product, title, author, local_hours)
-    entry.update(score=1.0)
+    entry["hinted"] = True
     return entry
+
+
+def _hint_conflict(asin_hint: str, scored: dict[str, dict], pick: Product) -> str:
+    """The note when the ASIN in the name entered the pool as another work than ``pick``, else ""."""
+    entry = scored.get(asin_hint) if asin_hint else None
+    if not entry or entry["product"].asin == pick.asin or _same_work(entry["product"], pick):
+        return ""
+    return (f"the ASIN in the name ({asin_hint}, '{entry['product'].title}') is another book than "
+            "the catalog hit")
 
 
 def _score_reading(title: str, author: str, local_hours: float, asin_hint: str = "") -> dict[str, dict]:
@@ -799,7 +816,8 @@ def _score_reading(title: str, author: str, local_hours: float, asin_hint: str =
         if "title" in query:
             titled_found += len(found)
         for product in found:
-            if product.asin not in scored:
+            # the search's own entry replaces the hint's: the hint only vouches it is in the pool
+            if product.asin not in scored or scored[product.asin].get("hinted"):
                 scored[product.asin] = _score_product(product, title, author, local_hours)
         # the early stop waits for every variant reading: a 0.95 on the raw title must not
         # keep the cleaner readings from being asked
@@ -807,7 +825,7 @@ def _score_reading(title: str, author: str, local_hours: float, asin_hint: str =
             break
     if title and cleaned and titled_found == 0 and len(queries) < MAX_QUERIES:
         for product in catalog.search(limit=10, keywords=cleaned):
-            if product.asin not in scored:
+            if product.asin not in scored or scored[product.asin].get("hinted"):
                 scored[product.asin] = _score_product(product, title, author, local_hours)
     return scored
 
@@ -911,10 +929,11 @@ def grade(match: Match) -> str:
     """HIGH needs title *and* author corroborated plus a clear win over other works."""
     if not match.product:
         return "NONE"
-    if match.knockoff or match.edition_conflict or match.veto:
+    if match.knockoff or match.edition_conflict or match.veto or match.hint_conflict:
         # the best hit is a summary / review / zero-runtime stub, another edition than the folder's
-        # (box set, abridgment), or it contradicts what the folder states (another volume): a person
-        # decides. LOW, not MEDIUM, so no auto-convert tier (not even "medium") converts it unseen
+        # (box set, abridgment), or it contradicts what the folder states (another volume, or the
+        # ASIN in its name names another book): a person decides. LOW, not MEDIUM, so no
+        # auto-convert tier (not even "medium") converts it unseen
         return "LOW"
     # a foreign-language hit must never auto-convert at HIGH confidence: it still has to clear
     # the normal title / author / margin gates, and is then capped at MEDIUM. The scorer's rule,

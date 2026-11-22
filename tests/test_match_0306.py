@@ -231,5 +231,73 @@ class TestMatching04UnknownIsNotFalse(unittest.TestCase):
         self.assertEqual((m.asin, m.corroborated), (NEAR.asin, True))
 
 
+def hinted(asin):
+    return lambda unit: setattr(unit, "asin_hint", asin)
+
+
+class TestMatching05HintIsEvidence(unittest.TestCase):
+    """An ASIN in the name puts its book in the pool and is then scored and graded like any other
+    candidate: never 1.0, never ahead of better title/author evidence, language never assumed."""
+
+    def test_a_hint_never_scores_one(self):
+        # only the hint names the near book (the search finds the exact one)
+        m = run(f"{AUTHOR} - {KINGDOM}", [EXACT], audnex={NEAR.asin: record(NEAR.asin, NEAR.title)},
+                unit_hook=hinted(NEAR.asin))
+        near = next(a for a in m.alternates if a["asin"] == NEAR.asin)
+        self.assertLess(near["score"], 1.0)
+        self.assertEqual(near["score"], round(0.6 * near["title_sim"] + 0.4 * near["author_sim"], 3))
+
+    def test_a_hint_naming_another_work_loses_to_the_exact_title(self):
+        # the audit's shape without a series position: the hint's own record is the only Audnex
+        # answer, so before the fix it supplied the pick AND its corroboration (HIGH, margin 1.0)
+        m = run(f"{AUTHOR} - {KINGDOM}", [NEAR, EXACT], audnex={NEAR.asin: record(NEAR.asin, NEAR.title)},
+                unit_hook=hinted(NEAR.asin))
+        self.assertEqual(m.asin, EXACT.asin, vars(m))
+        self.assertEqual(m.confidence, "LOW")
+        self.assertIn(NEAR.asin, m.hint_conflict)
+
+    def test_the_audit_case_book_one_hint_against_an_exact_book_two(self):
+        b1, b2 = product("B0SYNK0001", f"{KINGDOM} Book 1"), product("B0SYNK0002", f"{KINGDOM} Book 2")
+        m = run(f"{AUTHOR} - {KINGDOM} Book 2", [b1, b2], audnex={b1.asin: record(b1.asin, b1.title)},
+                unit_hook=hinted(b1.asin))
+        self.assertEqual(m.asin, b2.asin)
+        self.assertEqual(m.confidence, "LOW")
+        self.assertIn(b1.asin, m.hint_conflict)
+        self.assertEqual(next(a for a in m.alternates if a["asin"] == b1.asin)["score"] < 1.0, True)
+
+    def test_two_signals_naming_different_books_never_grade_high(self):
+        # MATCH-CASE-2b INV2: the same inputs arise when the folder is mistitled and the hint is
+        # right, so a person decides - even with both records present and the runtimes agreeing
+        other = product("B0OTHER001", f"{KINGDOM} Rising")
+        m = run(f"{AUTHOR} - {KINGDOM}", [other, EXACT],
+                audnex={EXACT.asin: record(EXACT.asin, EXACT.title), other.asin: record(other.asin, other.title)},
+                unit_hook=hinted(other.asin))
+        self.assertEqual(m.asin, EXACT.asin)
+        self.assertEqual(m.confidence, "LOW")
+        self.assertTrue(m.hint_conflict)
+
+    def test_a_hint_with_no_language_is_not_assumed_english(self):
+        r = record(EXACT.asin, KINGDOM, language=None)
+        hint_only = run(f"{AUTHOR} - {KINGDOM}", [], audnex={EXACT.asin: r}, unit_hook=hinted(EXACT.asin))
+        plain = run(f"{AUTHOR} - {KINGDOM}", [product(EXACT.asin, KINGDOM, language="")])
+        self.assertEqual((hint_only.asin, hint_only.language, hint_only.language_penalized), (EXACT.asin, "", True))
+        self.assertEqual(hint_only.confidence, "MEDIUM")
+        self.assertEqual((hint_only.score, hint_only.confidence), (plain.score, plain.confidence))
+
+    def test_the_catalog_entry_replaces_the_hint_entry_for_the_same_asin(self):
+        r = record(EXACT.asin, KINGDOM, language=None)
+        m = run(f"{AUTHOR} - {KINGDOM}", [EXACT], audnex={EXACT.asin: r}, unit_hook=hinted(EXACT.asin))
+        self.assertEqual((m.asin, m.language, m.confidence, m.hint_conflict), (EXACT.asin, "english", "HIGH", ""))
+
+    def test_a_hint_that_agrees_keeps_high(self):
+        m = run(f"{AUTHOR} - {KINGDOM}", [], audnex={EXACT.asin: record(EXACT.asin, KINGDOM)},
+                unit_hook=hinted(EXACT.asin))
+        self.assertEqual((m.asin, m.score, m.confidence, m.hint_conflict), (EXACT.asin, 1.0, "HIGH", ""))
+
+    def test_a_pin_keeps_the_english_default(self):
+        self.assertEqual(matching._product_from_book(record(EXACT.asin, KINGDOM, language=None)).language,
+                         "english")
+
+
 if __name__ == "__main__":
     unittest.main()

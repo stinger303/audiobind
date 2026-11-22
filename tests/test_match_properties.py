@@ -572,12 +572,12 @@ class TestMatcherProperties(unittest.TestCase):
         self.assertIn(f"&minus;{web.PENALTY_PCT}% penalty", html)
         self.assertIn("graded MEDIUM", html)
 
-    def test_f1_pins_and_hints_keep_the_audnex_english_default(self):
-        # _product_from_book reads a blank Audnex language as english. Left alone by F1's brief:
-        # a pin is never graded (the owner's lock is HIGH by design), so it cannot contradict the
-        # rule. The ASIN-hint candidate shares the default and IS graded, so a hint whose Audnex
-        # record has no language still reaches HIGH - an open question for the owner, not fixed
-        # here. Frozen catalogue exposure: 0 of 67 Audnex records lack a language.
+    def test_f1_pins_keep_the_audnex_english_default_and_hints_do_not(self):
+        # _product_from_book reads a blank Audnex language as english for a pin: a pin is never
+        # graded (the owner's lock is HIGH by design), so it cannot contradict the rule. The
+        # ASIN-hint candidate IS graded, so since MATCHING-05 a hint whose Audnex record has no
+        # language is unknown - penalised and capped at MEDIUM like a blank Audible language.
+        # Frozen catalogue exposure: 0 of 67 Audnex records lack a language.
         record = {"asin": "B0HINTDUNE", "title": "Dune", "authors": [{"name": "Frank Herbert"}],
                   "runtimeLengthMin": 600}
         self.assertEqual(matching._product_from_book(record).language, "english")
@@ -586,8 +586,8 @@ class TestMatcherProperties(unittest.TestCase):
             pinned = match_unit(scanned_unit("Frank Herbert - Dune"), asin_override="B0HINTDUNE", local_hours=10.0)
             hinted = match_unit(scanned_unit("Frank Herbert - Dune [B0HINTDUNE]", ingest=True), local_hours=10.0)
         self.assertEqual((pinned.asin, pinned.confidence, pinned.language_penalized), ("B0HINTDUNE", "HIGH", False))
-        self.assertEqual((hinted.asin, hinted.language), ("B0HINTDUNE", "english"))
-        self.assertEqual(hinted.confidence, "HIGH")
+        self.assertEqual((hinted.asin, hinted.language, hinted.language_penalized), ("B0HINTDUNE", "", True))
+        self.assertEqual(hinted.confidence, "MEDIUM")
 
 
     def test_f2_a_blank_title_with_a_subtitle_scores_zero_and_the_real_book_beside_it_wins(self):

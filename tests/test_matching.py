@@ -345,11 +345,12 @@ class TestAsinHint(unittest.TestCase):
         self.assertEqual(m.confidence, grade(m))
         self.assertEqual(m.confidence, "MEDIUM")  # title-only: never HIGH from a name alone
 
-    # A1: the hint boosts the total score only; grade() must see the hint's real title similarity
+    # A1: grade() must see the hint's real title similarity. MATCHING-05: and the total is the real
+    # score too - a hint is evidence, never boosted to 1.0
     def test_a1_a_barely_matching_hint_keeps_its_real_title_sim(self):
         m = self.run_hint("In Deep")  # clears TITLE_FLOOR (0.78 >= 0.60) but is not "In Too Deep"
         self.assertEqual(m.asin, "B0CLGF5CFH")
-        self.assertEqual(m.score, 1.0)  # still boosted, so it stays in the pool and ranks first
+        self.assertEqual(m.score, m.title_sim)  # title-only: the score is the title similarity
         self.assertLess(m.title_sim, 0.85)
         self.assertEqual(m.confidence, "LOW")  # title-only at 0.78: a person decides
 

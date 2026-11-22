@@ -154,6 +154,8 @@ def audit_unit(unit: BookUnit, asin_override: str = "", pin_failures: int = 0) -
         audit.notes.append(f"{audit.match.edition_conflict} - graded LOW, not converted automatically")
     if audit.match.product and audit.match.veto:
         audit.notes.append(f"{audit.match.veto} - graded LOW, not converted automatically")
+    if audit.match.product and audit.match.hint_conflict:
+        audit.notes.append(f"{audit.match.hint_conflict} - graded LOW, not converted automatically")
     if audit.confidence == "NONE" and audit.match.rejected:
         audit.notes.append(audit.match.rejected)
 
