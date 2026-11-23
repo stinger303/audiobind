@@ -6272,9 +6272,7 @@ def render_settings(state, tab: str = "") -> str:
     controls_parts.append(
         '<div class="ab-setting" data-profile>'
         '<span class="ab-setting-label">Quality profile</span>'
-        '<div class="ab-setting-hint">Named presets for the two conversion settings '
-        "below. Picking one fills them in; edit either field afterwards and the "
-        "profile switches to Custom so you can see it is no longer a preset.</div>"
+        '<div class="ab-setting-hint">Fills in the automatic conversion and output quality settings.</div>'
         '<select class="ab-in" id="ab-profile" onchange="abApplyProfile(this.value)">'
         '<option value="balanced">Balanced - HIGH tier, 128k floor</option>'
         '<option value="high">High - HIGH tier, 256k floor</option>'
@@ -6308,13 +6306,7 @@ def render_settings(state, tab: str = "") -> str:
             setting_choices("auto_convert"),
             custom("auto_convert"),
             setting_env("auto_convert"),
-            hint="What converts without you touching a row. "
-            "HIGH: title and author match Audible strongly with a clear margin - safe to "
-            "convert automatically. MEDIUM: a good match with weaker evidence (e.g. the "
-            "author came from the catalog) - converts when this tier is MEDIUM. LOW: weak "
-            "match - always held for review; fix it with Choose the exact Audible edition in the book's ⋮ menu. "
-            "COLLECTION/NONE: the folder looks like several books mixed together, or nothing "
-            "in the catalog matched - these are never auto-converted.",
+            hint="Choose how sure Audiobind must be before it converts a book on its own.",
         )
     )
     controls_parts.append(
@@ -6325,7 +6317,7 @@ def render_settings(state, tab: str = "") -> str:
             setting_choices("audio_bitrate"),
             custom("audio_bitrate"),
             setting_env("audio_bitrate"),
-            hint="A floor, not a target: a richer source keeps its own bitrate (capped at 320k). Applies to future conversions only.",
+            hint="Sets the minimum bitrate. Higher source bitrates are kept up to 320k.",
         )
     )
     lo, hi = setting_bounds("runtime_delta")
@@ -6339,7 +6331,7 @@ def render_settings(state, tab: str = "") -> str:
             "%",
             custom("runtime_delta"),
             setting_env("runtime_delta"),
-            hint="How far the file runtime may differ from the Audible runtime before a book is HELD for review. Applies to future scans.",
+            hint="Holds books for review when their length differs from Audible by more than this.",
         )
     )
     lo, hi = setting_bounds("scan_interval")
@@ -6353,6 +6345,7 @@ def render_settings(state, tab: str = "") -> str:
             "min",
             custom("scan_interval"),
             setting_env("scan_interval"),
+            hint="Sets how often Audiobind scans the library.",
         )
     )
     lo, hi = setting_bounds("nice")
@@ -6366,7 +6359,7 @@ def render_settings(state, tab: str = "") -> str:
             "",
             custom("nice"),
             setting_env("nice"),
-            hint="higher = kinder to the system; ffmpeg runs at this priority",
+            hint="Higher values give other apps more time to use the CPU.",
         )
     )
     # Advanced: the catalog region and what only the container can set
@@ -6412,6 +6405,11 @@ def render_settings(state, tab: str = "") -> str:
         library_panel=panel(
             "library",
             "\n".join(controls_parts)
+            + '<details class="ab-setting"><summary>Match tiers and player compatibility</summary>'
+            '<p>High means the title and author strongly match an Audible edition. Medium means the match '
+            'has weaker evidence. Low matches, mixed collections and books without a match need review.</p>'
+            '<p>Audiobookshelf and Plex can read the chapter marks in MP3s. Apple Music and iTunes '
+            'need M4B for chapter marks.</p></details>'
             + '<div class="ab-setting"><p class="ab-setting-hint">Reset uses the values from the container '
             'environment for conversion, scanning, catalog region and Watcher schedules, limits and '
             'guard.</p>'
@@ -6506,9 +6504,7 @@ def _setting_select(
 OUTPUT_FORMAT_HINT = (
     "Choose which files Audiobind writes for each book. M4B: one .m4b with chapters, "
     "tags and cover (the default). MP3: one .mp3 with chapters, tags and cover embedded. "
-    "M4B + MP3 writes one M4B and one MP3 into the same folder. MP3 chapter marks are read by "
-    "ffprobe-based players (Audiobookshelf, Plex) but not by Apple's Music/iTunes. Applies to "
-    "future conversions only."
+    "M4B + MP3 writes one M4B and one MP3 into the same folder."
 )
 
 #: the page label of each numeric setting, for save errors ("Scan interval: use a whole number ...")

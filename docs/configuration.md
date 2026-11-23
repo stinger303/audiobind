@@ -99,6 +99,9 @@ and that row shows the error. A client that cannot be reached leaves the cycle w
 available", never with a crash. The Deluge, Transmission and rTorrent adapters are tested against
 simulated clients only, not real ones. Run **Save and test** before you rely on one.
 
+The Library settings show a short explanation next to each control. Open **Match tiers and
+player compatibility** below the controls for more about automatic matching and chapter support.
+
 ## Output format
 
 Every book is one file. By default that is an `.m4b`. Set `OUTPUT_FORMAT` (or Settings > Output
