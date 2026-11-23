@@ -74,7 +74,7 @@ What it can and cannot say:
 Answers are cached in `STATE_DIR/hardcover-cache.json` (found: 14 days, not found: 2 days); a failed
 lookup (bad token, rate limited, unreachable) is never cached, shows as "Hardcover could not be
 asked" in the panel and is retried on the next scan. Requests are spaced 1.1 s apart (Hardcover asks
-API clients to stay under 60 a minute). **Test connection** saves what you typed, then makes one
+API clients to stay under 60 a minute). **Save and test** saves what you typed, then makes one
 request with the token; it works even while the toggle is off.
 
 ## Download clients
@@ -82,7 +82,7 @@ request with the token; it works even while the toggle is off.
 The wishlist watcher hands each torrent it fetches to one download client. qBittorrent is the
 default and nothing changes for it. To use another, set `DOWNLOAD_CLIENT` and that client's
 settings in the container, or choose it under **Settings > Watcher > Download client**. That
-section shows the chosen client's fields, its label, and a **Test connection** button, which saves
+section shows the chosen client's fields, its label, and a **Save and test** button, which saves
 what you typed, logs in, asks for the version and logs out. A value saved on the page wins over the
 container's. The passwords are never shown again once saved.
 
@@ -97,7 +97,7 @@ Every client behaves the same way for the watcher. The login comes before any tr
 a client that is down never costs a freeleech credit. A duplicate or invalid torrent is a refusal,
 and that row shows the error. A client that cannot be reached leaves the cycle with "... is not
 available", never with a crash. The Deluge, Transmission and rTorrent adapters are tested against
-simulated clients only, not real ones. Run **Test connection** before you rely on one.
+simulated clients only, not real ones. Run **Save and test** before you rely on one.
 
 ## Output format
 

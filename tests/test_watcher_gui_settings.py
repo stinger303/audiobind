@@ -477,8 +477,8 @@ class TestPageShape(WatcherSettingsCase):
         self.assertEqual(block.count('class="ab-save"'), 0)
         form = page.split('<form id="ab-settings-form"')[1].split("</form>")[0]
         self.assertEqual(form.count('<button class="ab-save" type="submit">Save settings</button>'), 1)
-        self.assertIn(">Test qBittorrent</button>", block)
-        self.assertIn(">Test tracker</button>", block)
+        self.assertIn(">Save and test qBittorrent</button>", block)
+        self.assertIn(">Save and test tracker</button>", block)
 
     def test_unconfigured_still_offers_the_connection_fields(self):
         with mock.patch.object(CONFIG, "tracker_session", ""):
@@ -486,7 +486,7 @@ class TestPageShape(WatcherSettingsCase):
         self.assertIn("Acquisition source (optional)", page)
         self.assertIn('data-setting="tracker_url"', page)
         self.assertIn('data-setting="qbit_pass"', page)
-        self.assertIn("Test tracker", page)
+        self.assertIn("Save and test tracker", page)
         self.assertIn("no restart needed", page)
         self.assertNotIn('id="ab-watch-run"', page)
         self.assertNotIn('data-setting="watch_interval"', page)

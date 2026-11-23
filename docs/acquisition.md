@@ -41,8 +41,8 @@ restart.
 
 1. **How books arrive**: only your library, your own downloader (the ingest folder), or a
    private tracker through a download client. Only the last one goes on to steps 2-4.
-2. **Download client**: which client, its address and sign-in, and the category. **Test** signs
-   in and looks at the categories; it adds nothing.
+2. **Download client**: which client, its address and sign-in, and the category. **Save and test** saves
+   your changes even if the test fails. It checks the sign-in and category without adding torrents.
 3. **The address the tracker sees**: a tracker session is bound to the address it was created
    from. The step shows the address Audiobind's tracker requests leave from (through
    `TRACKER_PROXY` when set) and when it was last checked. When "Only reach the tracker from one
@@ -53,8 +53,8 @@ restart.
 4. **Your tracker**: the site's address, the session cookie (a value you create on the site's own
    preferences page and paste in - Audiobind never asks for your tracker password), the cookie's
    name, then the search settings (path, request, method, encoding, category, download path).
-   **Test** saves what you changed, then sends exactly **one** search with your configured
-   request, through the watcher's own client (so its spacing and backoff apply, and a backoff in
+   **Save and test** saves your changes even if the test fails. It sends exactly **one** search
+   with your configured request through the watcher's own client (so its spacing and backoff apply, and a backoff in
    force means nothing is sent) and behind the egress guard. It answers in plain words, such as
    "12 results, first: ..."; never the cookie, the address or the site's raw answer. The download
    parameter, freeleech parameter, User-Agent and VIP keep their values; the Watcher tab has them.
@@ -116,11 +116,12 @@ category** becomes a dropdown (it saves the bare value, and a saved value that i
 as its own option), and without it the field is plain text. `"settings"` may be left empty (or out) when the
 file only lists categories: you get the dropdown and no fill button, and nothing is saved from it.
 
-**Checking your setup** (Settings > Watcher). *Check IP* shows the address the tracker would see from
-here, in a box you can copy, and what the egress guard would decide; it works with the guard off or armed,
-and it never contacts the tracker. *Test tracker* runs one real search for the title in the box (it starts
+**Checking your setup** (Settings > Watcher). Connection tests save your changes even if the test fails.
+**Check IP** shows the address the tracker would see from here and what the egress guard would
+decide. You can copy the address. The check works with the guard off or armed,
+and it never contacts the tracker. **Save and test tracker** runs one real search for the title in the box (it starts
 as a common one) and reports `Found N results; first: <title> — <author>`, or says the site answered but
-found nothing, which points at the search body and category. *Test qBittorrent* also lists the categories
+found nothing, which points at the search body and category. **Save and test qBittorrent** also lists the categories
 qBittorrent has, shows where your category saves, and checks that against the folder Audiobind watches;
 it only reads, and it says what it could not tell rather than guessing.
 

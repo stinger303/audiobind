@@ -61,8 +61,8 @@ class TestDefaultIsUnchanged(WatcherSettingsCase):
         for kind in ("deluge", "transmission", "rtorrent"):
             self.assertIn(f'<div class="ab-dc" data-client="{kind}" hidden>', page)
         self.assertIn('<div class="ab-dc" data-client="qbittorrent">', page)
-        self.assertIn(">Test connection</button>", page)
-        self.assertIn(">Test qBittorrent</button>", page)
+        self.assertIn(">Save and test</button>", page)
+        self.assertIn(">Save and test qBittorrent</button>", page)
 
 
 class TestChoosingAnotherClient(WatcherSettingsCase):
@@ -85,7 +85,7 @@ class TestChoosingAnotherClient(WatcherSettingsCase):
                 self.assertIn(f'<option value="{kind}" selected>', page)
                 self.assertIn(f'<div class="ab-dc" data-client="{kind}">', page)
                 self.assertIn('<div class="ab-dc" data-client="qbittorrent" hidden>', page)
-                self.assertIn(f">Test {config.DOWNLOAD_CLIENTS[kind]}</button>", page)
+                self.assertIn(f">Save and test {config.DOWNLOAD_CLIENTS[kind]}</button>", page)
 
     def test_secrets_never_reach_the_page(self):
         self.save({"settings": {"download_client": "deluge", "deluge_pass": "UNIQUE-DELUGE-PW",

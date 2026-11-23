@@ -579,7 +579,7 @@ input[type=number].ab-in{max-width:100px}
 .ab-acct-title{font-size:13px;font-weight:500;color:var(--ab-text)}
 .ab-acct-lbl{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--ab-text3)}
 .ab-acct-lbl .ab-in{max-width:300px}
-.ab-acct-row{display:flex;align-items:center;gap:10px;margin-top:2px}
+.ab-acct-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:2px}
 .ab-abs-panel{margin-top:12px}
 .ab-abs-line{font-size:12px;color:var(--ab-text2);padding:4px 0;border-top:1px solid var(--ab-border);overflow-wrap:anywhere}
 .ab-abs-line code{font-size:11.5px}
@@ -4704,9 +4704,10 @@ def _download_client_fields() -> str:
                "The label new torrents get (rTorrent: custom1, which ruTorrent shows as the label). Have the "
                "client move or save that label's downloads into Audiobind's ingest folder. Set in the container "
                "as QBIT_CATEGORY, whichever client is chosen.")))
+        + '<p class="ab-setting-hint">Your changes are saved even if the test fails.</p>'
         + '<div class="ab-acct-row">'
         '<button class="btn" type="button" id="ab-dc-test" onclick="abWatchTest(\'qbit\', \'ab-dc-test-fb\')">'
-        "Test connection</button>"
+        "Save and test</button>"
         '<span class="ab-fb" id="ab-dc-test-fb" role="status"></span></div>'
         '<div class="ab-test-detail" id="ab-dc-test-fb-detail" hidden></div>'
     )
@@ -4735,9 +4736,9 @@ def _watch_test_and_save() -> str:
     """Settings > Watcher > Test the connection (the page's one Save settings sits under the form)."""
     return (
         '<div class="ab-acct-title">Test the connection</div>'
-        '<div class="ab-acct-who">Saves what you typed, then makes one request with it. Nothing about the test '
-        "is kept. Test tracker runs one real search for the title in the box; the qBittorrent test only reads "
-        "(its version, its categories and where the category saves) and adds nothing.</div>"
+        '<div class="ab-acct-who">Your changes are saved even if the test fails. The tracker test searches '
+        "once for the title below. The download client test only reads connection details "
+        "and adds nothing.</div>"
         + _watch_wrap_plain(
             "Search the tracker for",
             f'<input type="text" class="ab-in" id="ab-watch-test-query" maxlength="{watcher_mod.MAX_TEST_QUERY}" '
@@ -4745,8 +4746,9 @@ def _watch_test_and_save() -> str:
             'aria-label="Title to search the tracker for">')
         + '<div class="ab-acct-row">'
         '<button class="btn" type="button" id="ab-watch-test-qbit" onclick="abWatchTest(\'qbit\')">'
-        f"Test {_html(watcher_mod.client_label())}</button>"
-        '<button class="btn" type="button" id="ab-watch-test-tracker" onclick="abWatchTest(\'tracker\')">Test tracker</button>'
+        f"Save and test {_html(watcher_mod.client_label())}</button>"
+        '<button class="btn" type="button" id="ab-watch-test-tracker" '
+        'onclick="abWatchTest(\'tracker\')">Save and test tracker</button>'
         '<span class="ab-fb" id="ab-watch-test-fb" role="status"></span></div>'
         '<div class="ab-test-detail" id="ab-watch-test-fb-detail" hidden></div>'
     )
@@ -5099,9 +5101,10 @@ def _hardcover_section() -> str:
         "never the reason a book converts or is held.</div>"
         + _watch_select("hardcover_evidence", "Hardcover evidence", HARDCOVER_EVIDENCE_HINT, titlecase=True)
         + _watch_secret("hardcover_token", "Hardcover API token")
+        + '<p class="ab-setting-hint">Your changes are saved even if the test fails.</p>'
         + '<div class="ab-acct-row">'
         '<button class="btn" type="button" id="ab-hc-test" '
-        "onclick=\"abWatchTest('hardcover', 'ab-hc-test-fb', '/api/hardcover/test')\">Test connection</button>"
+        "onclick=\"abWatchTest('hardcover', 'ab-hc-test-fb', '/api/hardcover/test')\">Save and test</button>"
         '<span class="ab-fb" id="ab-hc-test-fb" role="status"></span></div>'
     )
 
@@ -5718,15 +5721,17 @@ def _wizard_step2(state, host: str) -> str:
                         'autocomplete="off" spellcheck="false" autocapitalize="none" '
                         'aria-describedby="ab-wiz-category-hint">',
                         "The label Audiobind puts on the torrents it adds, so its books stay apart from the rest. "
-                        "Test shows whether the client has it and where it saves it.")
+                        "The test shows whether the client has it and where it saves it.")
     )
     return (
         '<p class="ab-acct-who">Audiobind logs in to your download client to hand it torrents. Fill in the boxes '
-        "and press Test: it signs in, looks at the categories and adds nothing.</p>"
+        "and press Save and test. Your changes are saved even if the test fails. The test checks your "
+        "connection and category without adding torrents.</p>"
         f'<form class="ab-wiz-form" id="ab-wiz-client-form" data-clients="{_attr(json.dumps(info))}" '
         'onsubmit="abWizardClientTest(); return false;" novalidate>'
         + fields
-        + '<div class="ab-acct-row"><button class="btn ab-save" type="submit" id="ab-wiz-test">Test</button>'
+        + '<div class="ab-acct-row">'
+        '<button class="btn ab-save" type="submit" id="ab-wiz-test">Save and test</button>'
         '<span class="ab-fb" id="ab-wiz-test-fb" role="status"></span></div>'
         '<div class="ab-test-detail" id="ab-wiz-test-fb-detail" tabindex="-1" hidden></div>'
         '<div class="ab-acct-row">'
@@ -5916,11 +5921,12 @@ def _wizard_step4(state) -> str:
         '<input type="text" class="ab-in" id="ab-wiz-tquery" value="" '
         f'placeholder="{_attr(watcher_mod.DEFAULT_TEST_QUERY)}" autocomplete="off" '
         'aria-describedby="ab-wiz-tquery-hint">',
-        f"Test searches your tracker once for this title. Empty = {_html(watcher_mod.DEFAULT_TEST_QUERY)}.")
+        "The test searches your tracker once for this title. Leave it empty to search for "
+        f"{_html(watcher_mod.DEFAULT_TEST_QUERY)}.")
     return (
         '<p class="ab-acct-who">Audiobind searches your tracker for the books on your wishlist. Fill in the '
-        "boxes from top to bottom and press Test: it saves them, then sends one search and tells you what "
-        "came back.</p>"
+        "boxes from top to bottom and press Save and test. Your changes are saved even if the test fails. "
+        "The test sends one search and tells you what came back.</p>"
         '<form class="ab-wiz-form" id="ab-wiz-tracker-form" onsubmit="abWizardTrackerTest(); return false;" '
         "novalidate>"
         + _wizard_tracker_text("tracker_url", "turl", "https://tracker.example")
@@ -5940,7 +5946,8 @@ def _wizard_step4(state) -> str:
         "these; the two choices already hold the usual answers.</p>"
         + _wizard_search_fields() + "</fieldset>"
         + query
-        + '<div class="ab-acct-row"><button class="btn ab-save" type="submit" id="ab-wiz-test">Test</button>'
+        + '<div class="ab-acct-row">'
+        '<button class="btn ab-save" type="submit" id="ab-wiz-test">Save and test</button>'
         '<span class="ab-fb" id="ab-wiz-test-fb" role="status"></span></div>'
         '<p class="ab-setting-hint">The rest of the tracker settings (download parameter, freeleech, '
         "User-Agent, VIP) keep their usual values; Settings &rarr; Watcher has them.</p>"

@@ -66,3 +66,15 @@ class AuditUsabilityTests(unittest.TestCase):
         self.assertIn("Tracker downloads keep running as configured.", library)
         self.assertIn(">Preview tracker downloads ", watcher)
         self.assertIn("Library conversions keep running as configured.", watcher)
+
+    def test_connection_tests_name_the_save_and_explain_failed_tests(self):
+        for markup, button_ids in (
+            (web._hardcover_section(), ("ab-hc-test",)),
+            (web._watch_connection_fields(), ("ab-dc-test",)),
+            (web._watch_test_and_save(), ("ab-watch-test-qbit", "ab-watch-test-tracker")),
+            (web._wizard_step2(None, "localhost"), ("ab-wiz-test",)),
+            (web._wizard_step4(None), ("ab-wiz-test",)),
+        ):
+            for button_id in button_ids:
+                self.assertRegex(markup, rf'id="{button_id}"[^>]*>Save and test(?: [^<]+)?</button>')
+            self.assertIn("saved even if the test fails", markup)
