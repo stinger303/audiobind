@@ -42,7 +42,9 @@ Any change that can move a match must pass the match-test programme: see
   An incomplete set is rolled back using the original files and the attempt is retired after restore.
   A missing backup is detected before rollback changes any files. If recovery cannot finish,
   the intent is quarantined with a reason and the scan continues. Successful replacements keep
-  their backups beside the book.
+  their backups beside the book. For cross-filesystem placement the journal records the
+  destination-side copy's identity before rename. Recovery moves copies from a partial
+  publication aside and logs where they went. A scratch cleanup failure is logged separately.
 
 * **Media writers share claims in the state directory.** Each book has a kernel file lock,
   and encodes also claim the destination folder so two keys that resolve to the same folder

@@ -54,10 +54,10 @@ class PublishCase(PipelineCase):
         real_meta = encode.write_abs_metadata
         real_val = pipeline.effective_val
 
-        def place(source, dest, move):
+        def place(source, dest, move, **kwargs):
             if fail_place is not None and fail_place(dest):
                 raise OSError(28, "No space left on device")
-            return real_place(source, dest, move)
+            return real_place(source, dest, move, **kwargs)
 
         def meta(path, *args, **kw):
             if fail_sidecar:

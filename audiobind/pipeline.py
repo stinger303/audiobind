@@ -638,7 +638,9 @@ def _sync_directory(path: Path) -> None:
 def _settle_publication(state: State, attempt: int, plan: dict, outcome: UnitState | None) -> bool:
     before, expected, backups = plan["before"], plan["expected"], plan["backups"]
     stage = Path(plan["stage"])
-    _refuse_uncontained([stage, *(Path(p) for p in before), *(Path(p) for p in backups.values())])
+    copies = plan.get("copies", {})
+    _refuse_uncontained([stage, *(Path(p) for p in before), *(Path(p) for p in backups.values()),
+                         *(Path(p) for p in copies.values())])
     if stage.is_symlink() or (stage.exists() and not stage.is_dir()):
         raise PublicationRecoveryError(f"Cannot recover {stage} because the staging folder was replaced")
     complete = outcome is not None and all(
@@ -657,10 +659,19 @@ def _settle_publication(state: State, attempt: int, plan: dict, outcome: UnitSta
             elif before[name] is not None and current != before[name]:
                 raise PublicationRecoveryError(f"Cannot restore {path}: its publication backup is missing")
         for path, backup, current in restore:
-            if backup is None:
-                path.unlink()
-                continue
             name = str(path)
+            if name in copies and current == expected[name]:
+                aside = _backup_path(path, f"interrupted-{attempt}")
+                os.rename(path, aside)
+                _sync_directory(path.parent)
+                logging.getLogger("audiobind").warning(
+                    "Moved %s to %s because its cross-filesystem publication was incomplete", path, aside
+                )
+                current = None
+            if backup is None:
+                if current is not None:
+                    path.unlink()
+                continue
             if current is not None and current not in (before[name], expected[name]):
                 # Preserve an external replacement before restoring the previous book.
                 os.rename(path, _backup_path(path, f"conflict-{attempt}"))
@@ -672,8 +683,17 @@ def _settle_publication(state: State, attempt: int, plan: dict, outcome: UnitSta
                                           note="Previous output changed during interrupted publication")
         else:
             outcome = None
+    for name, temp in copies.items():
+        path = Path(temp)
+        if _publication_identity(path) == expected[name]:
+            path.unlink()
     if stage.exists():
-        shutil.rmtree(stage)
+        try:
+            shutil.rmtree(stage)
+        except OSError as exc:
+            if not complete:
+                raise
+            logging.getLogger("audiobind").warning("Could not remove publication scratch %s: %s", stage, exc)
     if stage.parent.is_dir():
         _sync_directory(stage.parent)
     if not complete:
@@ -800,12 +820,20 @@ def _publish_recorded(state: State, audit: Audit, formats: list[str], results: d
                 return None
             os.rename(name, backup)
         _sync_directory(folder)
+        def record_copy(temp: Path, path: Path) -> None:
+            # Persist the copy's identity before its rename. Recovery can recognize the
+            # destination even if this process dies immediately after the replace.
+            expected[str(path)] = _publication_identity(temp)
+            plan.setdefault("copies", {})[str(path)] = str(temp)
+            _sync_directory(folder)
+            state.seal_publication(attempt, plan, outcome)
+
         for path in writes:
             if os.path.lexists(path):
                 audit.output_collision = f"Output collision: {path.name} appeared during publication."
                 _recover_publications(state)
                 return None
-            encode._place(stage / path.name, path, move=True)
+            encode._place(stage / path.name, path, move=True, before_copy_replace=record_copy)
         _sync_directory(stage)
         _sync_directory(folder)
     except PublicationRecoveryError:

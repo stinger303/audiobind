@@ -287,10 +287,10 @@ class TestAllFormatsOrNone(PipelineCase):
 
         real_place = encode._place
 
-        def place(source, dest, move):
+        def place(source, dest, move, **kwargs):
             if fail_ext and dest.suffix == fail_ext:
                 raise OSError(28, "No space left on device")
-            return real_place(source, dest, move)
+            return real_place(source, dest, move, **kwargs)
 
         with (
             mock.patch.object(catalog, "book", return_value={"title": "Project Hail Mary",

@@ -6,6 +6,7 @@ import contextlib
 import errno
 import fcntl
 import json
+import logging
 import os
 import re
 import shutil
@@ -1062,7 +1063,7 @@ def _encode(unit, match, book, work_dir, out_path, log, copy_audio, plan, fmt, p
     return result
 
 
-def _place(source: Path, dest: Path, move: bool) -> None:
+def _place(source: Path, dest: Path, move: bool, *, before_copy_replace=None, placed=None) -> None:
     """Put ``source`` at ``dest`` so that ``dest`` is never a partial file.
 
     A move on the same filesystem is a single rename. Otherwise the bytes go to a
@@ -1073,6 +1074,8 @@ def _place(source: Path, dest: Path, move: bool) -> None:
     if move:
         try:
             os.replace(source, dest)
+            if placed is not None:
+                placed.append(dest)
             return
         except OSError as exc:
             if exc.errno != errno.EXDEV:
@@ -1082,15 +1085,23 @@ def _place(source: Path, dest: Path, move: bool) -> None:
         with os.fdopen(fd, "wb") as handle, open(source, "rb") as src:
             shutil.copyfileobj(src, handle, 1024 * 1024)
             handle.flush()
+            shutil.copystat(source, temp)
             os.fsync(handle.fileno())
-        shutil.copystat(source, temp)
+        if before_copy_replace is not None:
+            before_copy_replace(Path(temp), dest)
         os.replace(temp, dest)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(temp)
         raise
+    if placed is not None:
+        placed.append(dest)
     if move:
-        os.unlink(source)
+        try:
+            os.unlink(source)
+        except OSError as exc:
+            logging.getLogger("audiobind").warning("Published %s but could not remove scratch %s: %s",
+                                                  dest, source, exc)
 
 
 def publish_result(result: EncodeResult, out_path: Path, placed: list | None = None) -> EncodeResult:
@@ -1101,13 +1112,10 @@ def publish_result(result: EncodeResult, out_path: Path, placed: list | None = N
     moment it is in place, so a caller rolling back knows exactly what this call created.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    _place(Path(result.path), out_path, move=True)
-    if placed is not None:
-        placed.append(out_path)
+    placement = {} if placed is None else {"placed": placed}
+    _place(Path(result.path), out_path, move=True, **placement)
     if result.cover is not None:
-        _place(Path(result.cover), out_path.parent / "cover.jpg", move=False)
-        if placed is not None:
-            placed.append(out_path.parent / "cover.jpg")
+        _place(Path(result.cover), out_path.parent / "cover.jpg", move=False, **placement)
     result.path = out_path
     result.size = out_path.stat().st_size
     return result
