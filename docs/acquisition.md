@@ -59,10 +59,8 @@ restart.
    "12 results, first: ..."; never the cookie, the address or the site's raw answer. The download
    parameter, freeleech parameter, User-Agent and VIP keep their values; the Watcher tab has them.
 
-**Continue** on step 4 leads to the end of the guide: a summary of what is set up (tracker,
-download client, ingest folder, the address the tracker sees, and a note if the watcher is paused
-or in dry run) and what happens next, or "Almost done" with each missing piece and the step that
-fixes it.
+**Continue** on step 4 opens **Done**. This screen shows what is set up and what happens next.
+If anything is missing, it links to the step where you can fix it.
 
 | Variable | Default | Meaning |
 |---|---|---|

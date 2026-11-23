@@ -720,7 +720,8 @@ check("wizard: step 4's Test sends nothing while a box is missing, and says whic
       f"{status} {tracker_tested}")
 done = get(WIZ + "?step=done")
 check("wizard: the end state renders, names what is missing and links on",
-      'id="ab-wiz-summary"' in done and "Almost done" in done and 'href="/discover/wishlist"' in done
+      'id="ab-wiz-summary"' in done and 'id="ab-wiz-title">Done</h2>' in done
+      and 'href="/discover/wishlist"' in done
       and 'href="/?status=all"' in done and f'href="{WIZ}?step=4"' in done)
 node_check("wizard end", done, "wizard-done.js")
 _site = __import__("codecs").decode("zlnabanzbhfr", "rot13")  # spelled indirectly: this file ships too
@@ -731,7 +732,7 @@ status, _, _ = post_json("/api/setup/downloading", {"action": "mode", "mode": "l
 done_page = get(WIZ + "?step=1")
 check("wizard: 'only my library' closes the flow with the plain sentence and goes back to the Library",
       "Audiobind will convert what is already in your library." in done_page and 'href="/?status=all"' in done_page
-      and "Step 1 of 4" in get(WIZ + "?step=2"))
+      and 'id="ab-wiz-title">Done</h2>' in get(WIZ + "?step=2"))
 check("wizard: answering it also answers the Library card", 'id="ab-wizcard"' not in get("/"))
 status, _, _ = post_json("/api/setup/downloading", {"action": "mode", "mode": "teleport"})
 check("wizard: an answer it does not know is refused", status == 400, str(status))

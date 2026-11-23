@@ -321,7 +321,7 @@ class TestTheEnd(Step4Case):
     def test_nothing_set_up_yet_says_almost_done_and_names_what_is_missing(self):
         page = self.done()
         text = self.text(page)
-        self.assertIn("Almost done", text)
+        self.assertIn("Done", text)
         self.assertIn("Your tracker: still missing Your tracker's address, Session cookie", text)
         self.assertIn("Audiobind fetches nothing until every line marked as a problem is fixed.", text)
         self.assertIn(f'href="{wizard.PATH}?step=4"', page)
@@ -331,7 +331,7 @@ class TestTheEnd(Step4Case):
         self.complete()
         page = self.done()
         text = self.text(page)
-        self.assertIn("Done: downloading is set up", text)
+        self.assertIn("What happens now", text)
         self.assertIn("Your tracker: the address, session cookie and search settings are saved.", text)
         self.assertIn("Download client: qBittorrent at http://192.168.1.10:8080, category audiobooks.", text)
         self.assertIn(f"Finished downloads are picked up from {self.ingest_dir}.", text)
@@ -350,7 +350,7 @@ class TestTheEnd(Step4Case):
         self.complete()
         self.save({"expected_egress": OTHER})
         text = self.text(self.done())
-        self.assertIn("Almost done", text)
+        self.assertIn("Not fetching yet.", text)
         self.assertIn("your session was created for another address", text)
 
     def test_the_end_is_kept_across_a_restart(self):
@@ -365,7 +365,7 @@ class TestTheEnd(Step4Case):
 
     def test_the_end_needs_the_tracker_answer(self):
         self.state.set_meta(wizard.META_MODE, wizard.MODE_FILES)
-        self.assertIn("Step 1 of 4", self.done())
+        self.assertIn('id="ab-wiz-title">Done</h2>', self.done())
 
 
 class TestIndicator(Step4Case):
@@ -388,7 +388,11 @@ class TestIndicator(Step4Case):
         self.state.set_meta(wizard.META_MODE, wizard.MODE_LIBRARY)
         bar = self.indicator(self.get(wizard.PATH)[1])
         self.assertEqual(bar.count("<a "), 0)
-        self.assertEqual(bar.count('aria-disabled="true"'), 4)
+        self.assertIn('aria-current="step"><span class="ab-wiz-n" aria-hidden="true">&#10003;</span> Done',
+                      bar)
+        self.assertNotIn("Download client", bar)
+        self.assertNotIn("The address the tracker sees", bar)
+        self.assertNotIn("Your tracker", bar)
 
 
 class TestSignedOut(Step4Case):

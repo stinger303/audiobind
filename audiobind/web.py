@@ -5545,16 +5545,21 @@ def _wizard_card(state) -> str:
 
 def _wizard_indicator(step: int, mode: str) -> str:
     """1 How books arrive · 2 Download client · 3 The address the tracker sees · 4 Your tracker · Done.
-    The one shown is marked. Once the person chose "a private tracker", every step and Done is a link; before
-    that only step 1 exists for them (``resolve_step`` sends anything else back to it), so the rest are
-    listed and never links."""
+    The one shown is marked. After a route is chosen, show only the steps on that route."""
     reachable = mode == wizard_mod.MODE_TRACKER
     items = []
-    for number, name in list(wizard_mod.STEPS) + [(wizard_mod.DONE, "Done")]:
+    steps = list(wizard_mod.STEPS) + [(wizard_mod.DONE, "Done")]
+    if mode in (wizard_mod.MODE_LIBRARY, wizard_mod.MODE_FILES):
+        steps = [(1, "How books arrive"), (wizard_mod.DONE, "Done")]
+    for number, name in steps:
         glyph = "&#10003;" if number == wizard_mod.DONE else str(number)
         label = f'<span class="ab-wiz-n" aria-hidden="true">{glyph}</span> {_html(name)}'
         target = "done" if number == wizard_mod.DONE else str(number)
-        if number == step:
+        if number == step and mode in (wizard_mod.MODE_LIBRARY, wizard_mod.MODE_FILES):
+            items.append(f'<li class="ab-done">{label}</li>')
+        elif number == step:
+            items.append(f'<li class="ab-on" aria-current="step">{label}</li>')
+        elif number == wizard_mod.DONE and mode in (wizard_mod.MODE_LIBRARY, wizard_mod.MODE_FILES):
             items.append(f'<li class="ab-on" aria-current="step">{label}</li>')
         elif number == 1 or (reachable and (number in wizard_mod.BUILT or number == wizard_mod.DONE)):
             klass = "ab-done" if number < step else "ab-ahead"
@@ -6028,7 +6033,6 @@ def _wizard_done(state) -> str:
         if not wizard_mod.read(state)["dismissed"]:
             state.set_meta(wizard_mod.META_DISMISSED, True)  # finished: the Library card has nothing to ask
         interval, per_round = watcher_mod.watch_interval_min(), watcher_mod.watch_max_per_cycle()
-        title = "Done: downloading is set up"
         nxt = (
             '<div class="ab-hintbox" id="ab-wiz-next-steps"><b>What happens now</b><ol class="ab-wiz-next">'
             f"<li>Every {interval} minutes, Audiobind searches your tracker for the books on your "
@@ -6040,13 +6044,12 @@ def _wizard_done(state) -> str:
             "and adds it to your library.</li></ol>"
             "<p>Nothing is fetched until a book is on your wishlist.</p></div>")
     else:
-        title = "Almost done"
         nxt = ('<div class="ab-hintbox" id="ab-wiz-next-steps" role="status"><b>Not fetching yet.</b> '
                "Audiobind fetches nothing until every line marked as a problem is fixed. Everything you "
                "set up "
                "so far is saved.</div>")
     return (
-        f'<h2 class="ab-wiz-title" id="ab-wiz-title">{title}</h2>'
+        '<h2 class="ab-wiz-title" id="ab-wiz-title">Done</h2>'
         f'<div class="ab-hintbox" id="ab-wiz-summary"><b>What is set up</b>'
         f'<ul class="ab-wiz-checks">{"".join(lines)}</ul></div>'
         + nxt
@@ -6081,8 +6084,10 @@ def render_wizard(state, step_param=None, host: str = "") -> str:
         inner = _wizard_done(state)
     else:
         name = dict(wizard_mod.STEPS)[step]
-        inner = (f'<h2 class="ab-wiz-title" id="ab-wiz-title">Step {step} of {len(wizard_mod.STEPS)}: '
-                 f"{_html(name)}</h2>" + _wizard_body(state, step, progress["mode"], host))
+        heading = ("Done" if progress["mode"] in (wizard_mod.MODE_LIBRARY, wizard_mod.MODE_FILES)
+                   else f"Step {step} of {len(wizard_mod.STEPS)}: {name}")
+        inner = (f'<h2 class="ab-wiz-title" id="ab-wiz-title">{_html(heading)}</h2>'
+                 + _wizard_body(state, step, progress["mode"], host))
     body = '<div class="ab-wiz">' + _wizard_indicator(step, progress["mode"]) + inner + "</div>"
     return _discover_shell(state, "Set up downloading", body, WIZARD_SCRIPT)
 

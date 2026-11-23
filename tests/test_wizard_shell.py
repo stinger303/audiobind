@@ -113,7 +113,11 @@ class TestProgress(WizardCase):
             with self.subTest(mode=mode):
                 self.set_mode(mode)
                 _status, page = self.get(wizard.PATH + "?step=2")
-                self.assertIn("Step 1 of 4", page)
+                if mode:
+                    self.assertIn('id="ab-wiz-title">Done</h2>', page)
+                    self.assertNotIn("Step 1 of 4", page)
+                else:
+                    self.assertIn("Step 1 of 4", page)
                 self.assertEqual(wizard.read(self.state)["step"], 1)
 
     def test_a_reload_writes_nothing(self):
