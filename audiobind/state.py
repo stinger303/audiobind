@@ -290,8 +290,9 @@ class State:
         self.connection.execute("PRAGMA synchronous=NORMAL")
         self.connection.execute("PRAGMA busy_timeout=30000")
         self.connection.executescript(SCHEMA)
-        self._migrate()
-        self._migrate_locks()
+        with self._lock, self._txn():
+            self._migrate()
+            self._migrate_locks()
         # after _migrate: asin_override may only just have been added. The cover cache and the
         # wishlist ask "is this ASIN in the library?" per ASIN; without these that is a full scan
         columns = {row[1] for row in self.connection.execute("PRAGMA table_info(units)")}
@@ -353,18 +354,17 @@ class State:
         # its book lands, and a spend counted from that row went with it - reopening the daily cap.
         # Created once, then seeded with the spends the wishlist rows still carry (additive: the
         # wishlist columns stay, and are still written, but are no longer what is counted)
-        with self._txn():  # the check inside it: two processes opening the file never both create
-            if not self.connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'credit_spends'"
-            ).fetchone():
-                self.connection.execute(
-                    "CREATE TABLE credit_spends (id INTEGER PRIMARY KEY, tracker_tid TEXT NOT NULL DEFAULT '', "
-                    "spent_at REAL NOT NULL)"
-                )
-                self.connection.execute(
-                    "INSERT INTO credit_spends (tracker_tid, spent_at) SELECT tracker_tid, wedge_at FROM wishlist "
-                    "WHERE wedge_spent > 0 AND wedge_at IS NOT NULL"
-                )
+        if not self.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'credit_spends'"
+        ).fetchone():
+            self.connection.execute(
+                "CREATE TABLE credit_spends (id INTEGER PRIMARY KEY, tracker_tid TEXT NOT NULL DEFAULT '', "
+                "spent_at REAL NOT NULL)"
+            )
+            self.connection.execute(
+                "INSERT INTO credit_spends (tracker_tid, spent_at) "
+                "SELECT tracker_tid, wedge_at FROM wishlist WHERE wedge_spent > 0 AND wedge_at IS NOT NULL"
+            )
         self.connection.execute("CREATE INDEX IF NOT EXISTS idx_credit_spends_at ON credit_spends(spent_at)")
 
     def _migrate_locks(self) -> None:

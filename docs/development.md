@@ -32,6 +32,9 @@ Any change that can move a match must pass the match-test programme: see
   audio and companions before encoding. Verified audio for the edition allows publication to
   refresh a regular `metadata.json` or `cover.jpg` even if another tool changed it.
 
+* **Schema upgrades serialize writers.** Column inspection, additive migrations, backfills
+  and the field-lock bootstrap marker commit in one SQLite write transaction.
+
 * **Publication is journaled in the SQLite manifest.** A durable attempt precedes staging in the
   book folder. Once staging has finished, the attempt records the verified file identities and
   the converted row before any destination is renamed. Startup checks every pending attempt
