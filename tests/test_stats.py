@@ -88,20 +88,20 @@ class TestLibraryStats(unittest.TestCase):
         self.assertEqual(stats["hours"], 3.0)
         self.assertEqual(stats["gb"], 1.0)
 
-    def test_render_shows_the_stat_cards(self):
+    def test_render_shows_progress_and_on_demand_stats(self):
         self.save("A/One", "converted", hours=6.0, out_mb=1500.0)
         self.save("A/Two", "ready")
         page = web.render(self.state)
         self.assertIn("converted", page)
-        # the value and its unit are separate elements, so the unit must not be doubled
-        self.assertIn('<b>6.0</b><span class="ab-unit">h</span>', page)
-        self.assertIn('<b>1.5</b><span class="ab-unit">GB</span>', page)
+        stats = page.split('<details class="ab-libstats">')[1].split("</details>")[0]
+        self.assertIn("6.0 hours converted", stats)
+        self.assertIn("1.5 GB written", stats)
         self.assertNotIn("h h", page)
         self.assertNotIn("GB GB", page)
-        self.assertIn("library progress", page)
-        self.assertIn("50.0%", page)
+        self.assertIn('role="progressbar"', page)
+        self.assertIn('aria-valuenow="50.0"', page)
         self.assertIn('style="width:50.0%"', page)
-        self.assertIn("<b>1</b> of 2", page)
+        self.assertIn("<b>1</b> of 2 converted", page)
 
     def test_the_stats_bar_does_not_reuse_the_encode_bar_classes(self):
         """A shared .bar class crushed the toolbar once; the stats bar owns its classes."""

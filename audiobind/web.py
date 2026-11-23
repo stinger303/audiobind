@@ -228,14 +228,9 @@ button.dry.on .ab-switch::after{left:12px}
 .ab-statsline{flex:none;display:flex;align-items:center;gap:0;
   padding:10px 24px 12px;border-bottom:1px solid var(--ab-border-subtle);
   font-family:var(--ab-mono);font-size:11.5px;color:var(--ab-text3);}
-.ab-stat{display:flex;align-items:baseline;gap:7px;padding:0 18px}
-.ab-stat:first-child{padding-left:0}
-.ab-stat+.ab-stat{border-left:1px solid var(--ab-border-subtle)}
-.ab-stat b{color:var(--ab-text);font-weight:500;font-size:13px}
-.ab-stat .ab-unit{color:var(--ab-text4)}
-.ab-stat label{color:var(--ab-text4);font-family:var(--ab-sans);font-size:11px}
-.ab-libprog{display:flex;align-items:center;gap:10px;margin-left:18px;
-  padding-left:18px;border-left:1px solid var(--ab-border-subtle)}
+.ab-libstats{margin-left:18px}
+.ab-libstats summary{cursor:pointer}
+.ab-libprog{display:flex;align-items:center;gap:10px}
 .ab-libprog .ab-libbar{width:120px;height:4px;border-radius:3px;
   background:rgba(255,255,255,.06);overflow:hidden}
 .ab-libprog .ab-libbar i{display:block;height:100%;
@@ -827,11 +822,8 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   .ab-queue{margin:10px 12px 0;grid-template-columns:minmax(0,1fr)}
   .ab-queue .ab-qtitle{overflow-wrap:anywhere}
   .ab-queue .ab-qmeta{flex-wrap:wrap;gap:4px 14px}
-  /* stats: converted | written on row one, progress + a bar that fills the rest on row two */
-  .ab-statsline{display:grid;grid-template-columns:auto minmax(0,1fr);row-gap:8px;padding:10px 12px 12px}
-  .ab-stat{padding:0 12px;min-width:0}
-  .ab-stat:nth-child(3){padding-left:0;border-left:none}
-  .ab-libprog{margin-left:0;padding-left:12px;min-width:0}
+  .ab-statsline{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:10px 12px 12px}
+  .ab-libprog{min-width:0}
   .ab-libprog .ab-libbar{flex:1;width:auto;min-width:0}
   .ab-libprog .ab-libnum{flex:none;white-space:nowrap}
   /* filters: one horizontally scrolling chip row, then the search box + Clear */
@@ -1823,13 +1815,16 @@ PAGE = """<!doctype html>
   </section>
 
   <section class="ab-statsline" aria-label="Library statistics">
-    <div class="ab-stat"><b>{stat_hours}</b><span class="ab-unit">h</span><label>converted</label></div>
-    <div class="ab-stat"><b>{stat_gb}</b><span class="ab-unit">GB</span><label>written</label></div>
-    <div class="ab-stat"><b>{stat_pct}%</b><label>library progress</label></div>
     <div class="ab-libprog">
-      <div class="ab-libbar"><i style="width:{stat_pct_width}%"></i></div>
-      <span class="ab-libnum"><b>{stat_conv}</b> of {stat_total}</span>
+      <div class="ab-libbar" role="progressbar" aria-labelledby="ab-libnum" aria-valuenow="{stat_pct_width}"
+           aria-valuemin="0" aria-valuemax="100"><i style="width:{stat_pct_width}%"></i></div>
+      <span class="ab-libnum" id="ab-libnum"><b>{stat_conv}</b> of {stat_total} converted</span>
     </div>
+    <details class="ab-libstats">
+      <summary>Stats</summary>
+      <div>{stat_hours} hours converted</div>
+      <div>{stat_gb} GB written</div>
+    </details>
   </section>
 
   <section class="ab-toolbar" aria-label="Filters">
@@ -7357,7 +7352,6 @@ def render(state, status: str = "", query: str = "") -> str:
         allclear=allclear,
         stat_hours="{}".format(stats["hours"]),
         stat_gb="{}".format(stats["gb"]),
-        stat_pct="{}".format(stats["progress"]),
         stat_pct_width=max(0.0, min(100.0, stats["progress"])),
         stat_conv=stats["converted"],
         stat_total=stats["total"],
