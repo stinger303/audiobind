@@ -20,9 +20,8 @@ services:
       # 192.168.1.10) but not on hostnames. Set it and ONLY the names you list are answered
       # (DNS-rebinding defence), so include every name/IP you browse to.
       - ALLOWED_HOSTS=localhost,127.0.0.1,tower,tower.local   # add your server's LAN IP
-      # AUTH_TOKEN is deprecated - leave it unset. With it unset the first visit opens a setup page
-      # to create your account; until you finish it, anyone who can reach the port can claim it,
-      # so open the page and complete setup right after the first start.
+      # Leave the deprecated AUTH_TOKEN unset. On your first visit, create your account with
+      # the one-time setup code printed in the container log.
       # - TRUSTED_PROXY=true        # only behind your own reverse proxy ...
       # - TRUSTED_PROXY_IPS=172.18.0.0/16   # ... and ONLY from these peers (needed as well)
     # hardening: read-only root fs (the app writes only to the volumes below and /tmp),
