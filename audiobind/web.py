@@ -3575,8 +3575,8 @@ def _series_row(entry: dict, seq_label: str, actions: bool = True, wanted: froze
             want = '<span class="ab-series-pill ab-series-wanted">On your wishlist</span>'
         else:
             want = (
-                '<button class="btn primary" title="Put this book on your wishlist. Nothing is downloaded." '
-                'onclick="abSeriesWant(this)">Want</button>'
+                '<button class="btn primary" '
+                'onclick="abSeriesWant(this)">Add to wishlist</button>'
             )
         buttons = (
             (
@@ -3733,7 +3733,7 @@ def render_series(state) -> str:
     views = shelf["series"]
     if views:
         want_help = (
-            "<b>Want</b> puts a missing book on your wishlist "
+            "<b>Add to wishlist</b> puts a missing book on your wishlist "
             "(<b>Want all missing</b> does the whole list in one click); nothing is downloaded. "
             if watcher_mod.configured() else ""
         )
@@ -3779,7 +3779,7 @@ def render_series(state) -> str:
 
 
 # ---------------------------------------------------------------------------- Discover
-# Search the catalog, suggestions from what you own, the wishlist. A "Get this" / "Want"
+# Search the catalog, suggestions from what you own, the wishlist. A "Add to wishlist"
 # click is the only thing that ever adds a wishlist row. f-strings only for anything that
 # carries a catalog title; numeric character references in new markup.
 
@@ -3856,7 +3856,7 @@ function abRailWanted(count) {
   const el = document.getElementById('ab-rail-wanted');
   if (el && typeof count === 'number') { el.textContent = count; el.hidden = count < 1; }
 }
-// Get this / Want: one click, one wishlist row - nothing is downloaded
+// Add to wishlist: one click, one wishlist row - nothing is downloaded
 function abWant(btn, origin) {
   const row = btn.closest('[data-asin]');
   if (!row) return;
@@ -4121,9 +4121,9 @@ def _disc_row(item: dict, origin: str, seq_label: str = "") -> str:
         state_html = '<span class="ab-disc-pill ab-disc-want">On your wishlist</span>'
     elif watcher_mod.configured():
         state_html = (
-            f'<button class="btn" title="Put this book on your wishlist. Nothing is downloaded." '
-            f'aria-label="Get this: {_attr(title)}" '
-            f"onclick=\"abWant(this,'{origin}')\">Get this</button>"
+            f'<button class="btn" '
+            f'aria-label="Add to wishlist: {_attr(title)}" '
+            f"onclick=\"abWant(this,'{origin}')\">Add to wishlist</button>"
         )
     else:
         state_html = ""
@@ -4141,7 +4141,7 @@ def _discover_search_body(result: dict) -> str:
     if watcher_mod.configured():
         intro = (
             '<p class="ab-disc-intro">Search the Audible catalog by title, with an author to narrow it. '
-            "<b>Get this</b> puts a book on your wishlist &#8212; nothing is downloaded, and books "
+            "<b>Add to wishlist</b> puts a book on your wishlist &#8212; nothing is downloaded, and books "
             "already in your library are marked.</p>"
         )
     else:
@@ -4192,7 +4192,7 @@ def _discover_recs_body(state) -> str:
     if watcher_mod.configured():
         intro = (
             '<p class="ab-disc-intro">Suggestions from what you already own: more by your top authors, '
-            "books read by your top narrators, and your top genres. <b>Get this</b> puts one on your "
+            "books read by your top narrators, and your top genres. <b>Add to wishlist</b> puts one on your "
             "wishlist &#8212; nothing is ever added on its own, and books you own or already want "
             "are left out.</p>"
         )
@@ -4411,7 +4411,7 @@ def _discover_wishlist_body(state) -> str:
     else:
         how = "This list is the hand-off point: nothing here is searched for or downloaded while the watcher is off. "
     intro = (
-        f'<p class="ab-disc-intro">The books you asked for with <b>Get this</b> or <b>Want</b>. {how}'
+        f'<p class="ab-disc-intro">The books you asked for with <b>Add to wishlist</b>. {how}'
         "<b>Retry</b> searches again for a book that was not found or failed; "
         "<b>Re-queue</b> searches again for one already sent to qBittorrent; "
         "<b>Remove</b> takes a book off.</p>"
@@ -4930,7 +4930,7 @@ def render_watcher_section(state) -> str:
         nxt = (f" Next check {_html(time.strftime('%H:%M', time.localtime(float(s['next_cycle_at']))))}."
                if s["next_cycle_at"] else "")
         ready = ('<div class="ab-acct-who" id="ab-watch-ready"><b>Ready.</b> Add a book: Discover books '
-                 f"&#8594; Want.{nxt}</div>")
+                 f"&#8594; Add to wishlist.{nxt}</div>")
     can_run = s["enabled"] and not s["paused"] and not s["busy"]
     run_btn = (f'<button class="btn" type="button" id="ab-watch-run" onclick="abWatcher(\'run\')"{"" if can_run else " disabled"} '
                'title="Run one cycle now in the background (same caps and pacing as a timed cycle).">'

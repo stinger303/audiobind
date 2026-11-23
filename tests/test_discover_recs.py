@@ -164,7 +164,7 @@ class TestCompute(RecsCase):
         self.assertEqual([i["asin"] for i in sections["genre"]["groups"][0]["items"]], ["B0GENRE001"])
         # nothing is ever added on its own
         self.assertEqual(self.state.wishlist_count(), before)
-        # suggestions are remembered for covers and Get this
+        # suggestions are remembered for covers and Add to wishlist
         self.assertIsNotNone(self.state.catalog_seen_image("B0NARRATE1"))
 
     def test_per_seed_cap(self):
@@ -268,7 +268,7 @@ class TestForYouPage(RecsCase):
         self.assertNotIn(">For you</a>", html)
         self.assertIn("<h3>More by authors you own</h3>", html)
         self.assertIn("<h4>Lee Child<span>you own 2</span></h4>", html)
-        self.assertIn("abWant(this,'for_you')\">Get this</button>", html)
+        self.assertIn("abWant(this,'for_you')\">Add to wishlist</button>", html)
         self.assertIn("<h4>Dick Hill<span>reads 2 of yours</span></h4>", html)
         self.assertIn("Nothing new &#8212;", html)
         self.assertIn("No genre data yet.", html)

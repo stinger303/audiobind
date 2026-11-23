@@ -120,7 +120,7 @@ class TestWantButtons(StateCase):
 
     def test_each_missing_row_has_want_and_the_panel_has_want_all(self):
         html = panel(web.render_series(self.state), "jack-reacher")
-        self.assertEqual(html.count('onclick="abSeriesWant(this)">Want</button>'), 3)
+        self.assertEqual(html.count('onclick="abSeriesWant(this)">Add to wishlist</button>'), 3)
         self.assertIn('data-series="jack-reacher"', html)
         self.assertIn('onclick="abSeriesWantAll(this)">Want all 3 missing</button>', html)
         self.assertIn("You own 2 of 5 &#183; total from the Audible catalog", html)
@@ -133,7 +133,7 @@ class TestWantButtons(StateCase):
     def test_a_wishlisted_entry_shows_the_marker_and_want_all_counts_the_rest(self):
         self.state.wishlist_add({"asin": "B0000000J2", "title": "Book 2"})
         html = panel(web.render_series(self.state), "jack-reacher")
-        self.assertEqual(html.count('onclick="abSeriesWant(this)">Want</button>'), 2)
+        self.assertEqual(html.count('onclick="abSeriesWant(this)">Add to wishlist</button>'), 2)
         self.assertIn('<span class="ab-series-pill ab-series-wanted">On your wishlist</span>', html)
         self.assertIn(">Want the other 2 missing</button>", html)
 

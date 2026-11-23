@@ -361,14 +361,16 @@ node_check("discover", disc, "discover.js")
 found = get("/discover?title=connelly")
 check("discover: results rendered", "2 results for &#8220;connelly&#8221;" in found)
 owned_row = re.search(r'data-asin="B00LIBRARY">.*?(?=<div class="ab-disc-row"|</section>)', found, re.S)
-check("discover: a book already in the library is marked, with no Get this",
-      owned_row is not None and "In your library" in owned_row.group(0) and "Get this" not in owned_row.group(0))
-check("discover: other books get a Get this button", "abWant(this,'search')\">Get this</button>" in found)
+check("discover: a book already in the library is marked, with no Add to wishlist",
+      owned_row is not None and "In your library" in owned_row.group(0)
+      and "Add to wishlist" not in owned_row.group(0))
+check("discover: other books get an Add to wishlist button",
+      "abWant(this,'search')\">Add to wishlist</button>" in found)
 check("discover: covers go through the local proxy, no external URLs",
       "/cover?asin=B00NEWBOOK" in found and "https://" not in found)
 status, _, added = fetch("/api/wishlist", json.dumps({"asin": "B00NEWBOOK", "origin": "search"}).encode(),
                          {"Content-Type": "application/json", "Cookie": COOKIE})
-check("Get this adds to the wishlist", status == 200 and json.loads(added).get("added") is True)
+check("Add to wishlist adds to the wishlist", status == 200 and json.loads(added).get("added") is True)
 wish = get("/discover/wishlist")
 check("wishlist tab lists it with Remove", "The Late Show" in wish and "abUnwant(this)" in wish)
 check("rail shows the wishlist count", 'id="ab-rail-wanted" title="books on your wishlist">1</span>' in wish)
@@ -411,8 +413,9 @@ check("for you: one refresh stays within the call cap", 0 < len(recs_calls) <= d
 recs_page = get("/discover/for-you")
 check("for you: section and seed headings", "<h3>More by authors you own</h3>" in recs_page
       and "<h4>Lee Child<span>you own 4</span></h4>" in recs_page)
-check("for you: a suggestion with Get this",
-      'data-asin="B00MAKEME1"' in recs_page and "abWant(this,'for_you')\">Get this</button>" in recs_page)
+check("for you: a suggestion with Add to wishlist",
+      'data-asin="B00MAKEME1"' in recs_page
+      and "abWant(this,'for_you')\">Add to wishlist</button>" in recs_page)
 check("for you: owned and wishlisted books are not suggested",
       'data-asin="B00LIBRARY"' not in recs_page and 'data-asin="B00NEWBOOK"' not in recs_page)
 check("for you: nothing was added on its own", json.loads(get("/api/wishlist")).get("count") == 1)
@@ -428,7 +431,8 @@ smissing = re.search(r'<section class="ab-series-panel" id="ab-series-missing-ja
 smissing = smissing.group(0) if smissing else ""
 check("series: card names the source of the total",
       '<div class="ab-series-src">total from the Audible catalog &#183; checked just now</div>' in spage)
-check("series: each missing row has a Want button", smissing.count('onclick="abSeriesWant(this)">Want</button>') == 2)
+check("series: each missing row has an Add to wishlist button",
+      smissing.count('onclick="abSeriesWant(this)">Add to wishlist</button>') == 2)
 check("series: one Want all missing button",
       'data-series="jack-reacher"' in smissing and '>Want all 2 missing</button>' in smissing)
 check("series: missing rows show sequence and runtime",
@@ -531,9 +535,9 @@ check("watcher: Settings section, off, is one short block",
       and 'id="ab-qbit-address"' in off_settings
       and 'id="ab-watch-run"' not in off_settings and 'id="ab-watch-toggle"' not in off_settings)
 notracker_pages = get("/") + get("/discover") + get("/discover/for-you") + get("/discover/wishlist") + get("/series")
-check("no tracker: no wishlist tab, rail count, Get this or Want anywhere",
+check("no tracker: no wishlist tab, rail count or Add to wishlist anywhere",
       "/discover/wishlist" not in notracker_pages and 'id="ab-rail-wanted"' not in notracker_pages
-      and ">Get this</button>" not in notracker_pages and ">Want</button>" not in notracker_pages
+      and ">Add to wishlist</button>" not in notracker_pages
       and 'onclick="abSeriesWantAll(' not in notracker_pages and 'onclick="abSeriesWant(' not in notracker_pages)
 check("no tracker: the ingest folder is said to work either way",
       "converted whether or not the watcher is configured" in get("/"))

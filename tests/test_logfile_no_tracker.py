@@ -101,7 +101,7 @@ class TestNoMam(unittest.TestCase):
             self.assertNotIn("/discover/wishlist", html)
             self.assertNotIn('id="ab-rail-wanted"', html)
         self.assertNotIn("abWant(", web._disc_row(ITEM, "search"))
-        self.assertNotIn("Get this", web._disc_row(ITEM, "search"))
+        self.assertNotIn("Add to wishlist", web._disc_row(ITEM, "search"))
         self.assertNotIn("abSeriesWant", web._series_row(SROW, "1"))
         settings = web.render_settings(self.state)
         self.assertIn("Acquisition source (optional)", settings)

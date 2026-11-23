@@ -128,7 +128,7 @@ class TestSearchMarks(StateCase):
         self.search(title="weir")
         self.assertEqual(self.state.catalog_seen_image("B08G9PRS1K"), "https://m.media-amazon.com/images/I/B08G9PRS1K.jpg")
         self.assertIsNone(self.state.catalog_seen_image("B0NEVERSEEN"))
-        # a "Get this" click takes the catalog's metadata, not what the browser sends
+        # a "Add to wishlist" click takes the catalog's metadata, not what the browser sends
         row, error = discover.wishlist_item(self.state, {"asin": "B0751LWHQC", "title": "Forged", "origin": "search"})
         self.assertEqual(error, "")
         self.assertEqual((row["title"], row["authors"], row["hours"]), ("Artemis", ["Andy Weir"], 8.9))
@@ -166,9 +166,9 @@ class TestSearchPage(StateCase):
         self.assertIn("1 already in your library", html)
         row = row_html(html, "B08G9PRS1K")
         self.assertIn("In your library", row)
-        self.assertNotIn("Get this", row)
+        self.assertNotIn("Add to wishlist", row)
         martian = row_html(html, "B00B5HZGUG")
-        self.assertIn("Get this", martian)
+        self.assertIn("Add to wishlist", martian)
         self.assertIn("abWant(this,'search')", martian)
         artemis = row_html(html, "B0751LWHQC")
         self.assertIn("On your wishlist", artemis)

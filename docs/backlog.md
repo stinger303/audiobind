@@ -223,7 +223,7 @@ mode, a ratio hit is the bug).
 ### Phase 2 — discovery: search + recommendations (Audiobind)
 
 1. **Search button** — queries the Audible catalog API we already use
-   (multi-region per backlog item 1); results page with a "Get this" button
+   (multi-region per backlog item 1); results page with a "Add to wishlist" button
    that adds to the wishlist.
 2. **Recommendations from the owned library** — local computation over
    persisted metadata (ASIN, authors, narrators, series, genres):

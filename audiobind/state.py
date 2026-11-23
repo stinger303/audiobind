@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS dismissed (
 """
 
 #: a book a Discover page showed is remembered this long (its cover stays fetchable and a
-#: "Get this" click can use the catalog's metadata); wishlist rows are never forgotten
+#: "Add to wishlist" click can use the catalog's metadata); wishlist rows are never forgotten
 CATALOG_SEEN_TTL_SECONDS = 90 * 24 * 3600
 
 #: a wishlist row's life. Phase 2 only ever writes "wanted"; the Phase 3 watcher moves a row
@@ -1132,7 +1132,7 @@ class State:
             return cursor.rowcount > 0
 
     # ------------------------------------------------- the wishlist
-    # Books you clicked "Get this" / "Want" on - every row is one click; nothing adds a row on
+    # Books you clicked "Add to wishlist" on - every row is one click; nothing adds a row on
     # its own. The Phase 3 watcher (watcher.py) moves rows along WISHLIST_TRANSITIONS.
     _WISHLIST_INSERT = (
         "INSERT OR IGNORE INTO wishlist (asin, title, authors, added_at, status, origin, series, "

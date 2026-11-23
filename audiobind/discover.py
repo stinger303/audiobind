@@ -1,7 +1,7 @@
 """Discovery: the wishlist, catalog search, recommendations from what you own.
 
 Phase 2 of the acquisition plan (docs/backlog.md). The wishlist is the hand-off point to
-Phase 3: a row lands there only when you click "Get this" / "Want" - nothing in this module
+Phase 3: a row lands there only when you click "Add to wishlist" - nothing in this module
 adds one on its own, downloads anything or talks to a tracker.
 """
 
@@ -261,7 +261,7 @@ def search(state, title: str = "", author: str = "", limit: int = SEARCH_LIMIT) 
 
     One throttled catalog request (catalog.query), single region: the store the catalog
     API answers for (api.audible.com). Results are remembered in catalog_seen so their
-    covers can be shown and a "Get this" click stores the catalog's own metadata.
+    covers can be shown and a "Add to wishlist" click stores the catalog's own metadata.
     """
     title = _text(title, MAX_QUERY)
     author = _text(author, MAX_QUERY)

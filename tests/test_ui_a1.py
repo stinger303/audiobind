@@ -171,9 +171,10 @@ class TestWishlistButtonsNameTheBook(unittest.TestCase):
     def test_get_this_names_the_book_and_drops_the_name_when_the_words_change(self):
         item = {"asin": "B005EHN61O", "title": "Dune"}
         with mock.patch.object(web.watcher_mod, "configured", return_value=True):
-            self.assertIn('aria-label="Get this: Dune"', web._disc_row(item, "search"))
+            self.assertIn('aria-label="Add to wishlist: Dune"', web._disc_row(item, "search"))
         fn = body_of(js("DISCOVER_SCRIPT"), "abWant")
-        self.assertIn("removeAttribute('aria-label')", fn)  # 'On your wishlist' must not be spoken as 'Get this: ...'
+        # The accessible name follows the updated button text.
+        self.assertIn("removeAttribute('aria-label')", fn)
         self.assertEqual(fn.count("speak()"), 2)  # and a refused or failed request puts it back
 
 

@@ -520,8 +520,8 @@ class TestWishlistTabHint(WebCase):
     def test_configured_and_enabled_says_ready_and_where_to_add_a_book(self):
         self.configured()
         panel = html_mod.unescape(self.watcher())
-        self.assertIn('<div class="ab-acct-who" id="ab-watch-ready"><b>Ready.</b> Add a book: Discover books \u2192 Want.',
-                      panel)
+        self.assertIn('<div class="ab-acct-who" id="ab-watch-ready"><b>Ready.</b> Add a book: '
+                      'Discover books \u2192 Add to wishlist.', panel)
         self.assertNotIn("A Wishlist tab appears", panel)
 
     def test_the_next_check_time_is_shown_when_there_is_one(self):
@@ -530,7 +530,7 @@ class TestWishlistTabHint(WebCase):
         status["next_cycle_at"] = 1700000000.0
         with mock.patch.object(watcher.WATCHER, "status", return_value=status):
             panel = html_mod.unescape(self.watcher())
-        self.assertRegex(panel, r"Want\. Next check \d\d:\d\d\.</div>")
+        self.assertRegex(panel, r"Add to wishlist\. Next check \d\d:\d\d\.</div>")
 
     def test_no_ready_line_when_the_watcher_cannot_run(self):
         self.configured(qbit_user="", qbit_pass="")  # configured, but nowhere to send a torrent

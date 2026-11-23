@@ -66,7 +66,7 @@ tagged without a series unless you set one.
 Each card shows "owned X of Y" and notes that the total comes from the Audible catalog, with
 when it was checked. While Audiobind looks up the series, the card says **Checking…**. If Audible has no
 listing, it says **Unlisted on Audible**. If the lookup fails, the card tells you what to check. In the missing
-list, **Want** puts one book on your wishlist. **Want all missing** adds every missing book in
+list, **Add to wishlist** puts one book on your wishlist. **Want all missing** adds every missing book in
 the series in one click. Books already on the wishlist are skipped, and nothing is downloaded.
 Want all uses the server's current missing list, so a book you got after the page loaded isn't
 added.
@@ -83,7 +83,7 @@ recommended books. Searching shows the results on the same page in place of the
 recommendations; clearing the query brings the recommendations back. The search form takes a
 title, with an optional author. Each result shows its cover, authors, narrators, runtime, series and release year.
 Books already in your library are marked **In your library**: same ASIN, same title and
-author, or marked "I have this" on the Series page. **Get this** puts a book on your
+author, or marked "I have this" on the Series page. **Add to wishlist** puts a book on your
 wishlist. That's all it does: nothing is downloaded, and no tracker is contacted. The
 [wishlist watcher](acquisition.md#the-wishlist-watcher-private-tracker) picks books up from there when it is
 on. The **Wishlist** tab (`/wishlist`, right below Discover books in the rail, watcher only) lists it with
@@ -125,7 +125,7 @@ or already want are left out, and so are summaries and other knockoffs. Suggesti
 so opening the page doesn't query the catalog. A refresh runs when nothing is stored yet, when
 the stored suggestions are more than 7 days old, or when you press **Refresh**. One refresh
 makes at most 10 catalog requests (one per author, narrator and genre). Nothing goes on the
-wishlist until you press **Get this**.
+wishlist until you press **Add to wishlist**.
 
 ![Discover books: the search box with the stored suggestions under it](screenshot-discover.png)
 
