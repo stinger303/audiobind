@@ -1911,8 +1911,6 @@ SETTINGS_PAGE = """<!doctype html>
   </header>
   <section class="ab-settings" style="padding:24px;max-width:640px;">
     {ingest_warning}
-    <div class="ab-hintbox">
-      <b>Apply later.</b> Changes take effect on the next scan or conversion. Existing m4b files are never touched.</div>
     {settings_tabs}
     <form id="ab-settings-form" class="ab-settings-form" onsubmit="abSaveSettings(); return false;" novalidate>
     {library_panel}
@@ -6409,6 +6407,8 @@ def render_settings(state, tab: str = "") -> str:
         library_panel=panel(
             "library",
             "\n".join(controls_parts)
+            + '<p class="ab-setting-hint">Changes take effect on the next scan or conversion. '
+            'Existing output files stay as they are.</p>'
             + '<details class="ab-setting"><summary>Match tiers and player compatibility</summary>'
             '<p>High means the title and author strongly match an Audible edition. Medium means the match '
             'has weaker evidence. Low matches, mixed collections and books without a match need review.</p>'

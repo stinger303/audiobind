@@ -123,8 +123,12 @@ class TestTabs(TabsCase):
             '<a class="chip" href="/settings?tab=account">Account</a>'
             '<a class="chip" href="/settings?tab=advanced">Advanced</a>',
         )
-        # the banner sits above the tabs; the on tab is the indigo pill
-        self.assertLess(page.index("<b>Apply later.</b>"), page.index('class="chips ab-tabs"'))
+        notice = "Changes take effect on the next scan or conversion."
+        library = active_panel(web.render_settings(self.state, "library"))[1]
+        account = active_panel(web.render_settings(self.state, "account"))[1]
+        self.assertIn(notice, library)
+        self.assertNotIn(notice, account)
+        self.assertLess(page.index('class="chips ab-tabs"'), page.index(notice))
         self.assertIn(".ab-tabs .chip.on{background:rgba(94,106,210,.14)", web.STYLES)
 
     def test_inactive_panels_are_hidden_not_missing(self):
