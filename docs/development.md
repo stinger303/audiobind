@@ -65,3 +65,5 @@ validation, and the scan continues.
 HTTP JSON and form requests have a 10-second body receipt deadline. The server closes
 the connection after sending a plain-text 408 when receipt takes longer. The JSON and
 form size caps still apply.
+
+The cover endpoint applies the catalog download byte budget to local cover reads.

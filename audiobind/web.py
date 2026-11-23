@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from . import __version__, matching
-from . import abs_layout
+from . import abs_layout, catalog
 from . import ingest as ingest_mod
 from . import auth as auth_mod
 from . import discover as discover_mod
@@ -8626,9 +8626,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"no cover", "text/plain")
             return
         try:
-            body = found.read_bytes()
+            with found.open("rb", buffering=0) as handle:
+                body = handle.read(catalog.MAX_BODY + 1)
         except OSError:
             self._send(404, b"no cover", "text/plain")
+            return
+        if len(body) > catalog.MAX_BODY:
+            self._send(413, b"cover too large", "text/plain")
             return
         kind = "image/png" if found.suffix.lower() == ".png" else "image/jpeg"
         self._send(200, body, kind, {"Cache-Control": "public, max-age=86400"})
