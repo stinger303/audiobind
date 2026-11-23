@@ -172,3 +172,6 @@ release it using the authenticated `POST /api/unit` action `dismiss_publication_
 with the book's `path` and `"confirm": true`. First inspect the published files, backups and
 staged files. Dismissing the quarantine leaves them all on disk and allows book operations
 to resume, subject to the usual file ownership checks.
+
+In the review queue, **View conversion error**, **Compare runtimes**, and **Check Audible match**
+open the relevant part of the book's details. Choose another edition or edit overrides in those details.

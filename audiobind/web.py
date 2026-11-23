@@ -333,6 +333,7 @@ td.ab-bookcell{display:flex;flex-direction:column;gap:1px;min-width:0;max-width:
 @keyframes ab-st-pulse{0%,100%{opacity:1}50%{opacity:.45}}
 .ab-st-age{flex:none;color:var(--ab-text4);font-size:10.5px;font-variant-numeric:tabular-nums}
 .ab-match{min-width:0;font-size:12px;color:var(--ab-text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab-row-detail{align-self:flex-start;white-space:normal;text-align:left;margin-top:4px}
 .ab-match-cur{color:var(--ab-blue)}
 .ab-conf-high{color:var(--ab-green)}
 .ab-conf-medium{color:var(--ab-text2)}
@@ -1464,6 +1465,14 @@ function toggleRow(row, ev) {
   panel.hidden = !panel.hidden;
   row.classList.toggle('ab-sel', !panel.hidden);
   abRowSync(row);
+}
+function abOpenRowDetail(button, section) {
+  const row = button.closest('tr.urow');
+  const panel = row.nextElementSibling;
+  panel.hidden = false;
+  row.classList.add('ab-sel');
+  abRowSync(row);
+  panel.querySelector('.ab-detail-' + section).focus();
 }
 function abRowKey(ev, row) {
   if (ev.target !== row || (ev.key !== 'Enter' && ev.key !== ' ')) return;
@@ -6984,7 +6993,8 @@ def render(state, status: str = "", query: str = "") -> str:
 
         explain_html = (
             '<div class="explain">'
-            + f"<div><h4>{why_header}</h4><p>{_html(why)}</p>{meter}"
+            + f'<div><h4 class="ab-detail-reason" tabindex="-1">{why_header}</h4>'
+            + f'<p>{_html(why)}</p>{meter}'
             + f'<div class="ab-meterhint ab-panel-age">{_html(status_age(unit.status, unit.updated_at, now))}</div></div>'
             + f'<div class="todo"><h4>Your options</h4><p>{_html(todo)}</p></div>'
             + "</div>"
@@ -7037,7 +7047,9 @@ def render(state, status: str = "", query: str = "") -> str:
             + toprow
             + block("Your source files", before)
             + block(after_title, after)
+            + '<div class="ab-detail-match" tabindex="-1" aria-label="The Audible match">'
             + (evidence or block("The Audible match", decision))
+            + "</div>"
             + editions_html
             + editor
             + series_hook_html(series_shelf["by_path"].get(unit.path))
@@ -7070,6 +7082,16 @@ def render(state, status: str = "", query: str = "") -> str:
         match_attr = f' title="{_attr(match_title)}"' if match_title else ""
         row_src_badge = INGEST_BADGE if is_ingest_row(unit) else ""
         group_attr = f' data-group="{_attr(group)}"' if group else ""
+        label, section = {
+            "failed": ("View conversion error", "reason"),
+            "held": ("Compare runtimes", "reason"),
+            "review": ("Check Audible match", "match"),
+        }.get(unit.status, ("", ""))
+        primary = (
+            f'<button type="button" class="btn ab-row-detail" '
+            f"""onclick="abOpenRowDetail(this,'{section}')">{label}</button>"""
+            if label else ""
+        )
         # f-strings only: titles and paths come from folder names and the catalog
         return (
             f'<tr class="urow" onclick="toggleRow(this, event)" data-path="{_attr(unit.path)}" '
@@ -7080,7 +7102,7 @@ def render(state, status: str = "", query: str = "") -> str:
             f'{cover_html(unit)}</div></td>'
             f'<td class="ab-bookcell"><span class="ab-btitle">{_html(unit.title or unit.path)}{badge}'
             f"{row_src_badge}</span>"
-            f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span></td>'
+            f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span>{primary}</td>'
             f'<td class="ab-whycell">{why_html}</td>'
             f'<td class="ab-hidemd ab-match"{match_attr}>{match_html}</td>'
             f'<td class="ab-actcol">{kebab_menu(unit)}</td></tr>'
