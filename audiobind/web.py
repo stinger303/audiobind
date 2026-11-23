@@ -6651,7 +6651,6 @@ def render(state, status: str = "", query: str = "") -> str:
     counts = state.counts()
     stats = library_stats(state)
     status = (status or "").strip().lower()
-    all_units = state.all(None)
     total = sum(counts.values())
 
     # books with a manual conversion request are waiting on the one-at-a-time
@@ -6659,13 +6658,9 @@ def render(state, status: str = "", query: str = "") -> str:
     # the visible counts stay honest
     # (the book encoding right now is no longer in the queue, so it is added here)
     queued = in_flight_units()
-    queued_by_status: dict[str, int] = {}
-    if queued:
-        for u in all_units:
-            if u.path in queued:
-                queued_by_status[u.status] = queued_by_status.get(u.status, 0) + 1
-    total -= sum(queued_by_status.values())
-    visible_counts = {name: counts.get(name, 0) - queued_by_status.get(name, 0) for name in counts}
+    queued_by_status = Counter(state.statuses_of(queued).values())
+    visible_total = total - sum(queued_by_status.values())
+    visible_counts = {name: count - queued_by_status[name] for name, count in counts.items()}
     attention_count = sum(max(0, visible_counts.get(name, 0)) for name in ATTENTION_STATUSES)
 
     # 0.21.0: "Needs you" is the default view whenever something needs you; with nothing
@@ -6677,12 +6672,9 @@ def render(state, status: str = "", query: str = "") -> str:
         view = status
     else:
         view = "all"
+    units = state.all(None if view in ("attention", "all") else view, blobs=False)
     if view == "attention":
-        units = [u for u in all_units if u.status in ATTENTION_STATUSES]
-    elif view == "all":
-        units = list(all_units)
-    else:
-        units = state.all(view)
+        units = [u for u in units if u.status in ATTENTION_STATUSES]
     if queued:
         units = [u for u in units if u.path not in queued]
 
@@ -6715,9 +6707,9 @@ def render(state, status: str = "", query: str = "") -> str:
         visible = visible_counts.get(name, 0)
         if visible > 0:
             chips.append(chip(f"/?status={name}", STATUS_CHIP_LABELS.get(name, name.capitalize()), visible, view == name))
-    chips.append(chip("/?status=all", "All", total, view == "all"))
+    chips.append(chip("/?status=all", "All", visible_total, view == "all"))
     chips_html = "".join(chips)
-    rc = rail_counts(state, counts)
+    rc = rail_counts(state, counts, queued_by_status)
     # stored series listings only; stale ones are refreshed in the background
     series_shelf = _series_shelf(state)
 
@@ -6734,6 +6726,7 @@ def render(state, status: str = "", query: str = "") -> str:
     # table
     shown = len(units)
     units = units[:MAX_ROWS]
+    state.hydrate_unit_blobs(units)
     overflow = (
         (
             f'<div class="ab-overflow">showing the first {MAX_ROWS} of {shown} - '
@@ -6760,13 +6753,12 @@ def render(state, status: str = "", query: str = "") -> str:
         return data
 
     output_counts = Counter()
-    for unit in all_units:
-        if unit.output:
-            try:
-                folder = Path(unit.output).resolve().parent
-            except (OSError, RuntimeError):
-                continue
-            output_counts.update((folder, *folder.parents))
+    for _, output in state.outputs():
+        try:
+            folder = Path(output).resolve().parent
+        except (OSError, RuntimeError):
+            continue
+        output_counts.update((folder, *folder.parents))
 
     def detail_panel(unit) -> str:
         ingest_row = is_ingest_row(unit)
@@ -7106,7 +7098,7 @@ def render(state, status: str = "", query: str = "") -> str:
         if flagged and u.status in ("review", "held", "failed"):
             state.clear_reopen(u.path)
     if not units:
-        if not all_units and not status and not query:
+        if not total and not status and not query:
             empty = (f"No books found in {_html(str(CONFIG.library_root))} yet. If a scan has finished and this is "
                      "still empty, check the Library path in the container settings.")
         else:
@@ -7263,7 +7255,7 @@ def render(state, status: str = "", query: str = "") -> str:
         health_text=health_text,
         service_check_in=service_check_in,
         scan_freshness=scan_freshness,
-        rail_total=total,
+        rail_total=visible_total,
         series_item=_series_rail_item(series_shelf["missing_total"]),
         discover_item=_discover_rail_item(state),
         rail_attention_count=rc["attention"],
@@ -7308,14 +7300,11 @@ def library_stats(state) -> dict:
     }
 
 
-def rail_counts(state, counts: dict) -> dict:
+def rail_counts(state, counts: dict, queued_by_status: Counter | None = None) -> dict:
     """DB counts minus books currently waiting in the manual-conversion queue."""
-    adjusted = {k: counts.get(k, 0) for k in ATTENTION_STATUSES}
-    queued = in_flight_units()
-    if queued:
-        for status in state.statuses_of(queued).values():  # the queue is a handful of paths: look them up
-            if status in adjusted:
-                adjusted[status] -= 1
+    if queued_by_status is None:
+        queued_by_status = Counter(state.statuses_of(in_flight_units()).values())
+    adjusted = {k: counts.get(k, 0) - queued_by_status[k] for k in ATTENTION_STATUSES}
     adjusted["attention"] = sum(adjusted[k] for k in ATTENTION_STATUSES)
     return adjusted
 

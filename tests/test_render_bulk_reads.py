@@ -104,6 +104,50 @@ class TestRenderReadsInBulk(unittest.TestCase):
             html = web.render(self.state, "held")
         self.assertIn("Book 7", html)
 
+    def test_filtered_page_fetches_blobs_only_for_rendered_rows(self):
+        for path, status, title in (
+            ("A/Shown", "review", "Target shown"),
+            ("A/Overflow", "review", "Target overflow"),
+            ("A/Queued", "review", "Target queued"),
+            ("A/Other", "review", "Other"),
+            ("A/Converted", "converted", "Target converted"),
+        ):
+            self.state.save(UnitState(
+                path=path, status=status, title=title,
+                detail=json.dumps({"source": {"codecs": ["test codec"]}}),
+            ))
+        self.state.connection.execute("UPDATE units SET updated_at = 1 WHERE path = 'A/Shown'")
+        self.state.connection.execute("UPDATE units SET updated_at = 0 WHERE path = 'A/Overflow'")
+
+        queries = []
+        self.state.connection.set_trace_callback(queries.append)
+        try:
+            with mock.patch.object(web, "in_flight_units", return_value={"A/Queued"}), \
+                    mock.patch.object(web, "MAX_ROWS", 1), \
+                    mock.patch.object(web, "read_sort", return_value=("scan", "desc")):
+                page = web.render(self.state, "review", "Target")
+        finally:
+            self.state.connection.set_trace_callback(None)
+
+        self.assertIn('<span class="ab-count">4</span>', page)
+        self.assertIn("Target shown", page)
+        self.assertIn("Audio format: test codec", page)
+        self.assertIn("showing the first 1 of 2", page)
+        self.assertIn('Needs your review <span class="n">3</span>', page)
+        self.assertNotIn("Target queued", page)
+        self.assertNotIn("Target overflow", page)
+        self.assertNotIn("Target converted", page)
+
+        lookups = [sql for sql in queries if sql.startswith("SELECT path, status FROM units WHERE path IN")]
+        self.assertEqual(lookups, ["SELECT path, status FROM units WHERE path IN ('A/Queued')"])
+        # The series shelf reads match metadata independently of the table view.
+        blob_reads = [
+            sql for sql in queries
+            if "FROM units" in sql and not sql.startswith("SELECT path, status, asin, asin_override,")
+            and (sql.startswith("SELECT *") or "detail" in sql or "alternates" in sql)
+        ]
+        self.assertEqual(blob_reads, ["SELECT path, detail, alternates FROM units WHERE path IN ('A/Shown')"])
+
     def test_an_override_still_shows_in_the_detail_panel(self):
         self.state.save(UnitState(path="A/One", status="review", title="One"))
         self.state.set_overrides("A/One", {"title": "Corrected Title"})

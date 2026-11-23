@@ -612,6 +612,22 @@ class State:
                     found[row[0]] = row[1]
         return found
 
+    def hydrate_unit_blobs(self, units: list[UnitState]) -> None:
+        """Load table details and alternate editions for the selected rows in place."""
+        by_path = {unit.path: unit for unit in units}
+        paths = list(by_path)
+        with self._lock:
+            for i in range(0, len(paths), 500):
+                chunk = paths[i : i + 500]
+                marks = ",".join("?" * len(chunk))
+                rows = self.connection.execute(
+                    f"SELECT path, detail, alternates FROM units WHERE path IN ({marks})", chunk
+                )
+                for path, detail, alternates in rows:
+                    unit = by_path[path]
+                    unit.detail = detail
+                    unit.alternates = alternates
+
     def path_statuses(self) -> list[tuple[str, str]]:
         """(path, status) for every row - for callers that only tally or match by status and
         must not drag every row's ``detail`` blob out of SQLite (``all()`` does)."""

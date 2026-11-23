@@ -67,3 +67,8 @@ the connection after sending a plain-text 408 when receipt takes longer. The JSO
 form size caps still apply.
 
 The cover endpoint applies the catalog download byte budget to local cover reads.
+
+The status page looks up queued paths and statuses once for its rail and filter counts.
+The table loads details and alternate editions only for rows shown after filtering,
+sorting and applying the row limit. The series shelf still derives library-wide
+series membership from stored match metadata.
