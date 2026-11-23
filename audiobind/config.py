@@ -326,7 +326,6 @@ class Config:
     audio_bitrate: str = "128k"
     audio_channels: int = 2
     sample_rate: int = 44100
-    jobs: int = 1
 
     #: which confidence tiers convert without asking ("high", "medium" or "off")
     auto_convert: str = "high"
@@ -474,7 +473,6 @@ class Config:
             audio_bitrate=_env("AUDIO_BITRATE", "128k"),
             audio_channels=_env_int("AUDIO_CHANNELS", 2),
             sample_rate=_env_int("SAMPLE_RATE", 44100),
-            jobs=max(1, _env_int("JOBS", 1)),
             auto_convert=_env("AUTO_CONVERT", "high").lower(),
             output_format=_env("OUTPUT_FORMAT", "M4B").strip().upper() or "M4B",
             max_runtime_delta=_env_float("MAX_RUNTIME_DELTA", 0.15),

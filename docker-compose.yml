@@ -13,7 +13,6 @@ services:
       - SCAN_INTERVAL_MIN=30
       - AUDIO_BITRATE=128k          # floor; richer sources keep their own bitrate
       - AUDIO_CHANNELS=2
-      - JOBS=1
       - NICE=10
       - DRY_RUN=false
       # Optional. Leave it out and the UI answers on this machine and on private LAN IPs (like
