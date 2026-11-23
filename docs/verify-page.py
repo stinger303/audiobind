@@ -196,6 +196,9 @@ check(".ab-st-age is not the ellipsized element; the label is",
 foot = html.split('<div class="ab-rail-foot">')[1].split("</div>")[0]
 check("rail-foot path breaks at slashes (&#8203;), titles stay plain",
       "/&#8203;" in foot and all("&#8203;" not in t for t in re.findall(r'title="([^"]*)"', foot)))
+check("the version appears in navigation, outside the working header",
+      "Version v" in html.split('<div class="ab-rail-foot">')[1].split("</aside>")[0]
+      and "Version v" not in html.split('<header class="ab-topbar">')[1].split("</header>")[0])
 all_html = get("/?status=all")
 # 0.21.0-dev4 column budget: Book is the one column without a width, so it gets what the
 # others leave; Match is a fixed 150 px (a meter and one word). A change that hands the slack

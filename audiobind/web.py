@@ -162,9 +162,6 @@ body{
 .ab-status .ab-dot{width:6px;height:6px;border-radius:50%;
   background:var(--ab-green);box-shadow:0 0 6px rgba(39,166,68,.7)}
 .ab-status small,.ab-scan-age{font-size:12px;font-weight:400;color:var(--ab-text3)}
-.ab-version{font-family:var(--ab-mono);font-size:11px;color:var(--ab-text3);
-  background:rgba(255,255,255,.04);border:1px solid var(--ab-border-subtle);
-  border-radius:4px;padding:2px 7px;}
 .ab-topbar .ab-right{margin-left:auto;display:flex;align-items:center;gap:12px}
 
 .ab-ingest-warning{margin:10px 24px;overflow-wrap:anywhere}
@@ -825,7 +822,6 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   .ab-topbar h1{min-width:0;overflow-wrap:anywhere}
   .ab-topbar .ab-right:empty{display:none}
   .ab-status{white-space:nowrap}
-  .ab-version{white-space:nowrap}
   .ab-controls{padding:10px 12px 4px;row-gap:8px}
   .ab-controls .ab-note{white-space:normal}
   .ab-queue{margin:10px 12px 0;grid-template-columns:minmax(0,1fr)}
@@ -1796,6 +1792,7 @@ PAGE = """<!doctype html>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
     <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{ingest_line}{signout}
+    <div>Version v{version}</div>
   </div>
 </aside>
 
@@ -1809,7 +1806,6 @@ PAGE = """<!doctype html>
       <span class="ab-dot"></span>{health_text}<small>&middot; {service_check_in}</small>
     </span>
     <span class="ab-scan-age">{scan_freshness}</span>
-    <span class="ab-version">v{version}</span>
   </header>
 
 {ingest_warning}
@@ -1906,6 +1902,7 @@ SETTINGS_PAGE = """<!doctype html>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
     <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{ingest_line}{signout}
+    <div>Version v{version}</div>
   </div>
 </aside>
 <div class="ab-scrim" hidden onclick="abNav(false)"></div>
@@ -1914,7 +1911,6 @@ SETTINGS_PAGE = """<!doctype html>
     <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
             aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1>Settings</h1>
-    <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
   </header>
   <section class="ab-settings" style="padding:24px;max-width:640px;">
@@ -2425,6 +2421,7 @@ SERIES_PAGE = """<!doctype html>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
     <b>output</b> &rarr; <span title="{output_attr}">{output}</span>{signout}
+    <div>Version v{version}</div>
   </div>
 </aside>
 <div class="ab-scrim" hidden onclick="abNav(false)"></div>
@@ -2433,7 +2430,6 @@ SERIES_PAGE = """<!doctype html>
     <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
             aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1>Series</h1>
-    <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
   </header>
   <div class="ab-series-wrap">
@@ -3821,6 +3817,7 @@ DISCOVER_PAGE = """<!doctype html>
   <div class="ab-rail-foot">
     <b>library</b> <span title="{library_attr}">{library}</span><br>
     <b>output</b> &#8594; <span title="{output_attr}">{output}</span>{signout}
+    <div>Version v{version}</div>
   </div>
 </aside>
 <div class="ab-scrim" hidden onclick="abNav(false)"></div>
@@ -3829,7 +3826,6 @@ DISCOVER_PAGE = """<!doctype html>
     <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
             aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
     <h1>{page_title}</h1>
-    <span class="ab-version">v{version}</span>
     <div class="ab-right"></div>
   </header>
   <div class="ab-disc-wrap">
