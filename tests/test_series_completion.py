@@ -72,11 +72,11 @@ class TestUnknownTotals(StateCase):
     def render_card(self):
         return card(web.render_series(self.state), "jack-reacher")
 
-    def test_never_fetched_is_fetching_and_unknown(self):
+    def test_never_fetched_shows_only_checking(self):
         self.owned(1, 2)
         html = self.render_card()
-        self.assertIn(">total unknown</span>", html)
-        self.assertIn("fetching series size&hellip;", html)
+        self.assertNotIn(">total unknown</span>", html)
+        self.assertIn("Checking&hellip;", html)
         self.assertNotIn(" of ", html)
         self.assertEqual(series.aggregate(self.state)["series"][0]["source"], series.SOURCE_PENDING)
 
@@ -85,8 +85,8 @@ class TestUnknownTotals(StateCase):
         self.state.series_cache_put(series.group_key("Jack Reacher", "Lee Child"), False,
                                     {"reason": "not_found"}, [])
         html = self.render_card()
-        self.assertIn(">total unknown</span>", html)
-        self.assertIn("Audible has no listing for this series", html)
+        self.assertNotIn(">total unknown</span>", html)
+        self.assertIn("Unlisted on Audible", html)
         self.assertNotIn(" of ", html)
         self.assertNotIn("MISSING", html)
         # and no missing panel, no Want all: there is nothing honest to count as missing
@@ -98,7 +98,7 @@ class TestUnknownTotals(StateCase):
         self.owned(1, 2)
         self.state.series_cache_put(series.group_key("Jack Reacher", "Lee Child"), False,
                                     {"reason": "not_found"}, [])
-        self.assertIn("total unknown &#183; Audible has no listing for this series", web.render(self.state))
+        self.assertIn("Unlisted on Audible", web.render(self.state))
 
     def test_api_reports_the_source(self):
         self.owned(1, 2)

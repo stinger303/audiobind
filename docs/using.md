@@ -64,8 +64,8 @@ series from the Audible search is shown instead, and the panel says so. The file
 tagged without a series unless you set one.
 
 Each card shows "owned X of Y" and notes that the total comes from the Audible catalog, with
-when it was checked. Audiobind never estimates a total. If Audible has no listing, or the
-catalog couldn't be reached, the card shows **total unknown** and the reason. In the missing
+when it was checked. While Audiobind looks up the series, the card says **Checking…**. If Audible has no
+listing, it says **Unlisted on Audible**. If the lookup fails, the card tells you what to check. In the missing
 list, **Want** puts one book on your wishlist. **Want all missing** adds every missing book in
 the series in one click. Books already on the wishlist are skipped, and nothing is downloaded.
 Want all uses the server's current missing list, so a book you got after the page loaded isn't

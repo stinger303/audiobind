@@ -218,9 +218,8 @@ class TestBadgeAndDegraded(StateCase):
         html = web.render_series(self.state)
         card = re.search(r'<article class="ab-series-card".*?</article>', html, re.S).group(0)
         self.assertIn("<b>5</b><span class=\"ab-series-of\">owned</span>", card)
-        # 0.17.0-dev1: an unreachable catalog says so (it is not "fetching") and the total is unknown
-        self.assertIn(">total unknown</span>", card)
-        self.assertIn("the Audible catalog could not be reached", card)
+        self.assertNotIn("Checking&hellip;", card)
+        self.assertIn("Could not reach Audible. Check your internet connection.", card)
         self.assertNotIn(" of ", card)
         self.assertNotIn("MISSING", card)
 

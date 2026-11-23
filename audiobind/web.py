@@ -643,8 +643,6 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-series-pill.ab-series-have{color:var(--ab-green);background:var(--ab-green-soft)}
 .ab-series-pill.ab-series-wanted{color:var(--ab-accent-bright);background:rgba(94,106,210,.14)}
 .ab-series-src{color:var(--ab-text4);font-size:11px;margin:-6px 0 10px}
-.ab-series-unk{color:var(--ab-text3);background:var(--ab-surface2);font-size:10.5px;font-weight:600;
-  letter-spacing:.5px;padding:2px 8px;border-radius:4px;text-transform:uppercase}
 .ab-series-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--ab-text4);
   margin:0 0 8px}
 .ab-series-bar .ab-spacer{flex:1}
@@ -3501,9 +3499,11 @@ def _plural(n: int, one: str, many: str) -> str:
 
 #: why a series has no total - the card and the detail-panel hook say which, never a number
 SERIES_UNKNOWN_WHY = {
-    series_mod.SOURCE_PENDING: "fetching series size&hellip;",
-    series_mod.SOURCE_NOT_FOUND: "Audible has no listing for this series",
-    series_mod.SOURCE_UNREACHABLE: "the Audible catalog could not be reached &#183; trying again later",
+    series_mod.SOURCE_PENDING: "Checking&hellip;",
+    series_mod.SOURCE_NOT_FOUND: "Unlisted on Audible",
+    series_mod.SOURCE_UNREACHABLE: (
+        "Could not reach Audible. Check your internet connection. Audiobind will try again."
+    ),
 }
 
 
@@ -3543,12 +3543,7 @@ def _series_card(view: dict) -> str:
         else:
             foot = '<span class="ab-series-dim">nothing to chase</span>'
     else:
-        # never a guessed total: just what you have, and why the size is unknown
-        count = (
-            f'<b>{view["owned"]}</b><span class="ab-series-of">owned</span>'
-            '<span class="ab-series-unk" title="No series total: Audiobind only shows one the '
-            'Audible catalog gave it.">total unknown</span>'
-        )
+        count = f'<b>{view["owned"]}</b><span class="ab-series-of">owned</span>'
         strip = ""
         why = SERIES_UNKNOWN_WHY.get(view.get("source"), SERIES_UNKNOWN_WHY[series_mod.SOURCE_PENDING])
         foot = f'<span class="ab-series-dim">{why}</span>'
@@ -3718,7 +3713,7 @@ def series_hook_html(view: dict | None) -> str:
             sub = "You have every numbered book in this series &mdash; nothing to chase"
     else:
         head = f"{name} &mdash; you have {view['owned']}"
-        sub = "total unknown &#183; " + SERIES_UNKNOWN_WHY.get(
+        sub = SERIES_UNKNOWN_WHY.get(
             view.get("source"), SERIES_UNKNOWN_WHY[series_mod.SOURCE_PENDING]
         )
     owned_tiles = [t for t in view["tiles"] if t["kind"] != "gap"][:8]
@@ -3756,8 +3751,7 @@ def render_series(state) -> str:
             '<p class="ab-series-intro">Every series your books belong to that Audible lists '
             "with two or more books, checked against the Audible series order. " + want_help +
             "<b>I have this</b> marks a book you own without a rip, so it stops counting as "
-            "missing. A series total only ever comes from the Audible catalog &#8212; when it "
-            "has no listing, the total says unknown.</p>"
+            "missing. Series totals come from the Audible catalog.</p>"
         )
         try:
             wanted = frozenset(state.wishlist_asins())
