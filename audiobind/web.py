@@ -785,6 +785,8 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-watch-warn{border-color:rgba(242,163,60,.35);background:var(--ab-amber-soft);color:var(--ab-amber);margin:10px 0}
 .ab-watch-warn b{color:var(--ab-amber)}
 .ab-watch-actions{flex-wrap:wrap}
+.ab-watch-setup{margin:12px 0;border:1px solid var(--ab-border-subtle);border-radius:6px;padding:10px}
+.ab-watch-setup summary{cursor:pointer;font-weight:600}
 
 /* the hamburger and the drawer scrim exist on every page but only show at <=1080 px; on desktop
    the button is display:none and the scrim carries [hidden], so neither takes any room */
@@ -4810,8 +4812,10 @@ def render_watcher_section(state) -> str:
             "variables. A Wishlist tab appears in the sidebar once these settings are complete.</div>"
             + _wizard_open_button()
             + guide_link
+            + '<details class="ab-watch-setup"><summary>Tracker and download client setup</summary>'
             + _watch_connection_fields()
             + _watch_test_and_save()
+            + '</details>'
             + _egress_pin_field()
             + _ip_updater_section(s)
             + "</section>"
@@ -4896,12 +4900,17 @@ def render_watcher_section(state) -> str:
     error_html = (f'<span class="warn">{_html(str(error.get("message") or ""))}</span> &#183; {_html(rel_age(error.get("at")))}'
                   if error.get("message") else "none")
     rows = [
-        ("Status", state_html),
         ("Schedule", f"every {int(s['interval_min'])} min, at most {int(s['max_per_cycle'])} "
                      f"{_plural(int(s['max_per_cycle']), 'book', 'books')} per cycle"),
         ("Download limit", (f"adds nothing while {int(s['max_incomplete'])} torrent(s) are still downloading"
                             if s["max_incomplete"] else "off")),
-        ("Tracker", f"{_html(s['tracker_host'])}" if s.get("tracker_host") else DASH),
+        ("Guard", guard_html),
+        ("Last cycle", last_html),
+        ("Next cycle", next_html),
+        ("Last error", error_html),
+    ]
+    connection_rows = [
+        ("Tracker", _html(s["tracker_host"]) if s.get("tracker_host") else DASH),
         (("qBittorrent", (_html(urlsplit(s['qbit_url']).netloc or s['qbit_url']) if s['qbit_url']
                           else '<span class="warn">no address set</span>') + f" &#183; category <code>{_html(s['qbit_category'])}</code> &#183; "
                          + ("login set" if s["qbit_credentials"] else '<span class="warn">no login set</span>'))
@@ -4910,14 +4919,11 @@ def render_watcher_section(state) -> str:
                                      else '<span class="warn">no address set</span>')
                                     + f" &#183; label <code>{_html(s['qbit_category'])}</code>")),
         ("Connection", sees),
-        ("Guard", guard_html),
-        ("Last cycle", last_html),
-        ("Next cycle", next_html),
-        ("Last error", error_html),
     ]
     if s["backoff_seconds"]:
         rows.append(("Tracker backoff", f'<span class="warn">no tracker request for {int(s["backoff_seconds"])}s</span>'))
     grid = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
+    connection_grid = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in connection_rows)
     ready = ""
     if s["enabled"] and not s["paused"]:
         nxt = (f" Next check {_html(time.strftime('%H:%M', time.localtime(float(s['next_cycle_at']))))}."
@@ -4951,15 +4957,19 @@ def render_watcher_section(state) -> str:
         "match to qBittorrent; the ingest folder takes it from there. Everything below can be set here or as a "
         "container variable; a value saved here wins and applies from the next cycle, no restart. The pause switch "
         "is kept across restarts.</div>"
-        f'{guide_link}{warn}{ready}<dl class="ab-watch-grid">{grid}</dl>'
-        + _egress_pin_field()
-        + _watch_connection_fields()
-        + _watch_schedule_fields()
-        + _watch_test_and_save()
-        + _ip_updater_section(s)
+        f'<div class="ab-acct-who"><b>Status</b> {state_html}</div>'
         + f'<div class="ab-acct-row ab-watch-actions">{run_btn}{toggle}{dry_toggle}'
         + '<span class="ab-fb" id="ab-watch-fb" role="status"></span></div>'
         + dry_line
+        + f'{warn}{ready}<dl class="ab-watch-grid">{grid}</dl>{guide_link}'
+        + _egress_pin_field()
+        + '<details class="ab-watch-setup"><summary>Tracker and download client setup</summary>'
+        + f'<dl class="ab-watch-grid">{connection_grid}</dl>'
+        + _watch_connection_fields()
+        + _watch_test_and_save()
+        + '</details>'
+        + _watch_schedule_fields()
+        + _ip_updater_section(s)
         + "</section>"
     )
 

@@ -87,3 +87,16 @@ class AuditUsabilityTests(unittest.TestCase):
         self.assertIn(label + "</button>", library)
         self.assertIn(label + "?", web.SETTINGS_SCRIPT)
         self.assertIn("values from the container environment", library)
+
+    def test_watcher_actions_precede_connection_disclosure(self):
+        with tempfile.TemporaryDirectory() as temp, closing(State(Path(temp))) as state:
+            status = web.watcher_mod.WATCHER.status(state)
+            status.update(configured=True, enabled=True)
+            with mock.patch.object(web.watcher_mod.WATCHER, "status", return_value=status):
+                watcher = web.render_watcher_section(state)
+        actions_at = watcher.index('class="ab-acct-row ab-watch-actions"')
+        diagnostics_at = watcher.index("<details")
+        self.assertLess(actions_at, diagnostics_at)
+        setup = watcher[diagnostics_at:]
+        self.assertIn("<summary>Tracker and download client setup</summary>", setup)
+        self.assertLess(setup.index("Search request body"), setup.index("</details>"))

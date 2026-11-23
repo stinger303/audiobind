@@ -51,12 +51,12 @@ class ScheduleCase(LiveServerCase):
 
 
 class TestScheduleFields(ScheduleCase):
-    def test_fields_sit_in_the_watcher_block_above_run_a_cycle_now(self):
+    def test_schedule_fields_follow_watcher_operating_controls(self):
         page = web.render_settings(self.state)
         block = page[page.index('id="watcher"'):]
         for key in ("watch_interval", "watch_per_cycle"):
             self.assertIn(f'data-setting="{key}"', block)
-            self.assertLess(block.index(f'data-setting="{key}"'), block.index("Run a cycle now"))
+            self.assertLess(block.index("Run a cycle now"), block.index(f'data-setting="{key}"'))
         self.assertIn("Check the wishlist every", block)
         self.assertIn("Books per cycle", block)
 

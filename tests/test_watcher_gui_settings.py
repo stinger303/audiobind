@@ -470,8 +470,10 @@ class TestPageShape(WatcherSettingsCase):
         block = block[:block.index("</section>")]
         for title in ("Where it looks", "How often it looks", "Test the connection"):
             self.assertIn(f'<div class="ab-acct-title">{title}</div>', block)
-        self.assertLess(block.index("Where it looks"), block.index("How often it looks"))
-        self.assertLess(block.index("How often it looks"), block.index("Test the connection"))
+        setup = block.split("<summary>Tracker and download client setup</summary>", 1)[1]
+        setup, schedule = setup.split("</details>", 1)
+        self.assertLess(setup.index("Where it looks"), setup.index("Test the connection"))
+        self.assertIn("How often it looks", schedule)
         self.assertIn("<code>TRACKER_PROXY</code> and <code>TRACKER_HOME_IP</code>", block)
         # the page's one Save settings ends the form, after the panels; the Watcher panel has no filled button
         self.assertEqual(block.count('class="ab-save"'), 0)

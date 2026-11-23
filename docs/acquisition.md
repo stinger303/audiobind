@@ -186,7 +186,8 @@ The watcher has its own **Preview tracker downloads** switch (Settings > Watcher
 library preview on the main page: it searches and notes what it *would* download, and downloads
 nothing. Settings > **Watcher** shows its status (last and next cycle, last error, backoff),
 **Run a cycle now** and **Pause watcher** (kept across restarts); these, and **Preview tracker downloads**, appear once the tracker settings are complete. Tracker sessions are often locked to
-an IP address: create the session for the IP the container reaches the tracker from.
+an IP address: create the session for the IP the container reaches the tracker from. Open **Tracker and
+download client setup** below the Watcher status to edit the connection fields or test them.
 
 ```bash
 curl -H "$AUTH" localhost:8080/api/watcher                            # status, never a secret
