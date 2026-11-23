@@ -55,6 +55,54 @@ survives a crash, and one run can no longer stomp another.
 - **The status line stopped conflating "alive" with "scanned".** The header shows the service check-in and
   the last finished scan separately, so a paused daemon no longer looks freshly scanned. `a995878`
 
+**The app stops making you guess.** The audit's UI and copy work lands on top: every exception row now
+names its next step, the tablet no longer loses the match, and a dozen sentences say what the control
+actually does.
+
+### Changed
+
+- **Each exception row carries one labelled action** — *View conversion error*, *Compare runtimes*,
+  *Check Audible match* — which opens the book's details at the evidence. Edition choice stays inside
+  the panel.
+- **Match is visible at every width.** Between 641 and 820 px the confidence had been hidden outright;
+  it now sits under the book on its own line, the way the phone layout already did it.
+- **All six Library filters fit on a phone**, and the header is compacted so the first book is not
+  pushed off the first screen.
+- **The missing ingest folder is reported in the main pane**, with the mounting instructions behind a
+  disclosure instead of buried in the sidebar.
+- **The two previews are named for their scope** — *Preview library conversions* and *Preview tracker
+  downloads* — with a line each saying what they do not protect.
+- **Connection tests say they save**: the buttons read *Save and test* and the text says the values are
+  kept even when the test fails.
+- **The Watcher's daily controls sit with its status**; request-body and endpoint detail moved into a
+  disclosure.
+- **The reset names what it resets** and describes the real container fallback, next to the general
+  settings rather than the Watcher block.
+- **Copy that was wrong or vague is fixed**: failed conversions no longer blame damaged audio; the
+  match-only filter is *Check matches*; the edition action is *Choose the exact Audible edition*;
+  combined output says it writes one M4B and one MP3 side by side; a disabled Watcher leads with the
+  remedy; the version moved out of the working header; the Converted view gives its empty Why column to
+  Match; the Audible store selector names its stores; the Account tab lost the conversion notice; the
+  wizard ends on *Done*.
+- **A fast Series refresh no longer leaves a permanently pending card**, and its actions wrap on a phone.
+
+### Fixed
+
+- **An interrupted tracker handoff is reconciled, not retried blindly** — the intent is journaled before
+  the external call, so a restart cannot double-download or undercount a spent credit.
+- **Media reads stay inside the source roots**; a link that leaves them is refused and the book goes to
+  review instead of being encoded from somewhere else.
+- **qBittorrent and catalogue requests refuse cross-origin redirects** like the tracker already did.
+- **One malformed catalogue product no longer ends a scan**: it is dropped at the cache boundary and the
+  affected book goes to review while the pass continues.
+- **Schema changes run in one write transaction**, so two processes cannot race the same `ALTER TABLE`.
+- **Cross-filesystem publication records the destination before scratch cleanup**, and a failed cleanup
+  is reported as its own line instead of a publication failure.
+- **Request bodies have an absolute receipt deadline** (408 when exceeded), published cover reads are
+  capped at the catalogue byte budget, and a filtered page hydrates detail only for the rows it renders.
+- **The `JOBS` setting is gone** from the template, Compose example, docs and parser — nothing ever read
+  it; conversion is a single encoder.
+
 ## [0.25.5] - 2026-11-21
 
 **The wrong-book paths close.** Four defects that could let a different book, edition or volume win the
