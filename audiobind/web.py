@@ -1078,7 +1078,7 @@ function abUnitAction(btn, action) {
     note = 'setting ASIN ' + body.asin + ' - re-checking…';
   } else if (action === 'force') {
     if (!confirm('Convert \\u201c' + abBookTitle(el.dataset.path) + '\\u201d anyway?\\n\\n' +
-                 'This skips the checks that flagged the book (confidence, runtime, damaged source) and ' +
+                 'This skips the checks that flagged the book (such as confidence or runtime) and ' +
                  'starts encoding it. If it was already converted it is encoded again. ' +
                  'Encoding can take a long time.')) return;
     note = 'queued - converting…';
@@ -6685,7 +6685,7 @@ STATUS_CHIP_LABELS = {
     "ready": "Ready",
     "review": "Review",
     "held": "Held",
-    "failed": "Failed",
+    "failed": "Conversion failed",
     "interrupted": "Stopped",
 }
 

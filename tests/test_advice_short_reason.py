@@ -30,8 +30,8 @@ CASES = (
     ("held", "HIGH", "runtime mismatch", None, "runtime_gap", "Runtime differs"),
     ("held", "HIGH", "", None, "runtime_gap", "Runtime differs"),
     ("held", "MEDIUM", DAMAGED_HELD, None, "damaged_files", "Damaged files"),
-    ("failed", "", "ffmpeg exited 1", None, "encoder_error", "Encoder error"),
-    ("failed", "HIGH", "", None, "encoder_error", "Encoder error"),
+    ("failed", "", "ffmpeg exited 1", None, "encoder_error", "Conversion failed"),
+    ("failed", "HIGH", "", None, "encoder_error", "Conversion failed"),
     # C4: the note is the evidence - a refusal never reached the encoder; a signal names its cause
     ("failed", "HIGH", "ffprobe could not read 02.mp3, so the book's length is unknown", None,
      "unmeasured", "Couldn't measure a file"),
@@ -68,7 +68,7 @@ class TestShortReason(unittest.TestCase):
     def test_group_headers_are_plain_sentences(self):
         for key, (title, sentence) in advice.GROUP_REASONS.items():
             with self.subTest(key=key):
-                self.assertIn(title, ("Failed", "Held", "Stopped", "Review"))
+                self.assertIn(title, ("Conversion failed", "Failed", "Held", "Stopped", "Review"))
                 self.assertTrue(sentence.endswith("."), sentence)
                 for word in ("pinned", "wedge", "locked", "LOW", "MEDIUM", "HIGH", "ASIN pin"):
                     self.assertNotIn(word, sentence)

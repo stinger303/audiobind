@@ -146,7 +146,7 @@ class TestRender(unittest.TestCase):
         self.assertNotIn('id="ab-shelf"', page)
         self.assertIn('<a class="chip on ab-alert" href="/?status=attention">Needs your review <span class="n">3</span></a>', page)
         body = page.split('<tbody id="ab-body">')[1].split("</tbody>")[0]
-        for title in ("Failed", "Held", "Review"):
+        for title in ("Conversion failed", "Held", "Review"):
             self.assertIn(f'<span class="ab-group-t">{title}</span>', body)
         # Each problem row rendered, nothing else
         self.assertIn("Book 3", body)
@@ -228,7 +228,7 @@ class TestReasonLine(unittest.TestCase):
 
     def test_failed_rows_render_a_short_reason(self):
         page = web.render(self.state)
-        self.assertIn('<span class="ab-why-l">Encoder error</span>', page)
+        self.assertIn('<span class="ab-why-l">Conversion failed</span>', page)
 
     def test_converted_rows_do_not_render_a_reason(self):
         self.state.save(UnitState(path="Author/Done", status="converted", title="Done", hours=1, files=1))

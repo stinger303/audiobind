@@ -261,7 +261,7 @@ class TestMockupFixPass(unittest.TestCase):
         labels = re.findall(r'<a class="chip[^"]*" href="[^"]+">([^<]+?) <span class="n">', chips(render_with([HELD, REVIEW, DONE])))
         self.assertEqual(labels, ["Needs your review", "Review", "Held", "Converted", "All"])
         self.assertEqual(web.STATUS_CHIP_LABELS["interrupted"], "Stopped")
-        self.assertEqual(web.STATUS_CHIP_LABELS["failed"], "Failed")
+        self.assertEqual(web.STATUS_CHIP_LABELS["failed"], "Conversion failed")
 
     def test_rail_has_one_triage_item_below_library(self):
         for page in (render_with([HELD, REVIEW]),):

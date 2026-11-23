@@ -56,7 +56,7 @@ def _unreadable(note: str, detail: dict | None) -> tuple[int, int]:
 ATTENTION_STATUSES = ("failed", "held", "interrupted", "review")
 
 #: status -> group title in the "Needs you" view
-GROUP_TITLES = {"failed": "Failed", "held": "Held", "interrupted": "Stopped", "review": "Review"}
+GROUP_TITLES = {"failed": "Conversion failed", "held": "Held", "interrupted": "Stopped", "review": "Review"}
 
 _RUNTIME_HEADER = (
     "Your files and Audible's runtime disagree by more than your 15 % tolerance. That gap "
@@ -102,13 +102,12 @@ GROUP_REASONS = {
     "runtime_long": ("Held", _RUNTIME_HEADER),
     "runtime_gap": ("Held", _RUNTIME_HEADER),
     "encoder_error": (
-        "Failed",
-        "The encoder gave up on these books. A damaged source file is the usual suspect.",
+        "Conversion failed",
+        "Open View conversion error to see what Audiobind recorded for each book.",
     ),
     "encoder_killed": (
-        "Failed",
-        "The encoder was stopped part way, most often because the server ran out of memory. Check "
-        "its free memory, then press Retry now. A damaged source file is the other possibility.",
+        "Conversion failed",
+        "The conversion was stopped. Open View conversion error to see what Audiobind recorded.",
     ),
     "unmeasured": (
         "Held",
@@ -158,7 +157,7 @@ def short_reason(status, confidence="", note="", detail=None) -> tuple[str, str]
     if status == "failed":
         if _signal_name(note):
             return "encoder_killed", "Encoder was stopped"
-        return "encoder_error", "Encoder error"
+        return "encoder_error", "Conversion failed"
     if status == "interrupted":
         return "stopped", "Stopped part way"
     if status == "review":
@@ -273,24 +272,22 @@ def _explain_base(
     if signal_name == "SIGKILL":
         return (
             "ffmpeg was stopped part way by the system (SIGKILL), so nothing was converted. The "
-            "usual cause is the server running out of memory; a damaged source file is the other "
-            "possibility.",
+            "system may have run out of memory.",
             "Check the server's free memory (stop other heavy jobs, or give the container more), "
-            "then press Retry now. If it is stopped again with memory to spare, check the source files.",
+            "then press Retry now. If it stops again, check the container log.",
         )
     if signal_name:
         return (
             f"ffmpeg was stopped part way by {signal_name}, so nothing was converted. Something "
-            "outside the encoder stopped it - a container restart or shutdown is the usual cause; "
-            "a damaged source file is less likely.",
-            "Press Retry now. If it is stopped the same way again, check the source files.",
+            "outside the conversion stopped it, such as a container restart or shutdown.",
+            "Press Retry now. If it stops again, check the container log.",
         )
 
     if status == "failed":
         reason = note or "the encoder returned an error"
         return (
-            f"This one failed: {reason}. A damaged source file is the usual suspect.",
-            "Check the source files, then press Retry now.",
+            f"Conversion failed. Recorded error: {reason}.",
+            "Check the error, then press Retry now to try again.",
         )
 
     if status == "held" and note.startswith("unsafe file name"):

@@ -1,8 +1,7 @@
 """C4: the advice for a failed (or refused) book says what its note says happened.
 
-Red on 4945ad7: every failed row was labelled "Encoder error" - also the B2 refusal, where ffmpeg
-never started - and a signalled ffmpeg whose note already named SIGKILL and server memory was told
-"a damaged source file is the usual suspect".
+Refusals explain why conversion never started. Signal failures identify the signal
+and ordinary conversion failures show the recorded error.
 """
 
 import unittest
@@ -19,7 +18,7 @@ class TestC4RefusalAdvice(unittest.TestCase):
         for status in ("failed", "held"):
             with self.subTest(status=status):
                 key, label = advice.short_reason(status, "HIGH", REFUSAL)
-                self.assertNotEqual(label, "Encoder error")
+                self.assertNotEqual(label, "Conversion failed")
                 self.assertEqual(key, "unmeasured")
                 why, what = advice.explain(status, "HIGH", REFUSAL)
                 self.assertNotIn("encoder", why.lower())
@@ -43,16 +42,15 @@ class TestC4SignalAdvice(unittest.TestCase):
     def test_sigkill_puts_memory_first(self):
         key, label = advice.short_reason("failed", "HIGH", SIGKILL)
         self.assertEqual(key, "encoder_killed")
-        self.assertNotEqual(label, "Encoder error")
+        self.assertNotEqual(label, "Conversion failed")
         why, what = advice.explain("failed", "HIGH", SIGKILL)
         low = why.lower()
         self.assertIn("memory", low)
         self.assertNotIn("usual suspect", low)
-        self.assertIn("damaged", low, "the damaged file stays as the second possibility")
-        self.assertLess(low.index("memory"), low.index("damaged"))
-        self.assertTrue(what.lower().index("memory") < what.lower().index("source"))
+        self.assertNotIn("damaged", low)
+        self.assertLess(what.lower().index("memory"), what.lower().index("retry now"))
         sentence = advice.GROUP_REASONS[key][1].lower()
-        self.assertLess(sentence.index("memory"), sentence.index("damaged"))
+        self.assertIn("view conversion error", sentence)
 
     def test_another_signal_does_not_claim_memory(self):
         key, _label = advice.short_reason("failed", "HIGH", SIGTERM)
@@ -61,11 +59,11 @@ class TestC4SignalAdvice(unittest.TestCase):
         self.assertIn("SIGTERM", why)
         self.assertIn("stopped", why.lower())
 
-    def test_an_ordinary_encoder_failure_is_unchanged(self):
+    def test_an_ordinary_encoder_failure_shows_the_recorded_error(self):
         self.assertEqual(advice.short_reason("failed", "", "ffmpeg exited 1"),
-                         ("encoder_error", "Encoder error"))
+                         ("encoder_error", "Conversion failed"))
         why, _what = advice.explain("failed", "", "ffmpeg exited 1")
-        self.assertIn("A damaged source file is the usual suspect", why)
+        self.assertEqual(why, "Conversion failed. Recorded error: ffmpeg exited 1.")
 
 
 if __name__ == "__main__":

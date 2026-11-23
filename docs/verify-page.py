@@ -185,7 +185,7 @@ check("no Needs-attention shelf (markup, script or styles)",
 check("Needs your review chip is the default, marked on",
       '<a class="chip on ab-alert" href="/?status=attention">Needs your review <span class="n">4</span></a>' in html)
 check("Needs your review rows are grouped by reason",
-      all(f'<span class="ab-group-t">{t}</span>' in html for t in ("Failed", "Held", "Review"))
+      all(f'<span class="ab-group-t">{t}</span>' in html for t in ("Conversion failed", "Held", "Review"))
       and 'class="ab-why"' in html and "ab-breason" not in html)
 check("default view leaves converted books out", "The Burning Room" not in html.split('<tbody id="ab-body">')[1])
 age_rule = re.search(r"\.ab-st-age\{([^}]*)\}", html)
