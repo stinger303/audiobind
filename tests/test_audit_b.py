@@ -1,6 +1,9 @@
 """Regressions from the Library, Settings and Series usability audit."""
 
+import json
 import re
+import shutil
+import subprocess
 import tempfile
 import unittest
 from contextlib import closing
@@ -100,3 +103,61 @@ class AuditUsabilityTests(unittest.TestCase):
         setup = watcher[diagnostics_at:]
         self.assertIn("<summary>Tracker and download client setup</summary>", setup)
         self.assertLess(setup.index("Search request body"), setup.index("</details>"))
+
+    @unittest.skipUnless(shutil.which("node"), "requires Node.js")
+    def test_first_poll_reloads_if_series_refresh_already_finished(self):
+        with tempfile.TemporaryDirectory() as temp, closing(State(Path(temp))) as state:
+            page = web.render_series(state)
+            counts = web.snapshot(state)["counts"]
+            before = web.snapshot(state)["rev"]
+            state.series_cache_put("B000000001", True, {}, [])
+            after = web.snapshot(state)["rev"]
+        main = re.search(r'<main class="ab-main"([^>]*)>', page).group(1)
+        baseline = re.search(r'data-series-rev="([^"]+)"', main)
+        self.assertIsNotNone(baseline)
+        self.assertEqual(baseline.group(1), before)
+        browser = """
+let reloads = 0;
+let busy = false;
+const document = {
+  addEventListener() {},
+  querySelector(selector) {
+    if (selector === '[data-series-rev]') return {dataset: {seriesRev: baseline}};
+    return busy;
+  },
+};
+const window = {addEventListener() {}};
+const location = {reload() { reloads++; }};
+function setInterval() {}
+function fetch() { return Promise.resolve({json: () => payload}); }
+"""
+        fixtures = f"const baseline = {json.dumps(before)};\n"
+        fixtures += f"let payload = {json.dumps({'rev': before, 'counts': counts})};\n"
+        checks = f"""
+const settle = () => new Promise(resolve => setImmediate(resolve));
+(async () => {{
+  payload.rev = {json.dumps(after)};
+  abSeriesWatch();
+  await settle();
+  if (reloads !== 1) process.exit(2);
+  reloads = 0;
+  busy = true;
+  abSeriesWatch();
+  await settle();
+  if (reloads !== 0) process.exit(2);
+  busy = false;
+  abSeriesWatch();
+  await settle();
+  if (reloads !== 1) process.exit(3);
+}})();
+"""
+        result = subprocess.run(
+            ["node"], input=fixtures + browser + web.SERIES_SCRIPT + checks,
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_series_results_keep_actions_on_screen_on_phones(self):
+        phone = web.STYLES.split("/* Expanded detail on phones */", 1)[-1]
+        self.assertRegex(phone, r"\.ab-series-row\{[^}]*flex-wrap:wrap")
+        self.assertRegex(phone, r"\.ab-series-meta\{[^}]*flex:1 1 calc\(100% - 104px\)")

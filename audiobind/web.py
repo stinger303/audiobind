@@ -900,6 +900,8 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 }
 /* Expanded detail on phones */
 @media(max-width:640px){
+  .ab-series-row{flex-wrap:wrap}
+  .ab-series-meta{flex:1 1 calc(100% - 104px);overflow-wrap:anywhere}
   /* expanded detail: a small cover with the reason beside it, actions full width below */
   .dd{display:block;padding:14px 12px 16px;overflow-wrap:anywhere}
   .dd>*+*{margin-top:18px}
@@ -2423,7 +2425,7 @@ SERIES_PAGE = """<!doctype html>
   </div>
 </aside>
 <div class="ab-scrim" hidden onclick="abNav(false)"></div>
-<main class="ab-main">
+<main class="ab-main" data-series-rev="{series_rev}">
   <header class="ab-topbar">
     <button class="ab-navbtn btn" type="button" aria-label="Open navigation" aria-controls="ab-rail"
             aria-expanded="false" onclick="abNav(true)"><span class="ab-navbars" aria-hidden="true"></span></button>
@@ -2603,15 +2605,13 @@ document.addEventListener('DOMContentLoaded', () => {
   fetch('/api/series', {method:'POST', headers:{'Content-Type':'application/json'},
                         body: JSON.stringify({action:'refresh'})}).catch(() => {});
 });
-let abSeriesSig = null;
+const abSeriesRev = document.querySelector('[data-series-rev]').dataset.seriesRev;
 function abSeriesWatch() {
   fetch('/api/state').then(r => {
     if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
     return r.json();
   }).then(d => {
-    const sig = JSON.stringify(d.counts) + '|' + (d.rev || '');
-    if (abSeriesSig === null) { abSeriesSig = sig; return; }
-    if (sig !== abSeriesSig && !abSeriesBusy()) location.reload();
+    if (d.rev && d.rev !== abSeriesRev && !abSeriesBusy()) location.reload();
   }).catch(() => {});
 }
 setInterval(abSeriesWatch, 5000);
@@ -3734,6 +3734,8 @@ def series_hook_html(view: dict | None) -> str:
 
 def render_series(state) -> str:
     """The Series page: the shelf of series cards, then what's missing from each."""
+    # Capture the revision before reading the shelf, so a refresh during render also triggers an update.
+    rev = _page_revision(state)
     counts = state.counts()
     rc = rail_counts(state, counts)
     shelf = _series_shelf(state)
@@ -3782,6 +3784,7 @@ def render_series(state) -> str:
         body=body,
         nav_script=NAV_SCRIPT,
         series_script=SERIES_SCRIPT,
+        series_rev=_attr(rev),
     )
 
 
@@ -7384,6 +7387,10 @@ def rail_counts(state, counts: dict, queued_by_status: Counter | None = None) ->
     return adjusted
 
 
+def _page_revision(state) -> str:
+    return f"{state.rev()}|s{state.series_rev()}"
+
+
 def snapshot(state) -> dict:
     set_effective(state)
     return {
@@ -7392,7 +7399,7 @@ def snapshot(state) -> dict:
         # cheap change signature: moves even when a re-check ends in the same status,
         # so the page notices a manual Retry / ASIN re-check and reloads - and when a
         # series listing arrives or a book is marked "I have this" (series shelf, badge)
-        "rev": f"{state.rev()}|s{state.series_rev()}",
+        "rev": _page_revision(state),
         "stats": library_stats(state),
         "last_run": state.last_run() or {},
         "heartbeat_age_seconds": state.heartbeat_age(),
