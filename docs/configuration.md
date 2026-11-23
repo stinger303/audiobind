@@ -20,7 +20,7 @@
 | `NICE` | `10` | ffmpeg CPU priority |
 | `MANUAL_WORKERS` | `2` | Manual actions (Retry, Convert anyway, Choose the exact Audible edition, Re-check) allowed at once; more get "another action is already running" |
 | `MAX_RUNTIME_DELTA` | `0.15` | Hold when runtime differs by more than this fraction. 15% because a US/UK edition pair of the same book commonly differs by 16–21%: at 25% the wrong edition converted silently |
-| `REGION` | `us` | Audible region: `us`, `uk`, `ca`, `au` or `de` (the choices Settings offers) |
+| `REGION` | `us` | Audible store in Settings: United States (`us`), United Kingdom (`uk`), Canada (`ca`), Australia (`au`) or Germany (`de`) |
 | `DRY_RUN` | `false` | Decide and log, write nothing. `true` always starts dry; the UI switch can turn it off afterwards |
 | `WATCH_DRY_RUN` | `false` | The [watcher's](acquisition.md#the-wishlist-watcher-private-tracker) own dry run, separate from `DRY_RUN`: search the tracker and note what it would download, never download. `true` always starts the watcher dry; **Preview tracker downloads** in Settings > Watcher can turn it off afterwards |
 | `WEB_ENABLED` | `true` | Status page |
@@ -187,5 +187,5 @@ host and port. A redirect that changes the origin fails and records the reason i
 If the ingest folder is missing, Library and Settings name the folder and show the mount steps under
 **How to mount this folder**.
 
-The Library settings reset returns conversion, scanning, catalog region and Watcher schedules,
+The Library settings reset returns conversion, scanning, Audible store and Watcher schedules,
 limits and guard to the values from the container environment.

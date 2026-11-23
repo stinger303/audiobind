@@ -2275,7 +2275,7 @@ function abSaveSettings(fbId, quiet) {
 
 function abResetSettings() {
   if (!confirm('Reset conversion, scanning, catalog and Watcher limits and guard?\\n\\n' +
-               'Conversion and CPU settings, scan and Watcher schedules, catalog region, and Watcher ' +
+               'Conversion and CPU settings, scan and Watcher schedules, Audible store, and Watcher ' +
                'limits, membership tier and allowed IP will use the values from the container ' +
                'environment.')) return;
   const fb = document.getElementById('ab-reset-general-fb');
@@ -6362,15 +6362,19 @@ def render_settings(state, tab: str = "") -> str:
             hint="Higher values give other apps more time to use the CPU.",
         )
     )
-    # Advanced: the catalog region and what only the container can set
+    # Advanced: the Audible store and what only the container can set
     advanced = (
         _setting_select(
             "region",
-            "Catalog region",
+            "Audible store",
             setting_effective("region"),
             setting_choices("region"),
             custom("region"),
             setting_env("region"),
+            labels={
+                "us": "United States", "uk": "United Kingdom", "ca": "Canada",
+                "au": "Australia", "de": "Germany",
+            },
             hint="Applies to future catalog lookups.",
         )
         + _container_only_section()
@@ -6411,7 +6415,7 @@ def render_settings(state, tab: str = "") -> str:
             '<p>Audiobookshelf and Plex can read the chapter marks in MP3s. Apple Music and iTunes '
             'need M4B for chapter marks.</p></details>'
             + '<div class="ab-setting"><p class="ab-setting-hint">Reset uses the values from the container '
-            'environment for conversion, scanning, catalog region and Watcher schedules, limits and '
+            'environment for conversion, scanning, Audible store and Watcher schedules, limits and '
             'guard.</p>'
             '<button class="btn ab-reset-general" type="button" onclick="abResetSettings()">'
             'Reset conversion, scanning, catalog and Watcher limits and guard</button>'
@@ -6484,12 +6488,16 @@ def _custom_mark(key: str, custom: bool, env_val) -> str:
 
 
 def _setting_select(
-    key: str, label: str, value: str, options: list[str], custom: bool, env_val, hint: str = "", titlecase: bool = False
+    key: str, label: str, value: str, options: list[str], custom: bool, env_val,
+    hint: str = "", titlecase: bool = False, labels: dict[str, str] | None = None,
 ) -> str:
     mark = _custom_mark(key, custom, env_val)
     selected = next((o for o in options if str(o).upper() == str(value).upper()), options[0])
+    labels = labels or {}
     opt_html = "".join(
-        f'<option value="{_attr(o)}"{" selected" if o == selected else ""}>{_html(o.title() if titlecase else o)}</option>' for o in options
+        f'<option value="{_attr(o)}"{" selected" if o == selected else ""}>'
+        f'{_html(labels.get(o, o.title() if titlecase else o))}</option>'
+        for o in options
     )
     hint_html = f'<div class="ab-setting-hint">{_html(hint)}</div>' if hint else ""
     return (
