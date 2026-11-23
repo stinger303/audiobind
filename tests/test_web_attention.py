@@ -259,7 +259,7 @@ class TestMockupFixPass(unittest.TestCase):
 
     def test_chip_labels_are_capitalised_in_mockup_order(self):
         labels = re.findall(r'<a class="chip[^"]*" href="[^"]+">([^<]+?) <span class="n">', chips(render_with([HELD, REVIEW, DONE])))
-        self.assertEqual(labels, ["Needs your review", "Review", "Held", "Converted", "All"])
+        self.assertEqual(labels, ["Needs your review", "Check matches", "Held", "Converted", "All"])
         self.assertEqual(web.STATUS_CHIP_LABELS["interrupted"], "Stopped")
         self.assertEqual(web.STATUS_CHIP_LABELS["failed"], "Conversion failed")
 
@@ -400,7 +400,7 @@ class TestViewNamesItself(unittest.TestCase):
             ("attention", "Needs your review &middot; 2"),
             ("all", "Library"),
             ("held", "Held"),
-            ("review", "Review"),
+            ("review", "Check matches"),
             ("converted", "Converted"),
         )
         for status, want in cases:

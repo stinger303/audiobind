@@ -6683,7 +6683,7 @@ def _detail_dict(unit) -> dict:
 STATUS_CHIP_LABELS = {
     "converted": "Converted",
     "ready": "Ready",
-    "review": "Review",
+    "review": "Check matches",
     "held": "Held",
     "failed": "Conversion failed",
     "interrupted": "Stopped",
