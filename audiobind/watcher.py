@@ -123,7 +123,7 @@ def disabled_reason() -> str:
     if kind == "qbittorrent":
         # an empty address is "not filled in yet", never an error; a malformed one still fails loudly
         if not qbit_url().strip():
-            return "QBIT_URL is not set - the watcher has nowhere to send a torrent"
+            return "Add the qBittorrent address so the watcher can send downloads there"
         if not _setting("qbit_user") or not _setting("qbit_pass"):
             return "QBIT_USER / QBIT_PASS are not set - the watcher has nowhere to send a torrent"
         return ""
@@ -384,7 +384,7 @@ def probe_qbit_report(url: str | None = None) -> dict:
     report = {"ok": False, "message": "", "chain": "", "details": [], "rule": "", "kind": ""}
     qbit_only = url is not None and client_kind() == "qbittorrent"
     if client_kind() == "qbittorrent" and not (url if qbit_only else qbit_url()).strip():
-        report["message"] = "QBIT_URL is not set - fill in the qBittorrent URL above and test again"
+        report["message"] = "Add the qBittorrent address above and test again"
         return report
     try:
         client = make_qbit(url) if qbit_only else make_client()

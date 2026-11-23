@@ -221,15 +221,16 @@ class TestSettingsPage(unittest.TestCase):
     def test_off_names_what_is_missing(self):
         with mock.patch.multiple(CONFIG, **{**{k: "" for k in SETTINGS}, "tracker_session": "", "tracker_search_method": "POST"}):
             html = web.render_settings(self.state)
-        for var in ("TRACKER_URL", "TRACKER_SEARCH_PATH", "TRACKER_SEARCH_BODY", "TRACKER_DOWNLOAD_PATH",
-                    "TRACKER_COOKIE_NAME", "TRACKER_SESSION"):
-            self.assertIn(f"<code>{var}</code>", html)
+        missing = html.split('id="ab-watch-missing">')[1].split("</span>")[0]
+        for label in ("Tracker URL", "Search path", "Search request body", "Download path",
+                      "Session cookie name", "Session cookie value"):
+            self.assertIn(label, missing)
 
     def test_a_partly_configured_install_lists_only_what_is_missing(self):
         with tracker_cfg(""):
             html = web.render_settings(self.state)
-        self.assertIn("<code>TRACKER_SESSION</code>", html)
-        self.assertNotIn("<code>TRACKER_SEARCH_PATH</code>", html)
+        missing = html.split('id="ab-watch-missing">')[1].split("</span>")[0]
+        self.assertEqual(missing, "Still to fill in: Session cookie value.")
 
     def test_on_shows_the_host_not_the_url(self):
         with tracker_cfg("SECRET-SESSION"), mock.patch.object(CONFIG, "qbit_user", "u"), \

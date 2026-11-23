@@ -48,6 +48,7 @@ from .config import (
     SETTING_KEYS,
     SETTING_MAP,
     URL_SETTING_KEYS,
+    WATCHER_REQUIRED,
     WATCHER_TEXT_CHECKS,
     effective_val,
     is_custom,
@@ -4329,12 +4330,16 @@ def _wedge_sentence(w: dict) -> str:
 
 def _watcher_bar(status: dict) -> str:
     """One line above the wishlist: is anything going to look for these books?"""
-    link = '<span class="ab-spacer"></span><a href="/settings#watcher">Watcher settings</a>'
+    link = '<span class="ab-spacer"></span><a href="/settings?tab=watcher#watcher">Watcher settings</a>'
     if not status["configured"]:
         text = (f"The watcher is <b>off</b> ({_html(status.get('reason') or 'not configured')}): "
                 "nothing here is searched for or downloaded.")
     elif not status["enabled"]:
-        text = f'<span class="warn">The watcher is disabled: {_html(status["reason"])}.</span>'
+        if status.get("download_client", "qbittorrent") == "qbittorrent" and not status["qbit_url"]:
+            text = ('Add the <a href="/settings?tab=watcher#ab-qbit-address">qBittorrent address</a> '
+                    'and save it to turn on the watcher.')
+        else:
+            text = f'<span class="warn">The watcher is disabled: {_html(status["reason"])}.</span>'
     elif status.get("egress_guard") == "blocked":
         text = ('<span class="warn">The watcher is <b>stopped</b>: this connection is not the one you allowed '
                 f'({_html(status.get("egress_reason") or "")}). Nothing is searched for.</span>')
@@ -4536,11 +4541,12 @@ def _watch_text(key: str, label: str, placeholder: str = "", area: bool = False,
     # first letter, and the address boxes get the URL keyboard. (type stays text: scgi:// and
     # relative paths are valid here and the form never validates natively.)
     kb = ' autocapitalize="none"' + (' inputmode="url"' if key.endswith("_url") else "")
+    field_id = ' id="ab-qbit-address"' if key == "qbit_url" else ""
     if area:
         control = (f'<textarea class="ab-in" rows="3" data-initial="{value}" placeholder="{_attr(placeholder)}" '
                    f'autocomplete="off" spellcheck="false" autocapitalize="none">{value}</textarea>')
     else:
-        control = (f'<input type="text" class="ab-in" value="{value}" data-initial="{value}" '
+        control = (f'<input type="text" class="ab-in"{field_id} value="{value}" data-initial="{value}" '
                    f'placeholder="{_attr(placeholder)}" autocomplete="off" spellcheck="false"{kb}>')
     if hint is None:
         hint = EXPECTED_EGRESS_HINT if key == "expected_egress" else WATCH_FIELD_HINTS.get(key, "")
@@ -4802,25 +4808,30 @@ def render_watcher_section(state) -> str:
         f'<a href="{wizard_mod.PATH}">View the setup guide</a></div>'
     )
     warn = ""
+    missing_qbit_address = watcher_mod.client_kind() == "qbittorrent" and not watcher_mod.qbit_url()
+    address_help = (
+        'Add the <a href="#ab-qbit-address">qBittorrent address</a> and save it. '
+        if missing_qbit_address else ""
+    )
+    setup_open = " open" if missing_qbit_address else ""
     if not s["configured"]:
-        # QBIT_URL has no default: while it is empty it is one of the things still to set
-        still = list(s["missing"])
-        if watcher_mod.client_kind() == "qbittorrent" and not watcher_mod.qbit_url():
-            still.append("QBIT_URL")
+        missing_fields = ", ".join(
+            "Session cookie value" if key == "tracker_session" else preset_mod.label_of(key)
+            for name, key in WATCHER_REQUIRED if name in s["missing"]
+        )
         return (
             '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
             '<h2 class="ab-acct-head" id="ab-watch-head">Acquisition source (optional)</h2>'
-            '<div class="ab-acct-who">Audiobind can optionally look for books on your wishlist at a '
-            "private tracker you configure and hand them to qBittorrent. It is off, and you do not need it: "
-            "Audiobind converts whatever lands in the ingest folder, from any downloader or a plain "
-            "copy. Still to set: " + ", ".join(f"<code>{_html(m)}</code>" for m in still) +
-            " (the site's URL, its search and download paths, the search request body, and its session cookie's name and value), "
-            "plus the qBittorrent URL, user and password (<code>QBIT_URL</code>, <code>QBIT_USER</code>, "
-            "<code>QBIT_PASS</code>). Fill them in below and save - no restart needed - or set them as container "
-            "variables. A Wishlist tab appears in the sidebar once these settings are complete.</div>"
+            f'<div class="ab-acct-who">{address_help}'
+            "The watcher is off until you finish setting up your tracker and download client below. "
+            f'<span id="ab-watch-missing">Still to fill in: {_html(missing_fields)}.</span> '
+            "Save your settings here to apply them, no restart needed. "
+            "You can still convert books from the ingest folder. "
+            "A Wishlist tab appears once setup is complete.</div>"
             + _wizard_open_button()
             + guide_link
-            + '<details class="ab-watch-setup"><summary>Tracker and download client setup</summary>'
+            + f'<details class="ab-watch-setup"{setup_open}>'
+            '<summary>Tracker and download client setup</summary>'
             + _watch_connection_fields()
             + _watch_test_and_save()
             + '</details>'
@@ -4831,13 +4842,11 @@ def render_watcher_section(state) -> str:
     if not s["enabled"]:
         state_html = '<span class="warn">Disabled</span>'
         warn = (
-            '<div class="ab-hintbox ab-watch-warn" role="alert"><b>The watcher is disabled.</b> '
-            f"{_html(s['reason'])}. "
-            + (("Fill in the qBittorrent URL below (or QBIT_URL in the container) and save."
-                if not s["qbit_url"] else
-                "Set the qBittorrent user and password below (or QBIT_USER and QBIT_PASS in the container) and save.")
+            f'<div class="ab-hintbox ab-watch-warn" role="alert">{address_help}'
+            + ('The watcher is disabled.' if missing_qbit_address else
+               'Set the qBittorrent user and password below and save to turn on the watcher.'
                if s.get("download_client", "qbittorrent") == "qbittorrent" else
-               "Fill in the download client's settings below (or in the container) and save.")
+               "Fill in the download client's settings below and save to turn on the watcher.")
             + "</div>"
         )
     elif s["paused"]:
@@ -4965,13 +4974,13 @@ def render_watcher_section(state) -> str:
         "match to qBittorrent; the ingest folder takes it from there. Everything below can be set here or as a "
         "container variable; a value saved here wins and applies from the next cycle, no restart. The pause switch "
         "is kept across restarts.</div>"
-        f'<div class="ab-acct-who"><b>Status</b> {state_html}</div>'
+        f'{warn}<div class="ab-acct-who"><b>Status</b> {state_html}</div>'
         + f'<div class="ab-acct-row ab-watch-actions">{run_btn}{toggle}{dry_toggle}'
         + '<span class="ab-fb" id="ab-watch-fb" role="status"></span></div>'
         + dry_line
-        + f'{warn}{ready}<dl class="ab-watch-grid">{grid}</dl>{guide_link}'
+        + f'{ready}<dl class="ab-watch-grid">{grid}</dl>{guide_link}'
         + _egress_pin_field()
-        + '<details class="ab-watch-setup"><summary>Tracker and download client setup</summary>'
+        + f'<details class="ab-watch-setup"{setup_open}><summary>Tracker and download client setup</summary>'
         + f'<dl class="ab-watch-grid">{connection_grid}</dl>'
         + _watch_connection_fields()
         + _watch_test_and_save()

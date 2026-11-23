@@ -108,15 +108,15 @@ class TestSettingsSection(StateCase):
         html = web.render_settings(self.state)
         self.assertIn('id="watcher"', html)
         self.assertIn("Acquisition source (optional)", html)
-        self.assertIn("<code>TRACKER_URL</code>", html)
+        self.assertIn('id="ab-watch-missing">Still to fill in: Tracker URL', html)
         self.assertNotIn('id="ab-watch-run"', html, "no dead controls for a watcher that is off")
         self.assertNotIn('id="ab-watch-toggle"', html, "no pause switch for a watcher that is off")
 
     def test_missing_qbit_credentials_warn(self):
-        with tracker_cfg("x"):
+        with tracker_cfg("x"), mock.patch.object(CONFIG, "qbit_url", "http://qbit.example:8080"):
             html = web.render_settings(self.state)
-        self.assertIn('class="ab-hintbox ab-watch-warn" role="alert"><b>The watcher is disabled.</b>', html)
-        self.assertIn("QBIT_USER / QBIT_PASS are not set", html)
+        self.assertIn('class="ab-hintbox ab-watch-warn" role="alert">', html)
+        self.assertIn("Set the qBittorrent user and password below", html)
         self.assertIn("no login set", html)
 
     def test_enabled_shows_status_last_cycle_and_controls(self):

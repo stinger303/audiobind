@@ -105,8 +105,9 @@ class TestNoMam(unittest.TestCase):
         self.assertNotIn("abSeriesWant", web._series_row(SROW, "1"))
         settings = web.render_settings(self.state)
         self.assertIn("Acquisition source (optional)", settings)
-        for name in ("TRACKER_URL", "QBIT_URL", "QBIT_USER", "QBIT_PASS"):
-            self.assertIn(name, settings)
+        self.assertIn('href="#ab-qbit-address"', settings)
+        for field in ("tracker_url", "qbit_url", "qbit_user", "qbit_pass"):
+            self.assertIn(f'data-setting="{field}"', settings)
         self.assertNotIn('id="ab-watch-run"', settings)
         self.assertNotIn('onclick="abWatcher(', settings)
         self.assertIn("whether or not the watcher is configured", web.render(self.state))

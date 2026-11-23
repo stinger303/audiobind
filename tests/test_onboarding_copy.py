@@ -263,15 +263,14 @@ class TestQbitCopyOnThePage(WebCase):
 
     def test_an_empty_qbit_url_is_listed_in_still_to_set(self):
         panel = self.watcher()
-        still = panel.split("Still to set:")[1].split("(the site's URL")[0]
-        self.assertIn("<code>QBIT_URL</code>", still)
+        self.assertIn('href="#ab-qbit-address"', panel)
+        self.assertIn('id="ab-qbit-address"', panel)
 
     def test_a_set_qbit_url_is_not(self):
         with mock.patch.object(CONFIG, "qbit_url", "http://192.168.1.10:8080"):
             config._EFFECTIVE.clear()
             panel = self.watcher()
-        still = panel.split("Still to set:")[1].split("(the site's URL")[0]
-        self.assertNotIn("QBIT_URL", still)
+        self.assertNotIn('href="#ab-qbit-address"', panel)
 
 
 class TestEmptyLibrary(WebCase):
@@ -508,7 +507,7 @@ class TestWishlistTabHint(WebCase):
 
     def test_unconfigured_says_the_tab_will_appear(self):
         panel = self.watcher()
-        self.assertIn("A Wishlist tab appears in the sidebar once these settings are complete.", panel)
+        self.assertIn("A Wishlist tab appears once setup is complete.", panel)
         self.assertNotIn("ab-watch-ready", panel)
 
     def configured(self, **extra):

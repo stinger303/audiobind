@@ -54,12 +54,13 @@ class TestEmptyQbitUrl(unittest.TestCase):
 
     def test_an_empty_address_is_watcher_off_with_a_reason_not_an_error(self):
         self.configured("")
-        self.assertEqual(watcher.disabled_reason(), "QBIT_URL is not set - the watcher has nowhere to send a torrent")
+        self.assertEqual(watcher.disabled_reason(),
+                         "Add the qBittorrent address so the watcher can send downloads there")
         self.assertNotIn("http(s)", watcher.disabled_reason())
 
     def test_a_blank_address_counts_as_empty(self):
         self.configured("   ")
-        self.assertIn("QBIT_URL is not set", watcher.disabled_reason())
+        self.assertIn("Add the qBittorrent address", watcher.disabled_reason())
 
     def fresh_state(self):
         tmp = tempfile.TemporaryDirectory()
@@ -73,13 +74,13 @@ class TestEmptyQbitUrl(unittest.TestCase):
         state = self.fresh_state()
         with self.assertLogs("audiobind", "WARNING") as logs:
             self.assertFalse(watcher.Watcher().start(state))
-        self.assertIn("QBIT_URL is not set", "\n".join(logs.output))
+        self.assertIn("Add the qBittorrent address", "\n".join(logs.output))
 
     def test_the_status_reads_disabled_with_that_reason(self):
         self.configured("")
         status = watcher.Watcher().status(self.fresh_state())
         self.assertFalse(status["enabled"])
-        self.assertIn("QBIT_URL is not set", status["reason"])
+        self.assertIn("Add the qBittorrent address", status["reason"])
 
     def test_the_disabled_box_asks_for_the_address_not_the_login(self):
         self.configured("")
@@ -90,7 +91,7 @@ class TestEmptyQbitUrl(unittest.TestCase):
             finally:
                 state.close()
         self.assertIn("The watcher is disabled.", panel)
-        self.assertIn("Fill in the qBittorrent URL below (or QBIT_URL in the container) and save.", panel)
+        self.assertIn('Add the <a href="#ab-qbit-address">qBittorrent address</a> and save it.', panel)
         self.assertNotIn("Set the qBittorrent user and password below", panel)
         self.assertIn("no address set", panel)
         self.configured("http://qbit.example:8080")  # the address is there; the login is what is missing
@@ -106,7 +107,7 @@ class TestEmptyQbitUrl(unittest.TestCase):
         self.configured("")
         ok, message = watcher.probe_qbit()
         self.assertFalse(ok)
-        self.assertIn("QBIT_URL is not set", message)
+        self.assertIn("Add the qBittorrent address", message)
         self.assertNotIn("http(s)", message)
 
     def test_a_filled_in_address_enables_it(self):

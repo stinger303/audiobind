@@ -518,7 +518,8 @@ check("watcher: off without a tracker session", not watcher.configured() and not
 off_settings = get("/settings?tab=watcher")
 check("watcher: Settings section, off, is one short block",
       'id="watcher"' in off_settings and "Acquisition source (optional)" in off_settings
-      and all(f"<code>{v}</code>" in off_settings for v in ("TRACKER_SESSION", "QBIT_URL", "QBIT_USER", "QBIT_PASS"))
+      and "finish setting up your tracker and download client" in off_settings
+      and 'id="ab-qbit-address"' in off_settings
       and 'id="ab-watch-run"' not in off_settings and 'id="ab-watch-toggle"' not in off_settings)
 notracker_pages = get("/") + get("/discover") + get("/discover/for-you") + get("/discover/wishlist") + get("/series")
 check("no tracker: no wishlist tab, rail count, Get this or Want anywhere",
