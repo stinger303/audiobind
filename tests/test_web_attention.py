@@ -27,7 +27,7 @@ def body(page):
 
 
 def chips(page):
-    return page.split('<div class="chips">')[1].split("</div>")[0]
+    return page.split('<div class="chips ab-library-chips">')[1].split("</div>")[0]
 
 
 HELD = UnitState(

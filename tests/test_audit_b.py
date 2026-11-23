@@ -36,3 +36,9 @@ class AuditUsabilityTests(unittest.TestCase):
         rule = re.search(r'td\.ab-match\{([^}]+)\}', tablet).group(1)
         self.assertIn("display:flex", rule)
         self.assertIn('content:"Match"', tablet)
+
+    def test_library_filters_wrap_on_phones(self):
+        with tempfile.TemporaryDirectory() as temp, closing(State(Path(temp))) as state:
+            page = web.render(state)
+        self.assertIn('<div class="chips ab-library-chips">', page)
+        self.assertRegex(web.STYLES, r'\.ab-library-chips\{[^}]*flex-wrap:wrap;overflow:visible')

@@ -839,6 +839,11 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   .chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
     padding:3px;flex:none;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
   .chips::-webkit-scrollbar{display:none}
+  .ab-library-chips{flex-wrap:wrap;overflow:visible;padding:0;gap:4px}
+  .ab-library-chips .chip{padding:4px 7px}
+  .ab-main:has(.ab-library-chips) .ab-topbar{display:flex;flex-wrap:wrap;gap:4px 8px;padding:8px 12px}
+  .ab-main:has(.ab-library-chips) .ab-topbar h1{flex:1 1 calc(100% - 40px)}
+  .ab-main:has(.ab-library-chips) .ab-toolbar{gap:6px;padding-top:6px}
   .ab-searchwrap{margin-left:0;width:100%}
   .ab-search{flex:1;min-width:0;width:auto}
   .ab-clear{flex:none}
@@ -1820,7 +1825,7 @@ PAGE = """<!doctype html>
   </section>
 
   <section class="ab-toolbar" aria-label="Filters">
-    <div class="chips">{chips}</div>
+    <div class="chips ab-library-chips">{chips}</div>
     <div class="ab-searchwrap">
       <input id="ab-search" class="ab-search" type="search" autocomplete="off" spellcheck="false"
              aria-label="Filter books" placeholder="Filter books&hellip;" value="{query}">

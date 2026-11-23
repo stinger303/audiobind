@@ -47,7 +47,8 @@ class TestEncodingBookHidden(unittest.TestCase):
         self.assertNotIn("Zorblax Saga", table)
         self.assertNotIn("Zorblax Saga", page)  # nowhere else either; banner shows the path
         self.assertNotIn("?status=review", chips)
-        self.assertNotIn("Needs your review", page.split('<div class="chips">')[1].split("</div>")[0])
+        chips = page.split('<div class="chips ab-library-chips">', 1)[1].split("</div>", 1)[0]
+        self.assertNotIn("Needs your review", chips)
         self.assertNotIn("ab-shelf", page)
         self.assertEqual(web.rail_counts(self.state, self.state.counts())["review"], 0)
 
@@ -131,7 +132,8 @@ class TestRender(unittest.TestCase):
 
     def test_status_filters_are_linked_from_the_chips(self):
         page = web.render(self.state)
-        page = page.split('<div class="chips">')[1].split("</div>")[0] + page.split("</aside>")[0]
+        chips = page.split('<div class="chips ab-library-chips">', 1)[1].split("</div>", 1)[0]
+        page = chips + page.split("</aside>", 1)[0]
         self.assertIn('href="/?status=review"', page)
         self.assertIn('href="/?status=held"', page)
         self.assertIn('href="/?status=failed"', page)
@@ -166,7 +168,8 @@ class TestRender(unittest.TestCase):
             page = web.render(s)
             self.assertIn("Nothing needs your review.</p>", page)
             self.assertNotIn("ab-shelf", page)
-            self.assertNotIn('href="/?status=attention">Needs your review', page.split('<div class="chips">')[1])
+            chips = page.split('<div class="chips ab-library-chips">', 1)[1].split("</div>", 1)[0]
+            self.assertNotIn('href="/?status=attention">Needs your review', chips)
         finally:
             s.close()
             d.cleanup()
