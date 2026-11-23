@@ -443,6 +443,9 @@ tr.drow[hidden] td{padding:0}
 .ab-editions .ab-edsub{font-size:11.5px;color:var(--ab-text3)}
 .ab-editions button{height:28px;padding:0 12px;font-size:12px;border-radius:6px;flex:none}
 .ab-ev{grid-column:1/-1;border-top:1px solid #1c2230;padding-top:14px;max-width:860px;}
+/* the deep-link wrappers are grid children of .dd, so they must span it like the block they hold;
+   without this the match evidence is squeezed into one 210px column */
+.ab-detail-match{grid-column:1/-1;min-width:0;}
 .ab-ev h4.ab-evh2{margin-top:18px;}
 .ab-evwin{display:flex;gap:14px;align-items:center;background:var(--ab-surface);
   border:1px solid rgba(94,106,210,.45);border-radius:8px;padding:12px 14px;}

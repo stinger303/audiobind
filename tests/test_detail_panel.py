@@ -34,6 +34,22 @@ def review_unit(**kw):
     return UnitState(**kw)
 
 
+class DetailMatchWrapperSpansThePanel(unittest.TestCase):
+    """The deep-link wrapper must not collapse into a single 210px grid column of .dd."""
+
+    def test_the_match_wrapper_spans_the_detail_grid(self):
+        self.assertRegex(web.STYLES, r"\.ab-detail-match\{[^}]*grid-column:1/-1")
+
+    def test_the_wrapper_carries_the_deep_link_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = State(pathlib.Path(tmp))
+            state.save(review_unit())
+            page = web.render(state)
+            state.close()
+        self.assertIn('class="ab-detail-match"', page)
+        self.assertIn("ab-detail-' + section", web.SCRIPT)
+
+
 class TestDetailPanelCopy(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
