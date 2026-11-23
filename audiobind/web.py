@@ -1064,7 +1064,7 @@ function dry(on) {
 function abWatcherDry(on) {
   abControl({action: 'watcher_dry_run', value: on}, 0, abClickedButton());
 }
-// Retry now / Convert anyway / Use this ASIN, from a detail panel or a table row:
+// Retry now / Convert anyway / Choose the exact Audible edition, from a detail panel or a table row:
 // each of those carries data-path, so the nearest one names the book
 function abUnitAction(btn, action) {
   const el = btn.closest('[data-path]');
@@ -1074,7 +1074,11 @@ function abUnitAction(btn, action) {
   if (action === 'set_asin') {
     const input = el.querySelector('input[data-asin]');
     body.asin = (input && input.value || '').trim();
-    if (!body.asin) { abToast('Enter the Audible ASIN first - 8 to 14 letters and digits, like B005EHN61O.'); if (input) input.focus(); return; }
+    if (!body.asin) {
+      abToast('Paste the code for this edition on Audible, such as B005EHN61O.');
+      if (input) input.focus();
+      return;
+    }
     note = 'setting ASIN ' + body.asin + ' - re-checking…';
   } else if (action === 'force') {
     if (!confirm('Convert \\u201c' + abBookTitle(el.dataset.path) + '\\u201d anyway?\\n\\n' +
@@ -1283,7 +1287,7 @@ function abEditAsin(btn) {
 function abCoverFail(img) {
   img.classList.add('ab-gone');
 }
-// Enter in one of these boxes presses the button that belongs to it (Use this ASIN, Save metadata);
+// Enter in one of these boxes presses its edition or metadata button;
 // they are not in a <form>, so without this Enter did nothing at all
 function abEnterClicks(ev, input) {
   if (ev.key !== 'Enter' || ev.isComposing) return;
@@ -1337,7 +1341,7 @@ function abSetLockChip(chip, on) {
     ? 'A rescan, re-check or re-rip will never overwrite this. ' +
       (asin ? 'Click to unlock: the next re-check matches this book on its own.'
             : 'Click to unlock and hand it back to the catalog.')
-    : (asin ? 'Matched automatically. Use this ASIN to lock one exact entry.'
+    : (asin ? 'Matched automatically. Choose the exact Audible edition to keep that match.'
             : 'Follows the catalog. Edit and save it to lock it.');
   const field = chip.closest('.ab-field');
   if (field) field.classList.toggle('ab-locked', on);
@@ -1381,7 +1385,7 @@ function abLockChip(chip) {
     })
     .catch(() => { chip.disabled = false; abToast('could not reach the daemon'); });
 }
-// the row's visible kebab menu: Open details / Edit ASIN / Re-check against Audible / Delete...
+// Open and close the row's action menu.
 function abMenuOpen() { return document.querySelector('.ab-menu:not([hidden])'); }
 function abMenuClose(restoreFocus) {
   const menu = abMenuOpen();
@@ -1501,7 +1505,7 @@ function abRowKey(ev, row) {
   toggleRow(row, ev);
 }
 document.addEventListener('DOMContentLoaded', () => {
-  // a manual Retry now / Use this ASIN that still needs a decision re-opens its panel
+  // a manual Retry now / Choose the exact Audible edition that still needs a decision re-opens its panel
   document.querySelectorAll('tr.drow[data-reopen]').forEach(panel => {
     panel.hidden = false;
     if (panel.previousElementSibling) {
@@ -1756,7 +1760,7 @@ let lastCounts = null;
 function watch() {
   fetch('/api/state').then(abAuthed).then(d => {
     // rev moves even when a re-check ends in the same status, so a manual
-    // Retry now / Use this ASIN always gets its fresh detail rendered
+    // Retry now / Choose the exact Audible edition always gets its fresh detail rendered
     const sig = JSON.stringify(d.counts) + '|' + d.running + '|' + (d.rev || '') + '|' + (d.scan && d.scan.scanning ? 'S' : '');
     if (lastCounts === null) { lastCounts = sig; return; }
     if (sig !== lastCounts && !abBusy() && !(d.scan && d.scan.scanning)) { location.reload(); }
@@ -2901,7 +2905,7 @@ def lock_chip(field: str, locked: bool) -> str:
     else:
         cls, text = "ab-lock-off", LOCK_OFF_TEXT
         title = (
-            "Matched automatically. Use this ASIN to lock one exact entry."
+            "Matched automatically. Choose the exact Audible edition to keep that match."
             if field == "asin"
             else "Follows the catalog. Edit and save it to lock it."
         )
@@ -2937,7 +2941,8 @@ def kebab_menu(unit) -> str:
         '<div class="ab-menu" role="menu" hidden>'
         '<button type="button" role="menuitem" data-act="open" onclick="abMenuPick(this)">Open details</button>'
         '<button type="button" role="menuitem" data-act="asin" onclick="abMenuPick(this)" '
-        'title="Open this book\'s details and set its exact Audible entry.">Edit ASIN</button>'
+        'title="Open the book details to choose the exact Audible edition.">'
+        'Choose the exact Audible edition</button>'
         '<button type="button" role="menuitem" data-act="recheck" onclick="abMenuPick(this)" '
         'title="Ask Audible about this one book again: refreshes the match, the other editions and '
         "the confidence. An ASIN you set is kept. It still follows your auto-convert rules.\">"
@@ -6312,7 +6317,7 @@ def render_settings(state, tab: str = "") -> str:
             "HIGH: title and author match Audible strongly with a clear margin - safe to "
             "convert automatically. MEDIUM: a good match with weaker evidence (e.g. the "
             "author came from the catalog) - converts when this tier is MEDIUM. LOW: weak "
-            "match - always held for review; fix it with Edit ASIN in the book's ⋮ menu. "
+            "match - always held for review; fix it with Choose the exact Audible edition in the book's ⋮ menu. "
             "COLLECTION/NONE: the folder looks like several books mixed together, or nothing "
             "in the catalog matched - these are never auto-converted.",
         )
@@ -6931,7 +6936,7 @@ def render(state, status: str = "", query: str = "") -> str:
                 "right book</div>"
             )
 
-        # a manual re-check (Retry now / Use this ASIN) that still ended in a
+        # a manual re-check (Retry now / Choose the exact Audible edition) that still ended in a
         # decision-needed state says so up top
         banner = ""
         if data.get("reopen") and unit.status in ("review", "held", "failed"):
@@ -7053,7 +7058,10 @@ def render(state, status: str = "", query: str = "") -> str:
 
         btn = '<button title="Re-check this book against the catalog and convert it if it passes the rules." onclick="abUnitAction(this,\'retry\')">Retry now</button>'
         force = '<button class="warn" title="Convert this book even though the automatic checks flagged it." onclick="abUnitAction(this,\'force\')">Convert anyway</button>'
-        asin_btn = '<button data-enter title="Set this exact Audible entry for the book (locks it), then re-check against it." onclick="abUnitAction(this,\'set_asin\')">Use this ASIN</button>'
+        asin_btn = (
+            '<button data-enter title="Choose the exact Audible edition and check this book against it." '
+            'onclick="abUnitAction(this,\'set_asin\')">Choose the exact Audible edition</button>'
+        )
 
         explain_html = (
             '<div class="explain">'
@@ -7069,8 +7077,9 @@ def render(state, status: str = "", query: str = "") -> str:
             + btn
             + "</div>"
             + '<div class="ab-pinrow">'
-            + '<span class="ab-pinlab">Set the exact Audible entry for this book:</span>'
-            + '<input data-asin value="{av}" placeholder="ASIN, e.g. B005EHN61O" aria-label="Audible ASIN" '
+            + '<span class="ab-pinlab">Paste the ASIN, the code for this edition on Audible.</span>'
+            + '<input data-asin value="{av}" placeholder="ASIN, e.g. B005EHN61O" '
+            'aria-label="ASIN, the code for this edition on Audible" '
             'autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="14" '
             'onkeydown="abEnterClicks(event,this)">'.format(av=_attr(unit.asin or ""))
             + asin_btn
@@ -7426,7 +7435,7 @@ def reset_manual_slots(n: int | None = None) -> None:
 
 
 def run_manual(state, unit, force: bool = False, slot=None, reencode: bool = False) -> None:
-    """A Retry / Use this ASIN / Convert anyway request, run off the request thread.
+    """A Retry / Choose the exact Audible edition / Convert anyway request, run off the request thread.
 
     The book leaves the queue however it ends - converted, still in review, held, a dry
     run, already published or an exception - or it would vanish from every list until a

@@ -265,10 +265,9 @@ class TestCompactActions(unittest.TestCase):
         page = web.render(self.state)
         self.assertIn("Retry now", page)
         self.assertIn("Convert anyway", page)
-        self.assertIn("Edit ASIN", page)
+        self.assertRegex(page, r'data-act="asin"[^>]*>Choose the exact Audible edition</button>')
         self.assertIn("function abEditAsin(", page)
-        # Panel button is still "Use this ASIN" (not renamed)
-        self.assertIn("Use this ASIN", page)
+        self.assertIn("set_asin')\">Choose the exact Audible edition</button>", page)
 
 
 class TestDeleteUI(unittest.TestCase):

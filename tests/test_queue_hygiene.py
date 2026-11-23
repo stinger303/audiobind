@@ -517,7 +517,10 @@ class TestKebabMenu(unittest.TestCase):
             self.assertIn('aria-haspopup="menu" aria-expanded="false"', row)
             menu = row.split('<div class="ab-menu" role="menu" hidden>')[1].split("</div>")[0]
             labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</button>', menu)
-            self.assertEqual(labels, ["Open details", "Edit ASIN", "Re-check against Audible", "Delete&hellip;"])
+            self.assertEqual(
+                labels, ["Open details", "Choose the exact Audible edition", "Re-check against Audible",
+                         "Delete&hellip;"]
+            )
             self.assertIn("&#8942;</button>", row)
 
     def test_the_kebab_carries_what_delete_needs_safely_escaped(self):
@@ -537,7 +540,7 @@ class TestKebabMenu(unittest.TestCase):
         self.assertIn("e.key === 'ArrowDown'", menu_js)
         self.assertIn("e.key === 'ArrowUp'", menu_js)
         self.assertIn("abOpenDeleteModal(kebab, button && button.dataset.deleteSummary)", menu_js)
-        self.assertIn("abEditAsin(row)", menu_js)  # Edit ASIN keeps its behavior
+        self.assertIn("abEditAsin(row)", menu_js)  # Choose the exact Audible edition keeps its behavior
         self.assertIn("abUnitAction(item, 'recheck')", menu_js)
 
     def test_an_open_menu_holds_off_the_auto_reload(self):
@@ -596,7 +599,7 @@ class TestVocabulary(unittest.TestCase):
             "Click to unlock and hand it back to the catalog",
             "Click to unlock: the next re-check matches this book on its own",
             "Edit and save it to lock it",
-            "Use this ASIN to lock one exact entry",
+            "Choose the exact Audible edition to keep that match",
             "Editing a field locks it automatically",
             "One click unlocks",
             "The lock lives with the book",

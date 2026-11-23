@@ -1129,7 +1129,7 @@ def _record_row(
     custom = overrides_mod.normalise(audit.overrides)
     detail_data = (
         {
-            # a manual re-check (Retry now / Use this ASIN) that still needs a decision
+            # a manual re-check (retry or edition selection) that still needs a decision
             # tells the status page to re-open this book's panel with the reason
             "reopen": bool(reopen),
             "action": audit.action,
@@ -1310,7 +1310,7 @@ def _process_unit(state: State, unit: BookUnit, log, force: bool, manual: bool, 
     ``force`` is the operator saying "I looked at this, convert it anyway": the tier, the runtime
     hold and the damaged-source hold are bypassed, but the output is still verified before it is
     published. ``manual`` marks a one-off re-check triggered from the web UI (Retry now /
-    Use this ASIN): if it still ends in a decision-needed state, the detail is flagged so the
+    edition selection): if it still ends in a decision-needed state, the detail is flagged so the
     panel re-opens with the reason instead of the change going unnoticed.
 
     ``reencode`` is only ever set by the manual Convert anyway: it lets a book that is already

@@ -370,7 +370,7 @@ class Config:
     trusted_proxy_ips: list[str] = field(default_factory=list)
     #: concurrent web connections served at once; more get a 503 and are closed
     max_connections: int = 64
-    #: manual Retry / Convert anyway / Use this ASIN / Re-check actions allowed at once
+    #: number of manual book actions allowed at once
     manual_workers: int = 2
     #: deprecated shared secret for the web UI and API: only signs in while no account exists
     #: in the state DB (and skips first-run /setup); the account takes precedence once created

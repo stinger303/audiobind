@@ -177,7 +177,7 @@ def wishlist_transition_ok(current: str, new: str) -> bool:
     """True when a wishlist row may move from ``current`` to ``new``."""
     return new in WISHLIST_TRANSITIONS.get(current, frozenset())
 
-#: metadata fields a human edit locks: the editor's fields plus the ASIN set with Edit ASIN.
+#: Metadata fields the editor can lock, including the selected edition's ASIN.
 #: A locked field is never overwritten by a rescan, re-check or re-rip; unlocking hands it
 #: back to Audible's catalog.
 LOCKABLE_FIELDS = ("title", "authors", "narrator", "series", "series_index", "asin")

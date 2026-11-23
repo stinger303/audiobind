@@ -130,7 +130,7 @@ class TestFormsAndLabels(unittest.TestCase):
         self.assertIn("function abEnterClicks(", src)
         self.assertIn("button[data-enter]", src)
         fn = body_of(src, "abUnitAction")
-        self.assertIn("Enter the Audible ASIN first", fn)  # empty box: say so, do not just move focus
+        self.assertIn("Paste the code for this edition on Audible", fn)
 
 
 class TestSessionExpiry(unittest.TestCase):

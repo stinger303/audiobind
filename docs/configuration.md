@@ -18,7 +18,7 @@
 | `SAMPLE_RATE` | `44100` | Output sample rate, a cap in the same way: an AAC `.m4b`/`.m4a` at or below it is copied and keeps its own rate (a 22050 Hz book stays 22050 Hz); one above it is re-encoded and resampled down. A book that is re-encoded for any reason is written at the lower of its own rate and this one (the lowest of any file for several files), never resampled up; a rate the encoder cannot write (such as 37800 Hz) steps down to the next one it can. A source whose rate or channel count ffprobe does not report is re-encoded at this cap. An AAC source whose channel count or rate ffprobe does not report is re-encoded, not copied |
 | `JOBS` | `1` | Books converted in parallel |
 | `NICE` | `10` | ffmpeg CPU priority |
-| `MANUAL_WORKERS` | `2` | Manual actions (Retry, Convert anyway, Use this ASIN, Re-check) allowed at once; more get "another action is already running" |
+| `MANUAL_WORKERS` | `2` | Manual actions (Retry, Convert anyway, Choose the exact Audible edition, Re-check) allowed at once; more get "another action is already running" |
 | `MAX_RUNTIME_DELTA` | `0.15` | Hold when runtime differs by more than this fraction. 15% because a US/UK edition pair of the same book commonly differs by 16–21%: at 25% the wrong edition converted silently |
 | `REGION` | `us` | Audible region: `us`, `uk`, `ca`, `au` or `de` (the choices Settings offers) |
 | `DRY_RUN` | `false` | Decide and log, write nothing. `true` always starts dry; the UI switch can turn it off afterwards |

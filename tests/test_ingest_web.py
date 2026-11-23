@@ -104,7 +104,7 @@ class TestIngestRows(IngestWebCase):
         self.assertIn('<span class="ab-why-l">Low match</span>', row)
         self.assertIn("ab-ingest-badge", row)
         actions = body[row_start:]
-        for label in ("Retry now", "Convert anyway", "Edit ASIN"):
+        for label in ("Retry now", "Convert anyway", "Choose the exact Audible edition"):
             self.assertIn(label, actions)
 
     def test_no_badge_anywhere_when_there_are_no_ingest_rows(self):

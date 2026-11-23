@@ -380,7 +380,7 @@ def _explain_base(
                 "We found the Audible entry for this book and it matched, but "
                 "auto-convert is off - every conversion waits for your OK.",
                 "Cover and title below look right? Press Convert anyway. Want it "
-                "locked in? Paste the ASIN and press Use this ASIN.",
+                "locked in? Open Choose the exact Audible edition.",
             )
         return (
             note
@@ -391,7 +391,7 @@ def _explain_base(
                 "match waits for your OK."
             ),
             "Cover and title below look right? Press Convert anyway. Want it locked in? "
-            "Paste the ASIN and press Use this ASIN.",
+            "Open Choose the exact Audible edition to keep your match.",
         )
 
     return (note or "We haven't looked at this book yet.", "Press Scan now and we'll take a look.")

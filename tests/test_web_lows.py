@@ -1,4 +1,4 @@
-"""v0.14.4 web LOWs: single URL decode, Edit ASIN fallback, one action function."""
+"""v0.14.4 web LOWs: single URL decode, Choose the exact Audible edition fallback, one action function."""
 
 import unittest
 
