@@ -1,4 +1,4 @@
-"""0.18.0-dev8: the library Dry run and the watcher's Dry run are two independent switches."""
+"""0.18.0-dev8: library and tracker previews are two independent switches."""
 
 import pathlib
 import tempfile
@@ -174,26 +174,26 @@ class TestControlApiAndPages(LiveServerCase):
         CONTROL.set_watcher_dry_run(True)
         html = web.render(self.state)
         self.assertIn('onclick="dry(true)"', html)
-        self.assertNotIn("Dry run is on", html)
+        self.assertRegex(html, r'class="btn dry"[^>]*aria-pressed="false"')
         CONTROL.set_watcher_dry_run(False)
         CONTROL.set_dry_run(True)
         html = web.render(self.state)
         self.assertIn('onclick="dry(false)"', html)
-        self.assertIn("Dry run is on", html)
+        self.assertRegex(html, r'class="btn dry on"[^>]*aria-pressed="true"')
 
     def test_watcher_panel_reflects_only_the_watcher_switch(self):
         CONTROL.set_dry_run(True)
         html = web.render_settings(self.state)
         self.assertIn('id="ab-watch-dry"', html)
         self.assertIn('onclick="abWatcherDry(true)"', html)
-        self.assertIn("Watcher dry run is <b>off</b>", html)
+        self.assertRegex(html, r'id="ab-watch-dry"[^>]*aria-pressed="false"')
         CONTROL.set_dry_run(False)
         CONTROL.set_watcher_dry_run(True)
         html = web.render_settings(self.state)
         self.assertIn('onclick="abWatcherDry(false)"', html)
         self.assertIn('class="btn dry on" id="ab-watch-dry"', html)
-        self.assertIn("Watcher dry run is <b>on</b>", html)
-        self.assertIn("never downloads", html)
+        self.assertRegex(html, r'id="ab-watch-dry"[^>]*aria-pressed="true"')
+        self.assertIn("without downloading", html)
 
     def test_panel_toggle_is_usable_in_every_combination(self):
         for pipeline in (False, True):
@@ -208,12 +208,12 @@ class TestControlApiAndPages(LiveServerCase):
         CONTROL.set_dry_run(True)
         _, body = self.request("/api/watcher", headers={})
         self.assertFalse(body["watcher_dry_run"])
-        self.assertNotIn("dry run: decisions are noted", web.render_discover(self.state, "wishlist"))
+        self.assertNotIn("Tracker download preview is on", web.render_discover(self.state, "wishlist"))
         CONTROL.set_dry_run(False)
         CONTROL.set_watcher_dry_run(True)
         _, body = self.request("/api/watcher", headers={})
         self.assertTrue(body["watcher_dry_run"])
-        self.assertIn("dry run: decisions are noted", web.render_discover(self.state, "wishlist"))
+        self.assertIn("Tracker download preview is on", web.render_discover(self.state, "wishlist"))
 
 
 if __name__ == "__main__":

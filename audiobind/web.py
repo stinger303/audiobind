@@ -172,6 +172,7 @@ body{
 .ab-ingest-warning summary{cursor:pointer}
 .ab-controls{flex:none;display:flex;align-items:center;gap:8px;padding:12px 24px 4px;}
 .ab-controls .ab-spacer{flex:1}
+.ab-preview-control{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .ab-controls .ab-note{font-size:11.5px;color:var(--ab-text4)}
 .ab-spin{width:12px;height:12px;flex:none;border:2px solid rgba(255,255,255,.25);
   border-top-color:var(--ab-amber);border-radius:50%;display:inline-block;
@@ -1801,7 +1802,6 @@ PAGE = """<!doctype html>
     </span>
     <span class="ab-scan-age">{scan_freshness}</span>
     <span class="ab-version">v{version}</span>
-    {dry_text}
   </header>
 
 {ingest_warning}
@@ -1813,10 +1813,9 @@ PAGE = """<!doctype html>
     {recheck_button}
     {pause_button}
     {stop_button}
-    {dry_button}
+    <div class="ab-preview-control">{dry_button}{dry_note}</div>
     <span id="ab-scanlive" hidden><span class="ab-spin"></span><span id="ab-scanlive-text">Scanning&hellip;</span></span>
     <span class="ab-spacer"></span>
-    {dry_note}
   </section>
 
   <section class="ab-statsline" aria-label="Library statistics">
@@ -4347,7 +4346,7 @@ def _watcher_bar(status: dict) -> str:
             bits.append(f"last cycle {_html(rel_age(last))}")
         bits.append(_html(_wedge_sentence(status.get("wedges") or {})))
         if status["watcher_dry_run"]:
-            bits.append('<span class="warn">dry run: decisions are noted, nothing is downloaded</span>')
+            bits.append('<span class="warn">Tracker download preview is on. Nothing is downloaded.</span>')
         text = " &#183; ".join(bits)
     return f'<div class="ab-disc-bar" id="ab-watch-bar"><span>{text}</span>{link}</div>'
 
@@ -4832,7 +4831,7 @@ def render_watcher_section(state) -> str:
     else:
         state_html = '<span class="ok">Enabled</span>' + (" &#8212; running a cycle now" if s["busy"] else "")
     if s["configured"] and s["watcher_dry_run"]:
-        state_html += ' &#183; <span class="warn">dry run: decisions are noted and logged, nothing is downloaded</span>'
+        state_html += ' &#183; <span class="warn">Tracker download preview is on</span>'
     guard = s.get("egress_guard") or "off"
     if guard == "blocked":
         warn += (
@@ -4876,7 +4875,7 @@ def render_watcher_section(state) -> str:
     if last.get("at"):
         parts = [f"{int(last.get('searched') or 0)} searched", f"{int(last.get('sent') or 0)} sent to qBittorrent"]
         if last.get("would_send"):
-            parts.append(f"{int(last['would_send'])} would be sent (dry run)")
+            parts.append(f"{int(last['would_send'])} would be sent (preview)")
         parts.append(f"{int(last.get('not_found') or 0)} not found")
         if last.get("normal_tracker_blocked"):
             parts.append("tracker searches and downloads blocked")
@@ -4935,12 +4934,13 @@ def render_watcher_section(state) -> str:
     dry_toggle = (
         f'<button class="btn dry{" on" if wdry else ""}" id="ab-watch-dry" type="button" aria-pressed="{"true" if wdry else "false"}" '
         f'title="Searches and reports what it would download, never downloads. Click to turn it {"off" if wdry else "on"}." '
-        f'onclick="abWatcherDry({"false" if wdry else "true"})">Dry run <span class="ab-switch"></span></button>'
+        'aria-describedby="ab-watch-dry-note" '
+        f'onclick="abWatcherDry({"false" if wdry else "true"})">Preview tracker downloads '
+        '<span class="ab-switch"></span></button>'
     )
     dry_line = (
-        '<div class="ab-acct-who" id="ab-watch-dry-note">Watcher dry run is <b>' + ("on" if wdry else "off") +
-        "</b>: searches the tracker and reports what it would download, never downloads. It is separate from "
-        "the library Dry run on the main page.</div>"
+        '<div class="ab-acct-who" id="ab-watch-dry-note">When on, the Watcher searches and reports what it '
+        'would download without downloading. Library conversions keep running as configured.</div>'
     )
     return (
         '<section class="ab-acct ab-watch" id="watcher" aria-labelledby="ab-watch-head">'
@@ -6002,8 +6002,9 @@ def _wizard_done(state) -> str:
         lines.append(_wizard_check(None, "The watcher is paused, so nothing is searched until you resume it "
                                          "on Settings &rarr; Watcher."))
     if CONTROL.watcher_dry_run:
-        lines.append(_wizard_check(None, "Watcher dry run is on: each round searches and says what it would "
-                                         "add, but adds nothing."))
+        lines.append(_wizard_check(
+            None, "Tracker download preview is on. Each round reports what it would add."
+        ))
     ready = not missing and client_ready and st["ok"] and view["verdict"] not in ("mismatch", "home")
     if ready:
         if not wizard_mod.read(state)["dismissed"]:
@@ -7209,19 +7210,18 @@ def render(state, status: str = "", query: str = "") -> str:
             else ""  # nothing is encoding: the queue strip carries Pause/Stop while something is
         )
     )
+    preview = CONTROL.dry_run
     dry_button = (
-        '<button class="btn dry on" title="Preview mode: reports what it would do but writes '
-        'nothing to the output library. Click to turn it off." onclick="dry(false)">'
-        'Dry run <span class="ab-switch"></span></button>'
-        if CONTROL.dry_run
-        else '<button class="btn dry" title="Preview mode: reports what it would do but writes '
-        'nothing to the output library. Click to turn it on." onclick="dry(true)">'
-        'Dry run <span class="ab-switch"></span></button>'
+        f'<button class="btn dry{" on" if preview else ""}" type="button" '
+        f'aria-pressed="{str(preview).lower()}" aria-describedby="ab-library-preview-note" '
+        'title="Preview mode: reports what it would do but writes nothing to the output library." '
+        f'onclick="dry({str(not preview).lower()})">Preview library conversions '
+        '<span class="ab-switch"></span></button>'
     )
     dry_note = (
-        '<span class="ab-note">Dry run is on &mdash; no files will be written</span>'
-        if CONTROL.dry_run
-        else ""
+        '<span class="ab-note" id="ab-library-preview-note">'
+        'When on, conversions are planned without writing files.'
+        ' Tracker downloads keep running as configured.</span>'
     )
     stop_button = (
         '<button class="btn danger" title="Abort the current conversion immediately: the '
@@ -7286,13 +7286,6 @@ def render(state, status: str = "", query: str = "") -> str:
         health_text = "Service alive" if healthy else "Service check-in overdue"
         service_check_in = f"checked in {_fmt_age(heartbeat_age)}"
 
-    # header indicators
-    dry_header = (
-        ('<span style="font-family:var(--ab-mono);font-size:11px;color:var(--ab-amber)">dry run</span>')
-        if CONTROL.dry_run
-        else ""
-    )
-
     return PAGE.format(
         **_rail_view_marks(view),
         signout=signout_html(state),
@@ -7304,7 +7297,6 @@ def render(state, status: str = "", query: str = "") -> str:
         library_attr=_attr(CONFIG.host_library or str(CONFIG.library_root)),
         output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
-        dry_text=dry_header,
         ingest_line=_ingest_line(),
         ingest_warning=_ingest_warning(),
         health_stale=health_stale,

@@ -93,7 +93,7 @@ class TestWishlistTab(StateCase):
                 mock.patch.object(CONFIG, "qbit_pass", "p"), mock.patch.object(CONTROL, "_watcher_dry_run", True):
             html = web.render_discover(self.state, "wishlist")
             self.assertIn("checks up to <b>5</b> wanted books every <b>60 min</b>", html)
-            self.assertIn("dry run: decisions are noted, nothing is downloaded", html)
+            self.assertIn("Tracker download preview is on. Nothing is downloaded.", html)
             watcher.WATCHER.set_paused(self.state, True)
             self.assertIn("The watcher is <b>paused</b>", web.render_discover(self.state, "wishlist"))
 

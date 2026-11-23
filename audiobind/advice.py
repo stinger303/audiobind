@@ -248,8 +248,8 @@ def _explain_base(
 
     if status == "ready":
         return (
-            "This book passed every check, but Dry Run is on, so nothing was actually written.",
-            "Turn Dry Run off in Settings, then press Scan now - or hit Convert anyway on this row.",
+            "This book passed every check. Preview library conversions is on, so no files were written.",
+            "Turn off Preview library conversions in Library, then press Scan now or choose Convert anyway.",
         )
 
     if status == "interrupted":

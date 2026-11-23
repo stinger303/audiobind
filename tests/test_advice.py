@@ -13,8 +13,8 @@ class TestExplain(unittest.TestCase):
 
     def test_dry_run_ready_explains_the_switch(self):
         why, todo = explain("ready", "HIGH", "dry run - nothing written", {})
-        self.assertIn("dry run", why.lower())
-        self.assertIn("Turn Dry Run off", todo)
+        self.assertIn("preview library conversions", why.lower())
+        self.assertIn("Turn off Preview library conversions", todo)
 
     def test_held_shows_both_runtimes(self):
         why, todo = explain("held", "HIGH", "runtime 9.74h vs catalog 3.45h", DETAIL)

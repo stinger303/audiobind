@@ -181,11 +181,10 @@ tier, and the API cannot tell the watcher whether your account has it, so it is 
 `TRACKER_VIP` (Settings > Watcher > **VIP / Premium member**, default **No**). With No, such a torrent
 is skipped and the book's note says so; with Yes it is an ordinary candidate.
 
-The watcher has its own **Dry run** (Settings > Watcher, or `WATCH_DRY_RUN`), separate from the
+The watcher has its own **Preview tracker downloads** switch (Settings > Watcher, or `WATCH_DRY_RUN`), separate from the
 library preview on the main page: it searches and notes what it *would* download, and downloads
 nothing. Settings > **Watcher** shows its status (last and next cycle, last error, backoff),
-**Run a cycle now** and **Pause watcher** (kept across restarts); these, and the watcher's Dry run
-switch, appear once the tracker settings are complete. Tracker sessions are often locked to
+**Run a cycle now** and **Pause watcher** (kept across restarts); these, and **Preview tracker downloads**, appear once the tracker settings are complete. Tracker sessions are often locked to
 an IP address: create the session for the IP the container reaches the tracker from.
 
 ```bash

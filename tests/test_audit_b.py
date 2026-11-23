@@ -54,3 +54,15 @@ class AuditUsabilityTests(unittest.TestCase):
             self.assertIn("/missing</b> is missing", main)
             self.assertIn("<details><summary>How to mount this folder</summary>", main)
             self.assertIn("Mount the folder there", main)
+
+    def test_preview_controls_explain_their_scope(self):
+        with tempfile.TemporaryDirectory() as temp, closing(State(Path(temp))) as state:
+            library = web.render(state)
+            status = web.watcher_mod.WATCHER.status(state)
+            status.update(configured=True, enabled=True)
+            with mock.patch.object(web.watcher_mod.WATCHER, "status", return_value=status):
+                watcher = web.render_watcher_section(state)
+        self.assertIn(">Preview library conversions ", library)
+        self.assertIn("Tracker downloads keep running as configured.", library)
+        self.assertIn(">Preview tracker downloads ", watcher)
+        self.assertIn("Library conversions keep running as configured.", watcher)

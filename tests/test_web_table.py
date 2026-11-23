@@ -245,7 +245,7 @@ class TestRenderedSearchAndSort(unittest.TestCase):
     def test_dry_run_sits_with_the_other_controls(self):
         page = web.render(self.state)
         controls = page.split('aria-label="Controls"')[1].split("</section>")[0]
-        dry_at = controls.find(">Dry run")
+        dry_at = controls.find(">Preview library conversions")
         spacer_at = controls.find("ab-spacer")
         self.assertGreater(dry_at, 0)
         self.assertGreater(spacer_at, dry_at)
