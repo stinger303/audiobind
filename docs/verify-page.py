@@ -604,7 +604,7 @@ gui_served = get("/settings") + get("/api/state") + get("/api/watcher") + saved 
 check("the secrets saved from the page are never served (page, /api/state, /api/watcher, save and reset answers)",
       not any(secret in gui_served for secret in ("VERIFY-GUI-SESSION", "VERIFY GUI PASS", "VERIFY-SECRET-COOKIE",
                                                   "VERIFY-SECRET-PASS")))
-check("Reset to defaults leaves the connection settings alone",
+check("Reset conversion, scanning, catalog and Watcher limits and guard leaves connection settings alone",
       config.setting_effective("tracker_session") == "VERIFY-GUI-SESSION" and config.is_custom("qbit_category"))
 status, _, _ = post_json("/api/settings", {"settings": {"tracker_session": ""}})
 check("a blank secret keeps the saved one", status == 200 and config.setting_effective("tracker_session") == "VERIFY-GUI-SESSION")

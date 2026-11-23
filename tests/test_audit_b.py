@@ -78,3 +78,12 @@ class AuditUsabilityTests(unittest.TestCase):
             for button_id in button_ids:
                 self.assertRegex(markup, rf'id="{button_id}"[^>]*>Save and test(?: [^<]+)?</button>')
             self.assertIn("saved even if the test fails", markup)
+
+    def test_reset_lists_groups_and_lives_in_library_settings(self):
+        label = "Reset conversion, scanning, catalog and Watcher limits and guard"
+        with tempfile.TemporaryDirectory() as temp, closing(State(Path(temp))) as state:
+            page = web.render_settings(state)
+        library = page.split('id="ab-tab-library"', 1)[1].split('id="ab-tab-watcher"', 1)[0]
+        self.assertIn(label + "</button>", library)
+        self.assertIn(label + "?", web.SETTINGS_SCRIPT)
+        self.assertIn("values from the container environment", library)

@@ -494,6 +494,7 @@ tr.drow[hidden] td{padding:0}
   border:1px solid #2b3240;background:#0d1118;color:var(--ab-text);width:100%;box-sizing:border-box;}
 .ab-in:focus{outline:2px solid var(--ab-accent-bright);outline-offset:0;border-color:var(--ab-accent-bright);}
 .ab-in::placeholder{color:var(--ab-text4);font-style:italic;}
+.ab-reset-general{justify-self:start;max-width:100%;white-space:normal;text-align:left}
 .ab-editbar{display:flex;align-items:center;gap:10px;margin-top:12px;}
 /* Settings tabs: the library's chip pills; the tab that is on is the indigo pill (the rail's active tint) */
 .ab-tabs{margin:14px 0 4px}
@@ -1920,7 +1921,6 @@ SETTINGS_PAGE = """<!doctype html>
     {advanced_panel}
     <div class="ab-editbar" style="margin-top:8px;"{savebar_hidden}>
       <button class="ab-save" type="submit">Save settings</button>
-      <button class="btn" type="button" onclick="abResetSettings()">Reset to defaults</button>
       <span class="ab-fb" id="ab-settings-fb" role="status"></span>
     </div>
     </form>
@@ -2275,10 +2275,11 @@ function abSaveSettings(fbId, quiet) {
 }
 
 function abResetSettings() {
-  if (!confirm('Reset the conversion settings to the container defaults?\\n\\n' +
-               'Every value saved on this page is forgotten and the values from the container environment ' +
-               'apply again. The watcher connection settings and secrets are kept.')) return;
-  const fb = document.getElementById('ab-settings-fb');
+  if (!confirm('Reset conversion, scanning, catalog and Watcher limits and guard?\\n\\n' +
+               'Conversion and CPU settings, scan and Watcher schedules, catalog region, and Watcher ' +
+               'limits, membership tier and allowed IP will use the values from the container ' +
+               'environment.')) return;
+  const fb = document.getElementById('ab-reset-general-fb');
   fb.className = 'ab-fb';
   fb.textContent = 'resetting...';
   fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
@@ -2294,9 +2295,8 @@ function abResetSettings() {
           if (el.type === 'range') abRangeShow(el);
           if (el.type === 'number') abUnitShow(el);
           el.dataset.initial = el.value;
-        });
-        document.querySelectorAll('[data-setting] .ab-custom').forEach(mark => {
-          mark.hidden = true;
+          const mark = wrap.querySelector('.ab-custom');
+          if (mark) mark.hidden = true;
         });
         abSyncProfile();
         fb.className = 'ab-fb ab-good';
@@ -6396,7 +6396,17 @@ def render_settings(state, tab: str = "") -> str:
         ingest_line=_ingest_line(),
         ingest_warning=_ingest_warning(),
         settings_tabs=settings_tab_bar(tab),
-        library_panel=panel("library", "\n".join(controls_parts) + render_library_section()),
+        library_panel=panel(
+            "library",
+            "\n".join(controls_parts)
+            + '<div class="ab-setting"><p class="ab-setting-hint">Reset uses the values from the container '
+            'environment for conversion, scanning, catalog region and Watcher schedules, limits and '
+            'guard.</p>'
+            '<button class="btn ab-reset-general" type="button" onclick="abResetSettings()">'
+            'Reset conversion, scanning, catalog and Watcher limits and guard</button>'
+            '<span class="ab-fb" id="ab-reset-general-fb" role="status"></span></div>'
+            + render_library_section(),
+        ),
         watcher_panel=panel("watcher", render_watcher_section(state)),
         advanced_panel=panel("advanced", advanced),
         account_panel=panel("account", account),

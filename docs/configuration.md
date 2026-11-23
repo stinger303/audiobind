@@ -183,3 +183,6 @@ host and port. A redirect that changes the origin fails and records the reason i
 
 If the ingest folder is missing, Library and Settings name the folder and show the mount steps under
 **How to mount this folder**.
+
+The Library settings reset returns conversion, scanning, catalog region and Watcher schedules,
+limits and guard to the values from the container environment.
