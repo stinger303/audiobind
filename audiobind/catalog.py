@@ -67,11 +67,14 @@ def _validate_product(product, runtime_key: str) -> None:
     title = product.get("title")
     _require(isinstance(title, str) and bool(title.strip()), "title")
     runtime = product.get(runtime_key)
-    try:
-        minutes = float(runtime) if not isinstance(runtime, bool) else 0
-    except (TypeError, ValueError, OverflowError):
-        minutes = 0
-    _require(math.isfinite(minutes) and minutes > 0, runtime_key)
+    # A product with no runtime is a usable candidate (the duration is simply unknown); only a value
+    # that is present and unusable - text, nan, infinite or negative - poisons the response.
+    if runtime is not None and runtime != "":
+        try:
+            minutes = float(runtime)
+        except (TypeError, ValueError, OverflowError):
+            minutes = math.nan
+        _require(math.isfinite(minutes) and minutes > 0, runtime_key)
     _strings(product, ("subtitle", "language", "release_date", "releaseDate", "publisher_name",
                        "publisherName", "merchandising_summary", "description", "image"))
     for key in ("authors", "narrators", "genres"):

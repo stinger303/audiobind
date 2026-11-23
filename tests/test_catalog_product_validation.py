@@ -34,6 +34,16 @@ class TestCatalogueProductValidation(unittest.TestCase):
                 self.assertEqual(len(logs.output), 1)
                 self.assertIsNone(catalog.cache_get(url))
 
+    def test_a_product_without_a_runtime_is_still_usable(self):
+        # real catalogue responses omit the runtime for some entries; unknown duration is not poison
+        url = "https://example.test/catalog"
+        for missing in ({"runtime_length_min": None}, {"runtime_length_min": ""}, {}):
+            with self.subTest(missing=missing):
+                catalog.cache_clear()
+                product = {"asin": "B005EHN61O", "title": "Dune", **missing}
+                catalog._cache[url] = (time.time(), {"products": [product]})
+                self.assertIsNotNone(catalog.cache_get(url))
+
     def test_a_malformed_product_puts_one_book_in_review_and_scan_continues(self):
         CONTROL.resume()
         CONTROL.clear_stop()
