@@ -221,7 +221,7 @@ check("column budget at 1280: Book keeps a usable width (>= 300 px)", book_at[12
 check("the Match word never shrinks, the meter does",
       re.search(r"\.ab-match-word\{[^}]*flex:none", html) is not None
       and re.search(r"\.ab-mmeter\{[^}]*flex:0 1 auto;overflow:hidden;min-width:0", html) is not None)
-match_cells = re.findall(r'<td class="ab-hidemd ab-match"[^>]*>(.*?)</td>', all_html)
+match_cells = re.findall(r'<td class="ab-match"[^>]*>(.*?)</td>', all_html)
 check("every Match cell with a meter carries its word",
       all(re.search(r'<span class="ab-match-word ab-conf-\w+">(High|Medium|Low)</span></span>$', c)
           for c in match_cells if "ab-mmeter" in c) and any("ab-mmeter" in c for c in match_cells),

@@ -200,9 +200,6 @@ class TestMockupFixPass(unittest.TestCase):
         self.assertAlmostEqual(self.book_budget(1440), 622, delta=1)
         self.assertGreaterEqual(self.book_budget(1440), 380)
         self.assertAlmostEqual(self.book_budget(1280), 506, delta=1)
-        # below 820 px Match's cells drop and its col gives its width back to Book
-        self.assertIn("@media(max-width:820px){.ab-hidemd{display:none}.ab-tbl col.ab-col-tier{width:0!important}}",
-                      web.STYLES)
         page = render_with([HELD], "all")
         cols = page.split("<colgroup>")[1].split("</colgroup>")[0]
         self.assertIn('<col style="width:50px"><col><col class="ab-col-why"', cols)
@@ -228,14 +225,14 @@ class TestMockupFixPass(unittest.TestCase):
         # no browser here: the served cell holds the whole word in its non-shrinking span, and
         # Match's fixed 150 px is more than the measured need of the full meter and its word
         page = render_with([HELD])
-        cell = re.search(r'<td class="ab-hidemd ab-match"[^>]*>(.*?)</td>', page).group(1)
+        cell = re.search(r'<td class="ab-match"[^>]*>(.*?)</td>', page).group(1)
         self.assertIn('<span class="ab-match-word ab-conf-medium">Medium</span>', cell)
         self.assertEqual(dict((k, w) for k, _l, w, _c in web.COLUMNS)["tier"], "150px")
         self.assertGreaterEqual(150, self.MATCH_NEED + 20)
 
     def test_a_rendered_match_cell_has_its_word_beside_the_meter(self):
         page = render_with([REVIEW, HELD])
-        cells = re.findall(r'<td class="ab-hidemd ab-match"[^>]*>(.*?)</td>', page)
+        cells = re.findall(r'<td class="ab-match"[^>]*>(.*?)</td>', page)
         self.assertEqual(len(cells), 2)
         for cell in cells:
             self.assertRegex(cell, r'^<span class="ab-match-in"><span class="ab-mmeter" aria-hidden="true">'
@@ -246,7 +243,7 @@ class TestMockupFixPass(unittest.TestCase):
             [UnitState(path="A/H", status="held", confidence="MEDIUM", title="H", detail=self.SERIES,
                        note="runtime 12.95h vs catalog 7.50h")]
         )
-        attrs, cell = re.search(r'<td class="ab-hidemd ab-match"([^>]*)>(.*?)</td>', page).groups()
+        attrs, cell = re.search(r'<td class="ab-match"([^>]*)>(.*?)</td>', page).groups()
         self.assertEqual(re.sub(r"<[^>]+>", "", cell), "Medium")
         self.assertNotIn("Jack Reacher", cell)
         self.assertIn('title="Jack Reacher #26 · Medium Confidence"', attrs)
@@ -256,7 +253,7 @@ class TestMockupFixPass(unittest.TestCase):
         page = render_with(
             [UnitState(path="A/C", status="converted", confidence="HIGH", title="C", detail=self.SERIES)]
         )
-        attrs, cell = re.search(r'<td class="ab-hidemd ab-match"([^>]*)>(.*?)</td>', page).groups()
+        attrs, cell = re.search(r'<td class="ab-match"([^>]*)>(.*?)</td>', page).groups()
         self.assertEqual(re.sub(r"<[^>]+>", "", cell).replace("&middot;", " · "), "Jack Reacher #26 · High")
         self.assertIn('title="Jack Reacher #26 · High Confidence"', attrs)
 
@@ -289,7 +286,7 @@ class TestMockupFixPass(unittest.TestCase):
 
     def test_match_cell_shows_the_short_word(self):
         page = render_with([REVIEW], "all")
-        cell = re.search(r'<td class="ab-hidemd ab-match"([^>]*)>(.*?)</td>', page).groups()
+        cell = re.search(r'<td class="ab-match"([^>]*)>(.*?)</td>', page).groups()
         self.assertIn('<span class="ab-match-word ab-conf-medium">Medium</span>', cell[1])
         self.assertNotIn("Medium Confidence", cell[1])
         self.assertIn("Medium Confidence", cell[0])  # the long form is the title

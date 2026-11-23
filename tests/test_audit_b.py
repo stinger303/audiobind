@@ -28,3 +28,11 @@ class AuditUsabilityTests(unittest.TestCase):
             self.assertIn(f'''abOpenRowDetail(this,'{target}')">{label}</button>''', row)
             self.assertIn('aria-haspopup="menu"', row)
         self.assertIn('class="ab-detail-match" tabindex="-1"', page)
+
+    def test_match_cell_is_displayed_at_tablet_widths(self):
+        tablet = web.STYLES.split("/* Library rows through 820 px */", 1)[-1]
+        tablet = tablet.split("/* Expanded detail", 1)[0]
+        self.assertTrue(tablet.startswith("\n@media(max-width:820px)"))
+        rule = re.search(r'td\.ab-match\{([^}]+)\}', tablet).group(1)
+        self.assertIn("display:flex", rule)
+        self.assertIn('content:"Match"', tablet)

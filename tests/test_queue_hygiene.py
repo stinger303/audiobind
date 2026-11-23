@@ -494,7 +494,7 @@ class TestMatchWording(unittest.TestCase):
         body = table(page)
         for word in ("High Confidence", "Medium Confidence", "Low Confidence"):
             self.assertIn(word, body)
-        cells = re.findall(r'<td class="ab-hidemd ab-match"[^>]*>(.*?)</td>', body)
+        cells = re.findall(r'<td class="ab-match"[^>]*>(.*?)</td>', body)
         self.assertEqual(len(cells), 3)
         for cell in cells:
             self.assertNotRegex(cell, r"\b(LOW|MEDIUM|HIGH)\b")

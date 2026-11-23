@@ -800,7 +800,6 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   body.ab-nav-open .ab-rail{transform:none;visibility:visible;box-shadow:8px 0 32px rgba(0,0,0,.5);
     transition:transform .2s ease}
 }
-@media(max-width:820px){.ab-hidemd{display:none}.ab-tbl col.ab-col-tier{width:0!important}}
 @media(max-width:820px){
   /* no row may grow past the screen: everything that sat on one line may now wrap */
   .ab-controls{flex-wrap:wrap}
@@ -845,6 +844,9 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   .ab-clear{flex:none}
   .ab-allclear{padding:0 12px 8px}
   .ab-overflow{padding:8px 12px}
+}
+/* Library rows through 820 px */
+@media(max-width:820px){
   /* table: no WHY column - the table becomes blocks and each row a grid; the WHY cell moves
      under the title (the same cell, not a copy) */
   .ab-tablewrap{padding:0 8px 16px}
@@ -853,7 +855,8 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   .ab-tbl thead{display:block;position:sticky;top:0;z-index:2;background:var(--ab-bg)}
   .ab-tbl thead tr{display:flex}
   .ab-tbl thead th{position:static;display:none}
-  .ab-tbl thead th[data-column="title"]{display:block;flex:1;padding-left:66px}
+  .ab-tbl thead th[data-column]{display:block}
+  .ab-tbl thead th[data-column="title"]{flex:1;padding-left:66px}
   .ab-tbl tr[hidden]{display:none!important}
   .ab-tbl tbody tr.urow{display:grid;grid-template-columns:58px minmax(0,1fr) 44px;
     grid-template-rows:auto auto auto;align-items:center}
@@ -881,6 +884,9 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   .ab-tbl tbody tr.ab-group>td,.ab-tbl tbody tr.ab-more-row>td,.ab-tbl tbody tr.drow>td,
   .ab-tbl tbody tr.ab-empty>td{display:block;width:100%}
   .ab-tbl tbody tr.ab-more-row td{padding-left:66px}
+}
+/* Expanded detail on phones */
+@media(max-width:640px){
   /* expanded detail: a small cover with the reason beside it, actions full width below */
   .dd{display:block;padding:14px 12px 16px;overflow-wrap:anywhere}
   .dd>*+*{margin-top:18px}
@@ -2939,13 +2945,12 @@ COLUMNS = (
     # Book has no width: it is the content, so it absorbs whatever room is left and a long
     # title uses it (td.ab-bookcell caps the text at min(720px,100%)). Why and Match are fixed:
     # Why narrows below 1360 px (the 20vw media rule), Match is a meter and one word, so 150 px
-    # holds it - the meter shrinks before the word ever clips. Below 820 px Match's cells drop
-    # (.ab-hidemd) and its col goes to 0 so the room returns to Book.
+    # holds it - the meter shrinks before the word ever clips. At 820 px Match moves below Book.
     # 0.21.0-dev4: Length and Waiting are gone from the table in every view. Why carries the
     # runtimes where they matter; the age lives in the row's tooltip and the detail panel.
     ("title", "Book", "", ""),
     ("why", "Why", "min(300px,22vw)", ""),
-    ("tier", "Match", "150px", "ab-hidemd"),
+    ("tier", "Match", "150px", ""),
 )
 COVER_WIDTH = "50px"
 #: the cover column and the row's action column flank COLUMNS; every colspan uses this
@@ -7104,7 +7109,7 @@ def render(state, status: str = "", query: str = "") -> str:
             f"{row_src_badge}</span>"
             f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span>{primary}</td>'
             f'<td class="ab-whycell">{why_html}</td>'
-            f'<td class="ab-hidemd ab-match"{match_attr}>{match_html}</td>'
+            f'<td class="ab-match"{match_attr}>{match_html}</td>'
             f'<td class="ab-actcol">{kebab_menu(unit)}</td></tr>'
         )
 
