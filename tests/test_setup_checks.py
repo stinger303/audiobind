@@ -611,14 +611,12 @@ class TestIngestHalfConfigured(unittest.TestCase):
             with self.assertLogs("audiobind", "WARNING"):
                 ingest.check_at_start()
 
-    def test_the_ingest_line_in_the_sidebar_shows_it(self):
+    def test_the_main_warning_explains_an_unset_ingest_dir(self):
         self.setting(mount=True, ingest_dir="")
-        line = web._ingest_line()
-        self.assertIn("is mounted but Ingest dir is empty", line)
-        self.assertIn('class="warn"', line)
-        self.assertNotIn("set Ingest path in the container settings", line)
-        self.setting(mount=False, ingest_dir=str(self.root / "gone"))
-        self.assertIn("there is no such folder", web._ingest_line())
+        warning = web._ingest_warning()
+        self.assertIn("is mounted, but Audiobind is not watching it", warning)
+        self.assertIn("<summary>How to turn on ingest</summary>", warning)
+        self.assertIn("is mounted but Ingest dir is empty", warning)
 
     def test_with_nothing_half_set_the_old_off_text_is_unchanged(self):
         self.setting(mount=False, ingest_dir="")

@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from unittest import mock
 
 from audiobind import web
 from audiobind.state import State, UnitState
@@ -42,3 +43,14 @@ class AuditUsabilityTests(unittest.TestCase):
             page = web.render(state)
         self.assertIn('<div class="chips ab-library-chips">', page)
         self.assertRegex(web.STYLES, r'\.ab-library-chips\{[^}]*flex-wrap:wrap;overflow:visible')
+
+    def test_missing_ingest_warning_has_main_pane_disclosure(self):
+        with tempfile.TemporaryDirectory() as temp, closing(State(Path(temp))) as state:
+            with mock.patch.object(web.ingest_mod, "configured_dir", return_value=temp + "/missing"):
+                library = web.render(state)
+                settings = web.render_settings(state)
+        for page in (library, settings):
+            main = page.split('<main class="ab-main">', 1)[1]
+            self.assertIn("/missing</b> is missing", main)
+            self.assertIn("<details><summary>How to mount this folder</summary>", main)
+            self.assertIn("Mount the folder there", main)

@@ -166,6 +166,10 @@ body{
   border-radius:4px;padding:2px 7px;}
 .ab-topbar .ab-right{margin-left:auto;display:flex;align-items:center;gap:12px}
 
+.ab-ingest-warning{margin:10px 24px;overflow-wrap:anywhere}
+.ab-settings .ab-ingest-warning{margin-inline:0}
+.ab-ingest-warning p{margin:0 0 4px}
+.ab-ingest-warning summary{cursor:pointer}
 .ab-controls{flex:none;display:flex;align-items:center;gap:8px;padding:12px 24px 4px;}
 .ab-controls .ab-spacer{flex:1}
 .ab-controls .ab-note{font-size:11.5px;color:var(--ab-text4)}
@@ -1800,6 +1804,7 @@ PAGE = """<!doctype html>
     {dry_text}
   </header>
 
+{ingest_warning}
 {queue_strip}
 {wizard_card}
 
@@ -1906,6 +1911,7 @@ SETTINGS_PAGE = """<!doctype html>
     <div class="ab-right"></div>
   </header>
   <section class="ab-settings" style="padding:24px;max-width:640px;">
+    {ingest_warning}
     <div class="ab-hintbox">
       <b>Apply later.</b> Changes take effect on the next scan or conversion. Existing m4b files are never touched.</div>
     {settings_tabs}
@@ -6380,6 +6386,7 @@ def render_settings(state, tab: str = "") -> str:
         output=_breakable_path(CONFIG.host_output or str(CONFIG.output_root)),
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         ingest_line=_ingest_line(),
+        ingest_warning=_ingest_warning(),
         settings_tabs=settings_tab_bar(tab),
         library_panel=panel("library", "\n".join(controls_parts) + render_library_section()),
         watcher_panel=panel("watcher", render_watcher_section(state)),
@@ -6566,12 +6573,28 @@ def _ingest_line() -> str:
     root = ingest_mod.configured_dir()
     where = f' <span title="{_attr(root)}">{_html(root)}</span>' if root else ""
     state = "" if root and ingest_mod.ingest_root() is not None else " (off &#8212; set Ingest path in the container settings)"
-    half = ingest_mod.half_configured()  # only one of the mount and Ingest dir is there: say which, and where to fix it
-    if half:
-        state = f' <span class="warn">({_html(half)})</span>'
+    if ingest_mod.half_configured():
+        state = " (off)"
     return (
         f'<br><b>ingest</b> &larr;{where}{state}<br><small>Files dropped in the ingest folder are '
         "converted whether or not the watcher is configured.</small>"
+    )
+
+
+def _ingest_warning() -> str:
+    instructions = ingest_mod.half_configured()
+    if not instructions:
+        return ""
+    folder = ingest_mod.configured_dir()
+    if folder:
+        warning = f'The ingest folder <b>{_html(folder)}</b> is missing. New downloads cannot be converted.'
+        summary = "How to mount this folder"
+    else:
+        warning = f'<b>{_html(ingest_mod.MOUNT_PATH)}</b> is mounted, but Audiobind is not watching it.'
+        summary = "How to turn on ingest"
+    return (
+        f'<div class="ab-ingest-warning ab-hintbox"><p>{warning}</p>'
+        f'<details><summary>{summary}</summary><p>{_html(instructions)}</p></details></div>'
     )
 
 
@@ -7283,6 +7306,7 @@ def render(state, status: str = "", query: str = "") -> str:
         output_attr=_attr(CONFIG.host_output or str(CONFIG.output_root)),
         dry_text=dry_header,
         ingest_line=_ingest_line(),
+        ingest_warning=_ingest_warning(),
         health_stale=health_stale,
         health_text=health_text,
         service_check_in=service_check_in,

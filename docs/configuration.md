@@ -180,3 +180,6 @@ curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
 
 qBittorrent WebUI and catalogue requests accept redirects within the original scheme,
 host and port. A redirect that changes the origin fails and records the reason in the log.
+
+If the ingest folder is missing, Library and Settings name the folder and show the mount steps under
+**How to mount this folder**.
