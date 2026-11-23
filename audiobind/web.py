@@ -870,6 +870,7 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
      labelled line under the WHY cell, spanning book + actions */
   .ab-tbl tbody tr.urow>td.ab-match{grid-column:2/-1;grid-row:3;display:flex;align-items:baseline;
     gap:6px;padding:0 10px 8px 8px;margin-top:-4px;overflow:hidden}
+  .ab-tbl tbody tr.urow>td.ab-bookcell + td.ab-match{grid-row:2;margin-top:0}
   .ab-tbl tbody tr.urow>td.ab-match::before{content:"Match";flex:none;font-size:11px;
     text-transform:uppercase;letter-spacing:.04em;color:var(--ab-text3)}
   .ab-tbl tbody tr.urow>td.ab-match:empty{display:none}
@@ -6796,6 +6797,10 @@ def render(state, status: str = "", query: str = "") -> str:
         allclear = '<p class="ab-allclear">Nothing needs your review.</p>'
 
     # table
+    columns = COLUMNS
+    if view == "converted":
+        columns = (COLUMNS[0], ("tier", "Match", "min(450px,36vw)", ""))
+    total_columns = len(columns) + 2
     shown = len(units)
     units = units[:MAX_ROWS]
     state.hydrate_unit_blobs(units)
@@ -7108,7 +7113,7 @@ def render(state, status: str = "", query: str = "") -> str:
         )
         return (
             f'<tr class="drow" data-path="{_attr(unit.path)}"{reopen_attr} hidden>'
-            f'<td colspan="{TOTAL_COLUMNS}">'
+            f'<td colspan="{total_columns}">'
             f'<div class="dd" data-path="{_attr(unit.path)}">'
             + banner
             + toprow
@@ -7159,6 +7164,7 @@ def render(state, status: str = "", query: str = "") -> str:
             f"""onclick="abOpenRowDetail(this,'{section}')">{label}</button>"""
             if label else ""
         )
+        why_cell = f'<td class="ab-whycell">{why_html}</td>' if view != "converted" else ""
         # f-strings only: titles and paths come from folder names and the catalog
         return (
             f'<tr class="urow" onclick="toggleRow(this, event)" data-path="{_attr(unit.path)}" '
@@ -7170,7 +7176,7 @@ def render(state, status: str = "", query: str = "") -> str:
             f'<td class="ab-bookcell"><span class="ab-btitle">{_html(unit.title or unit.path)}{badge}'
             f"{row_src_badge}</span>"
             f'<span class="ab-bauthor">{_html(unit.author or "") or DASH}</span>{primary}</td>'
-            f'<td class="ab-whycell">{why_html}</td>'
+            f'{why_cell}'
             f'<td class="ab-match"{match_attr}>{match_html}</td>'
             f'<td class="ab-actcol">{kebab_menu(unit)}</td></tr>'
         )
@@ -7192,7 +7198,7 @@ def render(state, status: str = "", query: str = "") -> str:
                      "still empty, check the Library path in the container settings.")
         else:
             empty = "no books match this filter"
-        rows = f'<tr class="ab-empty"><td colspan="{TOTAL_COLUMNS}">{empty}</td></tr>'
+        rows = f'<tr class="ab-empty"><td colspan="{total_columns}">{empty}</td></tr>'
 
     def header(key: str, label: str, klass: str) -> str:
         on = key == sort_column
@@ -7204,13 +7210,13 @@ def render(state, status: str = "", query: str = "") -> str:
         )
 
     headers = '<th class="ab-covhead"></th>' + "".join(
-        header(key, label, klass) for key, label, _width, klass in COLUMNS
+        header(key, label, klass) for key, label, _width, klass in columns
     )
     colgroup = (f'<col style="width:{COVER_WIDTH}">') + "".join(
         (f'<col class="ab-col-{key}" style="width:{width}">' if key in ("why", "tier") else f'<col style="width:{width}">')
         if width
         else "<col>"
-        for key, _l, width, _c in COLUMNS
+        for key, _l, width, _c in columns
     )
 
     # controls
@@ -7360,7 +7366,7 @@ def render(state, status: str = "", query: str = "") -> str:
         rows=rows,
         headers=headers,
         colgroup=colgroup,
-        columns=TOTAL_COLUMNS,
+        columns=total_columns,
         view_heading=view_heading,
         query=_attr(query),
         sort_column_js=json.dumps(sort_column),

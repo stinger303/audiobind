@@ -200,6 +200,12 @@ check("the version appears in navigation, outside the working header",
       "Version v" in html.split('<div class="ab-rail-foot">')[1].split("</aside>")[0]
       and "Version v" not in html.split('<header class="ab-topbar">')[1].split("</header>")[0])
 all_html = get("/?status=all")
+converted_html = get("/?status=converted")
+converted_table = converted_html.split("<colgroup>")[1].split("</table>")[0]
+check("Converted uses the Why column space for Match",
+      'data-column="why"' not in converted_table and 'class="ab-whycell"' not in converted_table
+      and '<col class="ab-col-tier" style="width:min(450px,36vw)">' in converted_table
+      and 'colspan="4"' in converted_table)
 # 0.21.0-dev4 column budget: Book is the one column without a width, so it gets what the
 # others leave; Match is a fixed 150 px (a meter and one word). A change that hands the slack
 # back to Match fails here. Below 1360 px the stylesheet narrows Why; 9 px is the scrollbar.

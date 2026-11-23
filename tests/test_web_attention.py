@@ -390,7 +390,7 @@ def col_count(page):
 
 
 class TestViewNamesItself(unittest.TestCase):
-    """0.21.0-dev4: the heading names the view; the table is Book, Why, Match in every view."""
+    """0.21.0-dev4: the heading names the view; headers, rows and spans agree in each view."""
 
     UNITS = [HELD, REVIEW, DONE]
 
@@ -428,28 +428,31 @@ class TestViewNamesItself(unittest.TestCase):
             yield f"status={status!r}", render_with(self.UNITS, status)
         yield "search", self.render_searched("persuader")
 
-    def test_the_table_is_book_why_match_in_every_view(self):
+    def test_the_table_omits_why_in_the_converted_view(self):
         for name, page in self.every_view():
             with self.subTest(view=name):
                 heads = header_cells(page)
                 labels = [re.sub(r"<[^>]+>", "", h) for h in heads]
-                self.assertEqual(labels, ["", "Book", "Why", "Match", ""])  # cover + actions unlabelled
+                wanted = ["", "Book", "Match", ""] if name == "status='converted'" else [
+                    "", "Book", "Why", "Match", "",
+                ]
+                self.assertEqual(labels, wanted)
                 self.assertEqual(len(heads), col_count(page))
-                self.assertEqual(len(heads), web.TOTAL_COLUMNS)
                 table = page.split('<table class="ab-tbl">')[1].split("</table>")[0]
                 self.assertNotIn("Length", table)
                 self.assertNotIn("Waiting", table)
                 for row in re.findall(r'<tr class="urow".*?</tr>', table, re.S):
-                    self.assertEqual(len(re.findall(r"<td[ >]", row)), web.TOTAL_COLUMNS)
+                    self.assertEqual(len(re.findall(r"<td[ >]", row)), len(heads))
 
     def test_every_colspan_spans_the_table(self):
         self.assertEqual(web.TOTAL_COLUMNS, len(web.COLUMNS) + 2)
         long_group = [UnitState(path=f"H/{i:02d}", status="held", title=f"B{i:02d}") for i in range(13)]
-        pages = [p for _n, p in self.every_view()] + [render_with(long_group), render_with([], "held")]
+        pages = [p for _n, p in self.every_view()] + [render_with(long_group), render_with([], "held"),
+                                                          render_with([], "converted")]
         for page in pages:
             spans = re.findall(r'colspan="(\d+)"', page)
             self.assertTrue(spans)
-            self.assertEqual(set(spans), {str(web.TOTAL_COLUMNS)})
+            self.assertEqual(set(spans), {str(col_count(page))})
         long_page = render_with(long_group)
         self.assertIn(f'<tr class="ab-more-row" data-group="held"><td colspan="{web.TOTAL_COLUMNS}">', long_page)
         self.assertIn(f'<tr class="ab-group" data-group="held"><td colspan="{web.TOTAL_COLUMNS}">', long_page)
