@@ -7992,6 +7992,7 @@ class Handler(BaseHTTPRequestHandler):
     #: total seconds allowed to deliver the request line and headers (``timeout`` is per recv,
     #: so a peer sending one byte every few seconds would otherwise hold a thread for ever)
     HEADER_DEADLINE = 10.0
+    BODY_DEADLINE = 10.0
     _header_timer = None
 
     def _header_deadline_hit(self) -> None:
@@ -8022,8 +8023,40 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(name, value)
         super().end_headers()
 
+    def _read_body(self, length: int) -> bytes | None:
+        """Read a size-checked body within one absolute deadline."""
+        if not length:
+            return b""
+        deadline = time.monotonic() + self.BODY_DEADLINE
+        original_timeout = self.connection.gettimeout()
+        body = bytearray()
+        try:
+            while len(body) < length:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                self.connection.settimeout(remaining)
+                # read1 consults the header reader's buffer and makes at most one recv.
+                chunk = self.rfile.read1(length - len(body))
+                if not chunk:
+                    break
+                body.extend(chunk)
+            if time.monotonic() >= deadline:
+                raise TimeoutError
+        except TimeoutError:
+            code, message = 408, b"request body timed out"
+        else:
+            if len(body) == length:
+                return bytes(body)
+            code, message = 400, b"incomplete request body"
+        finally:
+            self.connection.settimeout(original_timeout)
+        self.close_connection = True
+        self._send(code, message, "text/plain")
+        return None
+
     def _read_json(self) -> dict | None:
-        """The request body as a JSON object, or None after a 400/413 has been sent."""
+        """The request body as a JSON object, or None after an error response."""
         raw_length = self.headers.get("Content-Length")
         try:
             length = int(raw_length) if raw_length not in (None, "") else 0
@@ -8034,8 +8067,11 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self._send(413, b'{"error":"request body too large"}', "application/json")
             return None
+        raw = self._read_body(length)
+        if raw is None:
+            return None
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}") if length else {}
+            payload = json.loads(raw or b"{}")
         except (ValueError, UnicodeDecodeError):
             self._send(400, b'{"error":"bad request"}', "application/json")
             return None
@@ -8214,7 +8250,7 @@ class Handler(BaseHTTPRequestHandler):
             )
         return True
 
-    def _form_body(self, names: tuple[str, ...]) -> tuple[dict[str, str], bool]:
+    def _form_body(self, names: tuple[str, ...]) -> tuple[dict[str, str], bool] | None:
         """({name: value}, wants_json) from a small form or JSON POST (login, setup).
         Fields that were not sent are absent from the dict, not empty."""
         ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
@@ -8224,7 +8260,9 @@ class Handler(BaseHTTPRequestHandler):
             length = -1
         if length < 0 or length > 4096:
             raise ValueError("bad length")
-        raw = self.rfile.read(length) if length else b""
+        raw = self._read_body(length)
+        if raw is None:
+            return None
         if ctype == "application/json":
             payload = json.loads(raw or b"{}")
             if not isinstance(payload, dict):
@@ -8244,10 +8282,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(code, json.dumps({"error": message}).encode(), "application/json")
             return
         try:
-            fields, wants_json = self._form_body(("username", "password", "token", "remember"))
+            form = self._form_body(("username", "password", "token", "remember"))
         except (ValueError, UnicodeDecodeError):
             self._send(400, b'{"error":"bad request"}', "application/json")
             return
+        if form is None:
+            return
+        fields, wants_json = form
         if self._setup_pending():
             self._send(303, b"", "text/plain", {"Location": "/setup"})
             return
@@ -8305,10 +8346,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(code, json.dumps({"error": message}).encode(), "application/json")
             return
         try:
-            fields, wants_json = self._form_body(("username", "password", "confirm", "setup_code"))
+            form = self._form_body(("username", "password", "confirm", "setup_code"))
         except (ValueError, UnicodeDecodeError):
             self._send(400, b'{"error":"bad request"}', "application/json")
             return
+        if form is None:
+            return
+        fields, wants_json = form
 
         def refuse_existing() -> None:
             if wants_json:

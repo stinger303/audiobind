@@ -61,3 +61,7 @@ Catalogue responses are checked before caching and again when read from cache. A
 malformed product invalidates its response so matching cannot choose from an incomplete
 candidate list. During a scan the affected book goes to review with the field that failed
 validation, and the scan continues.
+
+HTTP JSON and form requests have a 10-second body receipt deadline. The server closes
+the connection after sending a plain-text 408 when receipt takes longer. The JSON and
+form size caps still apply.
