@@ -6509,9 +6509,9 @@ def _setting_select(
 
 
 OUTPUT_FORMAT_HINT = (
-    "What each book is published as, always one file per book. M4B: one .m4b with chapters, "
+    "Choose which files Audiobind writes for each book. M4B: one .m4b with chapters, "
     "tags and cover (the default). MP3: one .mp3 with chapters, tags and cover embedded. "
-    "M4B + MP3: both files in the same folder, the m4b first. MP3 chapter marks are read by "
+    "M4B + MP3 writes one M4B and one MP3 into the same folder. MP3 chapter marks are read by "
     "ffprobe-based players (Audiobookshelf, Plex) but not by Apple's Music/iTunes. Applies to "
     "future conversions only."
 )

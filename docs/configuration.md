@@ -103,7 +103,7 @@ simulated clients only, not real ones. Run **Save and test** before you rely on 
 
 Every book is one file. By default that is an `.m4b`. Set `OUTPUT_FORMAT` (or Settings > Output
 format) to `MP3` for one `.mp3` per book with the chapters, tags and cover embedded, or to
-`M4B + MP3` for both in the same folder (the m4b is the archival copy and is the book's main
+`M4B + MP3` writes one M4B and one MP3 into the same folder (the M4B is the archival copy and the main
 file). A book is published only after every file has been verified; if the second encode of
 `M4B + MP3` fails, nothing is published and the book is retried.
 
