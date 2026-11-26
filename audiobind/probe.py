@@ -30,22 +30,31 @@ class Probe:
 PROTOCOL_WHITELIST = ["-protocol_whitelist", "file,pipe"]
 
 
-def _audio_duration(streams: list) -> float:
-    """The first audio stream's own length, or 0 when ffprobe gave none (then the container's counts).
+def _first_audio_stream(streams: list) -> dict:
+    """The first stream ffprobe calls audio; {} when there is none (a cover, a chapter track or a
+    video can sit at index 0 - AB-MONO-b)."""
+    for stream in streams:
+        if isinstance(stream, dict) and stream.get("codec_type") == "audio":
+            return stream
+    return {}
+
+
+def _audio_duration(audio: dict) -> float:
+    """The audio stream's own length, or 0 when ffprobe gave none (then the container's counts).
 
     CORE-01d: the audio, not the container. An MP4 whose video runs past its audio is the audio's
     length long, and that is what the output (its mapped audio stream) is measured against."""
-    for stream in streams:
-        if isinstance(stream, dict) and stream.get("codec_type") == "audio":
-            try:
-                return max(0.0, float(stream.get("duration") or 0))
-            except (TypeError, ValueError):  # "N/A"
-                return 0.0
-    return 0.0
+    try:
+        return max(0.0, float(audio.get("duration") or 0))
+    except (TypeError, ValueError):  # "N/A"
+        return 0.0
 
 
 def probe(path: str | Path, timeout: int = 60, raise_on_timeout: bool = False) -> Probe:
     """The file's duration, codec and layout; an empty ``Probe()`` (duration 0) when ffprobe fails.
+
+    Codec, sample rate and channels are the first *audio* stream's, the same stream the duration is
+    read from, so they cannot describe a cover or attachment at index 0 (AB-MONO-b).
 
     With ``raise_on_timeout`` a timeout raises ProbeTimeout instead, so the caller can tell a file
     ffprobe answered about (and which has no duration) from one it never answered for."""
@@ -68,14 +77,14 @@ def probe(path: str | Path, timeout: int = 60, raise_on_timeout: bool = False) -
         )
         data = json.loads(result.stdout or "{}")
         fmt = data.get("format", {})
-        streams = data.get("streams") or [{}]
-        stream = streams[0]
+        streams = data.get("streams") or []
+        audio = _first_audio_stream(streams)
         return Probe(
-            duration=_audio_duration(streams) or float(fmt.get("duration") or 0),
-            codec=stream.get("codec_name") or "",
+            duration=_audio_duration(audio) or float(fmt.get("duration") or 0),
+            codec=audio.get("codec_name") or "",
             kbps=int(fmt.get("bit_rate") or 0) // 1000,
-            sample_rate=str(stream.get("sample_rate") or ""),
-            channels=str(stream.get("channels") or ""),
+            sample_rate=str(audio.get("sample_rate") or ""),
+            channels=str(audio.get("channels") or ""),
         )
     except subprocess.TimeoutExpired:
         if raise_on_timeout:
