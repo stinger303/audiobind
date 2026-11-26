@@ -9545,6 +9545,9 @@ class Handler(BaseHTTPRequestHandler):
             self.state.set_meta(f"setting_{key}", value)
 
         set_effective(self.state)
+        # a save that touches the tracker may have fixed what the backoff was waiting on (AB-AUTH-4)
+        if any(key in watcher_mod.TRACKER_CLIENT_SETTINGS for key in validated):
+            watcher_mod.WATCHER.reset_backoff(self.state)
         # in the daemon, a save that completes the watcher's configuration starts it (no restart)
         watcher_mod.WATCHER.settings_changed(self.state)
         # every setting with a saved override, not just the ones in this request: the page

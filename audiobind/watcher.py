@@ -784,6 +784,14 @@ class Watcher:
                 log.info("wishlist watcher: tracker settings changed - using them from this request on")
             return self._client
 
+    def reset_backoff(self, state) -> None:
+        """Forget the tracker backoff, in memory and in the saved copy a restart would restore: the
+        owner just changed something that may have fixed the cause (a fresh cookie), and the next
+        cycle should find out instead of waiting out a delay that no longer applies."""
+        if self._client is not None:
+            self._client.backoff.ok()
+        state.set_meta(META_BACKOFF, {"until": 0.0, "failures": 0})
+
     def settings_changed(self, state) -> bool:
         """Called after the Settings page saves. In the daemon, a save that completes the watcher's
         configuration starts the timed loop (no restart needed). Returns True when it started it."""
