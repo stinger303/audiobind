@@ -117,7 +117,11 @@ cookie`, and nothing downloads until you fix it: sign in to the tracker in your 
 cookie value into **Settings > Watcher > Session cookie value** and press **Test** beside it. Test sends the
 value you typed, once, without saving it; when it says *Signed in* the watcher's waiting time is cleared and
 the next cycle runs normally. Press **Save settings** to keep the value. A rejected session is retried
-every 3 minutes, not every half hour, so a fixed cookie works again within minutes.
+every 3 minutes, not every half hour, so a fixed cookie works again within minutes. A value under 24
+characters is refused (a session cookie is one long value, usually a few hundred characters), so a
+half-copied paste is never saved. The Watcher's **Connection** row shows what the last real tracker request
+showed - signed in, session rejected, or not checked yet - and never what the tracker sees of your address,
+which has its own **Address seen** row.
 
 ```bash
 curl -H "$AUTH" 'localhost:8080/api/discover/search?title=project+hail+mary&author=weir'

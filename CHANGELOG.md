@@ -28,6 +28,17 @@ survives a crash, and one run can no longer stomp another.
 - **Saving the tracker settings clears the tracker's waiting time.** A fixed cookie used to be followed by up
   to 30 minutes of silence that read as "still broken". A save that touches a tracker setting, or a Test
   that succeeds, resets the backoff; a failed Test and an unrelated setting do not. (AB-AUTH-4)
+- **The Watcher's Connection row says what real requests showed.** It used to show the address the tracker
+  sees, which reads like a sign-in result and is not one. Connection now reads the stored outcome of the last
+  real tracker request - `signed in`, `session rejected - paste a fresh cookie in Settings > Watcher`, or
+  `not checked yet - no tracker request has succeeded since startup` (also after a 5xx or timeout, which
+  say nothing about the session). The address moved to its own **Address seen** row. No new request is
+  made; setup step 3 gets one matching session line. (AB-AUTH-3)
+- **A session value that cannot be a cookie is refused.** A 5-character paste was saved, overrode the
+  container's value and broke the watcher. Settings > Watcher now refuses a session under 24 characters
+  (saying how many it got and that nothing was saved), for Save and for Test alike. (AB-AUTH-5)
+- **Reset to container value on a tracker setting clears the tracker's waiting time,** as Save does.
+  (AB-AUTH-6)
 - **A book whose cover art is the first track is copied, not re-encoded.** The probe read the codec, sample
   rate and channel count from the file's *first track* while it measured the duration from the first
   **audio** track. When an `.m4b` carries its cover first, the file looked like an image with no audio, so
