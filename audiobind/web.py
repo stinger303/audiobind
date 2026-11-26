@@ -4937,7 +4937,8 @@ def render_watcher_section(state) -> str:
          (_html(s["client_label"]), (f"{_html(urlsplit(s['client_url']).netloc or s['client_url'])}" if s["client_url"]
                                      else '<span class="warn">no address set</span>')
                                     + f" &#183; label <code>{_html(s['qbit_category'])}</code>")),
-        ("Connection", sees),
+        ("Connection", _session_row_html(s.get("session_state", "unknown"))),
+        ("Address seen", sees),
     ]
     if s["backoff_seconds"]:
         rows.append(("Tracker backoff", f'<span class="warn">no tracker request for {int(s["backoff_seconds"])}s</span>'))
@@ -5801,6 +5802,13 @@ def _wizard_step2(state, host: str) -> str:
     )
 
 
+def _session_row_html(state: str) -> str:
+    """The Watcher status Connection row: the stored outcome of the last real tracker request, in one of
+    three sentences. It is never the egress result - that is the "Address seen" row."""
+    text = _html(watcher_mod.SESSION_TEXT.get(state, watcher_mod.SESSION_TEXT["unknown"]))
+    return f'<span class="warn">{text}</span>' if state == "rejected" else text
+
+
 def _wizard_address_box(view: dict) -> str:
     """Step 3's finding: the address the tracker sees, when it was checked, and whether it is the one
     the session was made for. ``view`` is ``wizard.address_view``. Drawn by the page and by Check
@@ -5874,6 +5882,7 @@ def _wizard_step3(state) -> str:
         "from. If Audiobind's requests arrive from a different address, the session is refused. This step "
         "shows the address your tracker sees and whether it is the one your session was made for.</p>"
         + _wizard_address_box(wizard_mod.address_view(state))
+        + f'<p class="ab-setting-hint" id="ab-wiz-session">{_html(wizard_mod.session_line(state))}</p>'
         + '<div class="ab-acct-row"><button class="btn" type="button" id="ab-wiz-recheck" '
         'onclick="abWizardAddress()">Check again</button>'
         '<span class="ab-fb" id="ab-wiz-recheck-fb" role="status"></span></div>'

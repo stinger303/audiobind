@@ -259,6 +259,19 @@ def address_view(state) -> dict:
             "expected": expected, "verdict": verdict}
 
 
+def session_line(state) -> str:
+    """Step 3's one line about the session, from the stored outcome of the last real tracker request.
+    Reads only; it is not the address check above, and the Test in step 4 is what checks the session."""
+    from . import watcher
+
+    return {
+        "signed_in": "Session: the last tracker request succeeded. The Test in the next step checks it again.",
+        "rejected": ("Session: the tracker rejected it on the last request. The Test in the next step "
+                     "checks a new value."),
+        "unknown": "Session: not checked yet. The Test in the next step is what checks it.",
+    }[watcher.session_state(state)]
+
+
 def check_address(state) -> dict:
     """Step 3's Check again: ONE ``egress.probe`` through the tracker proxy - the very probe and proxy
     the watcher's guard uses - stored in ``watcher_egress`` in the shape the guard stores it; then
@@ -411,7 +424,12 @@ def test_tracker(state, query: str = "", session: str = "", settings_page: bool 
     before = client.requests
     try:
         with (contextlib.nullcontext() if session else route.checked()):
-            found = client.search(title)
+            try:
+                found = client.search(title)
+            finally:
+                # a typed value is not the saved session: its outcome says nothing about the saved one
+                if not session:
+                    watcher.record_session_outcome(state, client)
     except tracker.TrackerRouteChanged as exc:
         return {"ok": False, "sent": False, "message": str(exc)}
     except tracker.TrackerBackoff:

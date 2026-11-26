@@ -303,6 +303,9 @@ class FakeTracker:
         self.limiter, self.backoff = tracker.RateLimiter(), tracker.Backoff()
         self.searched = []
 
+    def take_outcome(self):  # the real client's AB-AUTH-3 hook: a stub notes nothing
+        return None
+
     def search(self, title, author=""):
         self.searched.append(title)
         if self.error:

@@ -84,6 +84,8 @@ META_LAST_CYCLE = "watcher_last_cycle"
 META_LAST_ERROR = "watcher_last_error"
 META_BACKOFF = "watcher_backoff"
 META_EGRESS = "watcher_egress"
+#: the last real tracker request's outcome (AB-AUTH-3): {"at", "ok", "rejected"}. Not the egress record.
+META_SESSION = "watcher_session"
 #: the allowed-IP updater's record: last change (when, old, new) and the drift already reported
 META_IPUPDATE = "watcher_ipupdate"
 
@@ -423,6 +425,32 @@ def clean_test_query(raw) -> str:
     return " ".join(str(raw or "").split())[:MAX_TEST_QUERY] or DEFAULT_TEST_QUERY
 
 
+def record_session_outcome(state, client) -> None:
+    """Store what the last real request through ``client`` showed about the saved session. Nothing is
+    stored when it made no request (a backoff or a blocked route sends nothing, so shows nothing)."""
+    outcome = client.take_outcome()
+    if outcome is not None:
+        state.set_meta(META_SESSION, outcome)
+
+
+#: the Connection row's three sentences, by session_state() (AB-AUTH-3)
+SESSION_TEXT = {
+    "signed_in": "signed in",
+    "rejected": "session rejected - paste a fresh cookie in Settings > Watcher",
+    "unknown": "not checked yet - no tracker request has succeeded since startup",
+}
+
+
+def session_state(state) -> str:
+    """``signed_in`` | ``rejected`` | ``unknown``, from the stored outcome alone - no request."""
+    rec = state.get_meta(META_SESSION) or {}
+    if not isinstance(rec, dict):
+        return "unknown"
+    if rec.get("rejected"):
+        return "rejected"
+    return "signed_in" if rec.get("ok") else "unknown"
+
+
 def probe_tracker(state, query: str = "") -> tuple[bool, str]:
     """Settings > Watcher "Test tracker": ONE search for ``query`` (a common title by default), through the
     same client (so the same pacing and backoff) and behind the same egress guard as a cycle. It proves a
@@ -436,13 +464,16 @@ def probe_tracker(state, query: str = "") -> tuple[bool, str]:
     if verdict in ("blocked", "unknown", "changed"):
         return False, reason
     title = clean_test_query(query)
+    client = WATCHER.client(route)
     try:
         with route.checked():
-            found = WATCHER.client(route).search(title)
+            found = client.search(title)
     except tracker.TrackerError as exc:
         return False, str(exc)
     except Exception as exc:  # noqa: BLE001
         return False, f"the tracker could not be reached ({type(exc).__name__})"
+    finally:
+        record_session_outcome(state, client)
     if not found:
         return False, f"The site answered but found nothing for '{_short(title, 80)}'. Check the search body and category."
     n, first = len(found), found[0]
@@ -969,6 +1000,7 @@ class Watcher:
             if qb is not None:
                 qb.logout()
             state.set_meta(META_BACKOFF, {"until": client.backoff.until, "failures": client.backoff.failures})
+            record_session_outcome(state, client)
         summary["seconds"] = round(time.time() - started, 1)
         state.set_meta(META_LAST_CYCLE, summary)
         if summary["error"]:
@@ -1313,6 +1345,7 @@ class Watcher:
             }
         return {
             **extra,
+            "session_state": session_state(state),
             "egress_ip": seen if armed else "",
             "egress_checked_at": rec.get("at") if armed else None,
             "egress_guard": guard,

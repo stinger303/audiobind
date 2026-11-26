@@ -755,9 +755,20 @@ class TrackerClient:
         self.backoff = backoff or Backoff()
         self._lock = threading.Lock()
         self.requests = 0
+        self._outcome: dict | None = None
 
     def __repr__(self) -> str:  # never the cookie
         return f"TrackerClient(requests={self.requests}, backoff={self.backoff.remaining():.0f}s)"
+
+    def _note(self, ok: bool = False, rejected: bool = False) -> None:
+        """Remember what the last real request showed about the session (AB-AUTH-3): ``ok`` it worked,
+        ``rejected`` the tracker refused the cookie; neither (5xx, timeout, odd answer) is no evidence."""
+        self._outcome = {"at": time.time(), "ok": bool(ok), "rejected": bool(rejected)}
+
+    def take_outcome(self) -> dict | None:
+        """The outcome noted since the last call (None: no request was made), cleared on read."""
+        outcome, self._outcome = self._outcome, None
+        return outcome
 
     @property
     def can_spend(self) -> bool:
@@ -792,29 +803,34 @@ class TrackerClient:
                 status, headers, body = self.transport(method, url, data, self._headers(extra), self.TIMEOUT)
             except Exception as exc:  # noqa: BLE001 - timeouts, DNS, TLS: all "no answer"
                 self.limiter.done()
+                self._note()
                 delay = self.backoff.fail()
                 raise TrackerError(f"the tracker could not be reached ({type(exc).__name__}); backing off {delay:.0f}s") from exc
             self.limiter.done()
             if status in (401, 403):
                 reason = auth_rejection(status, headers, body)
                 if reason:
+                    self._note(rejected=True)
                     self.backoff.fail_fixed(AUTH_BACKOFF)
                     raise TrackerAuthError(
                         f"the tracker rejected the session cookie (HTTP {status}: {reason}) - the session "
                         "has expired or was replaced by a sign-in elsewhere; paste a fresh cookie value in "
                         "Settings > Watcher", int(status))
             if status != 200:
+                self._note()
                 delay = self.backoff.fail(_retry_after(headers))
                 hint = ""
                 if status == 400 and not self._user_agent:
                     hint = ". Some trackers refuse requests with no User-Agent - set TRACKER_USER_AGENT"
                 raise TrackerError(f"the tracker answered HTTP {status}{hint}; backing off {delay:.0f}s", int(status or 0))
             if body is None or len(body) > MAX_BODY:
+                self._note()
                 delay = self.backoff.fail()
                 raise TrackerError(f"the tracker's answer was too large; backing off {delay:.0f}s", 200)
             return body
 
     def _bad_answer(self, why: str) -> TrackerError:
+        self._note()
         delay = self.backoff.fail()
         return TrackerError(f"{why}; backing off {delay:.0f}s", 200)
 
@@ -853,9 +869,11 @@ class TrackerClient:
             error = str(payload.get("error") or "")
             if error.lower().startswith(NO_RESULT_ERRORS):
                 self.backoff.ok()
+                self._note(ok=True)
                 return []  # the tracker's way of saying "no results"
             raise self._bad_answer(f"the tracker's search refused: {error[:120] or 'no data'}")
         self.backoff.ok()
+        self._note(ok=True)
         return parse_search(payload)
 
     def download(self, tid, use_freeleech: bool) -> bytes:
@@ -865,4 +883,5 @@ class TrackerClient:
         if not looks_like_torrent(body):
             raise self._bad_answer("the tracker's download did not return a .torrent")
         self.backoff.ok()
+        self._note(ok=True)
         return body
