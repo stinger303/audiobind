@@ -581,6 +581,12 @@ class Backoff:
         self.until = self.clock() + delay
         return delay
 
+    def fail_fixed(self, delay: float) -> float:
+        """A refusal that waiting longer cannot cure (a dead session): a fixed delay, and the escalation
+        count is left alone, so the next ordinary failure starts from where it was."""
+        self.until = self.clock() + float(delay)
+        return float(delay)
+
     def ok(self) -> None:
         self.failures = 0
         self.until = 0.0
@@ -599,6 +605,37 @@ class TrackerError(Exception):
     def __init__(self, message: str, status: int = 0):
         super().__init__(message)
         self.status = status
+
+
+class TrackerAuthError(TrackerError):
+    """The tracker rejected the session cookie. Same base as TrackerError, so existing handlers keep
+    working; a distinct type so a caller can tell "your cookie is dead" from "wait a moment"."""
+
+
+#: a rejected session is retried after this fixed delay, never the doubling schedule: a fixed cookie
+#: should work again within minutes
+AUTH_BACKOFF = 180.0
+#: how much of an error body is read to recognise a sign-in refusal
+AUTH_BODY_BYTES = 512
+_AUTH_MARKERS = (("not signed in", "you are not signed in"), ("not logged in", "you are not logged in"),
+                 ("login", "a sign-in is required"), ("session", "the session was refused"))
+
+
+def auth_rejection(status: int, headers: dict, body: bytes) -> str:
+    """"" when this is not a rejected session; else the short reason to put in the message. A 401 is
+    one whatever it says; a 403 only when the body or a header names the sign-in. Nothing from the
+    body is ever quoted - the reasons are fixed phrases."""
+    try:
+        text = bytes(body or b"")[:AUTH_BODY_BYTES].decode("utf-8", "replace")
+        text += " " + " ".join(f"{k} {v}" for k, v in (headers or {}).items()
+                               if str(k).lower() in ("location", "www-authenticate"))
+    except Exception:  # noqa: BLE001 - unreadable means "says nothing recognisable"
+        text = ""
+    text = text.lower()
+    for needle, reason in _AUTH_MARKERS:
+        if needle in text:
+            return reason
+    return "not authorized" if status == 401 else ""
 
 
 class TrackerBackoff(TrackerError):
@@ -758,6 +795,14 @@ class TrackerClient:
                 delay = self.backoff.fail()
                 raise TrackerError(f"the tracker could not be reached ({type(exc).__name__}); backing off {delay:.0f}s") from exc
             self.limiter.done()
+            if status in (401, 403):
+                reason = auth_rejection(status, headers, body)
+                if reason:
+                    self.backoff.fail_fixed(AUTH_BACKOFF)
+                    raise TrackerAuthError(
+                        f"the tracker rejected the session cookie (HTTP {status}: {reason}) - the session has "
+                        "expired or was replaced by a sign-in elsewhere; paste a fresh cookie value in "
+                        "Settings > Watcher", int(status))
             if status != 200:
                 delay = self.backoff.fail(_retry_after(headers))
                 hint = ""
