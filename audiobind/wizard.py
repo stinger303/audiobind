@@ -16,9 +16,11 @@ save path. It owns no configuration of its own.
 
 from __future__ import annotations
 
+import contextlib
 import ipaddress
 import re
 import time
+from types import MappingProxyType
 from urllib.parse import urlsplit
 
 #: where the person is: 1..len(STEPS). Written when a step is shown, so a container restart in the middle
@@ -346,10 +348,35 @@ def _guard_refusal(state, verdict: str, observed: str) -> str:
             "sent: the session would be refused. Step 3 says what to do.")
 
 
-def test_tracker(state, query: str = "") -> dict:
+def _settings_failure(exc, status: int) -> str:
+    """The Settings page's Test, in plain words - the session-rejected sentence is the error's own, anything
+    else is built from the status alone (never from the tracker's text)."""
+    from . import tracker
+
+    if isinstance(exc, tracker.TrackerAuthError):
+        return f"{exc}. Paste a fresh value and press Test again."
+    if status == 200:
+        return ("The tracker answered, but not with search results. The session may have expired, or the "
+                "search settings are wrong.")
+    if status == 429:
+        why = "it asked Audiobind to slow down (HTTP 429)"
+    elif status >= 500:
+        why = f"it had a problem of its own (HTTP {status})"
+    elif status:
+        why = f"it answered HTTP {status}"
+    else:
+        why = "it could not be reached"
+    return f"The tracker did not answer: {why}. This is not a sign-in problem."
+
+
+def test_tracker(state, query: str = "", session: str = "", settings_page: bool = False) -> dict:
     """Step 4's Test: ONE search on the saved settings - the configured search request, the endpoint the
     tracker allows for this - through the watcher's own client (so its spacing and backoff hold, and a
     backoff in force means nothing is sent) and behind its egress guard. ``{"ok", "sent", "message"}``.
+
+    ``session`` tests a cookie value that is not saved (the Settings page's Test button): it is sent on a
+    one-off client that shares the watcher's spacing but not its backoff - a new value is new information.
+    ``settings_page`` answers in that page's words. A success clears the watcher's backoff (AB-AUTH-4).
 
     The message is built from the parsed results and the status code: never the cookie, the address, a
     query string or any raw text from the tracker's answer."""
@@ -358,6 +385,8 @@ def test_tracker(state, query: str = "") -> dict:
 
     set_effective(state)
     missing = tracker_missing()
+    if session:
+        missing = [m for m in missing if m != TRACKER_LABELS["tracker_session"]]
     if missing:
         return {"ok": False, "sent": False,
                 "message": f"Fill in these first: {', '.join(missing)}. Nothing was sent to your tracker."}
@@ -372,10 +401,15 @@ def test_tracker(state, query: str = "") -> dict:
     if verdict in ("blocked", "unknown"):
         return {"ok": False, "sent": False, "message": _guard_refusal(state, verdict, observed)}
     title = watcher.clean_test_query(query)
-    client = watcher.WATCHER.client(route)
+    if session:
+        route = watcher.TrackerRoute(MappingProxyType({**route.settings, "tracker_session": session}), route.id)
+        client = watcher.make_tracker(route)
+        client.limiter = watcher.WATCHER.client().limiter
+    else:
+        client = watcher.WATCHER.client(route)
     before = client.requests
     try:
-        with route.checked():
+        with (contextlib.nullcontext() if session else route.checked()):
             found = client.search(title)
     except tracker.TrackerRouteChanged as exc:
         return {"ok": False, "sent": False, "message": str(exc)}
@@ -387,11 +421,19 @@ def test_tracker(state, query: str = "") -> dict:
     except tracker.TrackerError as exc:
         sent = client.requests > before
         status = int(getattr(exc, "status", 0) or 0)
+        if settings_page and sent:
+            return {"ok": False, "sent": sent, "message": _settings_failure(exc, status)}
         return {"ok": False, "sent": sent, "message": _tracker_failure(
             status, sent, bool(route.settings["tracker_proxy"]), client.backoff.remaining())}
     except Exception:  # noqa: BLE001 - anything else is "no usable answer"
-        return {"ok": False, "sent": client.requests > before,
-                "message": "Audiobind could not reach your tracker. Try again in a minute."}
+        return {"ok": False, "sent": client.requests > before, "message": (
+            _settings_failure(None, 0) if settings_page else
+            "Audiobind could not reach your tracker. Try again in a minute.")}
+    watcher.WATCHER.reset_backoff(state)  # it answered: the next cycle runs normally
+    if settings_page:
+        n = len(found)
+        return {"ok": True, "sent": True, "message": (
+            f"Signed in. The search answered with {n} {'result' if n == 1 else 'results'}.")}
     if not found:
         return {"ok": True, "sent": True, "message": (
             f"Your tracker answered the search, but found nothing for “{watcher._short(title, 80)}”. "

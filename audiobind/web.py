@@ -4561,6 +4561,12 @@ def _watch_secret(key: str, label: str) -> str:
     hint = WATCH_FIELD_HINTS.get(key, "")
     if key == "tracker_session" and ipupdate_mod.is_mam(str(setting_effective("tracker_url") or "")):
         hint = MAM_SESSION_HINT
+    if key == "tracker_session":
+        # AB-AUTH-2: tests what is typed (or, left blank, what is saved) - one search, nothing is saved
+        control += (
+            '<div class="ab-acct-row"><button class="btn" type="button" id="ab-test-session" '
+            'onclick="abTestSession()">Test</button>'
+            '<span class="ab-fb" id="ab-test-session-fb" role="status"></span></div>')
     return _watch_wrap(key, label, hint, control, secret=True)
 
 
@@ -5404,6 +5410,32 @@ function abWatchTest(target, fbId, url) {
     fb.className = 'ab-fb ab-bad';
     fb.textContent = 'could not reach the daemon';
   });
+}
+// Settings > Watcher > session cookie: Test sends the typed value (or the saved one when blank) in ONE
+// search and saves nothing; the answer is in plain words.
+function abTestSession() {
+  const fb = document.getElementById('ab-test-session-fb');
+  const btn = document.getElementById('ab-test-session');
+  const input = document.querySelector('[data-setting="tracker_session"] input[type=password]');
+  fb.className = 'ab-fb';
+  fb.textContent = 'testing once...';
+  btn.disabled = true;
+  fetch('/api/watcher/test-session', {method:'POST', headers:{'Content-Type':'application/json'},
+                                      body: JSON.stringify({session: input ? input.value : ''})})
+    .then(r => {
+      if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
+      return r.json().then(body => ({ok: r.ok && body.ok, body: body}));
+    })
+    .then(res => {
+      fb.className = 'ab-fb ' + (res.ok ? 'ab-good' : 'ab-bad');
+      fb.textContent = res.body.message || res.body.error || 'no answer';
+    })
+    .catch(err => {
+      if (String(err && err.message) === 'signed out') return;
+      fb.className = 'ab-fb ab-bad';
+      fb.textContent = 'could not reach the daemon';
+    })
+    .finally(() => { btn.disabled = false; });
 }
 // ---- Settings > Watcher: fill the tracker fields from the preset file (the server checks the whole file first)
 function abPresetCancel() {
@@ -6712,7 +6744,7 @@ STATUS_CHIP_LABELS = {
 
 #: Settings > Watcher connection tests (POST only): path -> what is tested
 WATCHER_TEST_ROUTES = {"/api/watcher/test-qbit": "qbit", "/api/watcher/test-tracker": "tracker",
-                       "/api/watcher/check-ip": "ip"}
+                       "/api/watcher/check-ip": "ip", "/api/watcher/test-session": "session"}
 #: Settings > Watcher > Where it looks: fill the tracker fields from the preset file (POST only)
 WATCHER_PRESET_ROUTE = "/api/watcher/preset"
 #: Settings > Library > Hardcover evidence: Test connection (POST only)
@@ -9715,6 +9747,20 @@ class Handler(BaseHTTPRequestHandler):
             answer = watcher_mod.probe_qbit_report()
         elif target == "ip":
             answer = watcher_mod.check_ip()
+        elif target == "session":
+            # AB-AUTH-2: the session field's Test - the typed value, NOT saved, one search
+            raw = payload.get("session", "")
+            session = ""
+            if raw is not None and not isinstance(raw, str):
+                self._send(400, b'{"ok":false,"message":"the session value must be text"}', "application/json")
+                return
+            if raw and raw.strip():
+                try:
+                    session = WATCHER_TEXT_CHECKS["tracker_session"][1](raw)
+                except ValueError as exc:
+                    self._send(400, json.dumps({"ok": False, "message": str(exc)}).encode(), "application/json")
+                    return
+            answer = wizard_mod.test_tracker(self.state, "", session=session, settings_page=True)
         else:
             query = payload.get("query", "")
             if query is not None and not isinstance(query, str):
