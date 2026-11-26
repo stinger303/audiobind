@@ -185,5 +185,42 @@ class SignedOut(SessionTestCase):
         self.assertEqual(self.net.calls, [])
 
 
+class FactoryFails(SessionTestCase):
+    """AB-AUTH-8: an exception while building the client is an answer, never a dropped connection.
+    Patches are scoped with ``with``: a cleanup would run after tearDown and restore stale values."""
+
+    def test_a_plain_runtime_error_is_a_502_naming_the_type(self):
+        boom = RuntimeError("boom https://t.example/x?secret=abc")
+        # the watcher has no client yet, so the tracker route must build one - and that raises
+        with mock.patch.object(watcher, "make_tracker", side_effect=boom), \
+                mock.patch.object(watcher.WATCHER, "_client", None), \
+                mock.patch.object(watcher.WATCHER, "_built", None):
+            for route, body in ((ROUTE, {"session": TYPED}), ("/api/watcher/test-tracker", {})):
+                status, answer = self.request(route, body)
+                self.assertEqual(status, 502, answer)
+                self.assertIs(answer["ok"], False)
+                self.assertIn("RuntimeError", answer["message"])
+                self.assertIn("Nothing was changed.", answer["message"])
+                self.assertNotIn("secret=abc", json.dumps(answer))
+                self.assertNotIn(TYPED, json.dumps(answer))
+
+    def test_the_trackers_auth_error_has_the_same_shape(self):
+        with mock.patch.object(watcher, "make_tracker", side_effect=tracker.TrackerAuthError("rejected")):
+            status, answer = self.request(ROUTE, {"session": TYPED})
+        self.assertEqual(status, 502, answer)
+        self.assertIs(answer["ok"], False)
+        self.assertIn("TrackerAuthError", answer["message"])
+
+    def test_the_other_targets_answer_too(self):
+        with mock.patch.object(watcher, "probe_qbit_report", side_effect=ValueError("x")):
+            status, answer = self.request("/api/watcher/test-qbit", {})
+        self.assertEqual(status, 502, answer)
+        self.assertIn("ValueError", answer["message"])
+        with mock.patch.object(watcher, "check_ip", side_effect=OSError("x")):
+            status, answer = self.request("/api/watcher/check-ip", {})
+        self.assertEqual(status, 502, answer)
+        self.assertIn("OSError", answer["message"])
+
+
 if __name__ == "__main__":
     unittest.main()

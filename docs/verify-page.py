@@ -524,7 +524,11 @@ check("settings: Library card with the layout warning, Preview, Apply and the co
 print("wishlist watcher:")
 from audiobind import watcher                                # noqa: E402
 
-watcher.make_tracker = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a tracker client"))
+def _no_tracker_client(route=None):
+    raise AssertionError("verify-page must not build a tracker client")
+
+
+watcher.make_tracker = _no_tracker_client
 watcher.make_qbit = lambda: (_ for _ in ()).throw(AssertionError("verify-page must not build a qBittorrent client"))
 CONFIG.tracker_session = ""
 check("watcher: off without a tracker session", not watcher.configured() and not watcher.WATCHER.alive)
@@ -608,20 +612,22 @@ def post_json(path: str, payload: dict):
     return fetch(path, json.dumps(payload).encode(), {"Content-Type": "application/json", "Cookie": COOKIE})
 
 
-status, _, saved = post_json("/api/settings", {"settings": {"tracker_session": "VERIFY-GUI-SESSION",
+# AB-AUTH-5: a session value must look like a cookie - 24+ characters, no spaces
+GUI_SESSION = "VERIFY-GUI-SESSION-0123456789"
+status, _, saved = post_json("/api/settings", {"settings": {"tracker_session": GUI_SESSION,
                                                             "qbit_pass": "VERIFY GUI PASS", "qbit_category": "books"}})
 check("saving a session and a password from the page", status == 200
-      and config.setting_effective("tracker_session") == "VERIFY-GUI-SESSION"
+      and config.setting_effective("tracker_session") == GUI_SESSION
       and config.setting_effective("qbit_pass") == "VERIFY GUI PASS", f"{status} {saved}")
 status, _, reset_answer = post_json("/api/settings", {"reset": True})
 gui_served = get("/settings") + get("/api/state") + get("/api/watcher") + saved + reset_answer
 check("the secrets saved from the page are never served (page, /api/state, /api/watcher, save and reset answers)",
-      not any(secret in gui_served for secret in ("VERIFY-GUI-SESSION", "VERIFY GUI PASS", "VERIFY-SECRET-COOKIE",
+      not any(secret in gui_served for secret in (GUI_SESSION, "VERIFY GUI PASS", "VERIFY-SECRET-COOKIE",
                                                   "VERIFY-SECRET-PASS")))
 check("Reset conversion, scanning, catalog and Watcher limits and guard leaves connection settings alone",
-      config.setting_effective("tracker_session") == "VERIFY-GUI-SESSION" and config.is_custom("qbit_category"))
+      config.setting_effective("tracker_session") == GUI_SESSION and config.is_custom("qbit_category"))
 status, _, _ = post_json("/api/settings", {"settings": {"tracker_session": ""}})
-check("a blank secret keeps the saved one", status == 200 and config.setting_effective("tracker_session") == "VERIFY-GUI-SESSION")
+check("a blank secret keeps the saved one", status == 200 and config.setting_effective("tracker_session") == GUI_SESSION)
 status, _, bad = post_json("/api/settings", {"settings": {"tracker_url": "not a url", "watch_interval": "often"}})
 check("a bad URL and a non-number are refused with a plain message",
       status == 400 and "Tracker URL:" in bad and "Check the wishlist every:" in bad, f"{status} {bad}")

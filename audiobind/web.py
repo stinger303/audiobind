@@ -9748,6 +9748,21 @@ class Handler(BaseHTTPRequestHandler):
                    "application/json")
 
     def _handle_watcher_test(self, target: str) -> None:
+        """AB-AUTH-8: a Test always answers. Any ordinary exception - building the client, a bad
+        setting, anything unexpected - becomes a 502 JSON answer naming only the exception type; the
+        message never carries a value, a session or a URL. SystemExit/KeyboardInterrupt pass through."""
+        try:
+            self._handle_watcher_test_inner(target)
+        except Exception as exc:
+            logging.getLogger("audiobind").warning("watcher test (%s) failed: %s", target, type(exc).__name__)
+            what = "tracker" if target in ("tracker", "session") else target
+            message = f"The {what} could not be checked ({type(exc).__name__}). Nothing was changed."
+            try:
+                self._send(502, json.dumps({"ok": False, "message": message}).encode(), "application/json")
+            except OSError:
+                pass  # the client has gone; there is nobody to answer
+
+    def _handle_watcher_test_inner(self, target: str) -> None:
         """POST /api/watcher/test-qbit | test-tracker | check-ip: one test with the saved values.
         200 {"ok": true, "message": "..."} or 502 {"ok": false, "message": why}. The result is only
         answered, never stored. test-qbit adds "chain", "details" and "rule" (the folder check);
