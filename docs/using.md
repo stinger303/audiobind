@@ -111,6 +111,14 @@ set. Saving a blank title clears the override. Search uses
 one catalog request at a time, with the same pacing as matching, and only the US store
 (`api.audible.com`).
 
+**Sessions expire.** The tracker's session cookie stops working after a while, or when you sign in
+somewhere else. When that happens the Watcher's *Last error* says `the tracker rejected the session
+cookie`, and nothing downloads until you fix it: sign in to the tracker in your browser, paste the new
+cookie value into **Settings > Watcher > Session cookie value** and press **Test** beside it. Test sends the
+value you typed, once, without saving it; when it says *Signed in* the watcher's waiting time is cleared and
+the next cycle runs normally. Press **Save settings** to keep the value. A rejected session is retried
+every 3 minutes, not every half hour, so a fixed cookie works again within minutes.
+
 ```bash
 curl -H "$AUTH" 'localhost:8080/api/discover/search?title=project+hail+mary&author=weir'
 curl -H "$AUTH" localhost:8080/api/wishlist

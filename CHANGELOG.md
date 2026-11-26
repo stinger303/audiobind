@@ -15,6 +15,19 @@ survives a crash, and one run can no longer stomp another.
 
 ### Fixed
 
+- **A rejected tracker session now says so, and is retried within minutes.** When the tracker's session
+  cookie expired, every search came back `HTTP 403: you are not signed in` and the Watcher showed only
+  `the tracker answered HTTP 403; backing off 1800s` while the wait doubled. A 401 or 403 that names the
+  sign-in is now its own error (`TrackerAuthError`): it says the cookie was rejected and to paste a fresh one
+  in Settings > Watcher, and it waits a fixed 180 s however many times it repeats. Other failures (5xx, 429,
+  timeouts) back off exactly as before. (AB-AUTH-1)
+- **Settings > Watcher has a Test button beside the session cookie.** It sends the value you typed, once,
+  without saving it, and answers in plain words: `Signed in. The search answered with N results.`, the
+  rejection with what to do, or `The tracker did not answer: ... This is not a sign-in problem.` A success
+  clears the tracker's waiting time. (AB-AUTH-2)
+- **Saving the tracker settings clears the tracker's waiting time.** A fixed cookie used to be followed by up
+  to 30 minutes of silence that read as "still broken". A save that touches a tracker setting, or a Test
+  that succeeds, resets the backoff; a failed Test and an unrelated setting do not. (AB-AUTH-4)
 - **A book whose cover art is the first track is copied, not re-encoded.** The probe read the codec, sample
   rate and channel count from the file's *first track* while it measured the duration from the first
   **audio** track. When an `.m4b` carries its cover first, the file looked like an image with no audio, so
