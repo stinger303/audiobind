@@ -9494,6 +9494,10 @@ class Handler(BaseHTTPRequestHandler):
             for key in reset_keys:
                 self.state.set_meta(f"setting_{key}", None)
             set_effective(self.state)
+            # going back to the container's tracker value can fix what the backoff waited on, as a save can
+            # (AB-AUTH-6)
+            if any(key in watcher_mod.TRACKER_CLIENT_SETTINGS for key in reset_keys):
+                watcher_mod.WATCHER.reset_backoff(self.state)
             watcher_mod.WATCHER.settings_changed(self.state)
             custom = [key for key in SETTING_KEYS if is_custom(SETTING_MAP[key])]
             self._send(200, json.dumps({"ok": True, "custom": custom}).encode(), "application/json")
