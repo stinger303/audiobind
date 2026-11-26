@@ -402,7 +402,8 @@ def test_tracker(state, query: str = "", session: str = "", settings_page: bool 
         return {"ok": False, "sent": False, "message": _guard_refusal(state, verdict, observed)}
     title = watcher.clean_test_query(query)
     if session:
-        route = watcher.TrackerRoute(MappingProxyType({**route.settings, "tracker_session": session}), route.id)
+        typed = MappingProxyType({**route.settings, "tracker_session": session})
+        route = watcher.TrackerRoute(typed, route.id)
         client = watcher.make_tracker(route)
         client.limiter = watcher.WATCHER.client().limiter
     else:

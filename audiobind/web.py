@@ -9752,13 +9752,15 @@ class Handler(BaseHTTPRequestHandler):
             raw = payload.get("session", "")
             session = ""
             if raw is not None and not isinstance(raw, str):
-                self._send(400, b'{"ok":false,"message":"the session value must be text"}', "application/json")
+                self._send(400, b'{"ok":false,"message":"the session value must be text"}',
+                           "application/json")
                 return
             if raw and raw.strip():
                 try:
                     session = WATCHER_TEXT_CHECKS["tracker_session"][1](raw)
                 except ValueError as exc:
-                    self._send(400, json.dumps({"ok": False, "message": str(exc)}).encode(), "application/json")
+                    self._send(400, json.dumps({"ok": False, "message": str(exc)}).encode(),
+                               "application/json")
                     return
             answer = wizard_mod.test_tracker(self.state, "", session=session, settings_page=True)
         else:

@@ -99,7 +99,8 @@ class Rejected(SessionTestCase):
     def test_the_actionable_sentence_and_the_backoff_is_left_alone(self):
         status, body = self.press()
         self.assertEqual(status, 502)
-        self.assertIn("the tracker rejected the session cookie (HTTP 403: you are not signed in)", body["message"])
+        self.assertIn("the tracker rejected the session cookie (HTTP 403: you are not signed in)",
+                      body["message"])
         self.assertIn("paste a fresh cookie value in Settings > Watcher", body["message"])
         self.assertTrue(body["message"].endswith("Paste a fresh value and press Test again."))
         self.assertEqual(len(self.net.calls), 1)  # never retried
@@ -129,7 +130,8 @@ class ServerError(SessionTestCase):
     def test_5xx_is_not_a_sign_in_problem(self):
         status, body = self.press()
         self.assertEqual(status, 502)
-        self.assertIn("it had a problem of its own (HTTP 503). This is not a sign-in problem.", body["message"])
+        self.assertIn("it had a problem of its own (HTTP 503). This is not a sign-in problem.",
+                      body["message"])
         self.assertGreater(self.shared.backoff.remaining(), 0)
 
 

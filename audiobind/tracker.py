@@ -800,8 +800,8 @@ class TrackerClient:
                 if reason:
                     self.backoff.fail_fixed(AUTH_BACKOFF)
                     raise TrackerAuthError(
-                        f"the tracker rejected the session cookie (HTTP {status}: {reason}) - the session has "
-                        "expired or was replaced by a sign-in elsewhere; paste a fresh cookie value in "
+                        f"the tracker rejected the session cookie (HTTP {status}: {reason}) - the session "
+                        "has expired or was replaced by a sign-in elsewhere; paste a fresh cookie value in "
                         "Settings > Watcher", int(status))
             if status != 200:
                 delay = self.backoff.fail(_retry_after(headers))
