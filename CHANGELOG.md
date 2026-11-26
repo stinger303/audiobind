@@ -39,6 +39,17 @@ survives a crash, and one run can no longer stomp another.
   (saying how many it got and that nothing was saved), for Save and for Test alike. (AB-AUTH-5)
 - **Reset to container value on a tracker setting clears the tracker's waiting time,** as Save does.
   (AB-AUTH-6)
+- **A saved or reset tracker setting also clears the stored session verdict.** Pasting a fresh cookie and
+  pressing Save used to leave the Watcher still saying the session was rejected until the next cycle, so a
+  fix that had worked looked like it had not. Saving a tracker setting, or resetting it to the container's
+  value, now puts the verdict back to `not checked yet` - never to `signed in`, because the tracker has not
+  answered yet. `1e4b0db`
+- **A failed Test answers instead of dropping the connection.** An exception raised while building the
+  tracker client escaped the test handler, so the page received a closed connection and no explanation.
+  The handler now always answers: 502, the exception's type name, and "Nothing was changed." - never a
+  setting's value, a session or a URL. The page verifier's own fixtures were brought up to date with it,
+  its sample session having been too short for the new rule and its no-tracker-client stub predating the
+  Test route. `0fa1b00`
 - **A book whose cover art is the first track is copied, not re-encoded.** The probe read the codec, sample
   rate and channel count from the file's *first track* while it measured the duration from the first
   **audio** track. When an `.m4b` carries its cover first, the file looked like an image with no audio, so
