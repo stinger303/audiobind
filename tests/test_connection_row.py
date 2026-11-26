@@ -129,6 +129,43 @@ class NeverTheEgressResult(ConnectionRowCase):
             self.assertEqual(self.row(), NOT_CHECKED)
 
 
+class SaveLeavesNoStaleVerdict(ConnectionRowCase):
+    """AB-AUTH-7: a save or reset on a tracker setting turns a stored rejection into unknown (never
+    signed in); a save elsewhere leaves it; a later real success still reads signed in."""
+
+    def reject(self):
+        self.request_through((403, {}, b"Error, you are not signed in"))
+        self.assertIn(REJECTED, self.row())  # the stale verdict is really there first
+
+    def save(self, settings):
+        status, body = self.request("/api/settings", {"settings": settings})
+        self.assertEqual(status, 200, body)
+
+    def test_a_tracker_settings_save_reads_not_checked_yet(self):
+        self.reject()
+        self.save({"tracker_session": "fresh-cookie-value-0123456789"})
+        self.assertEqual(self.row(), NOT_CHECKED)
+        self.assertIsNone(self.state.get_meta(watcher.META_SESSION))
+
+    def test_reset_to_container_value_on_a_tracker_key_reads_not_checked_yet(self):
+        self.save({"tracker_session": "override-cookie-value-0123456789"})
+        self.reject()
+        status, body = self.request("/api/settings", {"reset_keys": ["tracker_session"]})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(self.row(), NOT_CHECKED)
+
+    def test_a_save_that_does_not_touch_the_tracker_keeps_the_rejection(self):
+        self.reject()
+        self.save({"watch_interval": 60})
+        self.assertIn(REJECTED, self.row())
+
+    def test_a_real_success_after_the_save_flips_to_signed_in(self):
+        self.reject()
+        self.save({"tracker_session": "fresh-cookie-value-0123456789"})
+        self.request_through((200, {}, OK_BODY))
+        self.assertEqual(self.row(), SIGNED_IN)
+
+
 class SetupStepThree(ConnectionRowCase):
     def test_the_line_follows_the_stored_outcome_and_points_at_the_test(self):
         self.assertIn("not checked yet", wizard.session_line(self.state))

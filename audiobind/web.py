@@ -9497,7 +9497,7 @@ class Handler(BaseHTTPRequestHandler):
             # going back to the container's tracker value can fix what the backoff waited on, as a save can
             # (AB-AUTH-6)
             if any(key in watcher_mod.TRACKER_CLIENT_SETTINGS for key in reset_keys):
-                watcher_mod.WATCHER.reset_backoff(self.state)
+                watcher_mod.tracker_settings_changed(self.state)
             watcher_mod.WATCHER.settings_changed(self.state)
             custom = [key for key in SETTING_KEYS if is_custom(SETTING_MAP[key])]
             self._send(200, json.dumps({"ok": True, "custom": custom}).encode(), "application/json")
@@ -9592,7 +9592,7 @@ class Handler(BaseHTTPRequestHandler):
         set_effective(self.state)
         # a save that touches the tracker may have fixed what the backoff was waiting on (AB-AUTH-4)
         if any(key in watcher_mod.TRACKER_CLIENT_SETTINGS for key in validated):
-            watcher_mod.WATCHER.reset_backoff(self.state)
+            watcher_mod.tracker_settings_changed(self.state)
         # in the daemon, a save that completes the watcher's configuration starts it (no restart)
         watcher_mod.WATCHER.settings_changed(self.state)
         # every setting with a saved override, not just the ones in this request: the page

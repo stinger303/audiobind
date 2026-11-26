@@ -441,6 +441,14 @@ SESSION_TEXT = {
 }
 
 
+def tracker_settings_changed(state) -> None:
+    """The owner saved or reset a tracker setting: forget the backoff (``reset_backoff``) and the stored
+    session verdict, which described the old cookie. The outcome becomes unknown - never signed in, as
+    the tracker has not answered yet - until the next real request records one (AB-AUTH-7)."""
+    WATCHER.reset_backoff(state)
+    state.set_meta(META_SESSION, None)
+
+
 def session_state(state) -> str:
     """``signed_in`` | ``rejected`` | ``unknown``, from the stored outcome alone - no request."""
     rec = state.get_meta(META_SESSION) or {}
