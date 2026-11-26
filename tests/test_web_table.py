@@ -374,3 +374,70 @@ class Dev4LayoutTests(unittest.TestCase):
         self.assertIn('href="#ab-series-missing-jr">Show the 1 missing', html)
         view.update(missing=[], known=True)
         self.assertIn('<div class="ab-series-name">', web._series_card(view))
+
+
+class RowCapSearchTests(unittest.TestCase):
+    """UXUI-01: the filter box reaches past the 400-row cap by submitting ``?q=``.
+
+    Real rows are used (MAX_ROWS + 1 of them), not a patched cap."""
+
+    UNIQUE = "Zzyzx Unique Title"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.TemporaryDirectory()
+        cls.state = State(pathlib.Path(cls.dir.name))
+        for i in range(web.MAX_ROWS):
+            cls.state.save(UnitState(path=f"Shelf/Book {i:04d}", status="converted", title=f"Book {i:04d}"))
+        cls.state.save(UnitState(path="Shelf/Zzyzx", status="converted", title=cls.UNIQUE))
+        cls.state.connection.execute("UPDATE units SET updated_at = 0 WHERE path = 'Shelf/Zzyzx'")
+        cls.state.connection.commit()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.state.close()
+        cls.dir.cleanup()
+
+    def render(self, *args):
+        with mock.patch.object(web, "read_sort", return_value=("scan", "desc")), \
+                mock.patch.object(web, "in_flight_units", return_value=set()):
+            return web.render(self.state, *args)
+
+    def test_a_book_past_the_cap_is_hidden_from_the_capped_page(self):
+        page = self.render("all")
+        self.assertNotIn(self.UNIQUE, page)
+        self.assertIn(f"showing the first {web.MAX_ROWS} of {web.MAX_ROWS + 1}", page)
+
+    def test_the_overflow_notice_offers_the_page_not_an_api_url(self):
+        page = self.render("all")
+        notice = re.search(r'<div class="ab-overflow">(.*?)</div>', page, re.S).group(1)
+        self.assertNotIn("/api/", notice)
+        self.assertNotIn("<code>", notice)
+        self.assertIn("press Enter", notice)
+
+    def test_the_filter_box_submits_q(self):
+        page = self.render("all")
+        form = re.search(r'<form[^>]*class="ab-searchwrap"[^>]*>', page).group(0)
+        self.assertIn('method="get"', form)
+        box = re.search(r'<input id="ab-search"[^>]*>', page).group(0)
+        self.assertIn('name="q"', box)
+
+    def test_a_status_view_keeps_its_status_when_searching(self):
+        self.assertIn('<input type="hidden" name="status" value="converted">', self.render("converted"))
+        self.assertNotIn('name="status"', self.render(""))
+
+    def test_the_q_path_reaches_it(self):
+        """Confirmation, not a regression: the server-side filter already ran before the cap."""
+        page = self.render("all", "zzyzx")
+        self.assertIn(self.UNIQUE, page)
+        self.assertNotIn('<div class="ab-overflow">', page)
+
+    def test_a_search_that_still_overflows_says_how_to_narrow_it(self):
+        with mock.patch.object(web, "MAX_ROWS", 100):  # "book" matches only 400 rows: cap below that
+            page = self.render("all", "book")
+        self.assertIn("showing the first 100 of 400 - matching this search, add a word to narrow it", page)
+        self.assertIn("window.AB_QUERY = \"book\";", page)
+
+    def test_the_empty_row_offers_a_whole_library_search_when_capped(self):
+        row = re.search(r'<tr id="ab-empty".*?</tr>', self.render("all"), re.S).group(0)
+        self.assertIn("press Enter to search all", row)

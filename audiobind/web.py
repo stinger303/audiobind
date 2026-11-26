@@ -250,7 +250,7 @@ button.dry.on .ab-switch::after{left:12px}
 .chip.on, .chip.active{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.16);color:var(--ab-text)}
 .chip.on .n, .chip.active .n{color:var(--ab-text2)}
 
-.ab-searchwrap{margin-left:auto;display:flex;align-items:center;gap:8px}
+.ab-searchwrap{margin:0 0 0 auto;display:flex;align-items:center;gap:8px}
 .ab-search{font:inherit;font-size:12.5px;height:30px;width:240px;
   padding:0 10px;background:rgba(255,255,255,.02);
   border:1px solid rgba(255,255,255,.08);border-radius:6px;
@@ -842,7 +842,7 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
   .ab-main:has(.ab-library-chips) .ab-topbar{display:flex;flex-wrap:wrap;gap:4px 8px;padding:8px 12px}
   .ab-main:has(.ab-library-chips) .ab-topbar h1{flex:1 1 calc(100% - 40px)}
   .ab-main:has(.ab-library-chips) .ab-toolbar{gap:6px;padding-top:6px}
-  .ab-searchwrap{margin-left:0;width:100%}
+  .ab-searchwrap{margin:0;width:100%}
   .ab-search{flex:1;min-width:0;width:auto}
   .ab-clear{flex:none}
   .ab-allclear{padding:0 12px 8px}
@@ -1625,6 +1625,12 @@ function abSearchChanged() {
   abApplyView();
 }
 function abClearSearch() {
+  if (window.AB_QUERY) {
+    // the page itself is a server-side search: leave it, keeping the status view if one was asked for
+    try { sessionStorage.removeItem(SEARCH_KEY); } catch (e) {}
+    window.location.href = window.AB_STATUS ? '/?status=' + encodeURIComponent(window.AB_STATUS) : '/';
+    return;
+  }
   const box = abSearchBox();
   if (box) { box.value = ''; box.focus(); }
   abSearchChanged();
@@ -1833,11 +1839,11 @@ PAGE = """<!doctype html>
 
   <section class="ab-toolbar" aria-label="Filters">
     <div class="chips ab-library-chips">{chips}</div>
-    <div class="ab-searchwrap">
-      <input id="ab-search" class="ab-search" type="search" autocomplete="off" spellcheck="false"
+    <form id="ab-searchform" class="ab-searchwrap" method="get" action="/" role="search">
+      <input id="ab-search" class="ab-search" name="q" type="search" autocomplete="off" spellcheck="false"
              aria-label="Filter books" placeholder="Filter books&hellip;" value="{query}">
-      <button class="ab-clear btn" onclick="abClearSearch()">Clear</button>
-    </div>
+      {status_field}<button class="ab-clear btn" type="button" onclick="abClearSearch()">Clear</button>
+    </form>
   </section>
 
 {allclear}
@@ -1846,7 +1852,8 @@ PAGE = """<!doctype html>
     <colgroup>{colgroup}<col class="ab-actcol" style="width:48px"></colgroup>
     <thead><tr>{headers}<th class="ab-actcol"></th></tr></thead>
     <tbody id="ab-body">{rows}
-    <tr id="ab-empty" class="ab-empty" hidden><td colspan="{columns}">no books match this search</td></tr>
+    <tr id="ab-empty" class="ab-empty" hidden>
+      <td colspan="{columns}">no books match this search{empty_more}</td></tr>
     </tbody></table>
   </div>
 {overflow}
@@ -1867,6 +1874,8 @@ PAGE = """<!doctype html>
 
 <script>
 {nav_script}
+window.AB_QUERY = {query_js};
+window.AB_STATUS = {status_js};
 window.AB_SORT_COLUMN = {sort_column_js};
 window.AB_SORT_DIR = {sort_dir_js};
 {script}
@@ -6816,14 +6825,23 @@ def render(state, status: str = "", query: str = "") -> str:
     shown = len(units)
     units = units[:MAX_ROWS]
     state.hydrate_unit_blobs(units)
-    overflow = (
-        (
-            f'<div class="ab-overflow">showing the first {MAX_ROWS} of {shown} - '
-            "filter by status or use <code>/api/units?status=</code></div>"
+    capped = shown > MAX_ROWS
+    if not capped:
+        overflow = ""
+    else:
+        tail = (
+            "matching this search, add a word to narrow it"
+            if query
+            else f"type in Filter books and press Enter to search all {shown}, or pick a status above"
         )
-        if shown > MAX_ROWS
+        overflow = f'<div class="ab-overflow">showing the first {MAX_ROWS} of {shown} - {tail}</div>'
+    empty_more = (
+        f'<br>No match in the first {MAX_ROWS} shown - press Enter to search all {shown} '
+        '<button class="btn" type="submit" form="ab-searchform">Search all</button>'
+        if capped
         else ""
     )
+    status_field = f'<input type="hidden" name="status" value="{_attr(status)}">' if status else ""
 
     now = time.time()
     # one query each for the whole table, not one per row
@@ -7381,6 +7399,10 @@ def render(state, status: str = "", query: str = "") -> str:
         columns=total_columns,
         view_heading=view_heading,
         query=_attr(query),
+        query_js=json.dumps(query).replace("<", "\\u003c"),
+        status_js=json.dumps(status).replace("<", "\\u003c"),
+        status_field=status_field,
+        empty_more=empty_more,
         sort_column_js=json.dumps(sort_column),
         sort_dir_js=json.dumps(sort_dir),
     )

@@ -12,6 +12,9 @@ identify separate books.
 
 ## Controls in the web UI
 
+The status page lists at most 400 books at a time. Typing in **Filter books** narrows the rows shown;
+pressing Enter searches the whole library.
+
 The status page is also the control panel:
 
 | Button | What it does |
