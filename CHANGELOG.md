@@ -15,6 +15,21 @@ survives a crash, and one run can no longer stomp another.
 
 ### Fixed
 
+- **A book whose cover art is the first track is copied, not re-encoded.** The probe read the codec, sample
+  rate and channel count from the file's *first track* while it measured the duration from the first
+  **audio** track. When an `.m4b` carries its cover first, the file looked like an image with no audio, so
+  a book that only needed a stream copy was run through the encoder instead — silently losing a generation.
+  Codec and layout now come from the same audio track the duration does, through one shared helper.
+  `8d48b3d`
+- **The Filter books box now searches the whole library, not just the 400 rows on screen.** Typing filtered
+  the rows already drawn, and pressing Enter did nothing, so a book past the row limit could not be found
+  from the page at all — the only escape route the notice offered was an API address that did not accept a
+  search. The box is a real search form now: typing still filters what you see, and Enter searches
+  everything. The notice says so in words instead of pointing at an API. `eb4321d`
+- **One test no longer leaves the app paused for the next one.** The operator-stop test fired a timer that
+  called stop, and that call ends by pausing; when it finished after the test's own cleanup, the pause
+  survived and the next test in the run inherited it. The test now waits for the timer before restoring the
+  state. Test-only change, no product code. `380f628`
 - **Delete believes the row, not the disk, so a replaced book is safe.** A folder whose contents changed
   after it was audited used to hand Delete the *new* files while the old row still described the old book.
   Delete now checks the recorded source list and file identities first and refuses with "re-check the book"
