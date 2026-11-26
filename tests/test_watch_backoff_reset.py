@@ -36,7 +36,7 @@ class SaveResetsBackoff(LiveServerCase):
 
     def test_saving_the_session_resets_it(self):
         self.assertGreater(self.client.backoff.remaining(), 0)
-        self.save({"tracker_session": "fresh-cookie"})
+        self.save({"tracker_session": "fresh-cookie-0123456789abcdef"})
         self.assertEqual(self.client.backoff.remaining(), 0)
         self.assertEqual(self.client.backoff.failures, 0)
         self.assertEqual(self.state.get_meta(watcher.META_BACKOFF), {"until": 0.0, "failures": 0})

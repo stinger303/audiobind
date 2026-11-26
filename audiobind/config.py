@@ -745,12 +745,27 @@ def _from_startup_check(label: str, check, raw: str) -> str:
         raise ValueError(f"{label}: {why if sep else message}") from None
 
 
+#: a session cookie is one long value; anything shorter is a slip of the paste, not a cookie
+SESSION_MIN_LENGTH = 24
+
+
+def _session_shape(value: str) -> str:
+    """AB-AUTH-5: after the character checks, refuse a value too short to be a session cookie. Applies to
+    what Settings stores and what the Test button sends (both go through WATCHER_TEXT_CHECKS), not to the
+    container's value. Blank passes: it means "keep what is stored". Never echoes the value."""
+    if value and len(value) < SESSION_MIN_LENGTH:
+        raise ValueError(
+            f"Session cookie value: that is {len(value)} characters - a session cookie is one long value "
+            "(usually a few hundred). Copy the whole value from your browser; nothing was saved.")
+    return value
+
+
 #: key -> (label, validator) for the watcher's text settings. Each validator takes the typed text
 #: and returns what is stored, or raises ValueError with a plain message (never the value itself).
 WATCHER_TEXT_CHECKS = {
     "tracker_url": ("Tracker URL", lambda raw: _from_startup_check("Tracker URL", _tracker_url, raw)),
-    "tracker_session": ("Session cookie value",
-                        lambda raw: _from_startup_check("Session cookie value", _tracker_session, raw)),
+    "tracker_session": ("Session cookie value", lambda raw: _session_shape(
+        _from_startup_check("Session cookie value", _tracker_session, raw))),
     "tracker_cookie_name": ("Session cookie name", lambda raw: _from_startup_check(
         "Session cookie name", lambda v: _tracker_name("TRACKER_COOKIE_NAME", v), raw)),
     "tracker_search_path": ("Search path", lambda raw: _from_startup_check(

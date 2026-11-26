@@ -23,7 +23,7 @@ except ImportError:
 #: key -> (container value, value saved on the page)
 SAMPLES = {
     "tracker_url": ("https://env.example", "https://gui.example"),
-    "tracker_session": ("ENV-SESSION-VALUE", "GUI-SESSION-VALUE"),
+    "tracker_session": ("ENV-SESSION-VALUE", "GUI-SESSION-VALUE-0123456789"),
     "tracker_cookie_name": ("env_sid", "gui_sid"),
     "tracker_search_path": ("/env/search.json", "/gui/search.json"),
     "tracker_search_body": ('{"q": "{{title}}"}', '{"text": "{{title}} {{author}}"}'),
@@ -147,12 +147,12 @@ class TestEveryKeyRoundTrips(WatcherSettingsCase):
                 self.assertFalse(config.is_custom(attr))
 
     def test_reset_to_defaults_leaves_the_connection_settings_alone(self):
-        self.save({"settings": {"qbit_category": "guicat", "tracker_session": "GUI-SESSION-VALUE", "nice": 7}})
+        self.save({"settings": {"qbit_category": "guicat", "tracker_session": "GUI-SESSION-VALUE-0123456789", "nice": 7}})
         status, body, raw = self.save({"reset": True})
         self.assertEqual(status, 200, body)
         self.assertFalse(config.is_custom("nice"))
         self.assertEqual(config.setting_effective("qbit_category"), "guicat")
-        self.assertEqual(config.setting_effective("tracker_session"), "GUI-SESSION-VALUE")
+        self.assertEqual(config.setting_effective("tracker_session"), "GUI-SESSION-VALUE-0123456789")
         for key in config.WATCHER_SETTING_KEYS:
             self.assertNotIn(key, body["env_defaults"])
         self.assertNotIn("ENV-SESSION-VALUE", raw)
@@ -196,10 +196,10 @@ class TestSecrets(WatcherSettingsCase):
     def test_a_secret_is_never_in_the_page_or_any_answer(self):
         self.assertNotIn("ENV-SESSION-VALUE", self.served())
         self.assertNotIn("env pass word", self.served())
-        status, body, raw = self.save({"settings": {"tracker_session": "GUI-SESSION-VALUE", "qbit_pass": "gui pass word"}})
+        status, body, raw = self.save({"settings": {"tracker_session": "GUI-SESSION-VALUE-0123456789", "qbit_pass": "gui pass word"}})
         self.assertEqual(status, 200, body)
         served = self.served() + raw + self.save({"reset": True})[2]
-        for secret in ("GUI-SESSION-VALUE", "gui pass word", "ENV-SESSION-VALUE", "env pass word"):
+        for secret in ("GUI-SESSION-VALUE-0123456789", "gui pass word", "ENV-SESSION-VALUE", "env pass word"):
             self.assertNotIn(secret, served)
         # /api/state says whether one is set, never what it is
         state = json.loads(self.call("/api/state", method="GET")[2])
@@ -219,10 +219,10 @@ class TestSecrets(WatcherSettingsCase):
             self.assertNotIn("data-clear", html)
 
     def test_blank_keeps_the_stored_value(self):
-        self.save({"settings": {"tracker_session": "GUI-SESSION-VALUE"}})
+        self.save({"settings": {"tracker_session": "GUI-SESSION-VALUE-0123456789"}})
         status, body, _raw = self.save({"settings": {"tracker_session": ""}})
         self.assertEqual(status, 200, body)
-        self.assertEqual(config.setting_effective("tracker_session"), "GUI-SESSION-VALUE")
+        self.assertEqual(config.setting_effective("tracker_session"), "GUI-SESSION-VALUE-0123456789")
         # and a blank with nothing saved keeps the container's
         self.save({"settings": {"qbit_pass": ""}})
         self.assertFalse(config.is_custom("qbit_pass"))
@@ -234,7 +234,7 @@ class TestSecrets(WatcherSettingsCase):
         self.assertEqual(status, 200, body)
         self.assertEqual(config.setting_effective("qbit_pass"), "")
         self.assertIn("QBIT_USER / QBIT_PASS are not set", watcher.disabled_reason())
-        status, body, _raw = self.save({"settings": {"tracker_session": "NEW-ONE"}, "clear": ["tracker_session"]})
+        status, body, _raw = self.save({"settings": {"tracker_session": "NEW-ONE-0123456789012345678901"}, "clear": ["tracker_session"]})
         self.assertEqual(config.setting_effective("tracker_session"), "", "Clear wins over a value typed alongside")
         self.save({"reset_keys": ["qbit_pass", "tracker_session"]})
         self.assertEqual(config.setting_effective("qbit_pass"), "env pass word")
@@ -425,7 +425,7 @@ class TestLiveEffect(WatcherSettingsCase):
         with mock.patch.object(watcher, "make_tracker", side_effect=make):
             first = w.client()
             self.assertIs(w.client(), first, "unchanged settings keep the client")
-            self.save({"settings": {"tracker_session": "GUI-SESSION-VALUE"}})
+            self.save({"settings": {"tracker_session": "GUI-SESSION-VALUE-0123456789"}})
             second = w.client()
             self.assertIsNot(second, first)
             self.assertIs(second.limiter, first.limiter)
@@ -439,7 +439,7 @@ class TestLiveEffect(WatcherSettingsCase):
         injected = FakeTracker()
         w._client = injected
         with mock.patch.object(watcher, "make_tracker", side_effect=AssertionError("must not rebuild")):
-            self.save({"settings": {"tracker_session": "GUI-SESSION-VALUE"}})
+            self.save({"settings": {"tracker_session": "GUI-SESSION-VALUE-0123456789"}})
             self.assertIs(w.client(), injected)
 
     def test_qbit_settings_are_read_per_use(self):

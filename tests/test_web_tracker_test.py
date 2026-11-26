@@ -16,7 +16,7 @@ except ImportError:
 from tests.tracker_cfg import COOKIE, make_client, tracker_cfg
 
 ROUTE = "/api/watcher/test-session"
-TYPED = "typed-not-saved-value"
+TYPED = "typed-not-saved-value-0123456789"
 
 PAYLOAD = {"data": [{"id": 1, "title": "Dune", "author_info": json.dumps({"1": "Frank Herbert"}),
                      "filetype": "m4b"},

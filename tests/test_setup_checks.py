@@ -899,9 +899,9 @@ class TestPresetRoute(PresetWebCase):
 
     def test_the_session_is_never_filled_or_touched(self):
         self.put(GOOD)
-        self.save({"settings": {"tracker_session": "TYPED-SESSION-VALUE"}})
+        self.save({"settings": {"tracker_session": "TYPED-SESSION-VALUE-01234567"}})
         self.fill()
-        self.assertEqual(config.setting_effective("tracker_session"), "TYPED-SESSION-VALUE")
+        self.assertEqual(config.setting_effective("tracker_session"), "TYPED-SESSION-VALUE-01234567")
         self.assertNotIn("tracker_session", preset.FILLABLE.values())
 
     def test_replacing_something_needs_a_confirm_and_saves_nothing_until_then(self):
