@@ -151,13 +151,30 @@ class StderrTests(EncodeHarness):
             self.run_encode(total=3600.0, output=3000.0, popen=popen)
         self.assertIn("ffmpeg: [mp3] Invalid data found", str(ctx.exception))
 
+    def setUp(self):
+        # CX-CONTROL: snapshot before the parent setUp clears the stop flag, so the cleanup can put the
+        # singleton back exactly as this test found it
+        self.control_flags = (CONTROL._paused.is_set(), CONTROL._stop.is_set())
+        super().setUp()
+
     def test_operator_stop_still_stops(self):
-        self.addCleanup(CONTROL.resume)
-        self.addCleanup(CONTROL.clear_stop)
         script = "import sys, time\nsys.stderr.write('y' * 500_000)\nsys.stderr.flush()\ntime.sleep(60)\n"
         stopper = threading.Timer(1.0, CONTROL.stop)
+
+        def settle():
+            # CONTROL.stop() ends with self.pause(), and the timer thread can still be inside it when the
+            # test body returns. Join first, so that late pause() cannot land after the restore below
+            # and leave the singleton paused for the next test. The events are set back directly:
+            # CONTROL.resume() would also request a scan.
+            stopper.cancel()
+            if stopper.is_alive():
+                stopper.join(timeout=30)
+            paused, stopped = self.control_flags
+            for event, value in ((CONTROL._paused, paused), (CONTROL._stop, stopped)):
+                event.set() if value else event.clear()
+
+        self.addCleanup(settle)
         stopper.start()
-        self.addCleanup(stopper.cancel)
         outcome = self.run_with_timeout(popen=self.real_child(script))
         self.assertIsInstance(outcome.get("error"), Stopped)
 
