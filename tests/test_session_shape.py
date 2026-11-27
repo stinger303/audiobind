@@ -54,6 +54,35 @@ class SessionShape(LiveServerCase):
         self.assertEqual(status, 200, body)
         self.assertEqual(self.stored(), LONG_VALUE)
 
+    def test_settings_save_normalises_session_pastes(self):
+        value = "ABC-session-value-0123456789=="
+        name = config.setting_effective("tracker_cookie_name")
+        for paste in (f'mam_id:"{value}"', f"mam_id={value}", f'"{value}"', f"'{value}'", value,
+                      f'  mam_id:"{value}"  '):
+            with self.subTest(paste=paste):
+                status, body = self.save(paste)
+                self.assertEqual(status, 200, body)
+                self.assertEqual(self.stored(), value)
+                self.assertEqual(config.setting_effective("tracker_cookie_name"), name)
+        status, body = self.save(FIVE)
+        self.assertEqual(status, 400, body)
+        self.assertNotIn(FIVE, body["error"])
+        self.assertEqual(self.stored(), value)
+
+    def test_settings_save_unescapes_json_style_quotes(self):
+        value = 'ABC-session-value-"0123456789"=='
+        escaped = value.replace('"', chr(92) + '"')
+        status, body = self.save(f'mam_id:"{escaped}"')
+        self.assertEqual(status, 200, body)
+        self.assertEqual(self.stored(), value)
+
+    def test_numeric_only_session_is_refused(self):
+        digits = "1234567890" * 3
+        status, body = self.save(digits)
+        self.assertEqual(status, 400, body)
+        self.assertNotIn(digits, body["error"])
+        self.assertIsNone(self.stored())
+
     def test_the_shortest_accepted_length_is_24(self):
         self.assertEqual(config.WATCHER_TEXT_CHECKS["tracker_session"][1]("a" * 24), "a" * 24)
         with self.assertRaises(ValueError) as caught:

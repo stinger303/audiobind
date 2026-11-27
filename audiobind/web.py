@@ -52,6 +52,7 @@ from .config import (
     WATCHER_TEXT_CHECKS,
     effective_val,
     is_custom,
+    normalise_session_paste,
     set_effective,
     setting_bounds,
     FIXED_BOUNDS,
@@ -9573,6 +9574,8 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(raw, str):
                 errors.append(f"{label}: must be text")
                 continue
+            if key == "tracker_session":
+                raw = normalise_session_paste(raw)
             if key in SECRET_SETTING_KEYS and raw == "":
                 continue
             try:

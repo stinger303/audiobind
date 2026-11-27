@@ -749,6 +749,17 @@ def _from_startup_check(label: str, check, raw: str) -> str:
 SESSION_MIN_LENGTH = 24
 
 
+def normalise_session_paste(raw: str) -> str:
+    """Remove copy wrappers from a session value pasted in Settings."""
+    value = raw.strip()
+    parts = re.split(r"[:=]", value, maxsplit=1)
+    # An equals sign can also be padding on a bare session value.
+    if len(parts) == 2 and _NAME_RE.fullmatch(parts[0]) and parts[1].strip("= "):
+        value = parts[1].strip()
+    value = re.sub(r"""^["']+|(?<!\\)["']+$""", "", value)
+    return value.replace(r'\"', '"')
+
+
 def _session_shape(value: str) -> str:
     """AB-AUTH-5: after the character checks, refuse a value too short to be a session cookie. Applies to
     what Settings stores and what the Test button sends (both go through WATCHER_TEXT_CHECKS), not to the
@@ -757,6 +768,9 @@ def _session_shape(value: str) -> str:
         raise ValueError(
             f"Session cookie value: that is {len(value)} characters - a session cookie is one long value "
             "(usually a few hundred). Copy the whole value from your browser; nothing was saved.")
+    if value.isdecimal():
+        raise ValueError("Session cookie value: paste the full session value, which cannot be only digits. "
+                         "Nothing was saved.")
     return value
 
 
