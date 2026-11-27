@@ -34,3 +34,28 @@ class TestDriftRoute(LiveServerCase):
         self.assertEqual(body, drift.report(self.state, limit=0))
         self.assertEqual(self.request("/api/library/drift?limit=-1")[0], 400)
         self.assertEqual(self.post({}, "/api/library/drift")[0], 405)
+
+
+class TestCoversCLI(DriftCase):
+    def test_cli_cover_report_json_without_initializing_state(self):
+        stream = io.StringIO()
+        before = self.snapshot()
+        with (
+            patch.object(CONFIG, "state_dir", self.state.path.parent),
+            patch.object(cli, "setup_logging", side_effect=AssertionError("audit must not open a log")),
+            redirect_stdout(stream),
+        ):
+            self.assertEqual(cli.main(["covers", "audit", "--json"]), 0)
+        self.assertEqual(json.loads(stream.getvalue()), {
+            "counts": {"ok": 0, "missing": 0, "too_small": 0, "not_square": 0, "unreadable": 0},
+            "offenders": [], "duplicates": [],
+        })
+        self.assertEqual(self.snapshot(), before)
+
+
+class TestCoversRoute(LiveServerCase):
+    def test_get_cover_schema_and_post_refusal(self):
+        status, body = self.request("/api/library/covers")
+        self.assertEqual(status, 200)
+        self.assertEqual(set(body), {"counts", "offenders", "duplicates"})
+        self.assertEqual(self.post({}, "/api/library/covers")[0], 405)

@@ -334,7 +334,7 @@ class Sessions:
                 self._persist(lambda: self._store.put_session(key, now + lifetime, int(version), now))
         return sid
 
-    def valid(self, sid: str, version: int | None = None) -> bool:
+    def valid(self, sid: str, version: int | None = None, *, prune: bool = True) -> bool:
         """True for a live session; with ``version``, only one created under that version."""
         if not sid:
             return False
@@ -345,10 +345,12 @@ class Sessions:
             if expiry is None:
                 return False
             if expiry <= now:
-                self._prune(now)
+                if prune:
+                    self._prune(now)
                 return False
             if version is not None and self._version.get(key, 0) != int(version):
-                self._drop(key)  # from before a credential change: gone for good
+                if prune:
+                    self._drop(key)  # from before a credential change: gone for good
                 return False
             return True
 

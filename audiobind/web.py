@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from . import __version__, matching
-from . import abs_layout, catalog
+from . import abs_layout, catalog, coveraudit
 from . import ingest as ingest_mod
 from . import auth as auth_mod
 from . import discover as discover_mod
@@ -8358,7 +8358,7 @@ class Handler(BaseHTTPRequestHandler):
             return 0  # the public liveness probe: it only ever says "ok" or "stale"
         version = self._session_version(creds)
         sid = auth_mod.cookie_value(self.headers.get("Cookie"))
-        if sid and auth_mod.SESSIONS.valid(sid, version):
+        if sid and auth_mod.SESSIONS.valid(sid, version, prune=clean not in (drift.ROUTE, coveraudit.ROUTE)):
             return 0
         header = self.headers.get("Authorization") or ""
         scheme, _, given = header.partition(" ")
@@ -8680,6 +8680,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, b'{"error":"limit must be a non-negative integer"}', "application/json")
                 return
             self._send(200, json.dumps(drift.report(self.state, limit)).encode(), "application/json")
+            return
+        if path.rstrip("/") == coveraudit.ROUTE:
+            self._send(200, json.dumps(coveraudit.report(self.state)).encode(), "application/json")
             return
         if path.startswith("/api/units"):
             units = self.state.all(status or None, blobs=False)  # the listing carries no detail/alternates
@@ -10042,7 +10045,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self._auth_refused(path):
             return
-        if path == drift.ROUTE:
+        if path in (drift.ROUTE, coveraudit.ROUTE):
             self._send(405, b'{"error":"use GET for this report"}', "application/json", {"Allow": "GET"})
             return
         refusal = self._post_refusal()

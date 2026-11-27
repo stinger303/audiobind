@@ -13,7 +13,7 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-from . import __version__, abs_layout, daemon, drift
+from . import __version__, abs_layout, coveraudit, daemon, drift
 from . import auth as auth_mod
 from .config import CONFIG, effective_val, set_effective
 from .pipeline import audit_unit, process_unit
@@ -222,13 +222,8 @@ def cmd_version(args) -> int:
     return 0
 
 
-def cmd_library_drift(args) -> int:
-    try:
-        with closing(State.open_read_only(CONFIG.state_dir)) as state:
-            report = drift.report(state, args.limit)
-    except sqlite3.Error as exc:
-        print(f"audiobind: cannot read state: {exc}", file=sys.stderr)
-        return 2
+def cmd_library_drift(args, state: State) -> int:
+    report = drift.report(state, args.limit)
     if args.json:
         print(json.dumps(report))
         return 0
@@ -240,6 +235,26 @@ def cmd_library_drift(args) -> int:
             print(f"  {entry['path']}{output}")
     if report["truncated"]:
         print("Orphan walk incomplete (directory limit reached or directory unreadable).")
+    return 0
+
+
+def cmd_cover_audit(args, state: State) -> int:
+    report = coveraudit.report(state)
+    if args.json:
+        print(json.dumps(report))
+        return 0
+    print("Cover audit")
+    for classification, count in report["counts"].items():
+        print(f"  {classification}: {count}")
+    for entry in report["offenders"]:
+        size = f" ({entry['width']} × {entry['height']})" if "width" in entry else ""
+        asin = f" [{entry['asin']}]" if "asin" in entry else ""
+        print(f"  {entry['path']}: {entry['classification']}{size}{asin}")
+    print(f"Duplicate groups ({len(report['duplicates'])})")
+    for group in report["duplicates"]:
+        print(f"  {group['md5']}")
+        for entry in group["units"]:
+            print(f"    {entry['path']} [{entry['asin']}]")
     return 0
 
 
@@ -277,9 +292,20 @@ def main(argv: list[str] | None = None) -> int:
                               help="maximum directories to check (default: %(default)s)")
     drift_parser.set_defaults(func=cmd_library_drift)
 
+    covers = sub.add_parser("covers", help="read-only cover reports")
+    covers_sub = covers.add_subparsers(dest="covers_command", required=True)
+    cover_parser = covers_sub.add_parser("audit", help="check published cover art")
+    cover_parser.add_argument("--json", action="store_true", help="emit JSON")
+    cover_parser.set_defaults(func=cmd_cover_audit)
+
     args = parser.parse_args(argv)
-    if args.command == "library":
-        return args.func(args)
+    if args.command in ("library", "covers"):
+        try:
+            with closing(State.open_read_only(CONFIG.state_dir)) as state:
+                return args.func(args, state)
+        except sqlite3.Error as exc:
+            print(f"audiobind: cannot read state: {exc}", file=sys.stderr)
+            return 2
     setup_logging(args.verbose)
     # version/health must work even with no volumes mounted (healthchecks, `docker run ... version`);
     # reset-password only needs the state volume - a missing library must not stop a lockout fix
