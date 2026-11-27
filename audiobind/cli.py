@@ -10,7 +10,6 @@ import logging
 import logging.handlers
 import sqlite3
 import sys
-from contextlib import closing
 from pathlib import Path
 
 from . import __version__, abs_layout, coveraudit, daemon, drift
@@ -222,8 +221,9 @@ def cmd_version(args) -> int:
     return 0
 
 
-def cmd_library_drift(args, state: State) -> int:
-    report = drift.report(state, args.limit)
+def cmd_library_drift(args) -> int:
+    with State.read_only(CONFIG.state_dir) as state:
+        report = drift.report(state, args.limit)
     if args.json:
         print(json.dumps(report))
         return 0
@@ -238,8 +238,9 @@ def cmd_library_drift(args, state: State) -> int:
     return 0
 
 
-def cmd_cover_audit(args, state: State) -> int:
-    report = coveraudit.report(state)
+def cmd_cover_audit(args) -> int:
+    with State.read_only(CONFIG.state_dir) as state:
+        report = coveraudit.report(state)
     if args.json:
         print(json.dumps(report))
         return 0
@@ -301,9 +302,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command in ("library", "covers"):
         try:
-            with closing(State.open_read_only(CONFIG.state_dir)) as state:
-                return args.func(args, state)
-        except sqlite3.Error as exc:
+            return args.func(args)
+        except (OSError, sqlite3.Error) as exc:
             print(f"audiobind: cannot read state: {exc}", file=sys.stderr)
             return 2
     setup_logging(args.verbose)

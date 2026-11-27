@@ -13,6 +13,16 @@ All notable changes to this project are documented here. This project follows
 them able to remove a book you did not delete. Delete now proves what it is about to touch, publication
 survives a crash, and one run can no longer stomp another.
 
+### Added
+
+- **AD-1** Report missing library sources, missing published outputs, and source directories without a row.
+- **AD-1** Bound the orphan walk, skip ignored directories and symlinks, and flag incomplete results.
+- **AD-1** Expose library drift through a CLI command and read-only JSON endpoint.
+- **AD-1** Audit published cover dimensions and flag identical art across different ASINs.
+- **AD-1** Expose the cover audit through a CLI command and read-only JSON endpoint.
+- **AD-1** Show linked Drift and Covers counts in Library and Needs your review.
+- **AD-1** Document how to interpret and investigate drift and cover findings.
+
 ### Fixed
 
 - **AB-COOKIE-1** Settings Test explains when the tracker returns an HTTP 200 sign-in page.

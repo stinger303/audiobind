@@ -312,16 +312,35 @@ class State:
         self.connection.commit()
 
     @classmethod
-    def open_read_only(cls, directory: Path) -> State:
-        """Open an existing manifest without running initialization or migrations."""
+    @contextmanager
+    def read_only(cls, directory: Path):
+        """Read an existing manifest without initialization or new WAL helper files."""
         state = cls.__new__(cls)
         state.path = directory / "audiobind.db"
+        wal = state.path.with_suffix(".db-wal")
+        shm = state.path.with_suffix(".db-shm")
+        before = state.path.stat()
+        offline = not wal.exists()
+        if not offline and not shm.exists():
+            raise sqlite3.OperationalError("the manifest has a WAL without its shared-memory file")
+        options = "?mode=ro&immutable=1" if offline else "?mode=ro"
         state._lock = threading.RLock()
         state.connection = sqlite3.connect(
-            state.path.absolute().as_uri() + "?mode=ro", uri=True, isolation_level=None,
+            state.path.absolute().as_uri() + options, uri=True, isolation_level=None,
         )
         state.connection.row_factory = sqlite3.Row
-        return state
+        try:
+            yield state
+            if offline:
+                # Immutable access avoids sidecar creation after a clean shutdown. Discard
+                # the report if a writer opened or replaced the manifest while it was read.
+                after = state.path.stat()
+                if wal.exists() or (
+                    before.st_ino, before.st_dev, before.st_size, before.st_ctime_ns, before.st_mtime_ns
+                ) != (after.st_ino, after.st_dev, after.st_size, after.st_ctime_ns, after.st_mtime_ns):
+                    raise sqlite3.OperationalError("the manifest changed while it was being read")
+        finally:
+            state.close()
 
     def _migrate(self) -> None:
         """Add columns introduced after a database already exists."""

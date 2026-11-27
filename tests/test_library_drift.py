@@ -27,9 +27,9 @@ class DriftCase(unittest.TestCase):
     def snapshot(self):
         return {
             str(path.relative_to(self.root)): hashlib.sha256(path.read_bytes()).hexdigest()
-            if path.is_file() else None
+            # The shared-memory file contains SQLite read marks, not persisted content.
+            if path.is_file() and path.name != "audiobind.db-shm" else None
             for path in self.root.rglob("*")
-            if path.name != "audiobind.db-shm"  # SQLite read marks, not persisted database content
         }
 
 

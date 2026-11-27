@@ -50,6 +50,39 @@ Review and leaves the existing files in place. This can happen with older record
 identities, when an existing format came from another edition, or when a companion file that
 would be replaced has changed. Inspect the named file and resolve the collision before retrying.
 
+### Drift and cover audits
+
+The **Drift** and **Covers** cards on Library and Needs your review show counts. Select any count
+to open its full JSON report. Both reports only read files and the manifest. They never delete,
+move, rename, convert, publish, or fetch anything.
+
+- **Missing sources** lists saved units whose source path is gone. The manifest keeps review history
+  even when a file is renamed, moved, or deleted outside Audiobind. Check the old path and its mount
+  before acting on the row. If a book moved, **Scan for changes** can discover it at its new path.
+- **Missing outputs** lists recorded publications whose output file is gone, including outputs still
+  recorded after a recheck. Check that the output volume is mounted and whether the file was moved
+  or a publish was interrupted. Use the normal review controls if you decide to convert again.
+- **Orphans** lists source directories with no row keyed to that directory. This can include author
+  folders and multipart subfolders. Check whether the directory holds a new book or is just part of
+  the library's layout. Hidden directories, configured ignore names, and directory symlinks are
+  skipped. The default walk checks up to 5,000 directories. An incomplete count is marked on the
+  card and sets `truncated` in JSON.
+
+The **Covers** report checks the published `cover.jpg` sidecar for each recorded publication.
+It counts missing art, unreadable JPEG or PNG headers, art under 500 pixels on either side,
+and art outside the 0.9–1.1 width-to-height range. Duplicate groups identify identical files
+shared by units with different known ASINs. Check the edition and the published art before
+deciding what to correct. A duplicate alone does not establish that the match is wrong.
+
+```bash
+audiobind library drift
+audiobind library drift --json --limit 10000
+audiobind covers audit --json
+```
+
+The signed-in JSON endpoints are `GET /api/library/drift` and `GET /api/library/covers`.
+The drift endpoint also accepts a `limit` query parameter.
+
 ### Series
 
 The **Series** tab (`/series`) lists every series you have a book of that Audible lists with two or more books, whether you own one or all of them.
