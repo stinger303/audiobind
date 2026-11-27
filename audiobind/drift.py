@@ -11,6 +11,8 @@ from .ingest import configured_dir, rel_of
 from .state import INGEST_KEY_PREFIX, State, UnitState
 from .units import _skip, audio_files, library_path_key
 
+DEFAULT_LIMIT = 5000
+
 
 @dataclass(frozen=True, order=True)
 class PathEntry:
@@ -69,23 +71,47 @@ def missing_outputs(state: State) -> list[OutputEntry]:
     ]
 
 
-def orphans(state: State) -> list[PathEntry]:
+@dataclass(frozen=True)
+class OrphanWalk:
+    entries: list[PathEntry]
+    truncated: bool
+
+
+def orphans(state: State, limit: int = DEFAULT_LIMIT) -> OrphanWalk:
+    """Check at most limit directories below the root in deterministic walk order."""
     root = Path(CONFIG.library_root)
     keys = {key for key, _ in state.path_statuses()}
+    pending = [root]
     found = []
-    for folder, dirs, _ in os.walk(root, followlinks=False):
-        dirs[:] = sorted(name for name in dirs if not _skip(name, CONFIG.ignore_globs))
-        if Path(folder) != root:
+    visited = 0
+    truncated = False
+    while pending:
+        folder = pending.pop()
+        if folder != root:
+            if visited == limit:
+                return OrphanWalk(sorted(found), True)
+            visited += 1
             key = library_path_key(folder, root)
             if key not in keys:
                 found.append(PathEntry(key))
-    return sorted(found)
+        try:
+            with os.scandir(folder) as entries:
+                children = [
+                    Path(entry.path) for entry in entries
+                    if not _skip(entry.name, CONFIG.ignore_globs) and entry.is_dir(follow_symlinks=False)
+                ]
+        except OSError:
+            truncated = True
+            continue
+        pending.extend(sorted(children, reverse=True))
+    return OrphanWalk(sorted(found), truncated)
 
 
-def report(state: State) -> dict:
+def report(state: State, limit: int = DEFAULT_LIMIT) -> dict:
+    walk = orphans(state, limit)
     return {
         "missing_sources": [asdict(entry) for entry in missing_sources(state)],
         "missing_outputs": [asdict(entry) for entry in missing_outputs(state)],
-        "orphans": [asdict(entry) for entry in orphans(state)],
-        "truncated": False,
+        "orphans": [asdict(entry) for entry in walk.entries],
+        "truncated": walk.truncated,
     }

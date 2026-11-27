@@ -56,3 +56,22 @@ class TestDrift(DriftCase):
             "missing_sources": [], "missing_outputs": [], "orphans": [], "truncated": False,
         })
         self.assertEqual(self.snapshot(), before)
+
+    def test_limit_counts_visited_directories_and_skips_noise_and_symlinks(self):
+        (self.lib / "a" / "nested").mkdir(parents=True)
+        (self.lib / "b").mkdir()
+        (self.lib / "@eaDir" / "noise").mkdir(parents=True)
+        (self.lib / "custom-trash" / "noise").mkdir(parents=True)
+        (self.lib / ".hidden").mkdir()
+        (self.lib / "link").symlink_to(self.lib / "b", target_is_directory=True)
+        self.state.save(UnitState("a", "held"))
+        with patch.object(CONFIG, "ignore_globs", ["@eaDir", "custom-trash"]):
+            limited = drift.report(self.state, limit=2)
+            exact = drift.report(self.state, limit=3)
+            zero = drift.report(self.state, limit=0)
+        self.assertEqual(limited["orphans"], [{"path": "a/nested"}])
+        self.assertTrue(limited["truncated"])
+        self.assertEqual(exact["orphans"], [{"path": "a/nested"}, {"path": "b"}])
+        self.assertFalse(exact["truncated"])
+        self.assertEqual(zero["orphans"], [])
+        self.assertTrue(zero["truncated"])
