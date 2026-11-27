@@ -381,6 +381,14 @@ def is_single_file(unit: BookUnit) -> bool:
     return len(unit.files) == 1 and os.path.abspath(unit.path) == os.path.abspath(unit.files[0])
 
 
+def library_path_key(path: str | Path, root: Path) -> str:
+    """The scanner's base state key for a source path, before grouping suffixes."""
+    relative = os.path.relpath(path, root)
+    if relative == os.curdir:
+        relative = os.path.basename(os.path.abspath(path))
+    return "./" + relative if relative.startswith(RESERVED_KEY_PREFIX) else relative
+
+
 def _name_units(units: list[BookUnit], root: Path, ingest: bool = False) -> list[BookUnit]:
     """Give each grouped unit its rel_path (unique under ``root``) and its name guesses.
 
@@ -391,9 +399,7 @@ def _name_units(units: list[BookUnit], root: Path, ingest: bool = False) -> list
     seen: set[str] = set()
     for unit in units:
         rel_dir = os.path.relpath(unit.path, root)
-        unit.rel_path = rel_dir
-        if unit.rel_path == os.curdir:  # the library root is itself one book
-            unit.rel_path = os.path.basename(os.path.abspath(unit.path))
+        unit.rel_path = library_path_key(unit.path, root)
         guess_path = ""
         if unit.key:
             unit.rel_path = f"{unit.rel_path}#{unit.key}"
@@ -404,8 +410,7 @@ def _name_units(units: list[BookUnit], root: Path, ingest: bool = False) -> list
             # "Title (Unabridged).m4b" is guessed from "Title (Unabridged)"; the key keeps the
             # full file name, which is what is on disk
             guess_path = unit.name
-        # "ingest:" is reserved for state keys of ingest rows: a library folder literally named
-        # "ingest:..." is keyed "./ingest:..." instead (same folder on disk, different key)
+        # Also handle a root name that becomes reserved only after the grouping suffix.
         if unit.rel_path.startswith(RESERVED_KEY_PREFIX):
             unit.rel_path = "./" + unit.rel_path
         # rel_path is the state DB's primary key: it must stay unique, even against a real
