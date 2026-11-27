@@ -107,6 +107,17 @@ class OtherFailuresUnchanged(unittest.TestCase):
             c.search("Dune")
         self.assertEqual(c.backoff.remaining(), 120.0)
 
+    def test_200_sign_in_page_is_an_auth_error(self):
+        body = b"<!DOCTYPE html><title>Private tracker response</title>"
+        c, _clock, _t = client((200, {}, body))
+        with self.assertRaises(tracker.TrackerAuthError) as ctx:
+            c.search("Dune")
+        self.assertEqual(ctx.exception.status, 200)
+        self.assertIn("sign-in page", str(ctx.exception))
+        self.assertNotIn(body.decode(), str(ctx.exception))
+        self.assertNotIn("Private tracker response", str(ctx.exception))
+        self.assertEqual(c.backoff.remaining(), 60.0)
+
     def test_200_json_still_returns_torrents(self):
         payload = {"data": [{"id": 7, "title": "Dune", "author_info": json.dumps({"1": "Frank Herbert"}),
                              "filetype": "m4b", "category": "14"}]}

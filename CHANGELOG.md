@@ -15,6 +15,7 @@ survives a crash, and one run can no longer stomp another.
 
 ### Fixed
 
+- **AB-COOKIE-1** Settings Test explains when the tracker returns an HTTP 200 sign-in page.
 - **A rejected tracker session now says so, and is retried within minutes.** When the tracker's session
   cookie expired, every search came back `HTTP 403: you are not signed in` and the Watcher showed only
   `the tracker answered HTTP 403; backing off 1800s` while the wait doubled. A 401 or 403 that names the

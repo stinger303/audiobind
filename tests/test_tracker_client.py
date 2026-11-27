@@ -226,10 +226,13 @@ class TestBackoff(unittest.TestCase):
 
     def test_html_instead_of_json_backs_off_and_is_never_parsed(self):
         mc, _, _ = client((200, {}, b"<html><body>Please log in</body></html>"))
-        with self.assertRaises(tracker.TrackerError) as ctx:
+        with self.assertRaises(tracker.TrackerAuthError) as ctx:
             mc.search("x")
-        self.assertIn("not answer JSON", str(ctx.exception))
-        self.assertGreater(mc.backoff.remaining(), 0)
+        self.assertEqual(
+            str(ctx.exception),
+            "the tracker answered with a sign-in page (HTTP 200, not JSON) - the session was not accepted",
+        )
+        self.assertEqual(mc.backoff.remaining(), 60)
 
     def test_nothing_returned_is_an_empty_result_not_an_error(self):
         mc, _, _ = client((200, {}, b'{"error": "Nothing returned, out of 0"}'))

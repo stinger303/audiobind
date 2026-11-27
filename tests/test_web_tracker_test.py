@@ -112,6 +112,25 @@ class Rejected(SessionTestCase):
             make_client(transport=self.net).search("Dune")
 
 
+class SignInPage(SessionTestCase):
+    answer = (200, {}, b"<!DOCTYPE html><title>Private tracker response</title>")
+
+    def test_502_explains_the_sign_in_page_and_keeps_the_verdict_unknown(self):
+        for session in (TYPED, ""):
+            with self.subTest(typed=bool(session)):
+                self.shared.backoff.ok()
+                self.shared.transport = self.net
+                status, body = self.press(session)
+                self.assertEqual(status, 502)
+                self.assertIn(
+                    "the tracker answered with a sign-in page (HTTP 200, not JSON)"
+                    " - the session was not accepted",
+                    body["message"],
+                )
+                self.assertNotIn("Private tracker response", body["message"])
+                self.assertEqual(watcher.session_state(self.state), "unknown")
+
+
 class TimedOut(SessionTestCase):
     answer = TimeoutError("timed out")
 

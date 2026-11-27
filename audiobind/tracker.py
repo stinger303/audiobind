@@ -860,9 +860,14 @@ class TrackerClient:
             )
         try:
             payload = json.loads(body.decode("utf-8", "replace"))
-        except ValueError:
-            # an HTML page here usually means the session is gone - it is never parsed
-            raise self._bad_answer("the tracker's search did not answer JSON (session expired or not authorized?)") from None
+        except json.JSONDecodeError:
+            self._note()  # A non-JSON answer leaves the stored verdict unknown.
+            self.backoff.fail()
+            raise TrackerAuthError(
+                "the tracker answered with a sign-in page (HTTP 200, not JSON)"
+                " - the session was not accepted",
+                200,
+            ) from None
         if not isinstance(payload, dict):
             raise self._bad_answer("the tracker's search answered an unexpected JSON shape")
         if _rows_key(payload) is None:
