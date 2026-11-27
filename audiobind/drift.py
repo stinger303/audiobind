@@ -12,6 +12,14 @@ from .state import INGEST_KEY_PREFIX, State, UnitState
 from .units import _skip, audio_files, library_path_key
 
 DEFAULT_LIMIT = 5000
+ROUTE = "/api/library/drift"
+
+
+def parse_limit(value: str) -> int:
+    limit = int(value)
+    if limit < 0:
+        raise ValueError("limit must be a non-negative integer")
+    return limit
 
 
 @dataclass(frozen=True, order=True)

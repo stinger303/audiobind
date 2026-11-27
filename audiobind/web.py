@@ -23,6 +23,7 @@ from . import abs_layout, catalog
 from . import ingest as ingest_mod
 from . import auth as auth_mod
 from . import discover as discover_mod
+from . import drift
 from . import hardcover as hardcover_mod
 from . import ipupdate as ipupdate_mod
 from . import overrides as overrides_mod
@@ -8672,6 +8673,14 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/cover"):
             self._send_cover(params.get("asin", ""), params.get("path", ""))
             return
+        if path.rstrip("/") == drift.ROUTE:
+            try:
+                limit = drift.parse_limit(params.get("limit", str(drift.DEFAULT_LIMIT)))
+            except ValueError:
+                self._send(400, b'{"error":"limit must be a non-negative integer"}', "application/json")
+                return
+            self._send(200, json.dumps(drift.report(self.state, limit)).encode(), "application/json")
+            return
         if path.startswith("/api/units"):
             units = self.state.all(status or None, blobs=False)  # the listing carries no detail/alternates
             payload = [
@@ -10032,6 +10041,9 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_logout()
             return
         if self._auth_refused(path):
+            return
+        if path == drift.ROUTE:
+            self._send(405, b'{"error":"use GET for this report"}', "application/json", {"Allow": "GET"})
             return
         refusal = self._post_refusal()
         if refusal is not None:

@@ -311,6 +311,18 @@ class State:
                 self.connection.execute(f"CREATE INDEX IF NOT EXISTS {name} ON units({columns_ddl})")
         self.connection.commit()
 
+    @classmethod
+    def open_read_only(cls, directory: Path) -> State:
+        """Open an existing manifest without running initialization or migrations."""
+        state = cls.__new__(cls)
+        state.path = directory / "audiobind.db"
+        state._lock = threading.RLock()
+        state.connection = sqlite3.connect(
+            state.path.absolute().as_uri() + "?mode=ro", uri=True, isolation_level=None,
+        )
+        state.connection.row_factory = sqlite3.Row
+        return state
+
     def _migrate(self) -> None:
         """Add columns introduced after a database already exists."""
         existing = {row[1] for row in self.connection.execute("PRAGMA table_info(units)")}

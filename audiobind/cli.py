@@ -8,10 +8,12 @@ import getpass
 import json
 import logging
 import logging.handlers
+import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
-from . import __version__, abs_layout, daemon
+from . import __version__, abs_layout, daemon, drift
 from . import auth as auth_mod
 from .config import CONFIG, effective_val, set_effective
 from .pipeline import audit_unit, process_unit
@@ -220,6 +222,27 @@ def cmd_version(args) -> int:
     return 0
 
 
+def cmd_library_drift(args) -> int:
+    try:
+        with closing(State.open_read_only(CONFIG.state_dir)) as state:
+            report = drift.report(state, args.limit)
+    except sqlite3.Error as exc:
+        print(f"audiobind: cannot read state: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(report))
+        return 0
+    for key in ("missing_sources", "missing_outputs", "orphans"):
+        entries = report[key]
+        print(f"{key.replace('_', ' ').capitalize()} ({len(entries)})")
+        for entry in entries:
+            output = f" -> {entry['output'] or '(no recorded path)'}" if "output" in entry else ""
+            print(f"  {entry['path']}{output}")
+    if report["truncated"]:
+        print("Orphan walk incomplete (directory limit reached or directory unreadable).")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="audiobind", description="Merge, convert and correctly tag audiobooks."
@@ -246,7 +269,17 @@ def main(argv: list[str] | None = None) -> int:
     reset.add_argument("--username", help="the account's username (skips the username prompt)")
     reset.set_defaults(func=cmd_reset_password)
 
+    library = sub.add_parser("library", help="read-only library reports")
+    library_sub = library.add_subparsers(dest="library_command", required=True)
+    drift_parser = library_sub.add_parser("drift", help="report missing sources, missing outputs and orphans")
+    drift_parser.add_argument("--json", action="store_true", help="emit JSON")
+    drift_parser.add_argument("--limit", type=drift.parse_limit, default=drift.DEFAULT_LIMIT,
+                              help="maximum directories to check (default: %(default)s)")
+    drift_parser.set_defaults(func=cmd_library_drift)
+
     args = parser.parse_args(argv)
+    if args.command == "library":
+        return args.func(args)
     setup_logging(args.verbose)
     # version/health must work even with no volumes mounted (healthchecks, `docker run ... version`);
     # reset-password only needs the state volume - a missing library must not stop a lockout fix
