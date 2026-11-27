@@ -50,9 +50,11 @@ restart.
    they do not: the session is refused, so create a new one from the address shown. **Check
    again** asks the same address lookup the egress guard uses, once; it never contacts the
    tracker. Showing the page sends nothing, and a failed lookup never blocks **Continue**.
-4. **Your tracker**: the site's address, the session cookie (a value you create on the site's own
-   preferences page and paste in - Audiobind never asks for your tracker password), the cookie's
-   name, then the search settings (path, request, method, encoding, category, download path).
+4. **Your tracker** asks for the site's address, the session value, the cookie name, and the search
+   settings (path, request, method, encoding, category, download path). On **MAM → Preferences →
+   Security**, create a session bound to the address the tracker sees (the VPN egress address if
+   Audiobind reaches the tracker through a VPN). Enable **"Allow session to set dynamic seedbox IP"**
+   and paste the value MAM gives you. The browser cookies `mbsc` and `uid` are not the session value.
    **Save and test** saves your changes even if the test fails. It sends exactly **one** search
    with your configured request through the watcher's own client (so its spacing and backoff apply, and a backoff in
    force means nothing is sent) and behind the egress guard. It answers in plain words, such as
@@ -74,7 +76,7 @@ If anything is missing, it links to the step where you can fix it.
 | `TRACKER_DOWNLOAD_PARAM` | `tid` | Query parameter carrying the torrent id |
 | `TRACKER_FREELEECH_PARAM` | *(unset)* | Query parameter that spends a freeleech credit, e.g. `fl`. Empty = never sent |
 | `TRACKER_COOKIE_NAME` | *(unset)* | **Required.** The session cookie's name |
-| `TRACKER_SESSION` | *(unset)* | **Required.** The session cookie's value. A secret - never shown in the UI, the API or the log |
+| `TRACKER_SESSION` | *(unset)* | **Required.** The session value issued by the tracker. See the MAM instructions in step 4 above. The UI, API and logs keep it hidden |
 
 `TRACKER_SEARCH_BODY` is the document sent to the search endpoint, for example
 `{"q": "{{title}} {{author}}"}`. `{{title}}` and `{{author}}` are replaced with the wanted book's

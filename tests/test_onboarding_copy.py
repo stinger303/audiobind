@@ -363,6 +363,8 @@ class TestSessionHint(WebCase):
                               "the tracker will see", hint)
                 self.assertIn("tick 'Allow session to set dynamic seedbox IP'", hint)
                 self.assertIn("paste the long value MAM gives you.", hint)
+                self.assertIn("VPN egress address", hint)
+                self.assertIn("The browser cookies mbsc and uid are not the session value.", hint)
                 self.assertNotIn("copied from your browser", hint)
 
     def test_any_other_site_keeps_the_browser_route(self):

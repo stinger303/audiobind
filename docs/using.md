@@ -111,13 +111,13 @@ set. Saving a blank title clears the override. Search uses
 one catalog request at a time, with the same pacing as matching, and only the US store
 (`api.audible.com`).
 
-**Sessions expire.** The tracker's session cookie stops working after a while, or when you sign in
-somewhere else. When that happens the Watcher's *Last error* says `the tracker rejected the session
-cookie`, and nothing downloads until you fix it: sign in to the tracker in your browser, paste the new
-cookie value into **Settings > Watcher > Session cookie value** and press **Test** beside it. Test sends the
+**Sessions expire.** If the tracker rejects your session, create a fresh one. On **MAM → Preferences
+→ Security**, create a session bound to the address the tracker sees (the VPN egress address if
+Audiobind reaches the tracker through a VPN). Enable **"Allow session to set dynamic seedbox IP"**.
+Use the value MAM gives you and leave the browser cookies `mbsc` and `uid` in the browser.
+Paste the session value into **Settings > Watcher > Session cookie value** and press **Test**. Test sends the
 value you typed, once, without saving it; when it says *Signed in* the watcher's waiting time is cleared and
-the next cycle runs normally. Press **Save settings** to keep the value. A rejected session is retried
-every 3 minutes, not every half hour, so a fixed cookie works again within minutes. A value under 24
+the next cycle runs normally. Press **Save settings** to keep the value. A value under 24
 characters is refused (a session cookie is one long value, usually a few hundred characters), so a
 half-copied paste is never saved. The Watcher's **Connection** row shows what the last real tracker request
 showed - signed in, session rejected, or not checked yet - and never what the tracker sees of your address,

@@ -4449,8 +4449,9 @@ def _discover_wishlist_body(state) -> str:
 #: "Preferences > Security" and the toggle's name are used - both are already in docs/ip-updater.md
 MAM_SESSION_HINT = (
     "On MyAnonamouse: Preferences \u2192 Security \u2192 create a session for the address the tracker will see "
-    "(your VPN's address if the tracker is reached through one), tick 'Allow session to set dynamic seedbox IP', "
-    "and paste the long value MAM gives you. It is never shown again once saved.")
+    "(the VPN egress address if the tracker is reached through a VPN), tick "
+    "'Allow session to set dynamic seedbox IP', and paste the long value MAM gives you. "
+    "The browser cookies mbsc and uid are not the session value. The saved value stays hidden.")
 
 #: under the qBittorrent category field (Settings and the template say the same)
 ONE_FOLDER_THREE_NAMES = (

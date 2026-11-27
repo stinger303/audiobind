@@ -18,6 +18,7 @@ survives a crash, and one run can no longer stomp another.
 - **AB-COOKIE-1** Settings Test explains when the tracker returns an HTTP 200 sign-in page.
 - **AB-COOKIE-2** Settings removes cookie names, wrapping quotes and quote escapes from pasted session values.
 - **AB-COOKIE-3** A malformed state setting is skipped with a warning so other settings and ingest can load.
+- **AB-COOKIE-4** Settings and the docs explain how to create the MAM session for the tracker-facing IP.
 - **A rejected tracker session now says so, and is retried within minutes.** When the tracker's session
   cookie expired, every search came back `HTTP 403: you are not signed in` and the Watcher showed only
   `the tracker answered HTTP 403; backing off 1800s` while the wait doubled. A 401 or 403 that names the

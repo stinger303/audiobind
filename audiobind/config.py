@@ -767,7 +767,7 @@ def _session_shape(value: str) -> str:
     if value and len(value) < SESSION_MIN_LENGTH:
         raise ValueError(
             f"Session cookie value: that is {len(value)} characters - a session cookie is one long value "
-            "(usually a few hundred). Copy the whole value from your browser; nothing was saved.")
+            "(usually a few hundred). Paste the full session value, since nothing was saved.")
     if value.isdecimal():
         raise ValueError("Session cookie value: paste the full session value, which cannot be only digits. "
                          "Nothing was saved.")
