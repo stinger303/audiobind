@@ -76,6 +76,13 @@ class SessionShape(LiveServerCase):
         self.assertEqual(status, 200, body)
         self.assertEqual(self.stored(), value)
 
+    def test_a_long_value_with_a_colon_is_not_split_as_a_name(self):
+        # A session value is hundreds of characters; a colon or equals inside it must survive untouched.
+        value = "A" * 60 + ":" + "B" * 60
+        status, body = self.save(value)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(self.stored(), value)
+
     def test_numeric_only_session_is_refused(self):
         digits = "1234567890" * 3
         status, body = self.save(digits)

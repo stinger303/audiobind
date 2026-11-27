@@ -753,8 +753,9 @@ def normalise_session_paste(raw: str) -> str:
     """Remove copy wrappers from a session value pasted in Settings."""
     value = raw.strip()
     parts = re.split(r"[:=]", value, maxsplit=1)
-    # An equals sign can also be padding on a bare session value.
-    if len(parts) == 2 and _NAME_RE.fullmatch(parts[0]) and parts[1].strip("= "):
+    # Only a *short* left side can be a cookie name: a session value is a few hundred characters, and
+    # splitting on a colon or an equals sign inside one would silently truncate a valid paste.
+    if len(parts) == 2 and len(parts[0]) <= 40 and _NAME_RE.fullmatch(parts[0]) and parts[1].strip("= "):
         value = parts[1].strip()
     value = re.sub(r"""^["']+|(?<!\\)["']+$""", "", value)
     return value.replace(r'\"', '"')

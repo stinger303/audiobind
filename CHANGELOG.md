@@ -16,6 +16,8 @@ survives a crash, and one run can no longer stomp another.
 ### Fixed
 
 - **AB-COOKIE-1** Settings Test explains when the tracker returns an HTTP 200 sign-in page.
+- **AB-COOKIE-2b** A long session value containing `:` or `=` is never split as a `name=value` paste; only a
+  short left side can be a cookie name.
 - **AB-COOKIE-2** Settings removes cookie names, wrapping quotes and quote escapes from pasted session values.
 - **AB-COOKIE-3** A malformed state setting is skipped with a warning so other settings and ingest can load.
 - **AB-COOKIE-4** Settings and the docs explain how to create the MAM session for the tracker-facing IP.
