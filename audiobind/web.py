@@ -670,6 +670,11 @@ a.ab-series-name:focus-visible{outline:2px solid var(--ab-accent-bright);outline
 .ab-series-hook .btn{flex:none;text-decoration:none}
 
 .ab-disc-wrap{padding:14px 24px 24px;display:flex;flex-direction:column;gap:14px;max-width:1180px}
+.ab-audits{display:flex;flex-wrap:wrap;gap:8px;margin:8px 24px;flex:none}
+.ab-audit{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;padding:6px 10px;
+  border:1px solid var(--ab-border);border-radius:8px;background:var(--ab-surface);font-size:12px}
+.ab-audit a{color:var(--ab-accent-bright)}
+.ab-audit-status{color:var(--ab-text3)}
 .ab-wizcard{flex:none;margin:12px 24px 0;background:var(--ab-surface);border:1px solid rgba(94,106,210,.45);
   border-radius:10px;padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
   gap:10px 16px;font-size:12.5px;color:var(--ab-text3);line-height:1.5}
@@ -1498,6 +1503,21 @@ function abRowKey(ev, row) {
   toggleRow(row, ev);
 }
 document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.ab-audit').forEach(card => {
+    const links = card.querySelectorAll('[data-count]');
+    const status = card.querySelector('.ab-audit-status');
+    fetch(links[0].getAttribute('href')).then(response => {
+      if (!response.ok) throw new Error('Report unavailable');
+      return response.json();
+    }).then(report => {
+      links.forEach(link => {
+        const key = link.dataset.count;
+        const count = Array.isArray(report[key]) ? report[key].length : report.counts[key];
+        link.querySelector('b').textContent = count;
+      });
+      status.textContent = report.truncated ? 'Orphan walk incomplete' : '';
+    }).catch(() => { status.textContent = 'Report unavailable'; });
+  });
   // a manual Retry now / Choose the exact Audible edition that still needs a decision re-opens its panel
   document.querySelectorAll('tr.drow[data-reopen]').forEach(panel => {
     panel.hidden = false;
@@ -1838,6 +1858,8 @@ PAGE = """<!doctype html>
       <div>{stat_gb} GB written</div>
     </details>
   </section>
+
+{audit_cards}
 
   <section class="ab-toolbar" aria-label="Filters">
     <div class="chips ab-library-chips">{chips}</div>
@@ -6785,6 +6807,30 @@ POST_ONLY_ROUTES = {
 ATTENTION_ALIASES = ("attention", "needs-you")
 
 
+def _audit_cards() -> str:
+    cards = []
+    for name, route, counts in (
+        ("Drift", drift.ROUTE, (
+            ("missing_sources", "Missing sources"), ("missing_outputs", "Missing outputs"),
+            ("orphans", "Orphans"),
+        )),
+        ("Covers", coveraudit.ROUTE, (
+            ("ok", "OK"), ("missing", "Missing"), ("too_small", "Too small"), ("not_square", "Not square"),
+            ("unreadable", "Unreadable"), ("duplicates", "Duplicate groups"),
+        )),
+    ):
+        card_id = f"ab-audit-{name.lower()}"
+        links = "".join(
+            f'<a href="{route}" data-count="{key}">{label} <b>&hellip;</b></a>' for key, label in counts
+        )
+        cards.append(
+            f'<section class="ab-audit" id="{card_id}" aria-labelledby="{card_id}-head">'
+            f'<strong id="{card_id}-head">{name}</strong>{links}'
+            '<span class="ab-audit-status" role="status"></span></section>'
+        )
+    return '<div class="ab-audits">' + "".join(cards) + '</div>'
+
+
 def render(state, status: str = "", query: str = "") -> str:
     counts = state.counts()
     stats = library_stats(state)
@@ -7430,6 +7476,7 @@ def render(state, status: str = "", query: str = "") -> str:
         queue_strip=queue_strip,
         wizard_card=_wizard_card(state) if (status in ("", "all") and not query) else "",
         allclear=allclear,
+        audit_cards=_audit_cards() if view in ("all", "attention") and not query else "",
         stat_hours="{}".format(stats["hours"]),
         stat_gb="{}".format(stats["gb"]),
         stat_pct_width=max(0.0, min(100.0, stats["progress"])),

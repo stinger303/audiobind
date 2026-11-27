@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from audiobind import cli, drift
 from audiobind.config import CONFIG
-
 from tests.live import LiveServerCase
 from tests.test_library_drift import DriftCase
 
@@ -59,3 +58,14 @@ class TestCoversRoute(LiveServerCase):
         self.assertEqual(status, 200)
         self.assertEqual(set(body), {"counts", "offenders", "duplicates"})
         self.assertEqual(self.post({}, "/api/library/covers")[0], 405)
+
+
+class TestAuditCards(LiveServerCase):
+    def test_cards_link_to_reports_in_library_and_review(self):
+        for path in ("/?status=all", "/?status=attention"):
+            status, body = self.request(path, raw=True)
+            self.assertEqual(status, 200)
+            for name, url in ((b"drift", b"drift"), (b"covers", b"covers")):
+                card = body.split(b'id="ab-audit-' + name + b'"', 1)
+                self.assertEqual(len(card), 2, path)
+                self.assertIn(b'href="/api/library/' + url + b'"', card[1].split(b"</section>", 1)[0])

@@ -201,6 +201,13 @@ check("the version appears in navigation, outside the working header",
       and "Version v" not in html.split('<header class="ab-topbar">')[1].split("</header>")[0])
 all_html = get("/?status=all")
 converted_html = get("/?status=converted")
+for audit_name, count in (("drift", 3), ("covers", 6)):
+    card_marker = f'id="ab-audit-{audit_name}"'
+    report_link = f'href="/api/library/{audit_name}" data-count='
+    check(f"{audit_name} card links every count to its report in Library and Needs your review",
+          all(card_marker in page
+              and page.split(card_marker, 1)[1].split("</section>", 1)[0].count(report_link) == count
+              for page in (all_html, html)))
 converted_table = converted_html.split("<colgroup>")[1].split("</table>")[0]
 check("Converted uses the Why column space for Match",
       'data-column="why"' not in converted_table and 'class="ab-whycell"' not in converted_table
