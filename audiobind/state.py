@@ -5,6 +5,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -765,9 +766,7 @@ class State:
                     )
 
     def get_meta(self, key: str, default=None):
-        with self._lock:
-            row = self.connection.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
-        return json.loads(row["value"]) if row else default
+        return self.get_meta_many((key,)).get(key, default)
 
     def get_meta_many(self, keys) -> dict:
         """{key: decoded value} for the keys that exist, in ONE query and one lock hold - the
@@ -782,7 +781,13 @@ class State:
                     f"SELECT key, value FROM meta WHERE key IN ({marks})", chunk
                 ):
                     found[row["key"]] = row["value"]
-        return {key: json.loads(value) for key, value in found.items()}
+        decoded = {}
+        for key, value in found.items():
+            try:
+                decoded[key] = json.loads(value)
+            except json.JSONDecodeError:
+                logging.getLogger("audiobind").warning("state: setting %s is not valid JSON - ignored", key)
+        return decoded
 
     def set_asin_override(self, path: str, asin: str) -> None:
         """The operator's ASIN pin. Setting one (even the same one again) starts its dead-pin

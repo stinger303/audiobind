@@ -82,6 +82,20 @@ class TestLibraryStats(unittest.TestCase):
             self.state.set_meta(k, k)
         self.assertEqual(set(self.state.get_meta_many(many)), set(many[::100]))
 
+    def test_malformed_meta_is_absent_and_logs_only_its_key(self):
+        key = "setting_tracker_session"
+        self.state.connection.execute("INSERT INTO meta (key, value) VALUES (?, ?)", (key, "mam_id"))
+        self.state.set_meta("setting_qbit_category", "audiobooks")
+        self.state.set_meta("setting_null", None)
+        warning = f"WARNING:audiobind:state: setting {key} is not valid JSON - ignored"
+        with self.assertLogs("audiobind", level="WARNING") as logged:
+            found = self.state.get_meta_many([key, "setting_qbit_category", key, "setting_null"])
+        self.assertEqual(found, {"setting_qbit_category": "audiobooks", "setting_null": None})
+        self.assertEqual(logged.output, [warning])
+        with self.assertLogs("audiobind", level="WARNING") as logged:
+            self.assertEqual(self.state.get_meta(key, "fallback"), "fallback")
+        self.assertEqual(logged.output, [warning])
+
     def test_snapshot_carries_the_stats_block(self):
         self.save("A/One", "converted", hours=3.0, out_mb=1000.0)
         stats = web.snapshot(self.state)["stats"]
