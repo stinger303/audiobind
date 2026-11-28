@@ -25,6 +25,10 @@ survives a crash, and one run can no longer stomp another.
 
 ### Fixed
 
+- **QBT-TRUNC** The download client reads a large torrent list whole: a library big enough to push it past
+  64 KiB no longer comes back as "something unreadable", which had stopped every freeleech credit for a day.
+  The read ceiling is now 8 MiB (the same as the tracker transport), and a body over it is reported as cut
+  off, with the size, instead of as unparseable.
 - **AB-COOKIE-1** Settings Test explains when the tracker returns an HTTP 200 sign-in page.
 - **AB-COOKIE-2b** A long session value containing `:` or `=` is never split as a `name=value` paste; only a
   short left side can be a cookie name.
