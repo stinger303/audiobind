@@ -7,7 +7,7 @@ All notable changes to this project are documented here. This project follows
 > name its settings by their current `TRACKER_*` names. The client was generalized then, and the
 > older setting names remain accepted as deprecated aliases.
 
-## [Unreleased]
+## [0.26.0] - 2026-11-28
 
 **Nothing destructive happens on trust.** Fourteen defects found by a two-pass audit and closed, two of
 them able to remove a book you did not delete. Delete now proves what it is about to touch, publication

@@ -26,6 +26,13 @@
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Changes>
+### 0.26.0
+* New Library drift and cover audit: the app now reports source folders that are gone, published files that are missing, and cover art that is missing, too small or shared by two different books.
+* Delete is safer. It states what it will remove for that book, takes only files the app itself published, refuses a folder whose contents changed underneath it, and leaves anything it cannot prove it wrote.
+* An interrupted publish recovers on the next run instead of leaving staged files behind, and only one process can write to the library at a time.
+* The download client reads a whole torrent list again, so a large library no longer stalls every automatic download.
+* A rejected tracker session says so plainly, waits a short fixed time instead of doubling, and the Settings page can test the session you pasted before you rely on it.
+* The match confidence is visible at every screen width, including the tablet range where it used to disappear, and all library filters fit on a phone.
 ### 0.25.5
 * A folder that names a production (full cast, GraphicAudio, dramatized) no longer matches a plain edition at the highest tier, and a folder that names no production no longer silently takes a marked one: both now land where you get to choose.
 * A failed catalogue lookup is no longer treated as proof a book does not exist. A near-titled work with a catalogue record could previously beat the exact book that had none.
