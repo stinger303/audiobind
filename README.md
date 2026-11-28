@@ -47,7 +47,7 @@ library-in/                         library-out/
     Moneyball [Disc 3]/                    metadata.json
 ```
 
-![A messy 195-file audiobook folder becoming one chaptered .m4b](docs/demo.gif)
+![A tour of the Audiobind UI: the library list, a book's detail panel showing 162 source files merged into one chaptered .m4b, the series page, Discover and Wishlist](docs/demo.gif)
 
 ![The Audiobind library page: every book with its status, match confidence and runtime, and the books that need attention above the list](docs/screenshot.png)
 
