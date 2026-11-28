@@ -9,7 +9,10 @@ read-only, one login, no add). Quirks of the 5.x build this is written against:
   the session cookie in the jar, so that is what is checked. Older builds name it ``SID``;
   5.x names it after the WebUI port (``QBT_SID_8083``), so either is accepted;
 * every POST needs a ``Referer`` matching the WebUI origin, or CSRF protection refuses it;
-* ``paused`` was renamed ``stopped`` in 5.0 - both are sent as false.
+* ``paused`` was renamed ``stopped`` in 5.0 - both are sent as false;
+* the torrent list cannot be trimmed to the fields we read (~2 KB per torrent), so every answer is
+  read in full up to ``MAX_ANSWER`` (8 MiB); a body over that is an explicit "cut off" error, never
+  a parse failure.
 
 The torrent goes in the category the caller names (``QBIT_CATEGORY``; its save path is the
 ingest folder), with no automatic-torrent-management override.
@@ -34,11 +37,23 @@ from ..http_redirect import SameOriginRedirects
 from ..util import redact_url
 
 TIMEOUT = 20.0
-MAX_ANSWER = 64 * 1024
+#: the read ceiling for every answer (the same 8 MiB as ``transport.MAX_ANSWER``); a big library's
+#: torrent list is well past 64 KiB, so anything smaller cuts it off and it fails to parse
+MAX_ANSWER = 8 * 1024 * 1024
 
 
 class QbitError(ClientError):
     """qBittorrent refused or could not be reached. The message never carries the password."""
+
+
+def _read_whole(stream) -> bytes:
+    """The whole answer, or QbitError when it is larger than ``MAX_ANSWER``: a body cut off at the
+    ceiling is never handed on, so it can never be mistaken for one that is not JSON."""
+    body = stream.read(MAX_ANSWER + 1)
+    if len(body) > MAX_ANSWER:
+        raise QbitError(f"qBittorrent's answer was larger than {MAX_ANSWER // (1024 * 1024)} MiB "
+                        f"({MAX_ANSWER} bytes) and was cut off - raise the client's read ceiling", kind=ERROR)
+    return body
 
 
 # ---------------------------------------------------------------------------- multipart
@@ -91,10 +106,10 @@ class QbitClient(DownloadClient):
         )
         try:
             with self._opener.open(request, timeout=TIMEOUT) as response:
-                return response.status, response.read(MAX_ANSWER)
+                return response.status, _read_whole(response)
         except urllib.error.HTTPError as exc:
             try:
-                return exc.code, exc.read(MAX_ANSWER)
+                return exc.code, _read_whole(exc)
             finally:
                 exc.close()
         except (urllib.error.URLError, OSError) as exc:
@@ -109,10 +124,10 @@ class QbitClient(DownloadClient):
         )
         try:
             with self._opener.open(request, timeout=TIMEOUT) as response:
-                return response.status, response.read(MAX_ANSWER)
+                return response.status, _read_whole(response)
         except urllib.error.HTTPError as exc:
             try:
-                return exc.code, exc.read(MAX_ANSWER)
+                return exc.code, _read_whole(exc)
             finally:
                 exc.close()
         except (urllib.error.URLError, OSError) as exc:

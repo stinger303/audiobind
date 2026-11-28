@@ -249,3 +249,64 @@ class TestIncomplete(QbitCase):
         self.addCleanup(lambda: delattr(FakeQbit, "do_GET"))
         self.assertEqual(self.client().incomplete("my cat", 0.999), 2)
         self.assertEqual(gets, ["/api/v2/torrents/info?category=my+cat"])
+
+
+def _torrent(n):
+    """One torrent dict shaped like qBittorrent 5.x's /torrents/info entry (~2 KB of JSON)."""
+    return {
+        "hash": f"{n:040x}", "name": f"Author {n} - A Long Audiobook Title Volume {n} (Unabridged)",
+        "progress": 1.0 if n % 3 else 0.5, "ratio": n / 10, "category": "mam-audiobooks",
+        "save_path": "/downloads/mam-audiobooks", "content_path": f"/downloads/mam-audiobooks/Book {n}",
+        "tracker": "https://tracker.example/announce.php?passkey=" + "x" * 32, "tags": "",
+        "force_start": False, "has_metadata": True,
+        "magnet_uri": "magnet:?xt=urn:btih:" + "f" * 40 + "&dn=" + "y" * 900,
+        "comment": "z" * 400, "size": 123456789, "state": "stalledUP", "added_on": 1764000000 + n,
+    }
+
+
+class TestLargeAnswer(QbitCase):
+    """QBT-TRUNC: a torrent list over 64 KiB was cut off and then reported as "unreadable"."""
+
+    def serve(self, body):
+        def do_GET(handler):  # noqa: N802
+            try:
+                handler._reply(200, body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the client stopped reading at its ceiling
+
+        FakeQbit.do_GET = do_GET
+        self.addCleanup(lambda: delattr(FakeQbit, "do_GET"))
+
+    def test_a_120_kb_category_listing_is_read_whole(self):
+        items = [_torrent(n) for n in range(60)]
+        body = json.dumps(items).encode()
+        self.assertGreater(len(body), 110 * 1024)
+        self.serve(body)
+        state = self.client().snatch_state("mam-audiobooks")
+        self.assertEqual(set(state), {item["hash"] for item in items})
+        self.assertEqual(state[f"{7:040x}"], (1.0, 0.7))
+        self.assertEqual(self.client().incomplete("mam-audiobooks", 0.999), 20)
+
+    def test_an_answer_over_the_ceiling_says_it_was_cut_off(self):
+        ceiling = 8 * 1024 * 1024
+        self.serve(b"[" + b" " * ceiling + b"]")
+        with self.assertRaises(qbit.QbitError) as ctx:
+            self.client().snatch_state("mam-audiobooks")
+        message = str(ctx.exception)
+        self.assertNotIn("unreadable", message)
+        self.assertIn("cut off", message)
+        self.assertIn("8 MiB", message)
+        self.assertEqual(ctx.exception.kind, "error")
+
+    def test_an_answer_exactly_at_the_ceiling_is_complete(self):
+        ceiling = 8 * 1024 * 1024
+        body = b"[" + b" " * (ceiling - 2) + b"]"
+        self.assertEqual(len(body), ceiling)
+        self.serve(body)
+        self.assertEqual(self.client().snatch_state("mam-audiobooks"), {})
+
+    def test_a_body_that_is_not_json_is_still_unreadable(self):
+        self.serve(b"<html>")
+        with self.assertRaises(qbit.QbitError) as ctx:
+            self.client().snatch_state("mam-audiobooks")
+        self.assertIn("answered the torrent list with something unreadable", str(ctx.exception))
